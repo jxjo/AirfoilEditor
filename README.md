@@ -1,7 +1,7 @@
 # Airfoil Editor
 
 
-The `AirfoilEditor` shows detailed information of an airfoil and allows to modify its main geometry parameters. 
+The AirfoilEditor shows detailed information of an airfoil and allows to modify its main geometry parameters. 
 
 ![PC2](images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
 
@@ -35,7 +35,7 @@ Repaneling is based on a modified cosinus distribution of the airfoil points on 
 
 As an exmaple for the modification functionality of the app, the dialog for repaneling is shown:  
 
-![PC2](images/AirfoilEditor_Repanel.png "Screenshot of Repaneling within AirfoilEditor")
+![Repanel](images/AirfoilEditor_repanel.png "Screenshot of Repaneling within AirfoilEditor")
 <sup>Dialog for repaneling of an airfoil. Recommendations are given for 'healthy' panel angles.  </sup>
 </p>
 
