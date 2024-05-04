@@ -94,12 +94,11 @@ The Airfoil Editor allows to visualize the Hicks-Henne functions which were appl
 
 ##  Install
 
-The 'Airfoil Editor' is part of the 'Planform Creator 2' repository. 
-A pre-build Windows-Exe of both apps is available in the releases section https://github.com/jxjo/PlanformCreator2/releases  
+A pre-build Windows-Exe of both apps is available in the releases section https://github.com/jxjo/AirfoilEditor/releases  
 
 or 
 
-Download python sources from https://github.com/jxjo/PlanformCreator2/releases or Clone the repository 
+Download python sources from https://github.com/jxjo/AirfoilEditor/releases or Clone the repository 
 
 and Install 
 
