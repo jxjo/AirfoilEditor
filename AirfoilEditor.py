@@ -54,7 +54,7 @@ from artist             import set_font_size
 #------------------------------------------------
 
 AppName    = "Airfoil Editor"
-AppVersion = "1.2.3"
+AppVersion = "1.3.0"
 
 
 # tk change events for updating diagrams or vice versa entry fields  
