@@ -610,7 +610,7 @@ class Base_Widget():
             if decimals:
                 s = "%0.*f" %(decimals,val)
             else: 
-                s = "%f" % val
+                s = ("%f" % val).rstrip('0').rstrip('.')            # remove trailing 0 and '.' 
         else:
             s = '???'
         return s
