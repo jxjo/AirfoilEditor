@@ -624,18 +624,20 @@ class Base_Widget():
         if valType == int:
             try:
                 newVal = int(float(newStr))
-            except:                             # user enetered a non int
-                newVal = int(val) 
-            if limits: 
+            except:                             # user entered a non int
+                if val is not None and val != '':
+                    newVal = int(val)        # take old val 
+            if limits and newVal is not None: 
                 minVal, maxVal = limits
                 newVal2 = max (int(minVal), newVal)
                 newVal  = min (int(maxVal), newVal2)
         elif valType == float:
             try:
                 newVal = float(newStr)
-            except:                             # user enetered a non float
-                if val: newVal = float(val)     #   could also be None
-            if limits and newVal: 
+            except:                             # user entered a non float
+                if val is not None and val != '':
+                    newVal = float(val)         # take old val 
+            if limits and newVal is not None: 
                 minVal, maxVal = limits
                 newVal2 = max (float(minVal), newVal)
                 newVal  = min (float(maxVal), newVal2)
