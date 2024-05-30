@@ -744,10 +744,7 @@ class Diagram_Abstract(ctk.CTkFrame):
     def setup_toolbar (self, r):
         """ toolbar for pan and zoom"""
         r +=1
-        Blank_Widget (self.view_frame,r,0)
-        self.view_frame.grid_rowconfigure(r, weight=1)
-        r +=1
-        Label_Widget (self.view_frame, r, 0, lab='Pan and zoom')
+        Label_Widget (self.view_frame, r, 0, pady=(5,5), lab='Pan and zoom')
         r +=1
         self.toolbar = Plot_Toolbar(self.canvas, self.view_frame, background=ctk.get_appearance_mode())
         self.toolbar.grid (row=r, column=0, columnspan= 3, sticky='ew', padx=(10,10), pady=(0,0))

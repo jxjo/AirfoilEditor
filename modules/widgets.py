@@ -953,14 +953,22 @@ class CheckBox_Widget(Base_Widget):
         val or obj+getter -- val string to show or access path with obj and getter          :)
         set -- access path setter when switched              :)
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, padx=None, pady=None, columnspan=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        height = 15
-        pady= 2
+        if padx is None: padx = (15,5)
+        if pady is None: pady = 0
+        if columnspan is None: columnspan = 1
 
-        self.mainCTk = ctk.CTkCheckBox (self.parent, text=self.label, onvalue=1, command=self.CTk_callback)
-        self.mainCTk.grid(row=self.row, column=self.column, padx=10, pady = pady, sticky="w")
+        checkbox_width  = 16
+        checkbox_height = 16
+
+        self.mainCTk = ctk.CTkCheckBox (self.parent, text=self.label, onvalue=1, 
+                                        width=self.width, border_width=1,
+                                        checkbox_width=checkbox_width, checkbox_height=checkbox_height,
+                                        checkmark_color=cl_button_primary,
+                                        command=self.CTk_callback)
+        self.mainCTk.grid(row=self.row, column=self.column, columnspan=columnspan, padx=padx, pady=pady, sticky="w")
 
         self.set_CTkControl()
         self.set_CTkControl_state()

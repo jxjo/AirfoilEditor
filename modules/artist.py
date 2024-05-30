@@ -20,7 +20,7 @@ import colorsys
 import tkinter as tk
 
 cl_background       = '#101010'
-cl_labelGrid        = '#A0A0A0'    
+cl_labelGrid        = '#B0B0B0'    
 cl_axes             = '#606060'
 cl_text             = '#D0D0D0'
 cl_textHeader       = '#808080'
