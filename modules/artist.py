@@ -629,7 +629,7 @@ class DragManager:
         self.cid_enter  = self.canvas.mpl_connect('axes_enter_event', self.on_enter_event)
 
 
-    def _draw_animated(self, duringMove=False, iArtMoved=None):
+    def _draw_animated(self, artist_onMove=None, duringMove=False, iArtMoved=None):
         """Draw the animated artists either via callback for static and animated"""
 
         if duringMove:                # on move - draw on move only current

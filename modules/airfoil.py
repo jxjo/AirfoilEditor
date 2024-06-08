@@ -57,7 +57,7 @@ class Airfoil:
 
 
     def __init__(self, x= None, y = None, name = None,
-                 geometry : Type[Geometry]  = GEO_SPLINE, 
+                 geometry : Type[Geometry]  = None, 
                  pathFileName = None,  workingDir= None):
         """
         Main constructor for new Airfoil
@@ -87,7 +87,10 @@ class Airfoil:
         self._isEdited       = False 
         self._isStrakAirfoil = False             # is self blended from two other airfoils 
 
-        self._geometryClass  = geometry          # geometry startegy 
+        if geometry is None: 
+            self._geometryClass  = GEO_SPLINE          # geometry startegy 
+        else:
+            self._geometryClass  = geometry          # geometry startegy 
         self._geo            = None              # selfs instance of geometry
 
         self._nPanelsNew     = None              # repanel: no of panels - init via default
@@ -139,7 +142,7 @@ class Airfoil:
         
 
     @classmethod
-    def onFileType(cls, pathFileName, workingDir = None):
+    def onFileType(cls, pathFileName, workingDir = None, geometry : Type[Geometry]  = None):
         """
         Alternate constructor for new Airfoil based on its file type
 
@@ -150,12 +153,13 @@ class Airfoil:
         Args:
             pathFileName: string of existinng airfoil path and name
             workingDir: optional working dir (if path is relative)
+            geometry : geometry tyoe - only for .dat files 
         """
 
         ext = os.path.splitext(pathFileName)[1]
 
         if ext == '.dat': 
-            return Airfoil (pathFileName=pathFileName, workingDir=workingDir)
+            return Airfoil (pathFileName=pathFileName, workingDir=workingDir, geometry=geometry)
         elif ext == '.bez': 
             return Airfoil_Bezier (pathFileName=pathFileName, workingDir=workingDir)
         elif ext == '.hicks': 
