@@ -1,168 +1,104 @@
-# Planform Creator 2 
+# Airfoil Editor
 
 
-> [!NOTE]
- The [Airfoil Editor](https://github.com/jxjo/AirfoilEditor) moved to a repo of its own. You can downlaod the app from there.
+The AirfoilEditor shows detailed information of an airfoil and allows to modify its main geometry parameters. 
 
-##
-
-Planform Creator 2 - short PC2 - is an app to design a wing focusing on model sailplanes 
-
-![PC2](images/PlanformCreator2_App.png "First screenshot")
+![PC2](images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
 
 Main features: 
 
-* Define a planform based on chord distribution functions
-* Major further parameters are the hinge line and flap depth at root and tip
-* Add wing sections with fixed position or relative chord length
-* Generate blended airfoils for intermediate wing sections ('strak')
-* Import dxf outline of a wing as template for a wing 
-* Export wing definition and airfoils to
-  * Xflr5 or FLZ_vortex
-  * dxf file  - for use in CAD
-* View airfoil and edit its properties 
+* View an airfoil and browse through the airfoils of its subdirectory
+* View the curvature of the airfoil surface
+* Repanel and normalize the airfoil
+* Modify the geometry parameters thickness, camber and their high points 
+* Set trailing edge gap 
+* Merge an airfoil with another airfoil 
+* Create a Bezier based 'copy' of an airfoil 
 
-The project was inspired and is partially based on the 'Planform Creator' being part of [The Strak Machine](https://github.com/Matthias231/The-Strak-Machine) - Thanks Matthias!  
+The driver for this app was to overcome some of the artefacts using xfoils geometry routines (for example used in Xflr5) when trying to create geometric 'high quality' airfoils. The focus of the app is on pure geometry work with airfoils. 
 
 ## Basic concepts
 
-The idea behind Planform Creator 2 is to have a tool to design a new wing with a more graphical, 'playful' approach. It tries to fill the gap between CAD based design and aerodynamic analysis tools like Xflr5.
+The `AirfoilEditor` implements different "strategies" to represent the geometry of an airfoil:
 
-<img src="./images/PC2_usecase.png" width="500" />
+- 'Linear interpolation' -  Based on the point coordinates coming from the airfoils '.dat' file, intermediate points are evaluated with a simple linear interpolation. This is used for fast preview and basic operations.
+- 'Cubic spline interpolation' - A cubic spline is built based on the point coordinates coming from the airfoils '.dat' file. The spline allows to evlauate intermediate points with high precision 
+nelder mead
+- 'Bezier curve' - An airfoil is represented by two Bezier curves for upper and lower side of the airfoil. A nelder mead optimization allows to approximate the Bezier curves to an existing airfoil.
+- 'Hicks Henne' - Hicks Henne bump functions are applied to a "seed airfoil" to achieve a new shape (in development for Xoptfoil2)  
 
-Within the early design process of a wing Planform Creator 2 is the master of 'truth'. It provides the data for the aerodynamic analysis. The findings in the analysis can be used to modify the planform. 
+The spline interpolation is used to find the position of the 'real' leading edge, which may differ from the leading edge of the coordinates (which is the point with the smallest x-value). When 'normalizing' the airfoil, the 'real' leading edge is taken in an iteration to rotate, stretch and move the airfoil to become 0,0 - 1,0 normalized.
 
-When the results are satisfying the planform and the envolved airfoils are exported as dxf to a CAD program to continue with the final 3D design e.g. for a mold of the wing. 
+For thickness and camber geometry operations the airfoil (spline) is splitted into two new splines representing thickness and camber distribution. For moving the highpoint of either thickness or camber a mapping spline for the airfoil coordinates is used quite similar to the approach implemented in xfoil. After these operations the airfoil is rebuild out of thickness and camber. 
 
-In contrast to a "paint program", the planform is defined by parameters such as 'span', 'root depth' or "sweep of hinge line". The chord distribution along the span is controlled by a mathematical function via parameters.
-The advantage is that the parameters can be changed independently of each other, allowing a quick approach to the desired wing planform.
+Repaneling is based on a modified cosinus distribution of the airfoil points on the arc of the spline. This differs from the xfoil approach but the repanel shows are 'nice' behaviour in aero calculation. 
 
-![PC2](images/Hinge_angle_controlling_planform.png "Different hine angles ")
-<sup>Examples of different hinge line angles  </sup>
+As an exmaple for the modification functionality of the app, the dialog for repaneling is shown:  
+
+![Repanel](images/AirfoilEditor_repanel.png "Screenshot of Repaneling within AirfoilEditor")
+<sup>Dialog for repaneling of an airfoil. Recommendations are given for 'healthy' panel angles.  </sup>
 </p>
 
-## Designing a planform 
+### Curvature 
 
-'Form follows Function' - this is especially true in PC2: The planform of a wing results from a combination of functions and parameters. 
+On of the major views on an airfoil in the Airfoil Editor is the curvature of the airfoils surface. It allows a quick assessment of the surface quality and to detect artefacts like a 'spoiler' at the trailing edge which is quite common. 
 
-### Chord distribution 
-Most important and usually defined first, is the chord distribution along the wing span. The geometric chord distribution directly and significantly determines the lift distribution along the span. The local lift coefficient depends on the local effective angle of attack (influenced by the wing shape) and on the local Reynolds number, which changes proportionally to the local chord.
-
-
-Different "planform types" are available for defining the depth distribution:
-- Bezier curve: Using a start tangent at the root and a end tangent at the wing tip, the curve of the chord distribution is defined by dragging the control points with the mouse
-- Bezier with straight trailing edge: A sub-variant of "Bezier" when the planform has a straight trailing edge. 
-- Trapezoid: For the definition of a (multiple) trapezoid wing. The chord is defined by the chord length of the individual segments.
-
-In PC2, the chord distribution is always displayed in normalized form. Both span and chord length range from 0 to 1. This allows chord distributions - even of different wing designs - to be compared with each other without distortion.
-
-![PC2](images/Normalized_chord_distribution.png "Varying chord distribution")
-<sup>Variations of the chord distribution using a Bezier curve  </sup>
-</p>
-
-### Hinge Line and Flap Depth
-The hinge line is the main 'construction line' of PC2. By determining flap depth at the root and tip, the chord distribution is, figuratively speaking, threaded onto the hinge line, which results in a final planform. Thereby both flap depth at the root and flap depth at tip strongly influences the planform:
-
-![PC2](images/Flap_depth_controlling_planform.png "Different flap depths")
-<sup>Impact of different flap depths on planform of the wing </sup>
-</p>
+As the curvature changes from very high values at the leading edge to very low values towards the trailing edge, a logarithmic scale can be applied in the diagram to improve overview.  
 
 
-### Everything banana?
-A little speciality is the so called "banana function". It allows to bent the wing in spanwise direction like a banana without changing the chord distribution. The function does not actually serve to visually embellish the wing, but it allows the normally linear flap depth distribution to be modified flexibly to finetune lift distribution when flaps are set. 
+## Bezier based airfoils 
 
-<img src="./images/Banana_function.png" width="700" />
+Beside '.dat'-files the Airfoil Editor seamlessly displays '.bez'-Files defining an Bezier based airfoil. 
 
-<sup>Modifying the flap depth distribution with the 'banana function'</sup>
-</p>
+![PC2](images/AirfoilEditor_bezier1.png "Screenshot of Bezier curve definition")
 
-### Wing sections
-
-The airfoils of the wing are defined at 'wing sections'. A wing always has at least 2 wing sections - at root and wing tip. In between, any number of wing sections can be created. There are two types of wing sections, which are defined by their ...
-- span position: The wing section always remains at this position, even if, the wing span or chord distribution is changed
-- chord length: The wing section moves with the planform when it is changed in order to always have the same chord length. This is especially useful to have an airfoil at a certain chord length (= Reynolds number) within the wing.
-
-![PC2](images/Wing_sections_and_Flaps.png "Wing sections")
-<sup>For this wing, in addition to the root and the wing tip, 4 further wing sections were defined: 2 with a fixed position and 2 with a fixed wing depth. The wing sections were assigned to a flap group so that the individual flaps can also be displayed. </sup>
-
-Finally, a wing section can be assigned to a "flap group". The flaps defined in this way have no further function in PC2 and are only used for display. When exporting to FLZ_vortex, however, the flap definition is included and can be used there to simulate flap deflections.
-
-### Airfoils
-
-A wing section can either be assigned a fixed airfoil or the airfoil can be left open. In this case, a 'strak' (or 'blended') airfoil is created for this wing Section by blending the left and right neighboring airfoils. The "blending ratio" is derived from the ratio of the respective chord length of the wing sections.
-
-![PC2](images/Wing_sections_and_Airfoils.png "Wing sections and airfoils")
-
-<sup>Wing sections with the corresponding airfoils. The airfoil at 'section 3' is created by blending JX-GP-100 and JX-GP-055. The airfoils have a "nick name" - here "GP" - to ease readability.  </sup>
-</p>
-
-The airfoils can either be viewed in normal, normed scale or in their 'real' scale within their wing sections:
-
-![PC2](images/Airfoils_in_wing_sections.png "Airfoils in wing sections")
-
-Optionally, a short 'nick name' can be assigned to the airfoils of a wing. The nick name gets a number in addition, which results from a re-number specification at the root (basis is the percentage chord length of a wing section to the root chord length).  
-
-All airfoils, including the generated 'strak' airfoils, can be exported as a .dat file at the end. Very practical is the optional setting of a continuous trailing edge thickness ('Te gap') in mm, which eliminates the often necessary manual reworking of the airfoils in CAD. 
-
-A spin off from this project is the  [Airfoil Editor](https://github.com/jxjo/AirfoilEditor) which allows the typical modifications of an airfoil during wing design. 
-
-![PC2](AirfoilEditor_subtree/images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
-<sup>The AirfoilEditor can also be used as a stand-alone program. Linked with the file extension ".dat" it acts as a smart display and edit app for airfoils.</sup>
-
-## Bridge to Xflr5 and FLZ_vortex
-
-One of the most important functions of PC2 is the export of the designed wing to FLZ_vortex or Xflr5 for aerodynamic calculation. In each case, the wing definition is prepared "bite-sized" for the respective program. 
-Both programs idealize an airfoil by trapezoidal segments. In the case of a strongly curved leading or trailing edge this can lead to considerable geometrical deviations and thus inaccuracies of the calculation. PC2 tries to detect such a deviation which is too high...
-
-<img src="./images/Xflr5_export_warning.png" width="700" />
-
-<sup>Export of a wing to Xflr5. Yellow marked are the panel segments, which have a too high deviation from the original planform due to the idealization as trapezoids</sup>
-
-... whereupon one should create additional wing sections with a few clicks to get a significantly better idealization ...
-  
-<img src="./images/Xflr5_export_ok.png" width="700" />
-
-<sup>With additional wing sections, the idealization of the wing planform is significantly improved.</sup>
-
-The generation of the panels in x- and y-direction can be further controlled by the usual distribution functions "sinus", "cosinus" and "uniform".
-A special feature of the export still takes place at the wing tip: If the chord length of the wing tip is too small, tip is cut off in order to obtain a chord length at tip which is still manageable in aerodynamic analysies programs (the problem is, among other things, a too low Reynolds number within the aerodynamic calculation). 
-
-In Xflr5, the airfoils must be imported separately and a polar set calculation for each airfoil must be performed. 
-FLZ_vortex can optionally be started directly from PC2 and a calculation can be initiated directly (only Windows: prerequisite is to assign the file extension ".flz" to the program FLZ_vortex.) 
-
-## Export as dxf file 
-Once the wing design has been completed, the new wing can be transferred to a CAD program as a dxf file. The used airfoils are optionally inserted into the drawing and / or additionally exported as a .dat file.
-
-![PC2](images/DXF_export.png "dxf export of a wing")
-
-The generated planform shouldn't be used directly for a 3D construction in the CAD program, since the contour line is approximated by many small straight line pieces (polyline). It is recommended to place a spline over the leading and trailing edge in the respective CAD program.
-
-## The App - a quick look 
-  
-An attempt was made to provide a simple, intuitive UI to be able to 'playfully' explore the program and the design of a new wing. 
-
-![PC2](images/PlanformCreator2_App_2.png "Planform Creator 2")
-
-The upper tabs are used to switch between the different main display views. On the left (in the 'View' area) are the selection buttons to customize the selected view. A zoom and pan function allows to look at details.
-
-At the bottom left are the usual file functions. Here you also find the different export and import capabilities.
-
-In the lower main area the input or modification of the wing parameters takes place. The most important parameters can alternatively be changed directly in the diagram with the mouse ('Mouse helper' switch in the 'View' area). 
-
-Included in the installation are two example projects which give a good overview of the possibilities of PC2.
-- F3F wing 'VJX.glide' (this is a real life design) 
-- Flying wing "Amokka-JX" with straight trailing edge   
-(the examples can be accessed via 'Open' in the exmaples sub directory) 
+A '.bez'-file defines the x,y coordinates of the Bezier control points and looks like: 
+```
+JX-GT-15
+Top Start
+ 0.0000000000  0.0000000000
+ 0.0000000000  0.0120189628
+ 0.0681109425  0.1240586151
+ 0.6435307964  0.0748001854
+ 1.0000000000  0.0000000000
+Top End
+Bottom Start
+ 0.0000000000  0.0000000000
+ 0.0000000000 -0.0222920000
+ 0.3333333333 -0.0240468000
+ 1.0000000000  0.0000000000
+Bottom End
+````
 
 
+A little bit hidden is the feature to define a (new) airfoil based on two Bezier curves for upper and lower side. The Bezier editor allows to move the control points of the curve by mouse.
+
+The 'Match' function performs a best match of the Bezier curve to an existing airfoil. For this a simplex optimization (Nelder Mead) is performed to 
+- minimize the norm2 deviation between the Bezier curve and the target airfoil
+- align the curvature of the Bezier curve at leading and trailing to the targets curvature.  
+
+
+![PC2](images/AirfoilEditor_bezier.png "Screenshot of Bezier curve definition")
+<sup>Dialog for Bezier curve approximation. In this example the upper Bezier curve having 6 control points was 'matched' to the target airfoil at 4 controil points (Leading andtrailing edge are fixed). </sup>
+
+
+## Hicks-Henne based airfoils 
+
+Hicks-Henne “bump” functions are applied to a base aerofoil and add a linear combination of single-signed sine functions to deform its upper and lower surfaces to create a new aerofoil shape.
+They are used in the airfoil optimizer Xoptfoil2 as an alternative to Bezier curves to create new airfoil designs. 
+
+The Airfoil Editor allows to visualize the Hicks-Henne functions which were applied to an airfoil. For this a special file format '.hicks' is used to interchange with Xoptfoil2.
+
+![PC2](images/AirfoilEditor_Hicks-Henne.png "Screenshot of Hicks-Henne based airfoil")
+<sup>Visualization of the Hicks-Henne bump functions, which were applied to the upper and lower side of the airfoil</sup>
 
 ##  Install
 
-A pre-build Windows-Exe is available in the releases section https://github.com/jxjo/PlanformCreator2/releases  
+A pre-build Windows-Exe of both apps is available in the releases section https://github.com/jxjo/AirfoilEditor/releases  
 
 or 
 
-Download python sources from https://github.com/jxjo/PlanformCreator2/releases or Clone the repository 
+Download python sources from https://github.com/jxjo/AirfoilEditor/releases or Clone the repository 
 
 and Install 
 
@@ -170,13 +106,13 @@ and Install
 pip3 install numpy
 pip3 install matplotlib
 pip3 install customtkinter
-
 pip3 install termcolor
 pip3 install colorama
 pip3 install ezdxf
 ```
 
- 
-Have fun!
+> [!TIP]
+ For Windows: Use the "Open with ..." Explorer command to connect the 'AirfoilEditor.exe' to file extension '.dat'. Later a double click on an airfoil .dat-file will open the AirfoilEditor and you can browse through the files in the directory (if you are using the Python version, create a little batch job to open the .dat file)  
 
-jochen@jxjo.de
+
+Have fun!
