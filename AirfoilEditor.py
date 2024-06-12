@@ -1569,7 +1569,7 @@ class Dialog_Repanel (Dialog_Airfoil_Abstract):
         self.add (Field_Widget (self.input_frame,r,c  , lab="No of panels", width=100,
                                 obj=self.airfoil, get='nPanelsNew', set='set_nPanelsNew',
                                 event=self.change_event, lim=(50,500), dec=0, spin=True, step=10))
-        self.add (Label_Widget (self.input_frame,r,c+3  , columnspan = 1, 
+        self.add (Label_Widget (self.input_frame,r,c+3  , columnspan = 1, text_style=STYLE_DISABLED,
                                 lab= lambda: "equals %d points" % self.airfoil.nPoints))
         
         self.add(Button_Widget (self.input_frame,r,c+4, lab='Change defaults', width=110, columnspan=3, 
@@ -2198,17 +2198,17 @@ class Dialog_Bezier (Dialog_Airfoil_Abstract):
         # init sub frame with data of Bezier airfoil 
 
         r,c = 0,0  
-        Label_Widget  (frame,r,c, padx= 0, lab= "Side", width=80, columnspan=1, text_style=STYLE_NORMAL)
+        Label_Widget  (frame,r,c, padx= 0, lab= "Side", width=80, columnspan=1)
         c +=1
-        Label_Widget  (frame,r,c, padx=20, lab= "Ctrl Points", width=60, columnspan=1, text_style=STYLE_NORMAL)
+        Label_Widget  (frame,r,c, padx=20, lab= "Ctrl Points", width=60, columnspan=1)
         c +=2
         Blank_Widget  (frame, r,c, width=10)
         c += 1
-        Label_Widget  (frame,r,c, padx=10, lab= "LE  curvature  TE", width=90, columnspan=3 , text_style=STYLE_COMMENT)
+        Label_Widget  (frame,r,c, padx=10, lab= "LE  curvature  TE", width=90, columnspan=3)
         c +=4
         Blank_Widget  (frame, r,c, width=30)
         c +=1
-        Label_Widget  (frame,r,c, padx=10, lab= "Deviation Bezier to target ", width=50, columnspan=2 , text_style=STYLE_COMMENT)
+        Label_Widget  (frame,r,c, padx=10, lab= "Deviation Bezier to target ", width=50, columnspan=2)
 
         frame.grid_columnconfigure (c+2, weight=1)
         r +=1
@@ -2217,7 +2217,7 @@ class Dialog_Bezier (Dialog_Airfoil_Abstract):
 
             r += 1
             c = 0 
-            self.add (Label_Widget (frame,r,c, padx=(30,0), lab=f"{sideName}", width=60, columnspan=1, text_style=STYLE_NORMAL))
+            self.add (Label_Widget (frame,r,c, padx=(30,0), lab=f"{sideName}", width=60, columnspan=1))
             c +=1
             self.add (Field_Widget  (frame,r,c, width=90, lab_width=100,
                                     get=self.nPoints, set=self.set_nPoints, objId = sideName,
@@ -2238,16 +2238,17 @@ class Dialog_Bezier (Dialog_Airfoil_Abstract):
                                 get='teGap_perc', set='set_teGap_perc', step=0.01,
                                 spin=True, width=90, lab_width=70, unit="%", dec=2,
                                 event=self.changed_te_gap))
-        Label_Widget (frame,r,c+3, padx=0, columnspan=8, lab= "= move last Bezier point up/down (Match will overwrite)")
+        Label_Widget (frame,r,c+3, padx=0, columnspan=8, text_style=STYLE_DISABLED,
+                      lab= "= move last Bezier point up/down (Match will overwrite)")
 
 
     def _init_target_frame (self, frame : ctk.CTkFrame): 
         # init sub frame with data of target airfoil 
 
         r,c = 0,0  
-        Label_Widget  (frame,r,c, padx= 0, lab= "Side", width=80, columnspan=1, text_style=STYLE_NORMAL)
+        Label_Widget  (frame,r,c, padx= 0, lab= "Side", width=80, columnspan=1)
         c +=1
-        Label_Widget  (frame,r,c, padx=10, lab= "LE  curvature  TE", width=90, columnspan=3 , text_style=STYLE_COMMENT)
+        Label_Widget  (frame,r,c, padx=10, lab= "LE  curvature  TE", width=90, columnspan=3)
 
         r +=1
 
@@ -2255,7 +2256,7 @@ class Dialog_Bezier (Dialog_Airfoil_Abstract):
             curv = self.airfoilOrg.geo.curvature.side(sideName)
             r += 1
             c = 0 
-            self.add (Label_Widget (frame,r,c, padx=(30,0), lab=f"{sideName}", width=60, columnspan=1, text_style=STYLE_NORMAL))
+            self.add (Label_Widget (frame,r,c, padx=(30,0), lab=f"{sideName}", width=60, columnspan=1))
             c += 1
             self.add (Field_Widget  (frame,r,c, val=curv.y[0], width=50, dec=0))
             c +=2
