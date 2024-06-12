@@ -222,7 +222,8 @@ class Edit_Airfoil_Data(Edit_Abstract_Airfoil):
         self.add (Field_Widget  (self,r,c+3, lab="LE radius", obj=self.airfoil, 
                                 get='leRadius_perc', width=50, lab_width=60, unit="%", dec=2))
         r += 1
-        self.add (Label_Widget  (self,r,c, padx=5,  pady=(3,3), lab=lambda : "Data " + self.airfoil().geo.description))
+        self.add (Label_Widget  (self,r,c, padx=5,  pady=(3,3), disable=True,
+                                 lab=lambda : "Data " + self.airfoil().geo.description))
  
 
     def modify_airfoil (self): 
@@ -263,16 +264,19 @@ class Edit_Curvature(Edit_Abstract_Airfoil):
         r = 1
         Blank_Widget (self, r,0)                # left blank column to inset the fields 
         c = 1                                  
-        self.add (Field_Widget  (self,r,c,   lab="Reversals upper", get=lambda: self.geo.curvature.upper.nreversals,
-                                width=50, lab_width=100, set='', dec=0, disable= True))
+        self.add (Field_Widget  (self,r,c,   lab="Reversals upper", 
+                                 get=lambda: self.geo.curvature.upper.nreversals,
+                                 width=50, lab_width=100, set='', dec=0))
        
         r += 1
-        self.add (Field_Widget  (self,r,c, lab="lower", get=lambda: self.geo.curvature.lower.nreversals, 
-                                width=50, lab_width=60, padx=(20,0), set='', dec=0, disable= True))
+        self.add (Field_Widget  (self,r,c, lab="lower", 
+                                 get=lambda: self.geo.curvature.lower.nreversals, 
+                                 width=50, lab_width=60, padx=(20,0), set='', dec=0))
         r += 1
-        self.add (Field_Widget  (self,r,c,   lab="... threshold", get=lambda: self.curvature_threshold, 
-                                set=self._set_curvature_threshold, event=AIRFOIL_CHANGED,
-                                width=50, lab_width=80, lim=(0,1), dec=2, spin=False, step=0.02))
+        self.add (Field_Widget  (self,r,c,   lab="... threshold", 
+                                 get=lambda: self.curvature_threshold, 
+                                 set=self._set_curvature_threshold, event=AIRFOIL_CHANGED,
+                                 width=50, lab_width=80, lim=(0,1), dec=2, spin=False, step=0.02))
 
 
     def refresh(self): 
@@ -615,6 +619,7 @@ class Diagram_Airfoil (Diagram_Abstract):
         
         self.airfoilArtist   = Airfoil_Artist (self.ax1, self.airfoils, show=True)
         self.airfoilArtist.set_points(self.show_points)
+        self.airfoilArtist.set_show_shape_function (self.show_shape_function)
         self.airfoilArtist.set_show_title (True)            # title like "Bezier based.." 
 
         self.thicknessArtist = Thickness_Artist (self.ax1, self.airfoils, show=self.show_camber)
@@ -672,6 +677,8 @@ class Diagram_Airfoil (Diagram_Abstract):
         Switch_Widget (self.view_frame,r,c, lab='Camber',
                        get=lambda: self.show_camber, set=self.set_show_camber)
         r += 1 
+        if self.show_shape_function_disabled():                 # switch off, if the first airfoil is a .dat
+            self._show_shape_function = False
         self._shape_widget = Switch_Widget (self.view_frame,r,c, lab='Shape function', 
                        get=lambda: self.show_shape_function, set=self.set_show_shape_function,
                        disable=self.show_shape_function_disabled)

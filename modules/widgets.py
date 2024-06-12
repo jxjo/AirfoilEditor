@@ -694,17 +694,22 @@ class Base_Widget():
            raise ValueError ("This type is not supported in Widgets", self.val)
 
 
-        self.readOnly = False 
-        if self.setter is None:                 # no setter? 
-            self.disGetter = None               
-            self.disabled = True                #   disable field 
-            self.readOnly = True                #   readOnly mode - will alos control appearance 
-        elif (isinstance(disable, bool)):       # disable is either bool 
-            self.disGetter = None
+        # handle disable / readonly 
+
+        self.readOnly  = False
+        self.disabled  = False
+        self.disGetter = None
+
+        if (isinstance(disable, bool)):         # disable is either bool 
             self.disabled = disable
-        else:                                   # or access path
+        elif disable is not None:               # or access path
             self.disGetter = disable
             self.disabled = self.get_value (disable, obj, parent)
+        elif self.setter is None:               # no setter? 
+            self.disabled = True                #   disable field 
+            self.readOnly = True                #   readOnly mode - will alos control appearance 
+        
+        # label of widget 
 
         if (isinstance(lab, str)) or lab is None:
             self.label    = lab
@@ -900,7 +905,8 @@ class Base_Widget():
         """
         self._set_CTkControl_state (self.mainCTk, self.disabled)
 
-    def _set_CTkControl_state (self, widgetCTk, disable: bool):
+
+    def _set_CTkControl_state (self, widgetCTk : ctk.CTkBaseClass, disable: bool):
         """sets the disabled / normal state in CTk control 
         """
         curCTk_state = widgetCTk.cget("state")
@@ -910,6 +916,7 @@ class Base_Widget():
         else: 
             if curCTk_state == "disabled":
                 widgetCTk.configure (state ="normal" )           # "normal" (standard) or "disabled" (not clickable, darker color)
+
 
     def CTk_callback (self, dummy=None):
         """will be called by CTk control when user hit a button or pressed enter 
@@ -1002,7 +1009,7 @@ class Base_Widget():
                 newVal2 = max (float(minVal), newVal)
                 newVal  = min (float(maxVal), newVal2)
         elif valType == bool: 
-                newVal = (newStr == "1" or newStr == 1)        # Ctk returns int (?) 
+                newVal = (newStr == "1" or newStr == 1)        # CTk returns int (?) 
         else: 
                 newVal = newStr
         return newVal
@@ -1129,10 +1136,22 @@ class Label_Widget(Base_Widget):
                   
         self.mainCTk.grid(row=self.row, column=self.column,  columnspan=columnspan, 
                           padx=padx, pady=pady, sticky=sticky)
+        
+        self.set_CTkControl_state()
 
-    def _set_CTkControl_label (self, widgetCTk, newLabelStr: str):
+
+    def _set_CTkControl_label (self, widgetCTk : ctk.CTkLabel, newLabelStr: str):
         widgetCTk.configure (text_color=self._text_color())
         widgetCTk.configure (text=newLabelStr)
+
+
+    def _set_CTkControl_state (self, widgetCTk : ctk.CTkLabel, disable: bool):
+        # overwritten to set disabled text color 
+        super(). _set_CTkControl_state (widgetCTk, disable)
+        if disable: 
+            widgetCTk.configure (text_color_disabled = self._text_color(STYLE_DISABLED))
+        else: 
+            widgetCTk.configure (text_color = self._text_color())
 
 
 
@@ -1424,10 +1443,10 @@ class Field_Widget(Base_Widget):
             else:
                 width= 95
 
-            self.labelCtk = ctk.CTkLabel (self.parent, width= width, text=self.label, 
+            self.labelCTk = ctk.CTkLabel (self.parent, width= width, text=self.label, 
                                       text_color = self._text_color(STYLE_COMMENT), 
                                       justify='left', anchor='w')
-            self.labelCtk.grid (row=self.row, column=column, rowspan=rowspan, padx=padx, pady=pady, sticky='w')
+            self.labelCTk.grid (row=self.row, column=column, rowspan=rowspan, padx=padx, pady=pady, sticky='w')
             column += 1
 
         if self.spinner:
@@ -1517,7 +1536,7 @@ class Field_Widget(Base_Widget):
             self._set_CTkControl_state (self.subCTk, self.disabled)
             self._set_CTkControl_state (self.addCTk, self.disabled)
         if self.label: 
-            self._set_CTkControl_state (self.labelCtk, self.disabled)
+            self._set_CTkControl_state (self.labelCTk, self.disabled)
 
     
     def _set_CTkControl_state (self, widgetCTk : ctk.CTkEntry, disable: bool):
@@ -1548,7 +1567,7 @@ class Field_Widget(Base_Widget):
                     widgetCTk.configure (text_color = self._text_color())
                     widgetCTk.configure (fg_color = cl_entry)
                     widgetCTk.configure (border_color = cl_entry)
-                elif widgetCTk == self.labelCtk:
+                elif widgetCTk == self.labelCTk:
                     widgetCTk.configure (text_color = self._text_color(STYLE_COMMENT))
                 else: 
                     widgetCTk.configure (text_color = self._text_color())
@@ -1609,7 +1628,7 @@ class Slider_Widget(Base_Widget):
 
 
     def _set_slider_range (self):
-        # set limits and steps of Ctk slider 
+        # set limits and steps of CTk slider 
 
         minVal, maxVal = self.limits
         nsteps = max (1, (maxVal-minVal) / self.step)   # step must be > 0 
