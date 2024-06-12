@@ -1543,11 +1543,15 @@ class Field_Widget(Base_Widget):
         else: 
             if curCTk_state == "disabled":
                 widgetCTk.configure (state ="normal" )           # "normal" (standard) or "disabled" (not clickable, darker color)
-                widgetCTk.configure (text_color = self._text_color())
-                # also set background of entry field
                 if widgetCTk == self.mainCTk: 
+                    # also set background of entry field
+                    widgetCTk.configure (text_color = self._text_color())
                     widgetCTk.configure (fg_color = cl_entry)
                     widgetCTk.configure (border_color = cl_entry)
+                elif widgetCTk == self.labelCtk:
+                    widgetCTk.configure (text_color = self._text_color(STYLE_COMMENT))
+                else: 
+                    widgetCTk.configure (text_color = self._text_color())
 
 
 
