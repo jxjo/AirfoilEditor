@@ -7,9 +7,13 @@ Additional generic (compound) widgets based on original CTK widgets
 
 """
 import os
+import sys
+import time
 import customtkinter as ctk
-import tkinter as tk
+from customtkinter.windows.widgets.core_widget_classes.dropdown_menu import DropdownMenu
+from tkinter import Toplevel, Frame
 from PIL import Image
+
 
                     #   light     dark
 cl_entry            = ("gray96","gray35")         # background of entry fields
@@ -19,7 +23,6 @@ cl_spin_text        = ("gray5" ,"gray95")         # text color of spin buttons
 cl_spin_text_disable= ("gray55","gray70")         # text color of spin buttons
 cl_red              = ("OrangeRed3", "OrangeRed3")  # background for red button 
 cl_button_primary   = ("#3b8ed0", "#3076ad")
-# cl_button_primary   = ctk.ThemeManager.theme["CTkButton"]["fg_color"][0]# default Button darker  
 cl_button_secondary = ctk.ThemeManager.theme["CTkOptionMenu"]["button_color"] # brighter 
 fs_header           = 18                          # font size header 
 
@@ -46,19 +49,6 @@ cl_styles ={
         STYLE_HINT      : ("RoyalBlue3", "cornflower blue"),
         STYLE_WARNING   : ("DarkOrange3", "orange")
         }
-
-
-
-"""
-CTkToolTip Widget
-version: 0.8
-"""
-
-import time
-import sys
-import customtkinter
-from tkinter import Toplevel, Frame
-
 
         
 #-------------------------------------------------------------------------------
@@ -100,7 +90,7 @@ class CTkToolTip(Toplevel):
 
         if sys.platform.startswith("win"):
             self.transparent_color = self.widget._apply_appearance_mode(
-                customtkinter.ThemeManager.theme["CTkToplevel"]["fg_color"])
+                ctk.ThemeManager.theme["CTkToplevel"]["fg_color"])
             self.attributes("-transparentcolor", self.transparent_color)
             self.transient()
         elif sys.platform.startswith("darwin"):
@@ -118,7 +108,7 @@ class CTkToolTip(Toplevel):
         self.config(background=self.transparent_color)
 
         # StringVar instance for msg string
-        self.messageVar = customtkinter.StringVar()
+        self.messageVar = ctk.StringVar()
         self.message = message
         self.messageVar.set(self.message)
 
@@ -130,7 +120,7 @@ class CTkToolTip(Toplevel):
         self.alpha = alpha
         self.border_width = border_width
         self.padding = padding
-        self.bg_color = customtkinter.ThemeManager.theme["CTkFrame"]["fg_color"] if bg_color is None else bg_color
+        self.bg_color = ctk.ThemeManager.theme["CTkFrame"]["fg_color"] if bg_color is None else bg_color
         self.border_color = border_color
         self.disable = False
 
@@ -149,13 +139,13 @@ class CTkToolTip(Toplevel):
         self.transparent_frame = Frame(self, bg=self.transparent_color)
         self.transparent_frame.pack(padx=0, pady=0, fill="both", expand=True)
 
-        self.frame = customtkinter.CTkFrame(self.transparent_frame, bg_color=self.transparent_color,
+        self.frame = ctk.CTkFrame(self.transparent_frame, bg_color=self.transparent_color,
                                             corner_radius=self.corner_radius,
                                             border_width=self.border_width, fg_color=self.bg_color,
                                             border_color=self.border_color)
         self.frame.pack(padx=0, pady=0, fill="both", expand=True)
 
-        self.message_label = customtkinter.CTkLabel(self.frame, textvariable=self.messageVar, **message_kwargs)
+        self.message_label = ctk.CTkLabel(self.frame, textvariable=self.messageVar, **message_kwargs)
         self.message_label.pack(fill="both", padx=self.padding[0] + self.border_width,
                                 pady=self.padding[1] + self.border_width, expand=True)
 
@@ -163,7 +153,7 @@ class CTkToolTip(Toplevel):
             if self.frame.cget("fg_color") == self.widget.cget("bg_color"):
                 if not bg_color:
                     self._top_fg_color = self.frame._apply_appearance_mode(
-                        customtkinter.ThemeManager.theme["CTkFrame"]["top_fg_color"])
+                        ctk.ThemeManager.theme["CTkFrame"]["top_fg_color"])
                     if self._top_fg_color != self.transparent_color:
                         self.frame.configure(fg_color=self._top_fg_color)
 
@@ -270,13 +260,6 @@ class CTkToolTip(Toplevel):
         self.messageVar.set(message)
         self.message_label.configure(**kwargs)
 
-
-
-
-import customtkinter
-import sys
-import time
-import difflib
 
 
 #-------------------------------------------------------------------------------
@@ -582,9 +565,11 @@ class Base_Widget():
         newStr = self._getFrom_CTkControl()
 
         if newStr is None:                                      # this was a button
+            refresh = False                                     # do not refresh after callback
             setAndFire = True
             self.val = None
         else: 
+            refresh = True                                      # refresh after callback
             newVal = self.val_basedOnStr (self.val, self.valType, newStr, self.limits)
             if (newVal != self.val):                            # defensive to set in model ...
                 self.val  = newVal                              # store new value
@@ -596,8 +581,9 @@ class Base_Widget():
             if not self.setter is None: self.set_value()        # write val back to object
             if not self.event  is None: self.fireEvent()
         
-        # update entry field if there was a re-formatting e.g. digits
-        self.set_CTkControl()
+        # refresh widget if there was a re-formatting e.g. digits
+        if refresh: 
+            self.set_CTkControl()
 
 
     def _getFrom_CTkControl (self):
@@ -704,6 +690,7 @@ class Base_Widget():
 
         return self.__class__
 
+
 #-----------  real widget subclasses ----------------------------
 
 
@@ -718,7 +705,6 @@ class Blank_Widget(Base_Widget):
             
         if padx   is None: padx = 0
 
-        # self.mainCTk = ctk.CTkFrame (self.parent, width=self.width, height=self.height, fg_color="blue")     # dummy frame
         self.mainCTk = ctk.CTkFrame (self.parent, width=self.width, height=self.height, fg_color="transparent")     # dummy frame
         self.mainCTk.grid(row=self.row, column=self.column,  pady=0, padx=padx, sticky="w")
 
@@ -782,12 +768,12 @@ class Label_Widget(Base_Widget):
         if columnspan   is None: columnspan = 6
 
         if padx         is None: padx = 10
-        if pady         is None: pady = 0
+        if pady         is None: pady = 1
 
         if textvariable: self.label = None                  # a textvariable overwrites an additional label 
 
         self.mainCTk = ctk.CTkLabel(self.parent, text=self.label, textvariable=textvariable,
-                                    width=self.width, justify =justify, 
+                                    width=self.width, height=self.height,justify =justify, 
                                     anchor= anchor, text_color=self._text_color(),
                                     wraplength=wraplength) 
                   
@@ -852,10 +838,15 @@ class Button_Widget(Base_Widget):
         icon_size = None 
         if anchor is None: anchor = 'center'
         if padx   is None: padx = 10
-        if pady   is None: pady = 0
+        if pady   is None: pady = 1
         if sticky is None: sticky = 'w' 
 
-        text = self.val if self.getter else self.label      # either 'get' or 'lab' can be used
+        # either 'get' or 'lab' can be used
+
+        if self.getter or self.val:
+            text = self.val
+        else: 
+            text = self.label
 
         # set initial / default button style and optional getter for style 
 
@@ -882,22 +873,49 @@ class Button_Widget(Base_Widget):
 
         self.fg_color = self._get_fg_color (style)
 
+        #  if there are 'options' the command callback opens drop down 
+
+        self._selectedValue = None 
+        if self.options: 
+            callback = self._dropdown_menu_open
+        else: 
+            callback = self.CTk_callback
+
+
         self.mainCTk = ctk.CTkButton(self.parent, text=text, height=self.height, width=self.width, 
                                      anchor=anchor, image=icon, 
                                      border_spacing=0, border_width=0,
-                                     command=self.CTk_callback)
+                                     command=callback)
         if style == ICON:
             # patch ctkButton._create_grid to reduce button width (<-corner radius)
             self.mainCTk.grid_columnconfigure(0, weight=100, minsize=2)
             self.mainCTk.grid_columnconfigure(4, weight=100, minsize=2)
 
-        self.mainCTk.grid(row=self.row, column=self.column, columnspan=columnspan, padx=padx, pady=pady, sticky=sticky)
-     
+        self.mainCTk.grid(row=self.row, column=self.column, columnspan=columnspan, 
+                          padx=padx, pady=pady, sticky=sticky)
+
+        # attach optional dropdown 
+        if self.options: 
+            self._dropdown_menu = DropdownMenu(master=self.mainCTk,
+                                            values=self.options,
+                                            command=self._dropdown_menu_callback)
+
         self.set_CTkControl_state ()        # state explicit as no value is set_value in button
 
         # allow tooltip for button 
         if tooltip is not None: 
             self.tooltipCTk = CTkToolTip(self.mainCTk, delay=0.5, message=tooltip)
+
+
+    def _dropdown_menu_open (self):
+        # callback of button if option dropw down active 
+        self._dropdown_menu.open(self.mainCTk.winfo_rootx(),
+                                 self.mainCTk.winfo_rooty() + self.mainCTk._apply_widget_scaling(self.height + 0))
+
+    def _dropdown_menu_callback (self, aVal):
+        # callback when item selected in dropdown
+        self._selectedValue = aVal 
+        self.CTk_callback()
 
 
     def _get_fg_color (self, style):
@@ -916,13 +934,19 @@ class Button_Widget(Base_Widget):
 
 
     def _getFrom_CTkControl (self):
-        # button has nothing to give ...
-        return None                     
+        # button has nothing to give ... if options return selected value 
 
-    def _set_CTkControl  (self, widgetCTk : ctk.CTkButton, newLabelStr):
-        # if self is destroyed , newLaberlStr good be ''
-        if newLabelStr: 
-            widgetCTk.configure (text=newLabelStr)
+        if self.options: 
+            return self._selectedValue
+        else: 
+            return None                     
+
+
+    def _set_CTkControl  (self, widgetCTk : ctk.CTkButton, newVal):
+        # in case of 'options' newVal is the selected item - don't write back 
+        
+        if not self.options and newVal:         # if self is destroyed , newVal good be ''
+            widgetCTk.configure (text=newVal)
 
     def _set_CTkControl_label (self, widgetCTk : ctk.CTkButton, newLabelStr: str):
         widgetCTk.configure (text=newLabelStr)
@@ -981,7 +1005,7 @@ class Button_Widget(Base_Widget):
 
 class Switch_Widget (Base_Widget):
     """
-    CTKSwitch - uses two columns in the grid if label is defined 
+    CTKSwitch - uses two columns in the grid if label is left, otherwise 1 column 
     """
     def __init__(self, *args, 
                  padx=None, pady=None, 
@@ -993,7 +1017,7 @@ class Switch_Widget (Base_Widget):
         super().__init__(*args, **kwargs)
 
         if padx is None: padx = (15,3)
-        if pady is None: pady = 0
+        if pady is None: pady = 1
         if columnspan is None: columnspan = 1
         if rowspan is None:    rowspan = 1
 
@@ -1004,10 +1028,18 @@ class Switch_Widget (Base_Widget):
             raise ValueError (f"Unknown label position '{lab_pos}'")
         if lab_width is None: lab_width = 95
 
+        if self.label and lab_pos == 'right':
+            # use helper frame so switch will be in one column of parent
+            frame = ctk.CTkFrame(self.parent, fg_color="transparent")  
+        else:
+            # use grid from parent
+            frame = self.parent
+
+
         # create 2 widgets Label and Switch 
 
         if self.label: 
-            self.labelCTk = ctk.CTkLabel (self.parent, width= lab_width, height=self.height, 
+            self.labelCTk = ctk.CTkLabel (frame, width= lab_width, height=self.height, 
                                 text=self.label, 
                                 text_color=self._text_color(STYLE_COMMENT), 
                                 text_color_disabled=self._text_color(STYLE_DISABLED),
@@ -1015,24 +1047,30 @@ class Switch_Widget (Base_Widget):
         else: 
             self.labelCTk = None 
 
-        self.mainCTk = ctk.CTkSwitch(self.parent, switch_height=13, switch_width=32, text='', 
-                                     width=40, onvalue=1, command=self.CTk_callback)
+        self.mainCTk = ctk.CTkSwitch(frame, switch_height=13, switch_width=32, text='', 
+                                     width=40, height=self.height, 
+                                     onvalue=1, command=self.CTk_callback)
 
         # position widgets in grid according lab_pos 
 
-        c = self.column 
-        r = self.row
-        padx_main = padx
+        r,c = self.row, self.column 
 
-        if lab_pos == 'left' and self.labelCTk:
-            self.labelCTk.grid (row=r, column=c, pady=pady, padx=padx, rowspan=rowspan, sticky='w')
-            padx_main = 0 
-            c += 1
-        elif lab_pos == 'right' and self.labelCTk: 
-            self.labelCTk.grid (row=r, column=c+1, pady=pady, sticky='w')
+        if self.label and lab_pos == 'right':
+            # grid within helper frame
+            frame.grid (row=r, column=c, columnspan=columnspan, rowspan=rowspan, 
+                        padx=padx, pady=pady,sticky='nsw')
+            self.mainCTk.grid  (row=0, column=0, sticky='nsw')
+            self.labelCTk.grid (row=0, column=1, padx=(2,0), sticky='nsw')
 
-        self.mainCTk.grid (row=r, column=c, columnspan=columnspan, rowspan=rowspan,
-                            padx=padx_main, pady=pady, sticky='w')
+        elif self.label and lab_pos == 'left':
+            # use grid of parent 
+            self.labelCTk.grid (row=r, column=c, pady=pady, padx=padx, 
+                                rowspan=rowspan, sticky='nsw')
+            self.mainCTk.grid (row=r, column=c+1, columnspan=columnspan, rowspan=rowspan,
+                                pady=pady, sticky='nsw')
+        else: 
+            self.mainCTk.grid (row=r, column=c, columnspan=columnspan, rowspan=rowspan,
+                                padx=padx, pady=pady, sticky='nsw')
 
         # allow click on label to switch 
 
@@ -1067,6 +1105,7 @@ class Switch_Widget (Base_Widget):
         self._set_CTkControl_state (self.mainCTk, self.disabled)
         if self.labelCTk:
             self._set_CTkControl_state (self.labelCTk, self.disabled)
+
 
 
 class CheckBox_Widget(Base_Widget):
@@ -1118,6 +1157,7 @@ class CheckBox_Widget(Base_Widget):
         super(). _set_CTkControl_state (widgetCTk, disable)
 
 
+
 class Field_Widget(Base_Widget):
     """ Compund widget existing out of 
         column i    : Field label - optional (CTkLabel)
@@ -1148,7 +1188,7 @@ class Field_Widget(Base_Widget):
         if sticky is None: sticky = 'w'
         
         if padx is None: padx= (5, 5)
-        if pady is None: pady= 0
+        if pady is None: pady= 1
 
         if self.setter is None:                 # no setter? 
             self.disabled = True                #   force disable field 
@@ -1162,9 +1202,10 @@ class Field_Widget(Base_Widget):
             else:
                 width= 95
 
-            self.labelCTk = ctk.CTkLabel (self.parent, width= width, text=self.label, 
-                                      text_color = self._text_color(STYLE_COMMENT), 
-                                      justify='left', anchor='w')
+            self.labelCTk = ctk.CTkLabel (self.parent, text=self.label, 
+                                        width= width, height=self.height,
+                                        text_color = self._text_color(STYLE_COMMENT), 
+                                        justify='left', anchor='w')
             self.labelCTk.grid (row=self.row, column=column, rowspan=rowspan, padx=padx, pady=pady, sticky='w')
             column += 1
 
@@ -1191,9 +1232,9 @@ class Field_Widget(Base_Widget):
             entry_frame.grid_columnconfigure((0, 2), weight=0)   # buttons don't expand
             entry_frame.grid_columnconfigure(1, weight=0)        # entry expands
 
-            self.subCTk.grid (row=0, column=0, padx=(0, 1), pady=1, sticky='w')
-            self.mainCTk.grid(row=0, column=1, padx=(1, 1), pady=1, sticky='we')
-            self.addCTk.grid (row=0, column=2, padx=(1, 0), pady=1, sticky='w')
+            self.subCTk.grid (row=0, column=0, padx=(0, 1), pady=0, sticky='w')
+            self.mainCTk.grid(row=0, column=1, padx=(1, 1), pady=0, sticky='we')
+            self.addCTk.grid (row=0, column=2, padx=(1, 0), pady=0, sticky='w')
 
             entry_frame.grid (row=self.row, rowspan=rowspan, column=column, columnspan=columnspan, 
                               padx=(1, 1), pady=pady, sticky=sticky)
@@ -1204,6 +1245,7 @@ class Field_Widget(Base_Widget):
         column += 1
         if (self.unit):
             unit_ctk  = ctk.CTkLabel (self.parent, text=self.unit, anchor='w',
+                                      height=self.height,
                                       text_color = self._text_color(STYLE_COMMENT))
             unit_ctk.grid (row=self.row, rowspan=rowspan, column=column, padx=(2,15), pady=pady,
                            sticky=sticky)
@@ -1309,7 +1351,7 @@ class Slider_Widget(Base_Widget):
         column = self.column
         if columnspan is None:  columnspan = 1
         if padx is None: padx = 1 
-        if pady is None: pady = 0 
+        if pady is None: pady = 1 
 
         self.mainCTk = ctk.CTkSlider (self.parent, width=self.width, height=self.height, border_width=1,
                                       command=self.CTk_callback, fg_color=cl_entry)
@@ -1357,6 +1399,7 @@ class Slider_Widget(Base_Widget):
         self.mainCTk.configure(number_of_steps=nsteps) 
 
 
+
 class Option_Widget(Base_Widget):
     """ Compund widget existing out of 
         column i    : Field label - optional (CTkLabel)
@@ -1369,19 +1412,35 @@ class Option_Widget(Base_Widget):
     def __init__(self, *args, 
                  sticky=None, 
                  padx=None, pady=None, 
+                 lab_width= None, 
                  spinPos=None,
                  columnspan=None,
                  **kwargs):
         super().__init__(*args, **kwargs)
 
+        if columnspan   is None: columnspan = 1
+        column = self.column
+        
         option_width = self.width 
         if padx is None: padx = (1,1)
-        if pady is None: pady = 0
+        if pady is None: pady = 1
         if sticky is None: sticky = 'w'
 
-        if columnspan   is None: columnspan = 1
+        # create CTk widgets 
 
-        # label support not active
+        if (self.label):  
+            if lab_width:
+                width = lab_width
+            else:
+                width= 95
+
+            self.labelCTk = ctk.CTkLabel (self.parent, text=self.label, 
+                                      width= width, height=self.height,
+                                      text_color = self._text_color(STYLE_COMMENT), 
+                                      justify='left', anchor='w')
+            self.labelCTk.grid (row=self.row, column=column, padx=padx, pady=pady, sticky='w')
+            padx = (1,1)                        # only label will get padx ...
+            column += 1
 
         if self.spinner:
             if spinPos == 'below':
@@ -1403,7 +1462,7 @@ class Option_Widget(Base_Widget):
         self.mainCTk = ctk.CTkOptionMenu (option_frame, values= self.options, 
                                           width=option_width, height=self.height, 
                                           text_color = self._text_color(STYLE_NORMAL)[1],
-                                          text_color_disabled= self._text_color(STYLE_DISABLED)[1],
+                                          text_color_disabled= self._text_color(STYLE_COMMENT)[1],
                                           fg_color = cl_button_primary,
                                           dynamic_resizing=False,
                                           command=self.CTk_callback)        
@@ -1416,10 +1475,10 @@ class Option_Widget(Base_Widget):
                                          width=button_width, height=button_height, 
                                          fg_color=cl_spin, text_color=cl_spin_text, text_color_disabled=cl_spin_text_disable)
             if spinPos == 'below':
-                self.mainCTk.grid (row=self.row, column=self.column, columnspan=columnspan, 
+                self.mainCTk.grid (row=self.row, column=column, columnspan=columnspan, 
                                    padx=padx, pady=pady, sticky=sticky)
                 button_frame.grid_columnconfigure((0,1), weight=1)       
-                button_frame.grid (row=self.row+1, column=self.column, columnspan=columnspan,
+                button_frame.grid (row=self.row+1, column=column, columnspan=columnspan,
                                    padx=padx, pady=pady, sticky='we')
                 self.prevCTk.grid (row=0, column=0, padx=(0, 2), pady=0, sticky='w')
                 self.nextCTk.grid (row=0, column=1, padx=(2, 0), pady=0, sticky='e')
@@ -1427,14 +1486,14 @@ class Option_Widget(Base_Widget):
                 option_frame.grid_columnconfigure((0, 2), weight=0)   # buttons don't expand
                 option_frame.grid_columnconfigure(1, weight=0)        # entry expands
 
-                self.prevCTk.grid (row=self.row, column=self.column,   padx=(0, 0), pady=0, sticky=sticky)
-                self.mainCTk.grid (row=self.row, column=self.column+1, padx=(2, 2), pady=0, sticky=sticky)
-                self.nextCTk.grid (row=self.row, column=self.column+2, padx=(0, 0), pady=0, sticky=sticky)
+                self.prevCTk.grid (row=self.row, column=column,   padx=(0, 0), pady=0, sticky=sticky)
+                self.mainCTk.grid (row=self.row, column=column+1, padx=(2, 2), pady=0, sticky=sticky)
+                self.nextCTk.grid (row=self.row, column=column+2, padx=(0, 0), pady=0, sticky=sticky)
 
-                option_frame.grid (row=self.row, column=self.column, columnspan=columnspan,
+                option_frame.grid (row=self.row, column=column, columnspan=columnspan,
                                    padx=padx, pady=pady, sticky=sticky)
         else:
-            self.mainCTk.grid (row=self.row, column=self.column, columnspan=columnspan,
+            self.mainCTk.grid (row=self.row, column=column, columnspan=columnspan,
                                padx=padx, pady=pady, sticky=sticky)
 
         self.set_CTkControl()
@@ -1506,6 +1565,7 @@ class Option_Widget(Base_Widget):
             self._set_CTkControl_state (self.nextCTk, nextDisabled)
     
 
+
 class Combo_Widget(Base_Widget):
     """ Compund widget existing out of 
         column i    : Field label - optional (CTkLabel)
@@ -1562,7 +1622,6 @@ class Combo_Widget(Base_Widget):
         self.mainCTk.bind('<FocusOut>', self.CTk_callback)
 
 
-
     def _getFrom_CTkControl (self):
         return self.mainCTk.get()
 
@@ -1581,4 +1640,3 @@ class Combo_Widget(Base_Widget):
                 self.mainCTk.configure (values=self.options)
         # then refresh the selected item
         super().refresh()
-
