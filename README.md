@@ -1,6 +1,11 @@
 # Airfoil Editor
 
 
+> [!NOTE]
+ This is the development branch of AirfoilEditor 2.0 based on PyQt6
+
+---
+
 The AirfoilEditor shows detailed information of an airfoil and allows to modify its main geometry parameters. 
 
 ![PC2](images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
