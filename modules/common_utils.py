@@ -5,16 +5,16 @@
 Common Utility functions for convinience
 """
 
-from termcolor import colored
 import os
 from pathlib import Path
 import json
 import platform
 import logging
+from termcolor import colored
 
-if platform.system() == 'Windows': 
-    from colorama import just_fix_windows_console
-    just_fix_windows_console()                          # colored terminal output for WIndows  
+# if platform.system() == 'Windows': 
+#     from colorama import just_fix_windows_console
+#     just_fix_windows_console()                          # colored terminal output for WIndows  
 
 
 #------------------------------------------------------------------------------
@@ -34,9 +34,7 @@ def init_logging (level= logging.WARNING):
                         handlers=[ch], 
                         level=level)  # DEBUG or WARNING
     # suppress debug messages from these modules 
-    logging.getLogger('matplotlib.font_manager').disabled = True
     logging.getLogger('PIL.PngImagePlugin').disabled = True
-
     logging.getLogger('dxf_utils').disabled = True
 
 
