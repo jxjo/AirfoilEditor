@@ -34,7 +34,7 @@ class Airfoil_Diagram_Item (Diagram_Item):
 
         self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, 
                                                 show=True,
-                                                show_legend=False)
+                                                show_legend=True)
         self.thickness_artist = Thickness_Artist (self, self.airfoils, 
                                                 show=False,
                                                 show_legend=True)

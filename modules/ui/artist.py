@@ -23,7 +23,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtWidgets
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QFont
 
 import colorsys
 
@@ -100,11 +100,14 @@ def random_colors (nColors) -> list:
 # -------- pg defaults ------------------------
 
 
-    pg.setConfigOptions(antialias=False)
+pg.setConfigOptions(antialias=False)
 
 
+SIZE_HEADER         = 14                    # size in pt 
+SIZE_NORMAL         = 10 
 
-
+COLOR_HEADER        = "whitesmoke"
+COLOR_NORMAL        = "whitesmoke"
 
 # ---------------------------------------------------------------------------
 
@@ -149,8 +152,8 @@ class Artist():
         self._plots = []                    # plots (PlotDataItem) made up to now 
         self._plot_symbols = []             # plot symbol for each plot 
 
-        if self.show:
-            self.plot()
+        self.plot (ignore_visible = True)
+
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
@@ -233,10 +236,11 @@ class Artist():
             self._remove_legend_items ()
 
 
-    def plot (self):
+    def plot (self, ignore_visible = False):
         """the artist will (re)plot - existing plots will be deleted 
         """
-        if self.show and self.pi_isVisible:
+        if self.show and (self.pi_isVisible or ignore_visible):
+
             self._remove_legend_items ()
             self._remove_plots ()
 
@@ -269,17 +273,19 @@ class Artist():
         pass
 
 
-    def _plot_dataItem (self, *args, name=None, **kwargs):
+    def _plot_dataItem (self, *args, name=None, **kwargs) -> pg.PlotDataItem:
         """ plot DataItem and add it to self._plots etc """
 
         p = pg.PlotDataItem  (*args, **kwargs)
         self._add (p, name=name)
+
+        return p 
         
 
     def _plot_point (self, x, y, color=None, 
                      symbol='o', symbolSize=7, symbolPen=None, symbolBrush=None,
                      text=None, textColor=None, anchor=None):
-        """ pot point with text label at x, y """
+        """ plot point with text label at x, y - text will follow the point """
 
         # plot point as DataItem
         color = QColor(color) if color else QColor("whitesmoke")
@@ -293,10 +299,50 @@ class Artist():
         if text is not None: 
             color = QColor(textColor) if textColor else QColor("whitesmoke")
             anchor = anchor if anchor else (0, 1)
-            p = pg.TextItem(text, color, anchor=anchor)
-            p.setPos (x,y)
-            self._add (p)
+            t = pg.TextItem(text, color, anchor=anchor)
+            t.setParentItem (p)
+            self._add (t)
 
+
+
+    def _plot_text (self, text : str, textColor=COLOR_NORMAL, fontSize=SIZE_NORMAL, 
+                          parentPos = (0.5,0.5),    # pos within PlotItem 
+                          itemPos = (0,1),          # box anchor of TextItem 
+                          offset = (0,0)            # offet in px 
+                          ):
+        """ plot text label at fixed position using LabelItem """
+
+        if not text: return 
+
+        label = pg.LabelItem(text, color=QColor(textColor), size=f"{fontSize}pt")    
+
+        # addItem to PlotItem doesn't work (would be added to viewbox and scaled)     
+        label.setParentItem(self._pi)
+        label.anchor(itemPos=itemPos, parentPos=parentPos, offset=offset)
+
+        # manuel add to self items 
+        self._plots.append(label)
+
+
+    def _plot_title (self, text : str, align='left', offset : tuple = (30,10)):
+        """ 
+        plot a PlotItem title at fixed position using LabelItem
+            - align = 'left' | 'center' | 'right'
+            - offset - optional - tuple (x,y)
+            """
+
+        if align == 'left':
+            parentPos = (0.02 + 0.03,0)          # parent x starts at PlotItem (including axis)       
+            itemPos   = (0.0,0)
+        elif align =='right':
+            parentPos = (0.98,0)
+            itemPos   = (1,0)
+        else:
+            parentPos = (0.5 + 0.02,0)
+            itemPos   = (0.5,0)
+
+        self._plot_text (text, textColor=QColor(COLOR_HEADER), fontSize=SIZE_HEADER, 
+                         parentPos=parentPos, itemPos=itemPos, offset=offset)
 
 
     def _remove_plots (self):
@@ -304,14 +350,20 @@ class Artist():
 
         p : pg.PlotDataItem
         for p in self._plots:
-            self._pi.removeItem (p)
+
+            if isinstance (p, pg.LabelItem):
+                # in case of LabelItem, p is added directly to the scene via setParentItem
+                self._pi.scene().removeItem (p)
+            else: 
+                # normal case - p is an item of PlotItem 
+                self._pi.removeItem (p)
 
         self._plots = []
         self._plot_symbols = []
 
 
     def _add_legend_items (self):
-        """ removes legend items of self """
+        """ add legend items of self """
         if self._pi.legend is not None:
             p : pg.PlotDataItem
             for p in self._plots:
@@ -352,3 +404,4 @@ class Artist():
             self._pi.legend.addItem (aPlot, name)
             aPlot.opts['name'] = name
  
+        return aPlot 

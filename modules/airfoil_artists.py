@@ -218,7 +218,19 @@ class Airfoil_Artist (Artist):
         for iair, airfoil in enumerate (self.airfoils):
             if (airfoil.isLoaded):
 
-                # if there are many airfoils, dimm airfoils which are not DESIGN 
+                # the first airfoil get's in the title 
+                if iair == 0:
+                    self._plot_title (airfoil.name)
+                    label = None
+                # ... the others in the legand 
+                else: 
+                    if self.label_with_airfoil_type:
+                        label = f"{airfoil.usedAs}: {airfoil.name}"
+                    else: 
+                        label = f"{airfoil.name}"
+
+                # set color and symbol style 
+
                 width = 2
                 color = _color_airfoil_of (airfoil.usedAs)
                 if color is not None: 
@@ -226,29 +238,36 @@ class Airfoil_Artist (Artist):
                         width = 1
                 else: 
                     color = color_palette [iair]
-
-                if self.label_with_airfoil_type:
-                    label = f"{airfoil.usedAs}: {airfoil.name}"
-                else: 
-                    label = f"{airfoil.name}"
-
-                # set symbol style 
+                pen = pg.mkPen(color, width=width)
 
                 sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
                 s = 'o' if self.show_points else None 
 
                 # plot contour and fill airfoil if it's only one 
 
-                pen = pg.mkPen(color, width=width)
-                brush = pg.mkBrush (color.darker (600))
+                if len(self.airfoils) == 1: 
 
-                if len(self.airfoils) == 1 and not self.show_panels:   
-                    self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
+                    # if there is only one airfoil, fill the airfoil contour with a soft color tone  
+                    brush = pg.mkBrush (color.darker (600))
+                    p = self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush, 
                                           fillLevel=0.0, fillBrush=brush)
                 else: 
-                    self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
+                    p = self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush)
+
+                # the first airfoil get's in the title 
+                if iair == 0:
+                    self._plot_title (airfoil.name)
+                    label = None
+                # ... the others in the legand 
+                else: 
+                    if self.label_with_airfoil_type:
+                        label = f"{airfoil.usedAs}: {airfoil.name}"
+                    else: 
+                        label = f"{airfoil.name}"
+
+
 
 
                 # plot real le - airfoil must be loaded as GEO_SPLINE!
@@ -512,7 +531,8 @@ class Curvature_Artist (Artist):
                     else: 
                         pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
 
-                    self._plot_dataItem (x, y, name=side.name, pen=pen)
+                    label = f"{side.name} - {airfoil.name}"
+                    self._plot_dataItem (x, y, name=label, pen=pen)
 
                     # self._plot_reversals (side, color)
 
