@@ -152,7 +152,7 @@ class Artist():
         self._plots = []                    # plots (PlotDataItem) made up to now 
         self._plot_symbols = []             # plot symbol for each plot 
 
-        self.plot (ignore_visible = True)
+        self.plot ()
 
 
     def __repr__(self) -> str:
@@ -217,11 +217,12 @@ class Artist():
         self._show_points = aBool is True 
 
         p : pg.PlotDataItem
-        for ip, p in enumerate (self._plots):
-            if self.show_points: 
-                p.setSymbol('o')
-            else: 
-                p.setSymbol(None)
+        for p in self._plots:
+            if isinstance (p, pg.PlotDataItem):
+                if self.show_points:
+                    p.setSymbol('o')
+                else: 
+                    p.setSymbol(None)
 
     @property
     def show_legend (self): return self._show_legend
@@ -236,17 +237,19 @@ class Artist():
             self._remove_legend_items ()
 
 
-    def plot (self, ignore_visible = False):
+    def plot (self):
         """the artist will (re)plot - existing plots will be deleted 
         """
-        if self.show and (self.pi_isVisible or ignore_visible):
+        if self.show:
 
             self._remove_legend_items ()
             self._remove_plots ()
 
             if self.show_legend:
                 # must be before .plot 
-                self._pi.addLegend(offset=(-50,10), verSpacing=-8)                
+                self._pi.addLegend(offset=(-50,10), verSpacing=-8)  
+
+                # print ("rows:", self._pi.legend.layout.rowCount(), self._pi.legend)
 
             if len(self.data_list) > 0:
                 self._plot()                        # plot data list 
@@ -255,14 +258,14 @@ class Artist():
     def refresh(self):
         """ refresh self plots by setting new x,y data """
 
-        if self.show and self.pi_isVisible:
+        if self.show:
             self._refresh_plots ()
 
             if self.show_legend:
                 self._remove_legend_items ()
                 self._add_legend_items()
 
-            logging.debug (f"{self} refresh")
+            # logging.debug (f"{self} refresh")
 
 
     # --------------  private -------------
@@ -292,7 +295,8 @@ class Artist():
         sBrush = symbolBrush if symbolBrush else pg.mkBrush(QColor('black'))
         sPen = pg.mkPen (color)       
         
-        p = pg.PlotDataItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, symbolPen=sPen, symbolBrush=sBrush)
+        # p = pg.PlotDataItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, symbolPen=sPen, symbolBrush=sBrush)
+        p = pg.ScatterPlotItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, symbolPen=sPen, symbolBrush=sBrush)
         self._add(p) 
 
         # plot label as TextItem 
@@ -300,9 +304,15 @@ class Artist():
             color = QColor(textColor) if textColor else QColor("whitesmoke")
             anchor = anchor if anchor else (0, 1)
             t = pg.TextItem(text, color, anchor=anchor)
-            t.setParentItem (p)
+
+            # ? attach to parent doesn't work (because of PlotDataItem? )
+            t.setPos (x,y)
             self._add (t)
 
+            # t.setParentItem (p)
+
+            # # # manuel add to self items 
+            # self._plots.append(t)
 
 
     def _plot_text (self, text : str, textColor=COLOR_NORMAL, fontSize=SIZE_NORMAL, 
@@ -379,6 +389,11 @@ class Artist():
             for p in self._plots:
                 if isinstance (p, pg.PlotDataItem):
                     self._pi.legend.removeItem (p)
+
+            # ... try to rebuild layout of legend because of strange spacing 
+            # legend_ncol = self._pi.legend.columnCount
+            # self._pi.legend.setColumnCount (legend_ncol+1)
+            # self._pi.legend.setColumnCount (legend_ncol)
 
 
     def _refresh_plots (self):

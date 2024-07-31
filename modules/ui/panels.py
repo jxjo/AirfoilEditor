@@ -3,7 +3,7 @@
 
 """  
 
-Higher level ui components / widgets like Edit_Pane, Diagram 
+Higher level ui components / widgets like Edit_Panel, Diagram 
 
 """
 
@@ -12,26 +12,12 @@ import logging
 from PyQt6.QtCore       import QSize, QMargins, pyqtSignal
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
 from PyQt6.QtWidgets    import QMainWindow, QWidget
-from PyQt6.QtGui        import QPalette
+from PyQt6.QtGui        import QPalette, QColor
+
+from ui.widgets         import set_background
+from ui.widgets         import Widget, Label, CheckBox, SIZE_HEADER
 
 
-import pyqtgraph as pg # import PyQtGraph after PyQt6
-
-from ui.widgets import Widget, Label, CheckBox, SIZE_HEADER
-
-
-
-#-------------------------------------------
-
-@staticmethod
-def _darker_background (aWidget : QWidget, darker_factor : int):
-    """ a colored QWidget"""
-
-    aWidget.setAutoFillBackground(True)
-    palette = aWidget.palette()
-    color = palette.color(QPalette.ColorRole.Window).darker (darker_factor)
-    palette.setColor(QPalette.ColorRole.Window, color)
-    aWidget.setPalette(palette)
 
 #-------------------------------------------
 
@@ -63,7 +49,7 @@ class Panel (QWidget):
         super().__init__(parent, **kwargs)
 
         self._getter = getter
-        self._myApp  = parent
+        self._parent = parent
 
         if width is not None: 
             self._width = width
@@ -78,9 +64,10 @@ class Panel (QWidget):
         self._set_width  (self._width)
 
 
-    def refresh(self):
-        """ refreshes all Widgets on self """
-        Widget.refresh_childs (self)
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        text = '' 
+        return f"<{type(self).__name__}{text}>"
 
 
     @property
@@ -90,10 +77,6 @@ class Panel (QWidget):
             return self._getter()
         else: 
             return self._getter
-
-    @property
-    def myApp (self): 
-        return self._myApp
     
     def _set_height (self, height):
         """ set self min/max height """
@@ -149,7 +132,7 @@ class Edit_Panel (Panel):
 
         self._head = QWidget(self)
         l_head = QHBoxLayout(self._head)
-        l_head.setContentsMargins (QMargins(0,0,0,0))
+        l_head.setContentsMargins (QMargins(0,0,0,5))
 
         if self._switchable:
             CheckBox (l_head, fontSize=SIZE_HEADER, text=self.header_text(),
@@ -159,12 +142,11 @@ class Edit_Panel (Panel):
         else: 
             Label (l_head, fontSize=SIZE_HEADER, get=self.header_text)
  
-
         # inital content panel content - layout in >init  
 
         self._panel  = QWidget()  
 
-        if l_panel is None: l_panel = self.init()       # subclass will create layout 
+        if l_panel is None: l_panel = self._init_layout()       # subclass will create layout 
 
         if l_panel is None: 
             logging.warning (f"{self.name}: Layout for panel still missing ")
@@ -172,7 +154,7 @@ class Edit_Panel (Panel):
             l_panel.setContentsMargins (QMargins(10, 0, 0, 0))   # inset left 
             l_panel.setSpacing(2)
             self._panel.setLayout (l_panel)
-
+            # set_background (self._panel, darker_factor=150)
 
         # main layout with header and panel 
 
@@ -183,9 +165,10 @@ class Edit_Panel (Panel):
         l_main.setSpacing(2)
         self.setLayout (l_main)
 
-        # set background color 
+        # set background color - save the original one 
 
-        _darker_background (self, 105)
+        set_background (self, darker_factor = 105)
+        self._palette_sav = self.palette()          # save this current color palette 
 
         # initial switch state 
         self.set_switched_on (self._switched_on)
@@ -220,7 +203,47 @@ class Edit_Panel (Panel):
         self.sig_switched.emit (self._switched_on)
 
 
-    def init(self) -> QLayout:
+    @property
+    def widgets (self) -> list[Widget]:
+        """ list of widgets defined in self """
+        return self.findChildren (Widget)
+ 
+
+    def refresh(self):
+        """ refreshes all Widgets on self """
+        for w in self.widgets:
+            w.refresh()
+        # logging.debug (f"{self} - refresh")
+
+
+    def set_enabled_widgets (self, aBool):
+        """ enable / disable all widgets of self - except Labels (color!) """
+
+        w : Widget
+        for w in self.widgets:
+            if not isinstance (w, Label):       # label would become grey 
+                w.set_enabled (aBool) 
+
+
+    def set_background_color (self, darker_factor : int | None = None,
+                                    color : QColor | int | None  = None,
+                                    alpha : float | None = None):
+        """ 
+        Set background color of a QWidget either by
+            - darker_factor > 100  
+            - color: QColor or string for new color
+            - alpha: transparency 0..1 
+        Returns the QPalette before changes were applied
+        """
+
+        set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
+
+    def reset__background_color (self): 
+        """ reset background to color after __init__"""
+        self.setPalette (self._palette_sav)
+
+
+    def _init_layout(self) -> QLayout:
         """ init and assign main layout"""
 
         # to be implemented by sub class
@@ -238,7 +261,7 @@ class Test_Panel (Edit_Panel):
     width  = (100, 140)
     height = (100, None)
 
-    def init (self)-> QLayout: 
+    def _init_layout (self)-> QLayout: 
         l = QGridLayout()
         Label  (l,0,0,get="Ein Label")
         return l 
@@ -250,7 +273,7 @@ class Test_Panel2 (Edit_Panel):
     width  = (150, None)
     height = (200, None)
 
-    def init (self) -> QLayout: 
+    def _init_layout (self) -> QLayout: 
         from widgets import FieldI
         l = QGridLayout()
         r = 0 

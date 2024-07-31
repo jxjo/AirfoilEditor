@@ -9,6 +9,8 @@ import numpy as np
 import math
 from bisect import bisect_left
 
+import logging
+
 
 
 #------------ time to run -----------------------------------
@@ -20,6 +22,150 @@ from bisect import bisect_left
     # end = timer()
     # print("Time ", end - start)  
 
+
+
+#------------ Point -----------------------------------
+
+from typing import overload
+
+class Point:
+    """    
+    Simple point class with basic functionality
+    """
+
+    @overload
+    def __init__ (self, x : float, y : float ): ...
+ 
+    @overload
+    def __init__ (self, xy : tuple ): ...
+   
+    @overload
+    def __init__ (self, p : 'Point' ): ...
+
+    def __init__ (self, a, b = None, onChange=None ):
+        """ 
+        Create new point. The arguments a,b can be 
+            - x, y cordinates 
+            - (x,y,) tuple of coordinates
+            - Point (x,y) 
+            
+        'onChange' will be invoked when self changes 
+        """
+
+        self._x = None 
+        self._x_prev = None 
+        self._x_fixed = False
+        self._x_limits = (None, None) 
+
+        self._y = None
+        self._y_prev = None 
+        self._y_fixed = False
+        self._y_limits = (None, None) 
+
+        self._callback_changed = onChange if callable(onChange) else None 
+           
+        self.set_xy (a, b, initial=True) 
+
+        logging.debug (f"{self} new")
+
+
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        text = f"({self.x},{self.y})"
+        return f"<{type(self).__name__} {text}>"
+
+    @property
+    def x (self) -> float:
+        return self._x
+
+    @property
+    def y (self) -> float:
+        return self._y
+
+    @property
+    def xy (self) -> tuple[float]:
+        return (self.x, self._y)
+
+
+    def set_x (self, x : float): 
+        """ set new x coordinate"""
+        self._x_prev = self._x
+        self._x, x_changed = self._set_val (self._x, x, self._x_limits, self._x_fixed)
+        self._handle_changes (x_changed, False)
+       
+    def set_y (self, y : float): 
+        """ set new y coordinate"""
+        self._y_prev = self._y
+        self._y, y_changed = self._set_val (self._y, y, self._y_limits, self._y_fixed)
+        self._handle_changes (False, y_changed)
+
+
+    def set_xy (self, a, b=None, initial : bool =False):
+        """ 
+        Set new point coordinates. The arguments a, b can be 
+            - x, y cordinates 
+            - (x,y,) tuple of coordinates
+            - Point (x,y) 
+        """ 
+        if isinstance (a, int): a = float(a)
+        if isinstance (b, int): b = float(b)
+
+        if isinstance (a, float) and isinstance (b, float):
+            x_new = a 
+            y_new = b 
+        elif isinstance (a, tuple):
+            x_new = float (a[0])
+            y_new = float (a[1])
+        elif isinstance (a, Point):
+            x_new = a.x, 
+            y_new = a.y 
+        else:
+            raise ValueError (f"Point - cannot init with {a}, {b}")
+        
+        self._x_prev = self._x
+        self._y_prev = self._y
+        
+        self._x, x_changed = self._set_val (self._x, x_new, self._x_limits, self._x_fixed)
+        self._y, y_changed = self._set_val (self._y, y_new, self._y_limits, self._y_fixed)
+
+        if not initial: 
+            self._handle_changes (x_changed, y_changed)
+        else: 
+            self._x_prev = self._x                   # ... was None 
+            self._y_prev = self._y
+
+
+
+    def _set_val (self, val, new_val, limits, is_fixed) -> tuple [float, bool]:
+        """  set new_val of val - return (new_val, has_changed)"""
+
+        if is_fixed:
+            new_val = val 
+            has_changed = False 
+        else: 
+            new_val = float(new_val)
+
+            min_val = limits [0] if limits [0] is not None else new_val 
+            max_val = limits [1] if limits [1] is not None else new_val
+
+            new_val = max (new_val, min_val)
+            new_val = min (new_val, max_val)
+            has_changed = val != new_val 
+
+        return new_val, has_changed  
+
+
+    def _handle_changes (self, x_changed : bool, y_changed : bool):
+        """ calls parent if x or y changed """
+
+        x = "x" if x_changed else "_"
+        y = "y" if y_changed else "_"
+        logging.debug (f"{self} changed {x},{y}")
+
+        if self._callback_changed: 
+            if x_changed or y_changed:
+                self._callback_changed (x_changed, y_changed, xy_prev = (self._x_prev, self._y_prev))
+    
 
 
 #------------ linear interpolation -----------------------------------
@@ -663,3 +809,13 @@ def findRoot (fn, xStart, bounds=None, no_improve_thr=10e-12):
     xRoot =  nelder_mead_wrap(lambda x: abs(fn(x)), xStart, no_improve_thr=no_improve_thr,  bounds=bounds)    
     return xRoot 
 
+
+
+
+
+if __name__ == "__main__":
+
+    a = Point (1,3)    
+    a = Point ((1,3))
+    a = Point (Point(1,3))
+    b = Point (1) 

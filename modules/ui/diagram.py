@@ -30,14 +30,6 @@ class Diagram (QWidget):
 
     """
 
-    @staticmethod
-    def refresh_childs (parent: QWidget):
-        """ refresh all childs of parent"""
-        p : Diagram
-        for p in parent.findChildren (Diagram):
-            p.refresh() 
-
-
     width  = (800, None)                # (min,max) 
     height = (400, None)                # (min,max)
 
@@ -262,13 +254,21 @@ class Diagram_Item (pg.PlotItem):
             return [self.data_object()]   
 
 
-    def refresh (self): 
-        """ refresh self"""
+    def refresh(self): 
+        """ refresh my artits and section panel """
+        self.refresh_artists() 
+        if self.section_panel is not None: 
+            self.section_panel.refresh()
+
+
+    def refresh_artists (self): 
+        """ refresh the artists of self"""
         # must be implmented by subclass
         pass
 
+
     @property
-    def section_panel (self):
+    def section_panel (self) -> Edit_Panel | None:
         """ small section panel representing self in view panel"""
         # overload for constructor 
         return  self._section_panel

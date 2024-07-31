@@ -143,7 +143,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     def __init__(self, *args,
                  get = None,                # get current / initial airfoil 
                  set = None,                # will set new airfoil
-                 addEmpty = False,           # add empty entry to fie list 
+                 addEmpty = False,          # add empty entry to fie list 
                  asSpin = True,             # ComboBox with spin buttons 
                  withOpen = False,          # include open button 
                  initialDir : Airfoil | str | None = None, # either an airfoil or a pathString 
@@ -167,19 +167,30 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         if asSpin: 
             self._combo = ComboSpinBox (l, get=self.airfoil_fileName, 
                                            set=self.set_airfoil_by_fileName, 
-                                           options=self.airfoil_fileNames_sameDir)
+                                           options=self.airfoil_fileNames_sameDir,
+                                           signal=False)
         else:             
             self._combo = ComboBox     (l, get=self.airfoil_fileName, 
                                            set=self.set_airfoil_by_fileName, 
-                                           options=self.airfoil_fileNames_sameDir)
+                                           options=self.airfoil_fileNames_sameDir,
+                                           signal=False)
         if withOpen:
-            Airfoil_Open_Widget (l, asIcon=True, set=self.set_airfoil_from_open)
+            Airfoil_Open_Widget (l, asIcon=True, set=self.set_airfoil_from_open, signal=False)
 
         self.setLayout (l)
 
         # assign self to parent layout 
-
         self._layout_add ()
+
+    def _get_properties (self): 
+        """
+        Read all the properties like disablee, style as they can be 
+            - bound methods
+            - fixed values 
+            - property (only for self._val)
+        """
+        super()._get_properties()
+        # access value' either via property approach or via getter (bound method) 
 
     @property
     def airfoil (self) -> Airfoil:

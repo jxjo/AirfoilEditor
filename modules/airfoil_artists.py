@@ -256,20 +256,6 @@ class Airfoil_Artist (Artist):
                     p = self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush)
 
-                # the first airfoil get's in the title 
-                if iair == 0:
-                    self._plot_title (airfoil.name)
-                    label = None
-                # ... the others in the legand 
-                else: 
-                    if self.label_with_airfoil_type:
-                        label = f"{airfoil.usedAs}: {airfoil.name}"
-                    else: 
-                        label = f"{airfoil.name}"
-
-
-
-
                 # plot real le - airfoil must be loaded as GEO_SPLINE!
                 # p = self.ax.plot (airfoil.geo.le, linestyle='None', 
                 #                   marker='o', fillstyle='full', markersize=6, 
@@ -826,8 +812,8 @@ class Thickness_Artist (Artist):
             text =  "No camber - symmetrical" 
         # normal 
         else:  
-            x, y = airfoilLine.maximum
-            x, y = airfoilLine.maximum
+            x, y = airfoilLine.highpoint.xy
+            x, y = airfoilLine.highpoint.xy
             text = "%.2f%% at %.1f%%" % (y * 100, x *100)
 
         self._plot_point (x, y, color=color, symbol='+', text=text)   

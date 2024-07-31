@@ -185,6 +185,20 @@ class Airfoil:
         return f"{type(self).__name__} {info}"
 
 
+    def _handle_geo_changed (self):
+        """ callback from geometry when it was changed (by user) """
+
+        self._x = self.geo.x
+        self._y = self.geo.y
+
+        self.set_isModified (True)
+
+        self.geo.set_xy_org (self._x, self._y)          # update the copy of x,y in geo 
+
+        logging.debug (f"{self} - geometry changed, reload x,y ")
+
+
+
     # ----------  Properties ---------------
 
     @property
@@ -198,7 +212,8 @@ class Airfoil:
     def geo (self) -> Geometry:
         """ the geometry strategy of self"""
         if self._geo is None: 
-            self._geo = self._geometryClass (self.x, self.y)
+            self._geo = self._geometryClass (self.x, self.y,
+                                             onChange = self._handle_geo_changed)
         return self._geo
     
     def set_geo_strategy (self, geometry):
@@ -300,21 +315,10 @@ class Airfoil:
         return self.geo.nPoints 
 
     @property
-    def teGap_perc (self): 
-        """ trailing edge gap in %"""
-        return  self.geo.teGap * 100
+    def te_gap (self): 
+        """ trailing edge gap in y/c"""
+        return self.geo.te_gap
     
-    def set_teGap_perc (self, newGap : float): 
-        """ set trailing edge gap to new value %
-        
-        Args: 
-            newGap: te gap in percent %
-        """
-        newGap = max(0.0, newGap)
-        newGap = min(5.0, newGap)
-        self.geo.set_teGap (newGap / 100)
-        self.set_xy(*self.geo.xy)
-
 
     @property
     def leRadius_perc (self):
@@ -330,55 +334,13 @@ class Airfoil:
         self.rebuild_from_thicknessCamber()
 
 
-    @property
-    def maxThickness (self): 
-        """ max thickness in %"""
-        return self.geo.maxThick * 100
-    def set_maxThickness(self,newVal): 
-        """ set max thickness in %"""
-        if newVal < 0.5: newVal = 0.5               # do not allow thickness < 0,5% 
-        self.geo.set_maxThick (newVal/100.0)
-        self.rebuild_from_thicknessCamber()
-
-
-    @property
-    def maxThicknessX (self): 
-        """ max thickness x-position in %"""
-        return self.geo.maxThickX * 100
-    def set_maxThicknessX(self,newVal): 
-        """ set max thickness x-position in %"""
-        self.geo.set_maxThickX (newVal/100.0)
-        self.rebuild_from_thicknessCamber()
-
-
-    @property
-    def maxCamber (self): 
-        """ max camber in %"""
-        return self.geo.maxCamb * 100
-    def set_maxCamber(self,newVal): 
-        """ set max camber in %"""
-        self.geo.set_maxCamb (newVal/100.0)
-        self.rebuild_from_thicknessCamber()
-
-
-    @property
-    def maxCamberX (self): 
-        """ max camber x-position in %"""
-        #todo remove
-        return self.geo.maxCambX * 100
-    def set_maxCamberX(self,newVal): 
-        """ set max camber x-position in %"""
-        self.geo.set_maxCambX (newVal/100.0)
-        self.rebuild_from_thicknessCamber()
-
-
     def rebuild_from_thicknessCamber(self):
         """ 
         rebuilds self out of thickness and camber distribution in Geometry
         which were modified directly eg. with mouse - avoid re-spline 
         """
 
-        self.geo._rebuild_from_thicknessCamber ()        # new build of x,y in geo
+        self.geo._rebuild_from_camb_thick ()        # new build of x,y in geo
 
         self._x = self.geo.x
         self._y = self.geo.y
@@ -569,24 +531,24 @@ class Airfoil:
 
 
 
-    def save_copyAs (self, dir = None, destName = None, teGap=None ):
+    def save_copyAs (self, dir = None, destName = None, te_gap=None ):
         """
         Write a copy of self to destPath and destName (the airfoil can be renamed).
         Self remains with its current values.
-        Optionally a new teGap may be defined for the exported airfoil  
+        Optionally a new te_gap may be defined for the exported airfoil  
 
         Args: 
             dir: -optional- new directory for the airfoil 
             destName: - optional- new name
-            teGap: -optional- new TE gap in x,y coordinates 
+            te_gap: -optional- new TE gap in x,y coordinates 
 
         Returns: 
             newPathFileName from dir and destName 
         """        
 
         # te gap name extension 
-        if teGap is not None: 
-            teText = '_te=%.2f' % (teGap * 100)                 # te thickness in percent
+        if te_gap is not None: 
+            teText = '_te=%.2f' % (te_gap * 100)                 # te thickness in percent
         else: 
             teText = ''
         destName = destName + teText if destName else None 
@@ -617,8 +579,8 @@ class Airfoil:
 
         airfoil = self.asCopy (name=destName, pathFileName=newPathFileName)
 
-        if teGap is not None: 
-            airfoil.set_teGap_perc (teGap * 100)
+        if te_gap is not None: 
+            airfoil.geo.set_te_gap (te_gap)
 
         # save it to file 
         airfoil.save ()
