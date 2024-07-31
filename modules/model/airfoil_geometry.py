@@ -586,7 +586,7 @@ class Curvature_Abstract:
     def max_around_le (self) -> float: 
         """ max value of curvature around LE  (index +-3) """
         max = np.amax(np.abs(self.curvature [self.iLe-3: self.iLe+4]))
-        return max
+        return float(max)
 
     @property
     def best_around_le (self) -> float: 
@@ -600,19 +600,19 @@ class Curvature_Abstract:
             best = (self.curvature [self.iLe] + self.curvature [self.iLe+2]) / 2 
         else:                                                  # mean value of le and max 
             best = self.at_le
-        return best
+        return float(best)
 
     @property
     def max_upper_le (self) -> float: 
         """ max value of curvature around LE upper side"""
         max = np.amax(np.abs(self.curvature [self.iLe-3: self.iLe+1]))
-        return max
+        return float(max)
 
     @property
     def max_lower_le (self) -> float: 
         """ max value of curvature around LE lower side"""
         max = np.amax(np.abs(self.curvature [self.iLe: self.iLe+4]))
-        return max
+        return float(max)
 
     @property
     def bump_at_upper_le (self) -> bool: 
@@ -627,17 +627,17 @@ class Curvature_Abstract:
     @property
     def at_le (self) -> float: 
         """ max value of curvature at LE"""
-        return self.curvature [self.iLe]
+        return float(self.curvature [self.iLe])
 
     @property
     def at_upper_te (self) -> float: 
         """ value of curvature at upper TE  """
-        return self.upper.y[-1]
+        return float(self.upper.y[-1])
 
     @property
     def at_lower_te (self) -> float: 
         """ value of curvature at lower TE  """
-        return self.lower.y[-1]
+        return float(self.lower.y[-1])
 
 
 
@@ -780,8 +780,15 @@ class Side_Airfoil:
         self._highpoint = None                  # the high Point of the line  
         self._max_spline = None                 # little helper spline to get maximum 
 
-        # callback when self was changed 
-        self._callback_changed  = onChange if callable(onChange) else None              
+        self._callback_changed  = onChange      # callback when self was changed           
+
+
+    def _changed (self):
+        """ self changed - handle callbacks"""
+
+        if callable(self._callback_changed):
+            self._callback_changed (self.name)
+
 
     @property
     def x (self): return self._x
@@ -883,12 +890,9 @@ class Side_Airfoil:
         if x_changed:
             x_cur = xy_prev[0]
             x_new = self.highpoint.x
-            self._move_max_x (x_cur, x_new)                   # a little bit more complicated ...
+            self._move_max_x (x_cur, x_new)             # a little bit more complicated ...
 
-        # inform parent 
-
-        if self._callback_changed:
-            self._callback_changed (self.name)
+        self._changed ()                                # inform parent 
 
 
     def yFn (self,x):
@@ -1392,8 +1396,7 @@ class Geometry ():
         self._x = None   
         self._y = None
 
-        # callback when self was changed (by user) 
-        self._callback_changed = onChange if callable(onChange) else None  
+        self._callback_changed = onChange      # callback when self was changed (by user) 
 
         self._thickness : Side_Airfoil = None  # thickness distribution
         self._camber    : Side_Airfoil = None  # camber line
@@ -1405,6 +1408,12 @@ class Geometry ():
         # overwritten to get a nice print string 
         return f"<{type(self).__name__} (np: {self.nPoints})>"
 
+
+    def _changed (self):
+        """ geometry changed - handle callbacks"""
+
+        if callable(self._callback_changed):
+            self._callback_changed ()
 
     @property
     def x (self): 
@@ -1481,7 +1490,7 @@ class Geometry ():
         return  self.y[0] - self.y[-1]
 
     @property
-    def leRadius (self): 
+    def le_radius (self): 
         """ leading edge radius which is the reciprocal of curvature at le """
         return  1.0 / self.curvature.at_le
 
@@ -1614,7 +1623,7 @@ class Geometry ():
         if not self.isNormalized: 
             self.normalize ()
             if not self.isNormalized: 
-                ErrorMsg ("Airfoil can't be normalized. Te gap can't be set.")
+                logging.error ("Airfoil can't be normalized. Te gap can't be set.")
                 return  
         
         x = np.copy (self.x) 
@@ -1643,17 +1652,24 @@ class Geometry ():
 
         self._x, self._y = x, y 
 
+        # handle changes 
+
+        self._reset()
+        self._changed()
 
 
-    def set_leRadius (self, factor, xBlend = 0.1):
-        """ set le radius.
+    def set_le_radius (self, new_radius : float, xBlend : float = 0.1):
+        """ set le radius which is the reciprocal of curvature at le
          The procedere is based on xfoil allowing to define a blending distance from le.
 
         Arguments: 
             factor:   to increase/decrease le radius 
             xblend:   the blending distance from leading edge 0.001..1 - Default 0.1
         """
+        new_radius = min(0.1,  new_radius)
+        new_radius = max(0.001, new_radius)
 
+        factor = new_radius / self.le_radius 
         xBlend = min( max( xBlend , 0.001 ) , 1.0 )
 
         # go over each thickness point, changing the thickness appropriately
@@ -1666,11 +1682,11 @@ class Geometry ():
             tfac = 1.0 - (1.0 - srfac) * np.exp(-arg)
             self.thickness.y [i] = self.thickness.y [i] * tfac
 
-        self.thickness._reset()                         # reset thickness spline 
-
         self._rebuild_from_camb_thick ()
+        self._reset()
+        self._changed ()
 
-
+ 
     def set_max_thick (self, val): 
         """ change max thickness"""
         self.thickness.highpoint.set_y(val)
@@ -1773,12 +1789,13 @@ class Geometry ():
         yn[ile] = 0.0 
         xn[0]   = 1.0 
         xn[-1]  = 1.0
+        yn[-1]  = -yn[0]
 
         self._x = np.round (xn, 10) + 0.0
         self._y = np.round (yn, 10) + 0.0 
-        # re-init 
-        self._reset_lines()                     # the child lines like thickness
-        self._reset_spline()                    # the spline (if exists)
+
+        self._reset ()                   # tell child objects like thickness
+        self._changed ()
 
         return True
 
@@ -1852,6 +1869,9 @@ class Geometry ():
         self._x = np.concatenate ((np.flip(upper_x), lower_x[1:]))
         self._y = np.concatenate ((np.flip(upper_y), lower_y[1:]))
 
+        self._reset()
+        self._changed()
+
 
     # ------------------ private ---------------------------
 
@@ -1862,12 +1882,10 @@ class Geometry ():
         """
 
         logging.debug (f"{self} - rebuild because of {side_name} change")
+
         self._rebuild_from_camb_thick ()
-
-        if self._callback_changed:
-            self._callback_changed ()
-
-    
+        self._reset()
+        self._changed()
 
 
     def _create_camb_thick (self): 
@@ -1939,9 +1957,12 @@ class Geometry ():
         self._x = np.concatenate ((np.flip(x_upper), x_lower[1:]))
         self._y = np.concatenate ((np.flip(y_upper), y_lower[1:]))
 
-        # reset only curvature 
-        self._curvature = None
 
+
+    def _reset (self):
+        """ reset all the sub objects like Lines and Splines"""
+        self._reset_lines()
+        self._reset_spline() 
 
 
     def _reset_lines (self):
@@ -1953,7 +1974,6 @@ class Geometry ():
     def _reset_spline (self):
         """ reinit self spline data if x,y has changed""" 
         # to be overloaded
-        pass
 
 
 
@@ -2120,7 +2140,6 @@ class Geometry_Splined (Geometry):
             logging.debug (f"{self} normalize spline iteration #{n}")
 
             self.repanel () 
-            # super().normalize()
 
             # is real and splined le close enough
             xle, yle   = self.le
@@ -2131,7 +2150,10 @@ class Geometry_Splined (Geometry):
 
             logging.debug (f"{self} normalize spline iteration #{n} - norm2: {norm2:.7f}")
 
-        return True
+        self._reset()
+        self._changed()
+
+        return isNormalized
 
 
     def xyFn (self,u): 
@@ -2217,6 +2239,8 @@ class Geometry_Splined (Geometry):
         # repanel could lead to a slightly different le 
         super().normalize()                    # do not do iteration in self.normalize
 
+        self._changed()
+
 
 
     # ------------------ private ---------------------------
@@ -2269,11 +2293,11 @@ class Geometry_Splined (Geometry):
         return u
 
 
-
     def _reset_spline (self):
         """ reinit self spline data if x,y has changed""" 
+        self._curvature  = None                 # curvature 
         self._spline     = None
-        self._uLe        = None                  # u value at LE 
+        self._uLe        = None                 # u value at LE 
 
 
     def _rebuild_from_camb_thick(self):
@@ -2286,10 +2310,6 @@ class Geometry_Splined (Geometry):
         nPan_lower = self.nPanels - nPan_upper
 
         super()._rebuild_from_camb_thick()
-
-        # reset spline so it will be rebuild out of new coordinates
-
-        self._reset_spline ()
 
         # dummy to build spline now 
 
@@ -2527,6 +2547,7 @@ class Geometry_Bezier (Geometry):
   
         # reset chached values
         self._reset_lines()
+        self._changed ()
 
     # ------------------ private ---------------------------
 

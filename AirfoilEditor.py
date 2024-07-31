@@ -93,7 +93,7 @@ class Main_Window (QMainWindow):
         self.parentApp = parentApp
         self.initial_geometry = None                # window geometry at the ebginning
 
-        self.set_airfoil (create_airfoil_from_path(airfoil_file), initial=True)
+        self.set_airfoil (create_airfoil_from_path(airfoil_file), silent=True)
 
         # init main layout of app
 
@@ -171,7 +171,7 @@ class Main_Window (QMainWindow):
                 airfoil  = self._airfoil.asCopy (nameExt='-mod')
             airfoil.set_usedAs (DESIGN)             # will have another visualization 
             airfoil.set_isModified (False)          # no save in the beginning needed
-            self.set_airfoil (airfoil) 
+            self.set_airfoil (airfoil, silent=True) # set without signal  
 
         elif self.edit_mode and not aBool:
 
@@ -181,14 +181,14 @@ class Main_Window (QMainWindow):
                 airfoil = self._airfoil_sav
                 airfoil.set_usedAs (NORMAL)         # will have another visualization 
                 airfoil.set_isModified (False)      # no save in the beginning needed
-                self.set_airfoil (airfoil) 
+                self.set_airfoil (airfoil, silent=True) 
                 self._airfoil_sav = None 
             else: 
                 return                              # user cancel
 
         self._edit_mode = aBool is True 
-
-        self.sig_edit_mode.emit (aBool)             # signal panels 
+        self.sig_airfoil_changed.emit ()            # signal new airfoil 
+        self.sig_edit_mode.emit (aBool)             # signal panels change edit mode 
         
 
     def refresh(self):
@@ -203,7 +203,7 @@ class Main_Window (QMainWindow):
         return self._airfoil
 
 
-    def set_airfoil (self, aNew : Airfoil , initial=False):
+    def set_airfoil (self, aNew : Airfoil , silent=False):
         """ encapsulates current airfoil. Childs should acces only via this function
         to enable a new airfoil to be set """
 
@@ -211,7 +211,7 @@ class Main_Window (QMainWindow):
 
         self.setWindowTitle (AppName + "  v" + str(AppVersion) + "  [" + self.airfoil().fileName + "]")
 
-        if not initial: 
+        if not silent: 
             self.sig_airfoil_changed.emit ()
 
 
@@ -407,7 +407,7 @@ class Geometry_Panel (Airfoil_Panel_Abstract):
         r += 1
         FieldF (l,r,c, lab="at", obj=self.geo, prop=Geometry.max_camb_x, width=70, unit="%", step=0.1)
         r += 1
-        FieldF (l,r,c, lab="LE radius", obj=self.geo, prop=Geometry.leRadius, width=70, unit="%", step=0.1)
+        FieldF (l,r,c, lab="LE radius", obj=self.geo, prop=Geometry.le_radius, width=70, unit="%", step=0.1)
         r += 1
         SpaceR (l,r)
         r += 1
@@ -498,6 +498,9 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
         r,c = 0, 0 
         FieldF (l,r,c, lab="Leading edge", get=lambda: self.geo().le[0], width=75, dec=7, style=lambda: self._style (self.geo().le[0], 0.0))
         r += 1
+        FieldF (l,r,c, lab=" ... of spline", get=lambda: self.geo().le_real[0], width=75, dec=7, style=lambda: self._style (self.geo().le_real[0], 0.0),
+                hide=lambda: not self.myApp.edit_mode)
+        r += 1
         FieldF (l,r,c, lab="Trailing edge", get=lambda: self.geo().te[0], width=75, dec=7, style=lambda: self._style (self.geo().te[0], 1.0))
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo().te[2], width=75, dec=7, style=lambda: self._style (self.geo().te[0], 1.0))
@@ -506,6 +509,9 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
         SpaceC (l,c, width=10)
         c += 1 
         FieldF (l,r,c+1,get=lambda: self.geo().le[1], width=75, dec=7, style=lambda: self._style (self.geo().le[1], 0.0))
+        r += 1
+        FieldF (l,r,c+1,get=lambda: self.geo().le_real[1], width=75, dec=7, style=lambda: self._style (self.geo().le_real[1], 0.0),
+                hide=lambda: not self.myApp.edit_mode)
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo().te[1], width=75, dec=7, style=lambda: self._style (self.geo().te[1], -self.geo().te[3]))
         r += 1

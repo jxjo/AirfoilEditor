@@ -240,7 +240,6 @@ class Airfoil:
 
         self._x     = x
         self._y     = y  
-
         self._geo    = None
 
         self.set_isModified (True)
@@ -318,41 +317,12 @@ class Airfoil:
     def te_gap (self): 
         """ trailing edge gap in y/c"""
         return self.geo.te_gap
-    
-
+        
     @property
-    def leRadius_perc (self):
-        """ leading edge radius in % which is the reciprocal of curvature at le """
-        return self.geo.leRadius * 100
-    
-    def set_leRadius_perc (self, newRadius: float): 
-        """ set leading edge radius in % which is the reciprocal of curvature at le """
-        newRadius = min(10,   newRadius)
-        newRadius = max(0.1,  newRadius)
-        factor = newRadius / self.leRadius_perc
-        self.geo.set_leRadius (factor)
-        self.rebuild_from_thicknessCamber()
-
-
-    def rebuild_from_thicknessCamber(self):
-        """ 
-        rebuilds self out of thickness and camber distribution in Geometry
-        which were modified directly eg. with mouse - avoid re-spline 
-        """
-
-        self.geo._rebuild_from_camb_thick ()        # new build of x,y in geo
-
-        self._x = self.geo.x
-        self._y = self.geo.y
-
-        self.geo.set_xy_org (self._x, self._y)          # update the copy of x,y in geo 
-
-
-    @property
-    def isSymmetric(self):
+    def isSymmetrical(self):
         """ true if max camber is 0.0 - so it's a symmetric airfoil"""
-        return self.geo.maxCamb == 0.0
-
+        return self.geo.isSymmetrical
+    
     @property
     def camber (self) -> 'Side_Airfoil': 
         """ camber line as Line object"""
@@ -632,8 +602,6 @@ class Airfoil:
         if not self.geo.isBasic: 
             self.geo.repanel (nPanels= self.nPanelsNew, 
                               le_bunch= self.le_bunch, te_bunch = self.te_bunch)
-            
-            self.set_xy (*self.geo.xy)
         else: 
             raise ValueError (f"{self} may not be repaneled")
 
@@ -644,13 +612,7 @@ class Airfoil:
         Returns True/False if normalization was done  
         """
 
-        normalized = self.geo.normalize() 
-
-        if normalized:
-
-            # load new coordinates from geo 
-            self.set_xy (self.geo.x, self.geo.y)
-        return normalized 
+        return self.geo.normalize()  
 
 
     def do_strak (self, airfoil1 : 'Airfoil', airfoil2 : 'Airfoil', blendBy : float,
@@ -679,7 +641,6 @@ class Airfoil:
 
         geo.strak (airfoil1.geo, airfoil2.geo, blendBy)
 
-        self.set_xy (*geo.xy)
         self.sourceName = airfoil1.name + ("_blended_%.2f_" % blendBy) + airfoil2.name
         self.set_isStrakAirfoil (True)
 

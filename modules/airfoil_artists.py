@@ -790,11 +790,8 @@ class Thickness_Artist (Artist):
 
                 # plot le circle 
 
-                # le_radius = airfoil.leRadius_perc / 100
-                # circle = Circle ((le_radius,0), le_radius, linewidth=1, fill=False, 
-                #                      ec=adjust_lightness(color,1.2))
-                # p = self.ax.add_artist (circle) 
-                # self._add(p)
+                radius = airfoil.geo.le_radius
+                # self._plot_point (radius,0, color=color, symbolSize=radius*100, pxMode=False, text="Hallo")
 
 
 
@@ -807,7 +804,7 @@ class Thickness_Artist (Artist):
             color = color
 
         # symmetrical and camber? 
-        if airfoilLine.name == CAMBER and airfoil.isSymmetric: 
+        if airfoilLine.name == CAMBER and airfoil.isSymmetrical: 
             x, y = 0.3, 0
             text =  "No camber - symmetrical" 
         # normal 
