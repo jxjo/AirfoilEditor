@@ -44,6 +44,9 @@ STYLE_WARNING       = ('orange','orange')
 SIZE_HEADER         = 14
 SIZE_NORMAL         = None 
 
+ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
+ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
+
 
 
 #-------------------------------------------------------------------------------
@@ -126,7 +129,7 @@ class Widget:
                  layout: QLayout, 
                  *args,                     # optional: row:int, col:int, 
                  rowSpan = 1, colSpan=1, 
-                 alignment = None,          # Qt.AlignmentFlag.AlignLeft,  
+                 align = None,          # alignment within layout 
                  width :int = None,
                  height:int = None,
                  obj = None,                # object | bound method  
@@ -136,6 +139,7 @@ class Widget:
                  signal : bool | None = None, 
                  id = None,
                  disable = None, 
+                 hide = None,
                  style = STYLE_NORMAL,
                  fontSize= SIZE_NORMAL): 
         
@@ -153,7 +157,7 @@ class Widget:
 
         self._rowSpan = rowSpan
         self._colSpan = colSpan 
-        self._alignment = alignment
+        self._alignment = align 
         self._width  = width  if width  is not None else self.default_width
         self._height = height if height is not None else self.default_height
 
@@ -182,7 +186,7 @@ class Widget:
 
         self._while_setting = False 
 
-        # handle disable / readonly 
+        # handle disable / hide  
 
         if isinstance(disable, bool):
             self._disabled   = disable                     
@@ -197,7 +201,13 @@ class Widget:
         if (self._setter is None and self._obj_setter is None) and self._disabled == False: 
             self._disabled_getter = True
             self._disabled = True  
- 
+
+        self._hidden   = False                          
+        if callable (hide):
+            self._hidden_getter = hide
+        else: 
+            self._hidden_getter = None
+
         # emit signal 
 
         self._emit = signal if isinstance (signal, bool) else True  
@@ -235,6 +245,7 @@ class Widget:
             self._get_properties ()
             self._set_Qwidget ()
 
+
     def set_enabled (self, aBool : bool):
         """ 
         enable/disable self 
@@ -245,13 +256,13 @@ class Widget:
         disable = not bool(aBool) 
         if disable: 
             self._disabled = True 
-            self._set_Qwidget () 
+            self._set_Qwidget_disabled () 
         else: 
             if self._disabled_getter == True: 
                 pass                        # disable is fixed 
             else:
                 self._disabled = False
-                self._set_Qwidget () 
+                self._set_Qwidget_disabled () 
 
 
 
@@ -273,7 +284,8 @@ class Widget:
             self._val = self._get_value (self._getter, self._id)
 
         self._disabled  = self._get_value (self._disabled_getter, default=self._disabled)
-        self._style = self._get_value(self._style_getter)
+        self._hidden    = self._get_value (self._hidden_getter, default=self._hidden)
+        self._style     = self._get_value (self._style_getter)
         
  
     def _get_value(self, getter, id=None, default=None):
@@ -420,6 +432,14 @@ class Widget:
         # minimum for all 
         self._set_Qwidget_style ()              # NORMAL, WARNING, etc 
 
+        self._set_Qwidget_disabled ()
+
+        widget : QWidget = self
+        if self._hidden_getter:
+            widget.ensurePolished()
+            # if widget.isHidden() != self._hidden:
+            widget.setVisible(not self._hidden)
+
 
     def _set_Qwidget_static (self, widget = None): 
         """ set static properties of self Qwidget like width"""
@@ -466,6 +486,15 @@ class Widget:
         # toolTip 
         if self._toolTip is not None:
             widget.setToolTip (self._toolTip)
+
+
+    def _set_Qwidget_disabled (self):
+        """ set self Qwidget according to self._disabled"""
+
+        # can be overlaoded to suppress enable/disable 
+        widget : QWidget = self
+        if widget.isEnabled() != (not self._disabled) :
+            widget.setDisabled(self._disabled)
 
 
     def _set_Qwidget_style (self): 
@@ -561,15 +590,6 @@ class Field_With_Label (Widget):
                 self._label = Label(self._layout, self._row, self._col, get=lab)
             
 
-    def _set_Qwidget (self):
-        """ set value and properties of self Qwidget"""
-
-        super()._set_Qwidget ()
-
-        if self.isEnabled() != (not self._disabled):
-            self.setDisabled (self._disabled)
-
-
     def _layout_add (self, widget=None):
         # overloaded
 
@@ -583,7 +603,21 @@ class Field_With_Label (Widget):
         # on a sub layoutthe widget doesn't stretch if on widget in the column is fixed 
         super()._layout_add (col=col, widget=widget)
 
+        if self._label and self._alignment is not None:
+            self._layout.setAlignment (self._label, self._alignment)
+
         self.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
+
+
+    def _set_Qwidget (self): 
+        """ set value and properties of self Qwidget"""
+        super()._set_Qwidget ()
+
+        # overloaded to also hide self label 
+        if self._label and self._hidden_getter:
+            self._label.setVisible(not self._hidden)
+
+
 
 
     def _on_finished(self):
@@ -624,6 +658,12 @@ class Label (Widget, QLabel):
 
         super()._set_Qwidget ()
         self.setText (self._val)
+
+
+    def _set_Qwidget_disabled (self):
+        """ set self Qwidget according to self._disabled"""
+        # do not disable Labe (color ...) 
+        pass
 
 
  
@@ -881,13 +921,6 @@ class Button (Widget, QPushButton):
         self.pressed.connect(self._on_pressed)
 
 
-    def _set_Qwidget (self):
-        """ set value and properties of self Qwidget"""
-        super()._set_Qwidget ()
-        if self.isEnabled() != (not self._disabled) :
-            self.setDisabled(self._disabled)
-
-
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
@@ -971,8 +1004,6 @@ class ToolButton (Widget, QToolButton):
             return cls.ICONS[icon_name][1]
 
 
-
-
     def __init__(self, *args, 
                  icon : str =None, 
                  **kwargs):
@@ -984,10 +1015,8 @@ class ToolButton (Widget, QToolButton):
         self._set_Qwidget_static ()
         self._set_Qwidget ()
 
-                # put into grid / layout 
         self._layout_add ()
 
-        # connect signals 
         self.clicked.connect(self._on_pressed)
 
 
@@ -1015,8 +1044,6 @@ class ToolButton (Widget, QToolButton):
 
     def _on_pressed(self):
       self._set_value (None)
-
-
 
 
 
@@ -1054,8 +1081,6 @@ class CheckBox (Widget, QCheckBox):
         """ set value and properties of self Qwidget"""
         super()._set_Qwidget ()
         self.setChecked (self._val)
-        if self.isEnabled() != (not self._disabled) :
-            self.setDisabled(self._disabled)
 
 
     def _set_Qwidget_static (self): 
@@ -1113,9 +1138,6 @@ class ComboBox (Field_With_Label, QComboBox):
         self.setCurrentText (self._val)
 
         self._set_placeholder_text()
-
-        if self.isEnabled() != (not self._disabled) :
-            self.setDisabled(self._disabled)
 
 
     def _on_selected (self):
@@ -1227,8 +1249,6 @@ class ComboSpinBox (Field_With_Label, QComboBox):
 
         self.addItems (self._options)
         self.setCurrentText (self._val)
-        if self.isEnabled() != (not self._disabled) :
-            self.setDisabled(self._disabled)
 
 
     def _on_selected (self):

@@ -213,7 +213,7 @@ class Edit_Panel (Panel):
         """ refreshes all Widgets on self """
         for w in self.widgets:
             w.refresh()
-        # logging.debug (f"{self} - refresh")
+        logging.debug (f"{self} - refresh")
 
 
     def set_enabled_widgets (self, aBool):

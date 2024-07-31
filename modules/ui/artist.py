@@ -286,7 +286,7 @@ class Artist():
         
 
     def _plot_point (self, x, y, color=None, 
-                     symbol='o', symbolSize=7, symbolPen=None, symbolBrush=None,
+                     symbol='o', symbolSize=7, pxMode=True, symbolPen=None, symbolBrush=None,
                      text=None, textColor=None, anchor=None):
         """ plot point with text label at x, y - text will follow the point """
 
@@ -296,8 +296,18 @@ class Artist():
         sPen = pg.mkPen (color)       
         
         # p = pg.PlotDataItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, symbolPen=sPen, symbolBrush=sBrush)
-        p = pg.ScatterPlotItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, symbolPen=sPen, symbolBrush=sBrush)
+        p = pg.ScatterPlotItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, pxMode=pxMode, 
+                                 symbolPen=sPen, symbolBrush=sBrush)
+        
         self._add(p) 
+        # vb = self._pi.getViewBox()
+        # # vb.setAspectLocked()
+        # # vb.addItem(p)
+        # self._pi.addItem(p)
+        # p.setData (symbolSize=symbolSize)
+        # p.setData (pxMode=pxMode)
+        # self._plots.append(p)
+        # p.setData(symbolSize=symbolSize*1000, pxMode=False)
 
         # plot label as TextItem 
         if text is not None: 
