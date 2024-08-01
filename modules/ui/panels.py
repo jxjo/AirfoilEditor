@@ -66,8 +66,7 @@ class Panel (QWidget):
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
-        text = '' 
-        return f"<{type(self).__name__}{text}>"
+        return f"<Panel '{self.name}'>"
 
 
     @property
@@ -141,6 +140,8 @@ class Edit_Panel (Panel):
                 self.sig_switched.connect (on_switched)
         else: 
             Label (l_head, fontSize=SIZE_HEADER, get=self.header_text)
+
+        self._add_to_header_layout (l_head)     # optional individual widgets
  
         # inital content panel content - layout in >init  
 
@@ -243,7 +244,14 @@ class Edit_Panel (Panel):
 
 
     def _init_layout(self) -> QLayout:
-        """ init and assign main layout"""
+        """ init and return main layout"""
+
+        # to be implemented by sub class
+        pass
+
+
+    def _add_to_header_layout(self, l_head : QHBoxLayout) -> QLayout:
+        """ add Widgets to header layout"""
 
         # to be implemented by sub class
         pass

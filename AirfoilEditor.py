@@ -89,6 +89,7 @@ class Main_Window (QMainWindow):
 
         self._edit_mode = False                     # edit/view mode of app 
         self._edit_panel = None 
+        self._file_panel = None
 
         self.parentApp = parentApp
         self.initial_geometry = None                # window geometry at the ebginning
@@ -129,8 +130,9 @@ class Main_Window (QMainWindow):
         self._edit_panel  = QWidget ()
         self._edit_panel.setLayout (l_edit)
 
+        self._file_panel = File_Panel (self, self.airfoil)
         l_lower = QHBoxLayout()
-        l_lower.addWidget (File_Panel       (self, self.airfoil))
+        l_lower.addWidget (self._file_panel)
         l_lower.addWidget (self._edit_panel, stretch=2)
         l_lower.setContentsMargins (QMargins(0, 0, 0, 0))
         lower = QWidget ()
@@ -194,7 +196,7 @@ class Main_Window (QMainWindow):
     def refresh(self):
         """ refreshes all child panels of edit_panel """
         Panel.refresh_childs (self._edit_panel)
-        File_Panel.refresh_childs (self)
+        Panel.refresh_childs (self._file_panel)
 
 
     def airfoil (self) -> Airfoil:
@@ -254,7 +256,7 @@ class Airfoil_Panel_Abstract (Edit_Panel):
         super().__init__ (*args, **kwargs)
 
         # connect to signals of main 
-        self.myApp.sig_edit_mode.connect (self._on_edit_mode)
+        # self.myApp.sig_edit_mode.connect (self._on_edit_mode)
 
         # connect to change signal of widget 
         for w in self.widgets:
@@ -287,6 +289,7 @@ class File_Panel (Airfoil_Panel_Abstract):
 
         super().__init__ (*args, **kwargs)
 
+        self.myApp.sig_edit_mode.connect (self._on_edit_mode)
 
     def _on_airfoil_widget_changed (self, object_class, setter_name, newVal ):
         """ user changed data in widget"""
@@ -398,6 +401,9 @@ class Geometry_Panel (Airfoil_Panel_Abstract):
     name = 'Airfoil'
     _width  = (350, None)
 
+    def refresh (self):
+        super().refresh()
+
     def _init_layout (self): 
 
         l = QGridLayout()
@@ -505,6 +511,15 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
     name = 'Coordinates'
 
     _width  = (320, None)
+
+    def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
+        """ add Widgets to header layout"""
+
+        l_head.addStretch(1)
+        Button (l_head, text="&Normalize", width=80,
+                set=lambda : self.airfoil().normalize(), signal=True, 
+                hide=lambda: not self.myApp.edit_mode)
+
 
     def _init_layout (self): 
 

@@ -210,7 +210,7 @@ class Widget:
 
         # emit signal 
 
-        self._emit = signal if isinstance (signal, bool) else True  
+        self._signal = signal if isinstance (signal, bool) else True  
 
         # style of widget 
 
@@ -374,7 +374,7 @@ class Widget:
                 else:            
                     self._setter(newVal, id=self._id) 
 
-                self._emit_change (newVal) 
+            self._emit_change (newVal) 
 
         self._while_setting = False                
 
@@ -382,7 +382,7 @@ class Widget:
     def _emit_change (self, newVal):
         """ emit change signal""" 
 
-        if not self._emit: return 
+        if not self._signal: return 
 
         if isinstance(self._setter, types.FunctionType):
             qualname  = self._setter.__qualname__
@@ -914,10 +914,11 @@ class Button (Widget, QPushButton):
         - gets its label via 'text' 
         - when clicked, 'set' is called without argument 
     """
-    def __init__(self, *args, 
+    def __init__(self, *args,
+                 signal = False,            # default is not to signal change 
                  text = None, 
                  **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, signal=signal,**kwargs)
 
         self._text = text 
 
@@ -1017,8 +1018,9 @@ class ToolButton (Widget, QToolButton):
 
     def __init__(self, *args, 
                  icon : str =None, 
+                 signal = False,            # default is not to signal change 
                  **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, signal=signal,**kwargs)
 
         self._icon = icon                           # icon name 
 

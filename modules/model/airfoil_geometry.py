@@ -1379,7 +1379,8 @@ class Geometry ():
 
     """
 
-    isBasic         = True 
+    isBasic         = True
+    isSplined       = False 
     isBezier        = False
     isHicksHenne    = False
     description     = "based on linear interpolation"
@@ -1474,7 +1475,7 @@ class Geometry ():
     
     @property
     def le_real (self) -> tuple: 
-        """ coordinates of le defined by a virtual curve (eg spline)"""
+        """ coordinates of le defined by spline"""
         # can be overloaded
         # for basic geometry equals to self.le
         return self.le      
@@ -1984,7 +1985,9 @@ class Geometry_Splined (Geometry):
     The 2D spline is used to get the best approximation of the airfoil e.g. for re-paneling
     """
 
-    isBasic         = False 
+    isBasic         = False
+    isSplined       = True 
+ 
     description     = "based on spline interpolation"
 
     sideDefaultClass = Side_Airfoil_Spline

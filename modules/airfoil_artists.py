@@ -179,6 +179,13 @@ class Airfoil_Artist (Artist):
     def show_shape_function(self): return self._show_shape_function
     def set_show_shape_function (self, aBool): self._show_shape_function = aBool 
 
+    def set_show_points (self, aBool):
+        """ user switch to show point (marker ) """
+
+        # overloaded to show leading edge of spline 
+        super().set_show_points (aBool)
+        self.plot()             # do refresh
+
 
     def set_current (self, aLineLabel):
         # tries to set a highlighted airfoil to section with name ''aLineLabel' 
@@ -259,11 +266,18 @@ class Airfoil_Artist (Artist):
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                           antialias = antialias)
 
-                # plot real le - airfoil must be loaded as GEO_SPLINE!
-                # p = self.ax.plot (airfoil.geo.le, linestyle='None', 
-                #                   marker='o', fillstyle='full', markersize=6, 
-                #                   mfc='red', mec='red')
-                # self._add (p)
+                # optional plot of real LE defined by spline 
+
+                if self.show_points and airfoil.geo.isSplined:
+                    if airfoil.isNormalized:
+                        brushcolor = color
+                        text = None
+                    else: 
+                        brushcolor = "yellow"
+                        text="LE spline"
+                    self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
+                                      text=text,anchor=(0.5,1) )
+
 
                 # show Bezier or Hicks Henne shape function
                 # if self.show_shape_function:

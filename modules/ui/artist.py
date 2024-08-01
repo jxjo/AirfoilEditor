@@ -285,12 +285,20 @@ class Artist():
         return p 
         
 
-    def _plot_point (self, x, y, 
+    def _plot_point (self, 
+                    *args,                     # optional: tuple or x,y
                      symbol='o', color=None, style=Qt.PenStyle.SolidLine, 
                      size=7, pxMode=True, 
                      brushColor=None, brushAlpha=1.0,
                      text=None, textColor=None, textPos=None, anchor=None):
         """ plot point with text label at x, y - text will follow the point """
+
+        if isinstance (args[0], tuple):
+            x = args[0][0] 
+            y = args[0][1] 
+        else: 
+            x = args[0]
+            y = args[1] 
 
         # pen style
         color = QColor(color) if color else QColor(self.COLOR_NORMAL)
