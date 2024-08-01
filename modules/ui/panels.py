@@ -144,14 +144,14 @@ class Edit_Panel (Panel):
  
         # inital content panel content - layout in >init  
 
-        self._panel  = QWidget()  
+        self._panel  = QWidget() 
 
         if l_panel is None: l_panel = self._init_layout()       # subclass will create layout 
 
         if l_panel is None: 
             logging.warning (f"{self.name}: Layout for panel still missing ")
         else: 
-            l_panel.setContentsMargins (QMargins(10, 0, 0, 0))   # inset left 
+            l_panel.setContentsMargins (QMargins(15, 0, 0, 0))   # inset left 
             l_panel.setSpacing(2)
             self._panel.setLayout (l_panel)
             # set_background (self._panel, darker_factor=150)
@@ -233,7 +233,6 @@ class Edit_Panel (Panel):
             - darker_factor > 100  
             - color: QColor or string for new color
             - alpha: transparency 0..1 
-        Returns the QPalette before changes were applied
         """
 
         set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)

@@ -232,10 +232,12 @@ class Airfoil_Artist (Artist):
                 # set color and symbol style 
 
                 width = 2
+                antialias = True
                 color = _color_airfoil_of (airfoil.usedAs)
                 if color is not None: 
                     if airfoils_with_design and not (airfoil.usedAs == DESIGN or airfoil.usedAs == NORMAL):
                         width = 1
+                        antialias = False
                 else: 
                     color = color_palette [iair]
                 pen = pg.mkPen(color, width=width)
@@ -251,10 +253,11 @@ class Airfoil_Artist (Artist):
                     brush = pg.mkBrush (color.darker (600))
                     p = self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush, 
-                                          fillLevel=0.0, fillBrush=brush)
+                                          fillLevel=0.0, fillBrush=brush, antialias = antialias)
                 else: 
                     p = self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
-                                          symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush)
+                                          symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                          antialias = antialias)
 
                 # plot real le - airfoil must be loaded as GEO_SPLINE!
                 # p = self.ax.plot (airfoil.geo.le, linestyle='None', 
@@ -771,28 +774,33 @@ class Thickness_Artist (Artist):
             if (airfoil.isLoaded ):
                   
                 color = _color_airfoil_of (airfoil.usedAs)
+                color.setAlphaF (0.8)
 
                 # plot camber line
 
                 camber = airfoil.camber
-                pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+                pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashDotLine)
                 self._plot_dataItem (camber.x, camber.y, pen = pen, name = 'Camber')
 
                 # plot thickness distribution line
 
                 thickness = airfoil.thickness
-                pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DotLine)
+                pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
                 self._plot_dataItem (thickness.x, thickness.y, pen = pen, name = 'Thickness')
 
                 # plot marker for the max values 
+
                 self._plot_max_val (airfoil, thickness, color)
                 self._plot_max_val (airfoil, camber,    color)
 
                 # plot le circle 
 
                 radius = airfoil.geo.le_radius
-                # self._plot_point (radius,0, color=color, symbolSize=radius*100, pxMode=False, text="Hallo")
-
+                text = "%.2f%%" % (radius * 100)
+                textPos= (1.72*radius, radius*0.72)
+                self._plot_point (radius, 0, color=color, size=2*radius, pxMode=False, 
+                                  style=Qt.PenStyle.DotLine, brushAlpha=0.3, brushColor='black', 
+                                  text=text, textPos= textPos)
 
 
     def _plot_max_val (self, airfoil: Airfoil, airfoilLine: Side_Airfoil, color):
@@ -813,5 +821,5 @@ class Thickness_Artist (Artist):
             x, y = airfoilLine.highpoint.xy
             text = "%.2f%% at %.1f%%" % (y * 100, x *100)
 
-        self._plot_point (x, y, color=color, symbol='+', text=text)   
+        self._plot_point (x, y, color=color, size=8, symbol='+', text=text)   
 

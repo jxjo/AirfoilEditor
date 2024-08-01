@@ -662,7 +662,7 @@ class Label (Widget, QLabel):
 
     def _set_Qwidget_disabled (self):
         """ set self Qwidget according to self._disabled"""
-        # do not disable Labe (color ...) 
+        # do not disable Label (color ...) 
         pass
 
 
@@ -747,6 +747,12 @@ class FieldI (Field_With_Label, QSpinBox):
             self.setRange (self._lim[0], self._lim[1])
         self.setValue (self._val)
 
+
+    def _set_Qwidget_disabled (self):
+        """ set self Qwidget according to self._disabled"""
+        super()._set_Qwidget_disabled()
+
+        # overloaded to show/hide spin buttons  
         # parent could be disabled - so also remove spin buttons 
         if self._spin and not self._disabled and self.isEnabled():
             self.setButtonSymbols(QSpinBox.ButtonSymbols.PlusMinus)
@@ -845,12 +851,17 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         else: 
             self.setValue (self._val)
 
+
+    def _set_Qwidget_disabled (self):
+        """ set self Qwidget according to self._disabled"""
+        super()._set_Qwidget_disabled()
+
+        # overloaded to show/hide spin buttons  
         # parent could be disabled - so also remove spin buttons 
         if self._spin and not self._disabled and self.isEnabled():
             self.setButtonSymbols(QSpinBox.ButtonSymbols.PlusMinus)
         else: 
             self.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-
 
 
     def _set_Qwidget_static (self): 

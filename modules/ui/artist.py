@@ -103,11 +103,6 @@ def random_colors (nColors) -> list:
 pg.setConfigOptions(antialias=False)
 
 
-SIZE_HEADER         = 14                    # size in pt 
-SIZE_NORMAL         = 10 
-
-COLOR_HEADER        = "whitesmoke"
-COLOR_NORMAL        = "whitesmoke"
 
 # ---------------------------------------------------------------------------
 
@@ -128,6 +123,14 @@ class Artist():
     """
 
     name = "Abstract Artist" 
+
+    SIZE_HEADER         = 14                    # size in pt 
+    SIZE_NORMAL         = 10 
+
+    COLOR_HEADER        = "whitesmoke"
+    COLOR_NORMAL        = "silver"
+    COLOR_LEGEND        = "gray"
+
 
     def __init__ (self, pi: pg.PlotItem , 
                   getter = None,       
@@ -204,10 +207,6 @@ class Artist():
                 if self.show_legend:
                     self._remove_legend_items ()
 
-    @property
-    def pi_isVisible(self):
-        """ true if 'plot item' of self is visible"""
-        return self._pi.isVisible() if self._pi is not None else False
 
     @property
     def show_points (self): return self._show_points
@@ -248,6 +247,7 @@ class Artist():
             if self.show_legend:
                 # must be before .plot 
                 self._pi.addLegend(offset=(-50,10), verSpacing=-8)  
+                self._pi.legend.setLabelTextColor (self.COLOR_LEGEND)
 
                 # print ("rows:", self._pi.legend.layout.rowCount(), self._pi.legend)
 
@@ -285,47 +285,42 @@ class Artist():
         return p 
         
 
-    def _plot_point (self, x, y, color=None, 
-                     symbol='o', symbolSize=7, pxMode=True, symbolPen=None, symbolBrush=None,
-                     text=None, textColor=None, anchor=None):
+    def _plot_point (self, x, y, 
+                     symbol='o', color=None, style=Qt.PenStyle.SolidLine, 
+                     size=7, pxMode=True, 
+                     brushColor=None, brushAlpha=1.0,
+                     text=None, textColor=None, textPos=None, anchor=None):
         """ plot point with text label at x, y - text will follow the point """
 
-        # plot point as DataItem
-        color = QColor(color) if color else QColor("whitesmoke")
-        sBrush = symbolBrush if symbolBrush else pg.mkBrush(QColor('black'))
-        sPen = pg.mkPen (color)       
-        
-        # p = pg.PlotDataItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, symbolPen=sPen, symbolBrush=sBrush)
-        p = pg.ScatterPlotItem  ([x], [y], symbol=symbol, symbolSize=symbolSize, pxMode=pxMode, 
-                                 symbolPen=sPen, symbolBrush=sBrush)
+        # pen style
+        color = QColor(color) if color else QColor(self.COLOR_NORMAL)
+        pen = pg.mkPen (color, style=style)   
+
+        # brush style 
+        brushColor = QColor(brushColor) if brushColor else color 
+        brushColor.setAlphaF (brushAlpha)
+        brush = pg.mkBrush(brushColor) 
+
+        p = pg.ScatterPlotItem  ([x], [y], symbol=symbol, size=size, pxMode=pxMode, 
+                                 pen=pen, brush=brush)
         
         self._add(p) 
-        # vb = self._pi.getViewBox()
-        # # vb.setAspectLocked()
-        # # vb.addItem(p)
-        # self._pi.addItem(p)
-        # p.setData (symbolSize=symbolSize)
-        # p.setData (pxMode=pxMode)
-        # self._plots.append(p)
-        # p.setData(symbolSize=symbolSize*1000, pxMode=False)
 
         # plot label as TextItem 
+
         if text is not None: 
-            color = QColor(textColor) if textColor else QColor("whitesmoke")
+            color = QColor(textColor) if textColor else QColor(self.COLOR_NORMAL)
             anchor = anchor if anchor else (0, 1)
             t = pg.TextItem(text, color, anchor=anchor)
 
             # ? attach to parent doesn't work (because of PlotDataItem? )
-            t.setPos (x,y)
+            textPos = textPos if textPos is not None else (x,y)
+            t.setPos (*textPos)
+
             self._add (t)
 
-            # t.setParentItem (p)
 
-            # # # manuel add to self items 
-            # self._plots.append(t)
-
-
-    def _plot_text (self, text : str, textColor=COLOR_NORMAL, fontSize=SIZE_NORMAL, 
+    def _plot_text (self, text : str, color=None, fontSize=None, 
                           parentPos = (0.5,0.5),    # pos within PlotItem 
                           itemPos = (0,1),          # box anchor of TextItem 
                           offset = (0,0)            # offet in px 
@@ -334,7 +329,10 @@ class Artist():
 
         if not text: return 
 
-        label = pg.LabelItem(text, color=QColor(textColor), size=f"{fontSize}pt")    
+        fontSize = fontSize if fontSize is not None else self.SIZE_NORMAL
+        color = color if color is not None else self.COLOR_NORMAL
+
+        label = pg.LabelItem(text, color=QColor(color), size=f"{fontSize}pt")    
 
         # addItem to PlotItem doesn't work (would be added to viewbox and scaled)     
         label.setParentItem(self._pi)
@@ -361,7 +359,7 @@ class Artist():
             parentPos = (0.5 + 0.02,0)
             itemPos   = (0.5,0)
 
-        self._plot_text (text, textColor=QColor(COLOR_HEADER), fontSize=SIZE_HEADER, 
+        self._plot_text (text, color=QColor(self.COLOR_HEADER), fontSize=self.SIZE_HEADER, 
                          parentPos=parentPos, itemPos=itemPos, offset=offset)
 
 

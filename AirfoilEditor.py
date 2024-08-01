@@ -26,7 +26,7 @@ from pathlib import Path
 import logging
 
 from PyQt6.QtCore           import QSize, QMargins
-from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QMessageBox
+from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QMessageBox, QStackedWidget 
 from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QStackedLayout
 
 # let python find the other modules in modules relativ to path of self  
@@ -121,10 +121,10 @@ class Main_Window (QMainWindow):
         #                 | Geometry  | Coordinates | ... >| 
 
         l_edit = QHBoxLayout()
-        l_edit.addWidget (Geometry_Panel   (self, self.airfoil), stretch= 2)
-        l_edit.addWidget (Panels_Panel     (self, self.airfoil), stretch= 1)
-        l_edit.addWidget (LE_TE_Panel      (self, self.airfoil), stretch= 1)
-        l_edit.addStretch (1)
+        l_edit.addWidget (Geometry_Panel   (self, self.airfoil), stretch= 5)
+        l_edit.addWidget (Panels_Panel     (self, self.airfoil), stretch= 4)
+        l_edit.addWidget (LE_TE_Panel      (self, self.airfoil), stretch= 4)
+        l_edit.addStretch (3)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
         self._edit_panel  = QWidget ()
         self._edit_panel.setLayout (l_edit)
@@ -283,7 +283,7 @@ class File_Panel (Airfoil_Panel_Abstract):
 
         self._edit_panel : QWidget = None 
         self._view_panel : QWidget = None 
-        self._l_stacked  : QStackedLayout = None 
+        self._stack_widget : QStackedWidget = None 
 
         super().__init__ (*args, **kwargs)
 
@@ -305,12 +305,14 @@ class File_Panel (Airfoil_Panel_Abstract):
         Airfoil_Select_Open_Widget (l_view,r,c, withOpen=True, asSpin=False, signal=False,
                                     get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
+        SpaceR (l_view,r)
+        r += 1
         Button (l_view,r,c, text="Edit Airfoil", width=100, 
                 set=lambda : self.myApp.set_edit_mode(True))
         r += 1
         l_view.setRowStretch (r,2)
         l_view.setColumnStretch (1,2)
-        l_view.setContentsMargins (QMargins(10, 0, 0, 0)) 
+        l_view.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         self._view_panel = QWidget()
         self._view_panel.setLayout (l_view)
@@ -319,26 +321,35 @@ class File_Panel (Airfoil_Panel_Abstract):
 
         l_edit = QGridLayout()
         r,c = 0, 0 
-        Field (l_edit,r,c, colSpan=2, obj=self.airfoil, prop=Airfoil.fileName, disable=True)
+        Field (l_edit,r,c, colSpan=3, obj=self.airfoil, prop=Airfoil.fileName, disable=True)
         r += 1
-        Button (l_edit,r,c, text="Ok",  width=100, set=self.edit_ok)
-        r += 1
-        Button (l_edit,r,c, text="Cancel",  width=100, set=self.edit_cancel)
-        r += 1
+        SpaceR (l_edit,r)
         l_edit.setRowStretch (r,2)
+        r += 1
+        Button (l_edit,r,c, text="Ok",  width=None, set=self.edit_ok)
+        c += 1
+        SpaceC (l_edit,c)
+        c += 1
+        Button (l_edit,r,c, text="Cancel",  width=None, set=self.edit_cancel)
+        r += 1
         l_edit.setColumnStretch (1,2)
-        l_edit.setContentsMargins (QMargins(10, 0, 0, 0)) 
+        l_edit.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         self._edit_panel = QWidget()
         self._edit_panel.setLayout (l_edit)
 
         # main panel 
 
-        self._l_stacked = QStackedLayout() 
-        self._l_stacked.addWidget(self._view_panel)
-        self._l_stacked.addWidget(self._edit_panel)
+        l = QGridLayout()
+
+        self._stack_widget = QStackedWidget ()
+        self._stack_widget.addWidget(self._view_panel)
+        self._stack_widget.addWidget(self._edit_panel)
+
+        l.addWidget (self._stack_widget, 0, 0, 1, 1)
         self._switch_panel()
-        return self._l_stacked
+
+        return l
 
 
     def header_text (self) -> str: 
@@ -363,9 +374,9 @@ class File_Panel (Airfoil_Panel_Abstract):
         """ show/hide  edit/view_panel depending on edit_mode"""
 
         if self.myApp.edit_mode:
-            self._l_stacked.setCurrentWidget (self._edit_panel)
+            self._stack_widget.setCurrentWidget (self._edit_panel)
         else: 
-            self._l_stacked.setCurrentWidget (self._view_panel)
+            self._stack_widget.setCurrentWidget (self._view_panel)
 
 
     def _on_edit_mode (self, is_edit_mode : bool):
@@ -385,7 +396,7 @@ class Geometry_Panel (Airfoil_Panel_Abstract):
     """ Main geometry data of airfoil"""
 
     name = 'Airfoil'
-    _width  = (350, 450)
+    _width  = (350, None)
 
     def _init_layout (self): 
 
@@ -415,7 +426,9 @@ class Geometry_Panel (Airfoil_Panel_Abstract):
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (3,60)
+        l.setColumnStretch (0,1)
         l.setColumnStretch (1,2)
+        l.setColumnStretch (2,1)
         l.setRowStretch    (r-1,2)
         return l 
 
@@ -425,7 +438,7 @@ class Panels_Panel (Airfoil_Panel_Abstract):
     """ Panelling information """
 
     name = 'Panels'
-    _width  = (280, 350)
+    _width  = (300, None)
 
     def _init_layout (self):
 
@@ -435,18 +448,19 @@ class Panels_Panel (Airfoil_Panel_Abstract):
         FieldI (l,r,c, lab="No of panels", obj=self.geo, prop=Geometry.nPanels, disable=True, width=70, style=self._style_panel)
         r += 1
         FieldF (l,r,c, lab="Angle at LE", obj=self.geo, prop=Geometry.panelAngle_le, width=70, dec=1, unit="°", style=self._style_angle)
-        SpaceC (l,c+2, stretch=0)
-        Label  (l,r,c+3,get=lambda: f"at index {self.geo().iLe}")
+        SpaceC (l,c+2, width=10, stretch=0)
+        Label  (l,r,c+3,width=60, get=lambda: f"at index {self.geo().iLe}")
         r += 1
         FieldF (l,r,c, lab="Angle min", get=lambda: self.geo().panelAngle_min[0], width=70, dec=1, unit="°")
-        Label  (l,r,c+3,get=lambda: f"at index {self.geo().panelAngle_min[1]}")
+        Label  (l,r,c+3,width=60, get=lambda: f"at index {self.geo().panelAngle_min[1]}")
         r += 1
         SpaceR (l,r,height=5)
         r += 1
         Label  (l,r,0,colSpan=4, get=self._messageText, style=STYLE_COMMENT)
 
         l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (c+3,2)
+        l.setColumnStretch (0,1)
+        l.setColumnStretch (c+4,1)
         l.setRowStretch    (r-1,2)
         
         return l
@@ -490,7 +504,7 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
 
     name = 'Coordinates'
 
-    _width  = (280, 320)
+    _width  = (320, None)
 
     def _init_layout (self): 
 
@@ -516,13 +530,16 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
         FieldF (l,r,c+1,get=lambda: self.geo().te[1], width=75, dec=7, style=lambda: self._style (self.geo().te[1], -self.geo().te[3]))
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo().te[3], width=75, dec=7, style=lambda: self._style (self.geo().te[3], -self.geo().te[1]))
+        SpaceC (l,c+2)
+
         r += 1
         SpaceR (l,r, height=5)
         r += 1
         Label  (l,r,0,colSpan=4, get=self._messageText, style=STYLE_COMMENT)
 
         l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (5,2)
+        l.setColumnStretch (0,1)
+        l.setColumnStretch (c+3,1)
         l.setRowStretch    (r-1,2)
         return l
 
