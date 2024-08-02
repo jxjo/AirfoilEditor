@@ -804,18 +804,20 @@ class Thickness_Artist (Artist):
 
                 camber = airfoil.camber
                 pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashDotLine)
-                self._plot_dataItem (camber.x, camber.y, pen = pen, name = 'Camber')
+                pc = self._plot_dataItem (camber.x, camber.y, pen = pen, name = 'Camber')
+
+                self._plot_max_val (airfoil, camber, color, pc)
 
                 # plot thickness distribution line
 
                 thickness = airfoil.thickness
                 pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
-                self._plot_dataItem (thickness.x, thickness.y, pen = pen, name = 'Thickness')
+                pt =self._plot_dataItem (thickness.x, thickness.y, pen = pen, name = 'Thickness')
+
+                self._plot_max_val (airfoil, thickness, color, pt)
 
                 # plot marker for the max values 
 
-                self._plot_max_val (airfoil, thickness, color)
-                self._plot_max_val (airfoil, camber,    color)
 
                 # plot le circle 
 
@@ -827,7 +829,7 @@ class Thickness_Artist (Artist):
                                   text=text, textPos= textPos)
 
 
-    def _plot_max_val (self, airfoil: Airfoil, airfoilLine: Side_Airfoil, color):
+    def _plot_max_val (self, airfoil: Airfoil, airfoilLine: Side_Airfoil, color, plot_item):
         """ indicate max. value of camber or thickness line """
 
         if airfoil.usedAs == DESIGN:
@@ -845,5 +847,7 @@ class Thickness_Artist (Artist):
             x, y = airfoilLine.highpoint.xy
             text = "%.2f%% at %.1f%%" % (y * 100, x *100)
 
-        self._plot_point (x, y, color=color, size=8, symbol='+', text=text)   
+        p = Moveable_Point (airfoilLine.highpoint, airfoilLine, plot_item )
+        self._add (p) 
+        # self._plot_point2 (x, y, color=color, size=8, symbol='+', text=text)   
 

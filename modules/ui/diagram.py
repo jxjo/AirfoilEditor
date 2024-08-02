@@ -256,9 +256,15 @@ class Diagram_Item (pg.PlotItem):
 
     def refresh(self): 
         """ refresh my artits and section panel """
-        self.refresh_artists() 
         if self.section_panel is not None: 
             self.section_panel.refresh()
+
+            # refresh artists only if self section is switched on 
+            if self.section_panel.switched_on:
+                self.refresh_artists() 
+        else: 
+            self.refresh_artists() 
+
 
 
     def refresh_artists (self): 

@@ -66,7 +66,7 @@ class Point:
            
         self.set_xy (a, b, initial=True) 
 
-        logging.debug (f"{self} new")
+        # logging.debug (f"{self} new")
 
 
     def __repr__(self) -> str:
@@ -100,7 +100,7 @@ class Point:
         self._handle_changes (False, y_changed)
 
 
-    def set_xy (self, a, b=None, initial : bool =False):
+    def set_xy (self, a, b=None, initial : bool =False, moving : bool = False):
         """ 
         Set new point coordinates. The arguments a, b can be 
             - x, y cordinates 
@@ -129,7 +129,7 @@ class Point:
         self._y, y_changed = self._set_val (self._y, y_new, self._y_limits, self._y_fixed)
 
         if not initial: 
-            self._handle_changes (x_changed, y_changed)
+            self._handle_changes (x_changed, y_changed, moving=moving)
         else: 
             self._x_prev = self._x                   # ... was None 
             self._y_prev = self._y
@@ -157,7 +157,7 @@ class Point:
         return new_val, has_changed  
 
 
-    def _handle_changes (self, x_changed : bool, y_changed : bool):
+    def _handle_changes (self, x_changed : bool, y_changed : bool, moving : bool=False):
         """ calls parent if x or y changed """
 
         x = "x" if x_changed else "_"
@@ -166,7 +166,9 @@ class Point:
 
         if self._callback_changed: 
             if x_changed or y_changed:
-                self._callback_changed (x_changed, y_changed, xy_prev = (self._x_prev, self._y_prev))
+                xy_prev = (self._x_prev, self._y_prev)
+                print ("---> point xy ", self.xy)
+                self._callback_changed (x_changed, y_changed, xy_prev, moving=moving)
     
 
 

@@ -420,7 +420,7 @@ class Geometry_Panel (Airfoil_Panel_Abstract):
         r += 1
         SpaceR (l,r)
         r += 1
-        Label  (l,r,0,colSpan=4, get=lambda : "Data " + self.geo().description, style=STYLE_COMMENT)
+        Label  (l,r,0,colSpan=4, get=lambda : "Data " + self.geo().description, style=style.COMMENT)
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (3,60)
@@ -454,7 +454,7 @@ class Panels_Panel (Airfoil_Panel_Abstract):
         r += 1
         SpaceR (l,r,height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=STYLE_COMMENT)
+        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT)
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnStretch (0,1)
@@ -465,18 +465,18 @@ class Panels_Panel (Airfoil_Panel_Abstract):
  
 
     def _style_panel (self):
-        """ returns STYLE_WARNING if panels not in range"""
+        """ returns style.WARNING if panels not in range"""
         if self.geo().nPanels < 160 or self.geo().nPanels > 260: 
-            return STYLE_WARNING
+            return style.WARNING
         else: 
-            return STYLE_NORMAL
+            return style.NORMAL
 
     def _style_angle (self):
-        """ returns STYLE_WARNING if panel angle too blunt"""
+        """ returns style.WARNING if panel angle too blunt"""
         if self.geo().panelAngle_le > 172.0: 
-            return STYLE_WARNING
+            return style.WARNING
         else: 
-            return STYLE_NORMAL
+            return style.NORMAL
 
     def _messageText (self): 
 
@@ -542,7 +542,7 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
         r += 1
         SpaceR (l,r, height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=STYLE_COMMENT)
+        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT)
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnStretch (0,1)
@@ -552,11 +552,11 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
 
 
     def _style (self, val, target_val):
-        """ returns STYLE_WARNING if val isn't target_val"""
+        """ returns style.WARNING if val isn't target_val"""
         if val != target_val: 
-            return STYLE_WARNING
+            return style.WARNING
         else: 
-            return STYLE_NORMAL
+            return style.NORMAL
 
 
     def _messageText (self): 

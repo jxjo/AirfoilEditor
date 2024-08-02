@@ -9,13 +9,15 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 
 import logging
 
-from PyQt6.QtCore       import QSize, QMargins, pyqtSignal
+
+from PyQt6.QtCore       import Qt
+from PyQt6.QtCore       import QSize, QMargins, pyqtSignal 
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
 from PyQt6.QtWidgets    import QMainWindow, QWidget
 from PyQt6.QtGui        import QPalette, QColor
 
 from ui.widgets         import set_background
-from ui.widgets         import Widget, Label, CheckBox, SIZE_HEADER
+from ui.widgets         import Widget, Label, CheckBox, size
 
 
 
@@ -146,12 +148,12 @@ class Edit_Panel (Panel):
         l_head.setContentsMargins (QMargins(0,0,0,5))
 
         if self._switchable:
-            CheckBox (l_head, fontSize=SIZE_HEADER, text=self.header_text(),
+            CheckBox (l_head, fontSize=size.HEADER, text=self.header_text(),
                       get=lambda: self.switched_on, set=self.set_switched_on)
             if on_switched is not None: 
                 self.sig_switched.connect (on_switched)
         else: 
-            Label (l_head, fontSize=SIZE_HEADER, get=self.header_text)
+            Label (l_head, fontSize=size.HEADER, get=self.header_text)
 
         self._add_to_header_layout (l_head)     # optional individual widgets
  
@@ -214,7 +216,7 @@ class Edit_Panel (Panel):
     @property
     def widgets (self) -> list[Widget]:
         """ list of widgets defined in self """
-        return self.findChildren (Widget)
+        return self.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
  
 
     def refresh(self, disable=None):

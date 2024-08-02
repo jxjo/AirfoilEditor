@@ -101,7 +101,43 @@ def random_colors (nColors) -> list:
 
 
 pg.setConfigOptions(antialias=False)
+# pg.setConfigOptions(mouseRateLimit=10)
 
+
+
+# ---------------------------------------------------------------------------
+
+class Moveable_Point (pg.TargetItem):
+
+
+    def __init__ (self, aPoint , parent_obj, parent_plot_item : pg.PlotDataItem, *args, **kwargs):
+
+        self._point = aPoint
+        self._parent_obj = parent_obj
+        self._parent_plot_item = parent_plot_item
+
+        super().__init__(aPoint.xy, *args, **kwargs)
+
+        self.sigPositionChanged.connect (self._point_moving)
+        self.sigPositionChangeFinished.connect (self._point_moving_finished)
+
+
+
+    def _point_moving (self, _):
+
+        print (self.pos())
+        self._point.set_xy (self.pos().x(), self.pos().y(), moving=True)
+
+        # update parent plot item 
+        self._parent_plot_item.setData (self._parent_obj.x, self._parent_obj.y)
+
+    def _point_moving_finished (self, _):
+
+        print ("final ", self.pos())
+        self._point.set_xy (self.pos().x(), self.pos().y(), moving=False)
+
+        # update parent plot item 
+        self._parent_plot_item.setData (self._parent_obj.x, self._parent_obj.y)
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +362,54 @@ class Artist():
             t.setPos (*textPos)
 
             self._add (t)
+
+
+
+    def _plot_point2 (self, 
+                    *args,                     # optional: tuple or x,y
+                     symbol='o', color=None, style=Qt.PenStyle.SolidLine, 
+                     size=7, pxMode=True, 
+                     brushColor=None, brushAlpha=1.0,
+                     text=None, textColor=None, textPos=None, anchor=None):
+        """ plot point with text label at x, y - text will follow the point """
+
+        if isinstance (args[0], tuple):
+            x = args[0][0] 
+            y = args[0][1] 
+        else: 
+            x = args[0]
+            y = args[1] 
+
+        # pen style
+        color = QColor(color) if color else QColor(self.COLOR_NORMAL)
+        pen = pg.mkPen (color, style=style)   
+
+        # brush style 
+        brushColor = QColor(brushColor) if brushColor else color 
+        brushColor.setAlphaF (brushAlpha)
+        brush = pg.mkBrush(brushColor) 
+
+        p = pg.TargetItem ((x,y))
+        
+        p.sigPositionChanged.connect (self.point_moved)
+        self._add(p) 
+
+        # plot label as TextItem 
+
+        if text is not None: 
+            color = QColor(textColor) if textColor else QColor(self.COLOR_NORMAL)
+            anchor = anchor if anchor else (0, 1)
+            t = pg.TextItem(text, color, anchor=anchor)
+
+            # ? attach to parent doesn't work (because of PlotDataItem? )
+            textPos = textPos if textPos is not None else (x,y)
+            t.setPos (*textPos)
+
+            self._add (t)
+
+    def point_moved (self,a):
+            print (a.pos())
+
 
 
     def _plot_text (self, text : str, color=None, fontSize=None, 

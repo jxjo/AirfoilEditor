@@ -11,38 +11,72 @@ import logging
 import copy
 import types
 import typing 
+from enum               import Enum, StrEnum
 
-from PyQt6.QtCore import QEvent, QSize, Qt, QMargins, pyqtSignal, QTimer
+from PyQt6.QtCore       import QEvent, QSize, Qt, QMargins, pyqtSignal, QTimer
 
-from PyQt6.QtWidgets import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout
+from PyQt6.QtWidgets    import (
                             QApplication, QWidget, QPushButton, 
                             QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
                             QLabel, QToolButton, QCheckBox,
                             QSpinBox, QComboBox,
                             QSizePolicy)
-from PyQt6.QtGui import QColor, QPalette, QFont, QIcon
+from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon
 
 
-PRIMARY             = 1                           # buttonstyle for highlighted button 
-SECONDARY           = 2                           # buttonstyle for normal action
-SUPTLE              = 3                           # buttonstyle for subtle appearance 
-ICON                = 4                           # buttonstyle for icon only button 
-RED                 = 5                           # buttonstyle for red - stop - style 
-BUTTON_STYLES = [PRIMARY, SECONDARY, SUPTLE, ICON, RED]
 
-# enums for style getter  - tuple for light and dark theme 
-# color see https://www.w3.org/TR/SVG11/types.html#ColorKeywords
+#-------------------------------------------------------------------------------
+# enums   
+#-------------------------------------------------------------------------------
+
+class icon (StrEnum):
+    """ available icons"""
+    
+    # --- icons ---- 
+
+    # <a target="_blank" href="https://icons8.com/icon/15813/pfeil%3A-einklappen">Pfeil: Einklappen</a> 
+    # Icon von https://icons8.com
+    # Windows 11 icon style 
+    # color dark theme #C5C5C5, light theme #303030
+    # size 96x96
+
+    ICON_SETTINGS   = "settings" 
+    ICON_COLLAPSE   = "collapse" 
+    ICON_OPEN       = "open"     
+    ICON_EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
+    ICON_DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
+    ICON_ADD        = "add"      
+    ICON_NEXT       = "next"     
+    ICON_PREVIOUS   = "previous" 
+
+
+class button_style (Enum):
+    """ button styles for Button widget"""
+
+    PRIMARY         = 1                           # buttonstyle for highlighted button 
+    SECONDARY       = 2                           # buttonstyle for normal action
+    SUPTLE          = 3                           # buttonstyle for subtle appearance 
+    ICON            = 4                           # buttonstyle for icon only button 
+    RED             = 5                           # buttonstyle for red - stop - style 
+
+
+class style (Enum):
+    """ enums for style getter  - tuple for light and dark theme """
+
+    # color see https://www.w3.org/TR/SVG11/types.html#ColorKeywords
 
                     #  light dark
-STYLE_NORMAL        = (None, None)
-STYLE_COMMENT       = ("dimgray","lightGray")  
-STYLE_ERROR         = ('red', 'red')
-STYLE_HINT          = ("blue", "blue")
-STYLE_WARNING       = ('orange','orange')
+    NORMAL        = (None, None)
+    COMMENT       = ("dimgray","lightGray")  
+    ERROR         = ('red', 'red')
+    HINT          = ("blue", "blue")
+    WARNING       = ('orange','orange')
 
-SIZE_HEADER         = 14
-SIZE_NORMAL         = None 
+
+class size (Enum):
+    HEADER         = 14
+    NORMAL         = 11 
 
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
 ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
@@ -140,8 +174,8 @@ class Widget:
                  id = None,
                  disable = None, 
                  hide = None,
-                 style = STYLE_NORMAL,
-                 fontSize= SIZE_NORMAL): 
+                 style = style.NORMAL,
+                 fontSize= size.NORMAL): 
         
         # needed to build reference so self won't be garbage collected 
         super().__init__ ()
@@ -242,14 +276,16 @@ class Widget:
             # print (str(self) + " - refresh")
             self._get_properties ()
 
-            # overwrite self diable state 
-            if disable: 
+            # overwrite self disable state 
+            if disable == True: 
                 self._disabled = True 
             else: 
                 if self._disabled_getter == True: 
                     pass                        # disable is fixed 
                 else:
                     self._disabled = False
+
+            # logging.debug (f"{self} - refresh (disable={disable})")
 
             self._set_Qwidget ()
 
@@ -362,6 +398,14 @@ class Widget:
 
         # set value bei property and object 
 
+        if isinstance(self._setter, types.FunctionType):
+            qualname  = self._setter.__qualname__
+        elif callable(self._setter):        
+            qualname  = self._setter.__qualname__
+        else: 
+            qualname = ''
+        logging.debug (f"{self} changed and set: {qualname} ({newVal})")
+
         if self._obj is not None and isinstance (self._setter, types.FunctionType):            
 
             obj = self._obj() if callable (self._obj) else self._obj
@@ -409,10 +453,10 @@ class Widget:
             qualname = ''
 
         logging.debug (f"{self} emit sig_changed in 50ms: {qualname} ({newVal})")
-
+        self.sig_changed.emit ()
         # emit signal delayed so we leave the scope of Widget 
-        timer = QTimer()                                
-        timer.singleShot(50, self.sig_changed.emit)     # delayed emit 
+        # timer = QTimer()                                
+        # timer.singleShot(50, self.sig_changed.emit)     # delayed emit 
 
 
     def _layout_add (self, widget = None, col = None):
@@ -466,7 +510,7 @@ class Widget:
             widget : QWidget = self
 
         # set font 
-        if self._fontSize == SIZE_HEADER:
+        if self._fontSize == size.HEADER:
             font = widget.font() 
             font.setPointSize(14)
             font.setWeight (QFont.Weight.ExtraLight) #Medium #DemiBold
@@ -524,17 +568,16 @@ class Widget:
         self._set_Qwidget_style_color (self._style, QPalette.ColorRole.Base)  
 
 
-    def _set_Qwidget_style_color (self, style, color_role : QPalette.ColorRole= None):
+    def _set_Qwidget_style_color (self, aStyle : style, color_role : QPalette.ColorRole= None):
         """ 
         low level set of colored part of widget accordings to style and color_role
             color_role = .Text, .Base (background color), .Window
         """
-
         # ! ColorRole.Base and ColorRole.Window not implemented up to now
         # if not color_role in [QPalette.ColorRole.Text, QPalette.ColorRole.WindowText]:
         #     raise ValueError (f"{self}: color_role '{color_role}' not implemented")
 
-        if style in [STYLE_WARNING, STYLE_ERROR, STYLE_COMMENT]:
+        if aStyle in [style.WARNING, style.ERROR, style.COMMENT]:
 
             palette : QPalette = self.palette()
             if self._palette_normal is None:                     # store normal palette for later reset 
@@ -543,7 +586,7 @@ class Widget:
                 index = self.LIGHT_INDEX
             else: 
                 index = self.DARK_INDEX
-            color = QColor (style [index])
+            color = QColor (aStyle.value[index])
 
             # if it's background color apply alpha
             if color_role == QPalette.ColorRole.Base:
@@ -553,7 +596,7 @@ class Widget:
 
             self._update_palette (palette)                      # Qt strange : on init 'setPalette' is needed
                                                                 # later compounds like SpinBox need different treatment
-        elif style == STYLE_NORMAL and self._palette_normal is not None:
+        elif aStyle == style.NORMAL and self._palette_normal is not None:
             self._update_palette (self._palette_normal)
 
 
@@ -915,10 +958,11 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
     def _on_finished(self):
         """ signal slot finished"""
         new_val = round(self.value(), self._dec)  # Qt sometimes has float artefacts 
+
+        # check i f the value in percent changed based on decimals 
         if self._unit == '%':
             my_val  = round(self._val * 100, self._dec)
             if new_val == my_val: 
-                print("---finished", " no change")
                 return
             new_abs_val = round(new_val / 100.0, 8)
         else: 
@@ -998,7 +1042,7 @@ class ToolButton (Widget, QToolButton):
     ICON_NEXT       = "next"     
     ICON_PREVIOUS   = "previous" 
 
-    ICONS = {                           # icon dict with an tuple of QIcons for light and dark mode 
+    icon_cache = {                           # icon dict with an tuple of QIcons for light and dark mode 
         ICON_SETTINGS: None,
         ICON_COLLAPSE: None,
         ICON_OPEN    : None,
@@ -1010,21 +1054,16 @@ class ToolButton (Widget, QToolButton):
         }
 
 
-    ICON_LEFT         = Qt.ArrowType.LeftArrow
-    ICON_RIGHT        = Qt.ArrowType.RightArrow
-    ICON_UP           = Qt.ArrowType.UpArrow
-    ICON_DOWN         = Qt.ArrowType.DownArrow
-
     @classmethod
     def _get_icon(cls, icon_name, light_mode = True):
         """ load icon_name from file and store into class dict (cache) """
 
-        if icon_name not in cls.ICONS:
+        if icon_name not in icon:
             raise ValueError (f"Icon name '{icon_name} not available")
 
         # icon not loaded up to now  - load it 
 
-        if cls.ICONS[icon_name] is None:
+        if cls.icon_cache[icon_name] is None:
             dirname = os.path.dirname(os.path.realpath(__file__))
             image_path_light = os.path.join(dirname, 'icons', icon_name + '_light'+ '.png')
             image_path_dark  = os.path.join(dirname, 'icons', icon_name + '_dark'+ '.png')
@@ -1036,12 +1075,12 @@ class ToolButton (Widget, QToolButton):
 
             icon_light = QIcon (image_path_light)
             icon_dark  = QIcon (image_path_dark)
-            cls.ICONS[icon_name] = (icon_light, icon_dark)
+            cls.icon_cache[icon_name] = (icon_light, icon_dark)
 
         if light_mode: 
-            return cls.ICONS[icon_name][0]
+            return cls.icon_cache[icon_name][0]
         else: 
-            return cls.ICONS[icon_name][1]
+            return cls.icon_cache[icon_name][1]
 
 
     def __init__(self, *args, 
@@ -1339,8 +1378,8 @@ class Test_Widgets (QMainWindow):
 
         r = 0
         Label  (l,r,0,get="Header")
-        Label  (l,r,1,fontSize=SIZE_HEADER, colSpan=2,get="This is my header in 2 columns")
-        CheckBox (l,r,3,fontSize=SIZE_HEADER, text="Header", width=(90, 120), disable=lambda: self.disabled, )
+        Label  (l,r,1,fontSize=size.HEADER, colSpan=2,get="This is my header in 2 columns")
+        CheckBox (l,r,3,fontSize=size.HEADER, text="Header", width=(90, 120), disable=lambda: self.disabled, )
         r += 1
         Label  (l,r,0,get="Label",width=(90,None))
         Label  (l,r,1,get=lambda: f"Disabled: {str(self.disabled)}")
@@ -1386,7 +1425,7 @@ class Test_Widgets (QMainWindow):
         Label  (l,r,0,get="ToolButtons")
         l_tools = QHBoxLayout()
         l_tools.setSpacing (1)
-        for icon_style in ToolButton.ICONS: 
+        for icon_style in icon: 
             ToolButton (l_tools, icon=icon_style, set=self.toggle_disabled)
         l_tools.addStretch(2)
         l.addLayout (l_tools,r,1, 1, 2)
@@ -1416,9 +1455,9 @@ class Test_Widgets (QMainWindow):
     
     def style (self):
         if self.disabled:
-            return STYLE_ERROR
+            return style.ERROR
         else: 
-            return STYLE_NORMAL
+            return style.NORMAL
     
     def set_str(self, aStr):
         if not isinstance (aStr, str): raise ValueError ("no string: ", aStr)
@@ -1456,6 +1495,6 @@ if __name__ == "__main__":
     # print (font.defaultFamily(), font.family(), font.families())
     app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
 
-    w = Test_Widgets()
-    w.show()
+    Test_Widgets().show()
+    
     app.exec() 

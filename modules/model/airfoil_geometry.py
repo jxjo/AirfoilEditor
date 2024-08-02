@@ -889,7 +889,7 @@ class Side_Airfoil:
     
 
     def _handle_highpoint_change (self, x_changed : bool, y_changed : bool, 
-                                  xy_prev : tuple = None): 
+                                  xy_prev : tuple = None, moving=False): 
         """ 
         callback from highpoint - handle new x,y of highpoint 
         """
@@ -912,7 +912,10 @@ class Side_Airfoil:
             x_new = self.highpoint.x
             self._move_max_x (x_cur, x_new)             # a little bit more complicated ...
 
-        self._changed ()                                # inform parent 
+        if moving:
+            pass                                        # on move do not inform parent
+        else:  
+            self._changed ()                            # final pos - inform parent 
 
 
     def yFn (self,x):
@@ -990,7 +993,7 @@ class Side_Airfoil:
         return self._max_spline.eval (x)
 
 
-    def _move_max_x (self, newMax):
+    def _move_max_x (self, x_cur, x_new):
         """ 
         moves the point of maximum to newMaxX  
         """
