@@ -112,6 +112,10 @@ class Main_Window (QMainWindow):
 
         self.set_edit_mode (False) 
 
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        text = f""  
+        return f"<{type(self).__name__}{text}>"
 
 
     def _init_layout (self): 
@@ -121,16 +125,17 @@ class Main_Window (QMainWindow):
         #  || file panel ||        edit panel             >||
         #                 | Geometry  | Coordinates | ... >| 
 
+        self._edit_panel  = Panel ()
         l_edit = QHBoxLayout()
         l_edit.addWidget (Geometry_Panel   (self, self.airfoil), stretch= 5)
         l_edit.addWidget (Panels_Panel     (self, self.airfoil), stretch= 4)
         l_edit.addWidget (LE_TE_Panel      (self, self.airfoil), stretch= 4)
         l_edit.addStretch (3)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
-        self._edit_panel  = QWidget ()
         self._edit_panel.setLayout (l_edit)
 
         self._file_panel = File_Panel (self, self.airfoil)
+
         l_lower = QHBoxLayout()
         l_lower.addWidget (self._file_panel)
         l_lower.addWidget (self._edit_panel, stretch=2)
@@ -168,11 +173,14 @@ class Main_Window (QMainWindow):
             # enter edit_mode - save original, create working copy as splined airfoil 
             self._airfoil_sav = self._airfoil
             try:                                    # normal airfoil - allows new geometry
-                airfoil  = self._airfoil.asCopy (nameExt='-mod', geometry=GEO_SPLINE)
+                airfoil  = self._airfoil.asCopy (nameExt=None, geometry=GEO_SPLINE)
             except:                                 # bezier or hh does not allow new geometry
-                airfoil  = self._airfoil.asCopy (nameExt='-mod')
+                airfoil  = self._airfoil.asCopy (nameExt=None)
             airfoil.set_usedAs (DESIGN)             # will have another visualization 
-            airfoil.set_isModified (False)          # no save in the beginning needed
+
+            airfoil.normalize()                     
+            # airfoil.set_isModified (False)          # no save in the beginning needed
+
             self.set_airfoil (airfoil, silent=True) # set without signal  
 
         elif self.edit_mode and not aBool:
@@ -189,14 +197,14 @@ class Main_Window (QMainWindow):
                 return                              # user cancel
 
         self._edit_mode = aBool is True 
+
         self.sig_airfoil_changed.emit ()            # signal new airfoil 
-        self.sig_edit_mode.emit (aBool)             # signal panels change edit mode 
         
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
-        Panel.refresh_childs (self._edit_panel)
-        Panel.refresh_childs (self._file_panel)
+        self._edit_panel.refresh(disable=not self.edit_mode)
+        self._file_panel.refresh(disable=not self.edit_mode)
 
 
     def airfoil (self) -> Airfoil:
@@ -255,22 +263,15 @@ class Airfoil_Panel_Abstract (Edit_Panel):
     def __init__ (self, *args, **kwargs):
         super().__init__ (*args, **kwargs)
 
-        # connect to signals of main 
-        # self.myApp.sig_edit_mode.connect (self._on_edit_mode)
 
         # connect to change signal of widget 
         for w in self.widgets:
             w.sig_changed.connect (self._on_airfoil_widget_changed)
 
 
-    def _on_edit_mode (self, is_edit_mode : bool):
-        """ enter / leave edit mode"""
-        self.set_enabled_widgets (is_edit_mode)
-
-
-    def _on_airfoil_widget_changed (self, *_ ):
+    def _on_airfoil_widget_changed (self):
         """ user changed data in widget"""
-        # logging.debug (f"{self} widget changed: {str(object_class)} {setter_name} {newVal}")
+        logging.debug (f"{self} widget changed slot")
         self.myApp.sig_airfoil_changed.emit ()
 
 
@@ -289,7 +290,6 @@ class File_Panel (Airfoil_Panel_Abstract):
 
         super().__init__ (*args, **kwargs)
 
-        self.myApp.sig_edit_mode.connect (self._on_edit_mode)
 
     def _on_airfoil_widget_changed (self, object_class, setter_name, newVal ):
         """ user changed data in widget"""
@@ -308,12 +308,10 @@ class File_Panel (Airfoil_Panel_Abstract):
         Airfoil_Select_Open_Widget (l_view,r,c, withOpen=True, asSpin=False, signal=False,
                                     get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
-        SpaceR (l_view,r)
+        SpaceR (l_view,r, stretch=2)
         r += 1
         Button (l_view,r,c, text="Edit Airfoil", width=100, 
                 set=lambda : self.myApp.set_edit_mode(True))
-        r += 1
-        l_view.setRowStretch (r,2)
         l_view.setColumnStretch (1,2)
         l_view.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
@@ -378,20 +376,17 @@ class File_Panel (Airfoil_Panel_Abstract):
 
         if self.myApp.edit_mode:
             self._stack_widget.setCurrentWidget (self._edit_panel)
-        else: 
-            self._stack_widget.setCurrentWidget (self._view_panel)
-
-
-    def _on_edit_mode (self, is_edit_mode : bool):
-        """ enter / leave edit mode"""
-
-        if is_edit_mode:
             self.set_background_color (color='deeppink', alpha=0.2)
         else: 
+            self._stack_widget.setCurrentWidget (self._view_panel)
             self.reset__background_color () 
 
-        self._switch_panel ()
-        self.refresh()                  # refresh header
+
+    def refresh (self, disable=None):
+        # overloaded to switch panel 
+
+        self._switch_panel ()               # edit/view mode 
+        super().refresh()                   # do not disable self
 
 
 
@@ -400,9 +395,6 @@ class Geometry_Panel (Airfoil_Panel_Abstract):
 
     name = 'Airfoil'
     _width  = (350, None)
-
-    def refresh (self):
-        super().refresh()
 
     def _init_layout (self): 
 

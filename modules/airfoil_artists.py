@@ -226,9 +226,14 @@ class Airfoil_Artist (Artist):
             if (airfoil.isLoaded):
 
                 # the first airfoil get's in the title 
+
                 if iair == 0:
-                    self._plot_title (airfoil.name)
+                    if airfoil.usedAs == DESIGN:
+                        self._plot_title (airfoil.name, subTitle=self._get_modifications (airfoil) )
+                    else:
+                        self._plot_title (airfoil.name)
                     label = None
+
                 # ... the others in the legand 
                 else: 
                     if self.label_with_airfoil_type:
@@ -278,6 +283,11 @@ class Airfoil_Artist (Artist):
                     self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
                                       text=text,anchor=(0.5,1) )
 
+
+    def _get_modifications (self, airfoil : Airfoil) -> str: 
+        """ returns the modifications made to the airfoil as long strin"""
+
+        return ', '.join(airfoil.geo.modifications)
 
                 # show Bezier or Hicks Henne shape function
                 # if self.show_shape_function:

@@ -350,9 +350,11 @@ class Artist():
         self._plots.append(label)
 
 
-    def _plot_title (self, text : str, align='left', offset : tuple = (30,10)):
+    def _plot_title (self, title : str, subTitle : str|None = None, 
+                     align='left', offset : tuple = (30,10)):
         """ 
-        plot a PlotItem title at fixed position using LabelItem
+        plot a title, optionally with a sub title, at fixed position 
+            - subTitle - optional text below title 
             - align = 'left' | 'center' | 'right'
             - offset - optional - tuple (x,y)
             """
@@ -367,8 +369,14 @@ class Artist():
             parentPos = (0.5 + 0.02,0)
             itemPos   = (0.5,0)
 
-        self._plot_text (text, color=QColor(self.COLOR_HEADER), fontSize=self.SIZE_HEADER, 
+        self._plot_text (title, color=QColor(self.COLOR_HEADER), fontSize=self.SIZE_HEADER, 
                          parentPos=parentPos, itemPos=itemPos, offset=offset)
+
+        if subTitle is not None: 
+            sub_offset = (offset[0], offset[1]+25)
+            self._plot_text (subTitle, color=QColor(self.COLOR_LEGEND), fontSize=self.SIZE_NORMAL, 
+                            parentPos=parentPos, itemPos=itemPos, offset=sub_offset)
+
 
 
     def _remove_plots (self):

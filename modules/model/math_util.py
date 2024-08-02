@@ -150,6 +150,8 @@ class Point:
 
             new_val = max (new_val, min_val)
             new_val = min (new_val, max_val)
+
+            new_val = round (new_val,10)            # avoid float issues 
             has_changed = val != new_val 
 
         return new_val, has_changed  

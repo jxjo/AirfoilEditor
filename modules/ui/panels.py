@@ -24,7 +24,7 @@ from ui.widgets         import Widget, Label, CheckBox, SIZE_HEADER
 
 class Panel (QWidget):
     """ 
-    Abstract superclass for all types of panels like Edit, Diagram 
+    Superclass for all types of panels like Edit, Diagram 
     """
 
     name = "Abstract Panel"             # will be title 
@@ -33,11 +33,11 @@ class Panel (QWidget):
     _height = None 
 
     @staticmethod
-    def refresh_childs (parent: QWidget):
+    def refresh_childs (parent: QWidget, disable=None):
         """ refresh all childs of parent"""
         p : Panel
         for p in parent.findChildren (Panel):
-            p.refresh() 
+            p.refresh(disable=disable) 
 
 
     def __init__(self, parent = None, 
@@ -100,6 +100,13 @@ class Panel (QWidget):
         if max_width: self.setMaximumWidth(max_width)
 
 
+    def refresh (parent: QWidget, disable=None):
+        """ refresh all child panels self"""
+        p : Panel
+        for p in parent.findChildren (Panel):
+            p.refresh(disable=disable) 
+
+
 
 class Edit_Panel (Panel):
     """ 
@@ -126,6 +133,11 @@ class Edit_Panel (Panel):
         self._switched_on = switched
 
         l_panel = layout 
+
+        # set background color - save the original one 
+
+        set_background (self, darker_factor = 105)
+        self._palette_sav = self.palette()          # save this current color palette 
 
         # header layout - with optional on/off switch 
 
@@ -166,11 +178,6 @@ class Edit_Panel (Panel):
         l_main.setSpacing(2)
         self.setLayout (l_main)
 
-        # set background color - save the original one 
-
-        set_background (self, darker_factor = 105)
-        self._palette_sav = self.palette()          # save this current color palette 
-
         # initial switch state 
         self.set_switched_on (self._switched_on)
 
@@ -210,10 +217,10 @@ class Edit_Panel (Panel):
         return self.findChildren (Widget)
  
 
-    def refresh(self):
+    def refresh(self, disable=None):
         """ refreshes all Widgets on self """
         for w in self.widgets:
-            w.refresh()
+            w.refresh(disable=disable)
         logging.debug (f"{self} - refresh")
 
 

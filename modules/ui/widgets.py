@@ -12,7 +12,7 @@ import copy
 import types
 import typing 
 
-from PyQt6.QtCore import QEvent, QSize, Qt, QMargins, pyqtSignal
+from PyQt6.QtCore import QEvent, QSize, Qt, QMargins, pyqtSignal, QTimer
 
 from PyQt6.QtWidgets import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout
 from PyQt6.QtWidgets import (
@@ -105,7 +105,7 @@ class Widget:
 
     # Signals
 
-    sig_changed = pyqtSignal()    # (Object class name, Method as string, new value)
+    sig_changed  = pyqtSignal()    # (Object class name, Method as string, new value)
 
 
     @staticmethod
@@ -172,16 +172,15 @@ class Widget:
         if prop is not None and get is not None: 
             raise ValueError (f"{self}: arguments 'obj' and 'get' can't be mixed together")
 
-        self._obj = obj 
-        if isinstance (prop, property): 
-            self._obj_property : property = prop
-            self._obj_setter   : function = self._build_obj_setter   (obj, prop)
+        if isinstance (prop, property) and obj is not None: 
+            self._obj    = obj 
+            self._getter = prop                                     # property
+            self._setter = self._get_setter_of_property (obj, prop) # function
         else:
-            self._obj_property = None
-            self._obj_setter   = None
+            self._obj    = None 
+            self._getter = get                                      # bound method or None 
+            self._setter = set 
 
-        self._getter = get 
-        self._setter = set 
         self._id = id 
 
         self._while_setting = False 
@@ -198,7 +197,7 @@ class Widget:
             self._disabled   = False                        # default values 
             self._disabled_getter = None
 
-        if (self._setter is None and self._obj_setter is None) and self._disabled == False: 
+        if self._setter is None and self._disabled == False: 
             self._disabled_getter = True
             self._disabled = True  
 
@@ -224,17 +223,16 @@ class Widget:
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
-        if self._val is None: 
-            text = '' 
-        else: 
-            text = f" '{str(self._val)}'"
+        text = f" '{str(self._val)}'" if self._val is not None else ''
         return f"<{type(self).__name__}{text}>"
 
 
     #---  public methods 
 
-    def refresh (self):
-        """refesh self by re-reading the 'getter' path 
+    def refresh (self, disable : bool|None = None):
+        """
+        Refesh self by re-reading the 'getter' path 
+            - disable: optional overwrite of widgets internal disable state  
         """
 
         if self._while_setting:                           # avoid circular actions with refresh()
@@ -243,6 +241,16 @@ class Widget:
         else: 
             # print (str(self) + " - refresh")
             self._get_properties ()
+
+            # overwrite self diable state 
+            if disable: 
+                self._disabled = True 
+            else: 
+                if self._disabled_getter == True: 
+                    pass                        # disable is fixed 
+                else:
+                    self._disabled = False
+
             self._set_Qwidget ()
 
 
@@ -277,18 +285,14 @@ class Widget:
         """
         # should be overloaded for additional properties 
 
-        # access value' either via property approach or via getter (bound method) 
-        if self._obj: 
-            self._val = self._get_property_value (self._obj, self._obj_property)
-        else: 
-            self._val = self._get_value (self._getter, self._id)
+        self._val       = self._get_value (self._getter, obj=self._obj, id= self._id)
 
         self._disabled  = self._get_value (self._disabled_getter, default=self._disabled)
         self._hidden    = self._get_value (self._hidden_getter, default=self._hidden)
         self._style     = self._get_value (self._style_getter)
         
  
-    def _get_value(self, getter, id=None, default=None):
+    def _get_value(self, getter, id=None, obj=None, default=None):
         """
         Read the value. 'getter' can be 
             - bound method 
@@ -296,8 +300,11 @@ class Widget:
         Optional 'id' is used as argument of bound method 'getter'
         'default' is taken, if 'getter' results in None 
         """
+        if isinstance (getter, property):         # getter is a property of obj 
+            o = obj() if callable (obj) else obj
+            val = getter.__get__(o, type(o))
 
-        if callable(getter):                            # getter is a method ?
+        elif callable(getter):                          # getter is a bound method ?
             if not id is None:                          # an object Id was set to identify object
                 val =  getter(id=self._id) 
             else:            
@@ -321,26 +328,29 @@ class Widget:
 
 
 
-    def  _build_obj_setter (self, obj , obj_property : property) :  # -> function | None
-        """ build a setter function like 'set_thickness' out of the (get) obj_property"""
+    def  _get_setter_of_property (self, obj , obj_property : property) : #  -> function | None:
+        """ build a setter function like 'set_thickness(...)' out of the (get) property"""
 
         o = obj() if callable (obj) else obj            # obj either bound methed or object
 
         prop_name = obj_property.fget.__name__ 
-        set_name  = "set_" + prop_name          
-        try: 
-            set_function = getattr (o.__class__, set_name)
-        except: 
+        set_name  = "set_" + prop_name  
+        setter = None         
+
+        if hasattr (o.__class__, set_name):
+            setter = getattr (o.__class__, set_name)
+
+        if setter is None:  
             logging.warning (f"{self} setter function '{set_name} does not exist in {o.__class__}")
-            set_function = None
-        return set_function 
+
+        return setter 
+
 
 
     def _set_value(self, newVal):
         """write the current value of the widget to model via setter path
         """
 
-       
         if newVal is None:                          # None for button 
             pass
         elif self._val == newVal :                  # different signals could have beem emitted
@@ -352,13 +362,21 @@ class Widget:
 
         # set value bei property and object 
 
-        if self._obj_setter is not None:            
+        if self._obj is not None and isinstance (self._setter, types.FunctionType):            
 
             obj = self._obj() if callable (self._obj) else self._obj
-            self._obj_setter (obj, newVal)          # Python magic: _obj_setter is a function 
+            if newVal is None:                      # typically a button method which has no arg
+                if self._id is None:                # an object Id was set to identify object
+                    self._setter(obj)               # normal callback
+                else:            
+                    self._setter(obj, id=self._id) 
+            else:                                   # a method like: def myMth(self, newVal)
+                if self._id is None:                # an id was set to identify object?
+                    self._setter(obj, newVal)       # normal callback
+                else:            
+                    self._setter(obj, newVal, id=self._id) 
 
             self._emit_change (newVal) 
-
 
         # set value bei bound method or function (lambda)
 
@@ -373,7 +391,6 @@ class Widget:
                     self._setter(newVal)            # normal callback
                 else:            
                     self._setter(newVal, id=self._id) 
-
             self._emit_change (newVal) 
 
         self._while_setting = False                
@@ -388,14 +405,14 @@ class Widget:
             qualname  = self._setter.__qualname__
         elif callable(self._setter):        
             qualname  = self._setter.__qualname__
-        elif isinstance(self._obj_setter, types.FunctionType):
-            qualname  = self._obj_setter.__qualname__
         else: 
             qualname = ''
 
-        logging.debug (f"{self} sig_changed: {qualname} ({newVal})")
+        logging.debug (f"{self} emit sig_changed in 50ms: {qualname} ({newVal})")
 
-        self.sig_changed.emit ()
+        # emit signal delayed so we leave the scope of Widget 
+        timer = QTimer()                                
+        timer.singleShot(50, self.sig_changed.emit)     # delayed emit 
 
 
     def _layout_add (self, widget = None, col = None):
@@ -898,12 +915,17 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
     def _on_finished(self):
         """ signal slot finished"""
         new_val = round(self.value(), self._dec)  # Qt sometimes has float artefacts 
-
-        # get val from Qwidget - handle percent unit automatically 
         if self._unit == '%':
-            self._set_value (round(new_val / 100.0, 10))
+            my_val  = round(self._val * 100, self._dec)
+            if new_val == my_val: 
+                print("---finished", " no change")
+                return
+            new_abs_val = round(new_val / 100.0, 8)
         else: 
-            self._set_value (new_val)
+            new_abs_val = new_val 
+        # get val from Qwidget - handle percent unit automatically 
+
+        self._set_value (new_abs_val)
 
 
 
@@ -932,6 +954,12 @@ class Button (Widget, QPushButton):
         # connect signals 
         self.pressed.connect(self._on_pressed)
 
+
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        text = f" '{str(self._text)}'" if self._text is not None else ''
+        return f"<{type(self).__name__}{text}>"
+    
 
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
@@ -1031,6 +1059,13 @@ class ToolButton (Widget, QToolButton):
         self._layout_add ()
 
         self.clicked.connect(self._on_pressed)
+
+
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+
+        text = f" '{str(self._icon)}'" if self._icon is not None else ''
+        return f"<{type(self).__name__}{text}>"
 
 
     def _set_Qwidget (self):

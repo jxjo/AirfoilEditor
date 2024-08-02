@@ -76,6 +76,7 @@ class Airfoil:
         else: 
             self.workingDir   = ''
         self._name        = name if name is not None else ''
+        self._name_org    = None                 # will hold original bname for modification label
         self.sourceName   = None                 # long name out of the two blended airfoils (TSrakAirfoil)
 
         if not x is None: x = x if isinstance(x,np.ndarray) else np.asarray (x)
@@ -181,8 +182,8 @@ class Airfoil:
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
-        info = f"\'{self.name}\'"
-        return f"{type(self).__name__} {info}"
+        info = f"'{self.name}'"
+        return f"<{type(self).__name__} {info}>"
 
 
     def _handle_geo_changed (self):
@@ -190,12 +191,17 @@ class Airfoil:
 
         self._x = self.geo.x
         self._y = self.geo.y
+        self.geo.set_xy_org (self._x, self._y)          # update the copy of x,y in geo 
 
         self.set_isModified (True)
 
-        self.geo.set_xy_org (self._x, self._y)          # update the copy of x,y in geo 
+        logging.debug (f"{self} - geometry changed: {self.geo.modifications_as_label} ")
 
-        logging.debug (f"{self} - geometry changed, reload x,y ")
+        # airfoil will get new name 
+        if self._name_org is None: 
+            self._name_org = self.name
+        self.set_name (self._name_org + "_" + self.geo.modifications_as_label)
+
 
 
 
@@ -611,7 +617,6 @@ class Airfoil:
         Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y
         Returns True/False if normalization was done  
         """
-
         return self.geo.normalize()  
 
 

@@ -50,7 +50,7 @@
                     
                     """
 
-
+from enum import Enum
 import numpy as np
 import logging
 import time
@@ -68,6 +68,26 @@ UPPER       = 'upper'
 LOWER       = 'lower'
 THICKNESS   = 'thickness'
 CAMBER      = 'camber'
+
+
+
+# -----------------------------------------------------------------------------
+# Enums 
+# -----------------------------------------------------------------------------
+
+
+class mod (Enum):
+    """ possible modifications of airfoil geometry"""
+    
+    NORMALIZE       = ("normalized","norm")
+    REPANEL         = ("repan","p")
+    MAX_THICK       = ("thick","t")
+    MAX_THICK_X     = ("thick_x","tx")
+    MAX_CAMB        = ("camp","t")
+    MAX_CAMB_X      = ("camb_x","tx")
+    TE_GAP          = ("te_gap","t")
+    LE_RADIUS       = ("le_radius","r")
+    STRAK           = ("blend","blend")
 
 
 
@@ -1368,7 +1388,6 @@ class Side_Airfoil_HicksHenne (Side_Airfoil):
 # -----------------------------------------------------------------------------
 
 
-
 class Geometry (): 
     """ 
     Basic geometry strategy class - uses linear interpolation of points 
@@ -1397,24 +1416,74 @@ class Geometry ():
         self._x = None   
         self._y = None
 
-        self._callback_changed = onChange      # callback when self was changed (by user) 
+        self._callback_changed = onChange       # callback when self was changed (by user) 
 
-        self._thickness : Side_Airfoil = None  # thickness distribution
-        self._camber    : Side_Airfoil = None  # camber line
+        self._thickness : Side_Airfoil = None   # thickness distribution
+        self._camber    : Side_Airfoil = None   # camber line
 
-        self._curvature : Curvature_of_Spline     = None  # curvature object
+        self._curvature : Curvature_of_Spline = None  # curvature object
+
+        self._modification_dict = {}            # dict of modifications made to self 
 
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
-        return f"<{type(self).__name__} (np: {self.nPoints})>"
+        return f"<{type(self).__name__}>"
 
 
-    def _changed (self):
-        """ geometry changed - handle callbacks"""
+    def _changed (self, aMod : mod, val = None ):
+        """ geometry changed 
+            - save the modification made aMod with optional val
+            - handle callbacks"""
+
+        # store modification made 
+
+        if isinstance (val,float): val = round (val,2)
+        self._modification_dict[aMod] = val
+
+        # info Airfoil via callback  
 
         if callable(self._callback_changed):
             self._callback_changed ()
+
+
+    @property
+    def modifications (self) -> list [tuple]:
+        """returns a list of modfications as string like 'repenaled 190'"""
+        mods = []
+        aMod : mod 
+        for aMod, val in self._modification_dict.items():
+                val_str = f"{str(val)}" if val is not None else ''
+                mods.append (f"{aMod.value[0]} {val_str}" )
+        return mods
+
+    @property
+    def modifications_as_label (self) -> list [tuple]:
+        """returns a short label string of all modifications  'norm_t8.1_cx40.3'"""
+        mods = []
+        # build list of relevant modifications (use short name) 
+        nmods = len (self._modification_dict)
+        aMod : mod 
+        for aMod, val in self._modification_dict.items():
+                if nmods > 3 and aMod ==  mod.REPANEL:      # skip repanneled if too long
+                    continue
+                if nmods > 4 and aMod == mod.NORMALIZE:     # skip norm if too long
+                    continue
+                if aMod == mod.TE_GAP:
+                    val = round(val,2) 
+                elif isinstance (val, float): 
+                    val = round(val,1)
+                mods.append ((aMod.value[1],val))
+
+        # we got final list of tuples - build string
+        label = ''
+        for mod_entry in mods:
+            val = mod_entry[1]
+            val_str = f"{val}" if val is not None else ''
+            label = label + '_' + mod_entry[0] + val_str
+
+        return label
+
 
     @property
     def x (self): 
@@ -1488,7 +1557,7 @@ class Geometry ():
     @property
     def te_gap (self): 
         """ trailing edge gap"""
-        return  self.y[0] - self.y[-1]
+        return  round(self.y[0] - self.y[-1],7)
 
     @property
     def le_radius (self): 
@@ -1652,11 +1721,11 @@ class Geometry ():
                 y[i] = y[i] - 0.5 * dgap * x[i] * tfac # * gap   
 
         self._x, self._y = x, y 
-
+        
         # handle changes 
 
         self._reset()
-        self._changed()
+        self._changed (mod.TE_GAP, newGap*100)
 
 
     def set_le_radius (self, new_radius : float, xBlend : float = 0.1):
@@ -1685,24 +1754,35 @@ class Geometry ():
 
         self._rebuild_from_camb_thick ()
         self._reset()
-        self._changed ()
+        self._changed (mod.LE_RADIUS, new_radius*100)
 
  
     def set_max_thick (self, val): 
         """ change max thickness"""
+
         self.thickness.highpoint.set_y(val)
+        self._changed (mod.MAX_THICK, val*100)
+
 
     def set_max_thick_x (self, val): 
         """ change max thickness x position"""
+
         self.thickness.highpoint.set_x(val)
+        self._changed (mod.MAX_THICK_X, val*100)
+
 
     def set_max_camb (self, val): 
         """ change max camber"""
+
         self.camber.highpoint.set_y(val)
+        self._changed (mod.MAX_CAMB, val*100)
+
 
     def set_max_camb_x (self, val): 
         """ change max camber x position"""
+
         self.camber.highpoint.set_x(val)
+        self._changed (mod.MAX_CAMB_X, val*100)
 
 
     def upper_new_x (self, new_x): 
@@ -1738,6 +1818,21 @@ class Geometry ():
 
 
     def normalize (self) -> bool:
+        """
+        Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y
+        """
+
+        if self.isNormalized: return False
+
+        normalized = self._normalize() 
+
+        if normalized: 
+            self._reset ()                   # tell child objects like thickness
+            self._changed (mod.NORMALIZE)
+        return normalized
+    
+
+    def _normalize (self) -> bool:
         """
         Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y
         
@@ -1794,9 +1889,6 @@ class Geometry ():
 
         self._x = np.round (xn, 10) + 0.0
         self._y = np.round (yn, 10) + 0.0 
-
-        self._reset ()                   # tell child objects like thickness
-        self._changed ()
 
         return True
 
@@ -1871,7 +1963,7 @@ class Geometry ():
         self._y = np.concatenate ((np.flip(upper_y), lower_y[1:]))
 
         self._reset()
-        self._changed()
+        self._changed (mod.STRAK)
 
 
     # ------------------ private ---------------------------
@@ -1886,7 +1978,8 @@ class Geometry ():
 
         self._rebuild_from_camb_thick ()
         self._reset()
-        self._changed()
+
+        # _changed is done in the setter of thickness, camber 
 
 
     def _create_camb_thick (self): 
@@ -1908,7 +2001,10 @@ class Geometry ():
         if not self.isNormalized:
             logging.debug (f"{self} normalizing for thickness ")
             geo_norm = self.__class__(np.copy(self.x), np.copy(self.y))
-            geo_norm.normalize()
+            geo_norm._normalize()
+
+            if not geo_norm.isNormalized:
+                logging.error (f"{self} normalizing failed ")
             upper = geo_norm.upper
             lower = geo_norm.lower_new_x (upper.x) 
         else: 
@@ -2125,7 +2221,7 @@ class Geometry_Splined (Geometry):
         return self.sideDefaultClass (new_x, lower_y, name=LOWER)
 
 
-    def normalize (self):
+    def _normalize (self):
         """Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y"""
 
         if self.isNormalized: return False
@@ -2134,15 +2230,18 @@ class Geometry_Splined (Geometry):
         # on numeric issues (decimals) 
         # there try to iterate to a good result 
 
-        epsilon=1e-9                    # a little smaller then is _isLE_close...
+        epsilon=1e-9                            # a little smaller then is _isLE_close...
         isNormalized = False
         n = 0
 
         while not isNormalized and n < 10:
-            n += 1
-            logging.debug (f"{self} normalize spline iteration #{n}")
 
-            self.repanel () 
+            n += 1
+
+            self._reset_spline ()
+            self._repanel () 
+
+            super()._normalize()                # classic normalize based on coordinates
 
             # is real and splined le close enough
             xle, yle   = self.le
@@ -2152,9 +2251,6 @@ class Geometry_Splined (Geometry):
                 isNormalized = True
 
             logging.debug (f"{self} normalize spline iteration #{n} - norm2: {norm2:.7f}")
-
-        self._reset()
-        self._changed()
 
         return isNormalized
 
@@ -2183,7 +2279,7 @@ class Geometry_Splined (Geometry):
         dot = dx * dxTe + dy * dyTe
 
         return dot 
-        
+
 
     def repanel (self,  nPanels : int = None, 
                         nPan_upper : int = None, nPan_lower : int = None,
@@ -2198,6 +2294,24 @@ class Geometry_Splined (Geometry):
             le_bunch (float, optional): leading edge bunch. Defaults to 0.84.
             te_bunch (float, optional): trailing edge bunch. Defaults to 0.7.
         """
+
+        self._repanel (nPanels = nPanels, 
+                       nPan_upper = nPan_upper, nPan_lower  = nPan_lower,
+                       le_bunch = le_bunch, te_bunch = te_bunch)
+
+        # reset the child lines, keep current spline as it was the master
+        self._reset_lines()
+
+        # repanel could lead to a slightly different le 
+        super()._normalize()                    # do not do iteration in self.normalize
+
+        self._changed (mod.REPANEL)
+
+
+    def _repanel (self,  nPanels : int = None, 
+                        nPan_upper : int = None, nPan_lower : int = None,
+                        le_bunch : float = 0.84, te_bunch : float = 0.7):
+        """ inner repanel without normailzation and change handling  """
 
         # explicit panels for upper and lower have precedence 
         if not (nPan_upper and nPan_lower):
@@ -2218,8 +2332,11 @@ class Geometry_Splined (Geometry):
                 nPan_upper = self.iLe
                 nPan_lower = self.nPanels - nPan_upper
 
-        logging.debug (f"{self} repanel {nPan_upper} {nPan_lower}")
+        logging.debug (f"{self} _repanel {nPan_upper} {nPan_lower}")
         
+        # reset arc length of le - will be new calculated
+        self._ule = None 
+
         # new distribution for upper and lower - points = +1 
         u_cos_upper = self._get_panel_distribution (nPan_upper+1, le_bunch, te_bunch)
         u_new_upper = np.abs (np.flip(u_cos_upper) -1) * self.uLe
@@ -2236,14 +2353,7 @@ class Geometry_Splined (Geometry):
         self._x = np.round (x, 10)
         self._y = np.round (y, 10)
 
-        # reset the child lines, keep current spline as it was the master
-        self._reset_lines()
-
-        # repanel could lead to a slightly different le 
-        super().normalize()                    # do not do iteration in self.normalize
-
-        self._changed()
-
+        return 
 
 
     # ------------------ private ---------------------------
@@ -2550,7 +2660,7 @@ class Geometry_Bezier (Geometry):
   
         # reset chached values
         self._reset_lines()
-        self._changed ()
+        self._changed (mod.REPANEL)
 
     # ------------------ private ---------------------------
 
