@@ -6,9 +6,12 @@
 Additional generic (compound) widgets based on original CTK widgets
 
 """
-import os
+
 import logging
-import copy
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+import os
 import types
 import typing 
 from enum               import Enum, StrEnum
@@ -270,8 +273,12 @@ class Widget:
         """
 
         if self._while_setting:                           # avoid circular actions with refresh()
-            # logging.debug (str(self) + " - refresh skipped while set callback")
-            pass
+            logger.debug (str(self) + " - refresh while set callback")
+
+            # leave callback and refresh in a few ms 
+            timer = QTimer()                                
+            timer.singleShot(10, self.refresh)     # delayed emit 
+        
         else: 
             # print (str(self) + " - refresh")
             self._get_properties ()
@@ -285,7 +292,7 @@ class Widget:
                 else:
                     self._disabled = False
 
-            # logging.debug (f"{self} - refresh (disable={disable})")
+            # logger.debug (f"{self} - refresh (disable={disable})")
 
             self._set_Qwidget ()
 
@@ -377,7 +384,7 @@ class Widget:
             setter = getattr (o.__class__, set_name)
 
         if setter is None:  
-            logging.warning (f"{self} setter function '{set_name} does not exist in {o.__class__}")
+            logger.warning (f"{self} setter function '{set_name} does not exist in {o.__class__}")
 
         return setter 
 
@@ -404,7 +411,7 @@ class Widget:
             qualname  = self._setter.__qualname__
         else: 
             qualname = ''
-        logging.debug (f"{self} changed and set: {qualname} ({newVal})")
+        logger.debug (f"{self} changed and set: {qualname} ({newVal})")
 
         if self._obj is not None and isinstance (self._setter, types.FunctionType):            
 
@@ -452,7 +459,7 @@ class Widget:
         else: 
             qualname = ''
 
-        logging.debug (f"{self} emit sig_changed in 50ms: {qualname} ({newVal})")
+        logger.debug (f"{self} emit sig_changed in 50ms: {qualname} ({newVal})")
         self.sig_changed.emit ()
         # emit signal delayed so we leave the scope of Widget 
         # timer = QTimer()                                

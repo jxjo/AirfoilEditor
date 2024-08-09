@@ -34,7 +34,7 @@ sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 from common_utils           import * 
 
-from model.airfoil          import Airfoil, DESIGN 
+from model.airfoil          import Airfoil, usedAs 
 from model.airfoil_geometry import Geometry
 
 from ui.panels              import Panel, Edit_Panel
@@ -64,7 +64,6 @@ class Main_Window (QMainWindow):
 
     # Signals 
 
-    sig_edit_mode           = pyqtSignal(bool)      # entering edit / view mode 
     sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
 
 
@@ -127,14 +126,14 @@ class Main_Window (QMainWindow):
 
         self._edit_panel  = Panel ()
         l_edit = QHBoxLayout()
-        l_edit.addWidget (Geometry_Panel   (self, self.airfoil), stretch= 5)
-        l_edit.addWidget (Panels_Panel     (self, self.airfoil), stretch= 4)
-        l_edit.addWidget (LE_TE_Panel      (self, self.airfoil), stretch= 4)
+        l_edit.addWidget (Panel_Geometry   (self, self.airfoil), stretch= 5)
+        l_edit.addWidget (Panel_Panels     (self, self.airfoil), stretch= 4)
+        l_edit.addWidget (Panel_LE_TE_Coordinates      (self, self.airfoil), stretch= 4)
         l_edit.addStretch (3)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
         self._edit_panel.setLayout (l_edit)
 
-        self._file_panel = File_Panel (self, self.airfoil)
+        self._file_panel = Panel_File (self, self.airfoil)
 
         l_lower = QHBoxLayout()
         l_lower.addWidget (self._file_panel)
@@ -145,7 +144,7 @@ class Main_Window (QMainWindow):
 
         # upper diagram area  
 
-        upper = Airfoil_Diagram (self, self.airfoil)
+        upper = Diagram_Airfoil (self, self.airfoil)
 
         # main layout with both 
 
@@ -176,10 +175,9 @@ class Main_Window (QMainWindow):
                 airfoil  = self._airfoil.asCopy (nameExt=None, geometry=GEO_SPLINE)
             except:                                 # bezier or hh does not allow new geometry
                 airfoil  = self._airfoil.asCopy (nameExt=None)
-            airfoil.set_usedAs (DESIGN)             # will have another visualization 
+            airfoil.useAsDesign()                   # will have another visualization 
 
             airfoil.normalize()                     
-            # airfoil.set_isModified (False)          # no save in the beginning needed
 
             self.set_airfoil (airfoil, silent=True) # set without signal  
 
@@ -189,16 +187,19 @@ class Main_Window (QMainWindow):
             ok = self._on_leaving_edit_mode ()      # check save etc...
             if ok: 
                 airfoil = self._airfoil_sav
-                airfoil.set_usedAs (NORMAL)         # will have another visualization 
+                airfoil.useAsDesign (False)         # will have another visualization 
                 airfoil.set_isModified (False)      # no save in the beginning needed
                 self.set_airfoil (airfoil, silent=True) 
                 self._airfoil_sav = None 
             else: 
                 return                              # user cancel
 
-        self._edit_mode = aBool is True 
-
-        self.sig_airfoil_changed.emit ()            # signal new airfoil 
+        # finally signal airfoil changed 
+        if self._edit_mode != aBool: 
+            self._edit_mode = aBool
+            self.sig_airfoil_changed.emit ()        # signal new airfoil 
+        else: 
+            self.refresh()                          # set disable/enable during init 
         
 
     def refresh(self):
@@ -242,7 +243,7 @@ class Main_Window (QMainWindow):
 #-------------------------------------------------------------------------------
 
 
-class Airfoil_Panel_Abstract (Edit_Panel):
+class Panel_Airfoil_Abstract (Edit_Panel):
     """ 
     Abstract superclass for Edit/View-Panels of AirfoilEditor
         - has semantics of App
@@ -263,7 +264,6 @@ class Airfoil_Panel_Abstract (Edit_Panel):
     def __init__ (self, *args, **kwargs):
         super().__init__ (*args, **kwargs)
 
-
         # connect to change signal of widget 
         for w in self.widgets:
             w.sig_changed.connect (self._on_airfoil_widget_changed)
@@ -271,12 +271,12 @@ class Airfoil_Panel_Abstract (Edit_Panel):
 
     def _on_airfoil_widget_changed (self):
         """ user changed data in widget"""
-        logging.debug (f"{self} widget changed slot")
+        # logging.debug (f"{self} widget changed slot")
         self.myApp.sig_airfoil_changed.emit ()
 
 
 
-class File_Panel (Airfoil_Panel_Abstract):
+class Panel_File (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
     name = 'File'
@@ -390,7 +390,7 @@ class File_Panel (Airfoil_Panel_Abstract):
 
 
 
-class Geometry_Panel (Airfoil_Panel_Abstract):
+class Panel_Geometry (Panel_Airfoil_Abstract):
     """ Main geometry data of airfoil"""
 
     name = 'Airfoil'
@@ -432,7 +432,7 @@ class Geometry_Panel (Airfoil_Panel_Abstract):
 
 
 
-class Panels_Panel (Airfoil_Panel_Abstract):
+class Panel_Panels (Panel_Airfoil_Abstract):
     """ Panelling information """
 
     name = 'Panels'
@@ -497,7 +497,7 @@ class Panels_Panel (Airfoil_Panel_Abstract):
 
 
 
-class LE_TE_Panel  (Airfoil_Panel_Abstract):
+class Panel_LE_TE_Coordinates  (Panel_Airfoil_Abstract):
     """ info about LE and TE coordinates"""
 
     name = 'Coordinates'
@@ -519,7 +519,7 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
         r,c = 0, 0 
         FieldF (l,r,c, lab="Leading edge", get=lambda: self.geo().le[0], width=75, dec=7, style=lambda: self._style (self.geo().le[0], 0.0))
         r += 1
-        FieldF (l,r,c, lab=" ... of spline", get=lambda: self.geo().le_real[0], width=75, dec=7, style=lambda: self._style (self.geo().le_real[0], 0.0),
+        FieldF (l,r,c, lab=" ... of spline", get=lambda: self.geo().le_real[0], width=75, dec=7, style=self._style_le_real,
                 hide=lambda: not self.myApp.edit_mode)
         r += 1
         FieldF (l,r,c, lab="Trailing edge", get=lambda: self.geo().te[0], width=75, dec=7, style=lambda: self._style (self.geo().te[0], 1.0))
@@ -531,7 +531,7 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
         c += 1 
         FieldF (l,r,c+1,get=lambda: self.geo().le[1], width=75, dec=7, style=lambda: self._style (self.geo().le[1], 0.0))
         r += 1
-        FieldF (l,r,c+1,get=lambda: self.geo().le_real[1], width=75, dec=7, style=lambda: self._style (self.geo().le_real[1], 0.0),
+        FieldF (l,r,c+1,get=lambda: self.geo().le_real[1], width=75, dec=7, style=self._style_le_real,
                 hide=lambda: not self.myApp.edit_mode)
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo().te[1], width=75, dec=7, style=lambda: self._style (self.geo().te[1], -self.geo().te[3]))
@@ -551,6 +551,14 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
         return l
 
 
+    def _style_le_real (self):
+        """ returns style.WARNING if LE spline isn't close to LE"""
+        if self.geo().isLe_closeTo_le_real: 
+            return style.NORMAL
+        else: 
+            return style.WARNING
+
+
     def _style (self, val, target_val):
         """ returns style.WARNING if val isn't target_val"""
         if val != target_val: 
@@ -562,8 +570,9 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
     def _messageText (self): 
 
         text = []
-        if self.geo().le[0] != 0.0 or self.geo().le[1] != 0.0:
-            text.append("- Leading edge is not at 0,0")
+        if not self.geo().isNormalized:
+            if not self.geo().isLe_closeTo_le_real:
+                text.append("- Leading edge is not at 0,0")
         if self.geo().te[0] != 1.0 or self.geo().te[2] != 1.0 : 
            text.append("- Trailing edge is not at 1")
         if self.geo().te[1] != -self.geo().te[3]: 
@@ -586,7 +595,7 @@ class LE_TE_Panel  (Airfoil_Panel_Abstract):
 
 
 
-class Airfoil_Diagram_Item (Diagram_Item):
+class Diagram_Item_Airfoil (Diagram_Item):
     """ 
     Diagram (Plot) Item for airfoils shape 
     """
@@ -599,9 +608,10 @@ class Airfoil_Diagram_Item (Diagram_Item):
         self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, 
                                                 show=True,
                                                 show_legend=True)
-        self.thickness_artist = Thickness_Artist (self, self.airfoils, 
+        self.line_artist = Airfoil_Line_Artist (self, self.airfoils, 
                                                 show=False,
                                                 show_legend=True)
+        self.line_artist.sig_airfoil_changed.connect (self._parent.myApp.sig_airfoil_changed.emit)
         # setup view box 
              
         self.viewBox.setAspectLocked()
@@ -616,7 +626,7 @@ class Airfoil_Diagram_Item (Diagram_Item):
 
     def refresh_artists (self):
         self.airfoil_artist.refresh() 
-        self.thickness_artist.refresh() 
+        self.line_artist.refresh() 
 
     @property
     def section_panel (self) -> Edit_Panel:
@@ -630,20 +640,24 @@ class Airfoil_Diagram_Item (Diagram_Item):
                     set=self.airfoil_artist.set_show_points) 
             r += 1
             CheckBox (l,r,c, text="Thickness && Camber", 
-                    get=lambda: self.thickness_artist.show,
-                    set=self.thickness_artist.set_show) 
+                    get=lambda: self.line_artist.show,
+                    set=self.line_artist.set_show) 
+            r += 1
+            CheckBox (l,r,c, text="Shape function (Bezier)", 
+                    get=lambda: self.airfoil_artist.show_shape_function,
+                    set=self.airfoil_artist.set_show_shape_function) 
             r += 1
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (header=self.name, layout=l, height=100, 
+            self._section_panel = Edit_Panel (header=self.name, layout=l, height=140, 
                                               switchable=True, on_switched=self.setVisible)
 
         return self._section_panel 
 
 
 
-class Curvature_Diagram_Item (Diagram_Item):
+class Diagram_Item_Curvature (Diagram_Item):
     """ 
     Diagram (Plot) Item for airfoils curvature 
     """
@@ -685,7 +699,7 @@ class Curvature_Diagram_Item (Diagram_Item):
         """ link x axes to View Airfoil"""
         self._link_x = aBool is True
         if self.link_x:
-            self.setXLink(Airfoil_Diagram_Item.name)
+            self.setXLink(Diagram_Item_Airfoil.name)
         else: 
             self.setXLink(None)
 
@@ -715,7 +729,7 @@ class Curvature_Diagram_Item (Diagram_Item):
             r += 1
             SpaceR   (l,r)
             r += 1
-            CheckBox (l,r,c, text=f"X axes linked to '{Airfoil_Diagram_Item.name}'", 
+            CheckBox (l,r,c, text=f"X axes linked to '{Diagram_Item_Airfoil.name}'", 
                     get=lambda: self.link_x, set=self.set_link_x) 
             r += 1
             CheckBox (l,r,c, text="Y axes log scale", 
@@ -743,7 +757,7 @@ class Curvature_Diagram_Item (Diagram_Item):
 
 
 
-class Airfoil_Diagram (Diagram):
+class Diagram_Airfoil (Diagram):
     """    
     Diagram view to show/plot airfoil diagrams 
     """
@@ -772,7 +786,7 @@ class Airfoil_Diagram (Diagram):
         return self._airfoil_ref1
     def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
         self._airfoil_ref1 = airfoil 
-        if airfoil: airfoil.set_usedAs (REF1)
+        if airfoil: airfoil.set_usedAs (usedAs.REF1)
         self.refresh ()
 
 
@@ -781,7 +795,7 @@ class Airfoil_Diagram (Diagram):
         return self._airfoil_ref2
     def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
         self._airfoil_ref2 = airfoil 
-        if airfoil: airfoil.set_usedAs (REF2)
+        if airfoil: airfoil.set_usedAs (usedAs.REF2)
         self.refresh ()
 
 
@@ -806,10 +820,10 @@ class Airfoil_Diagram (Diagram):
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
 
-        item = Airfoil_Diagram_Item (self, getter=self.airfoils, show=True)
+        item = Diagram_Item_Airfoil (self, getter=self.airfoils, show=True)
         self._add_item (item, 0, 0)
 
-        item = Curvature_Diagram_Item (self, getter=self.airfoils, show=False)
+        item = Diagram_Item_Curvature (self, getter=self.airfoils, show=False)
         self._add_item (item, 1, 0)
 
 
@@ -857,6 +871,7 @@ if __name__ == "__main__":
     else:                       
         init_logging (level= logging.WARNING)
 
+
     # command line arguments? 
     
     parser = argparse.ArgumentParser(prog=AppName, description='View and edit an airfoil')
@@ -868,7 +883,7 @@ if __name__ == "__main__":
         if os.path.isdir(".\\test_airfoils"):
             airfoil_dir   =".\\test_airfoils"
             airfoil_files = [os.path.join(airfoil_dir, f) for f in os.listdir(airfoil_dir) if os.path.isfile(os.path.join(airfoil_dir, f))]
-            airfoil_files = [f for f in airfoil_files if f.endswith('.dat')]       
+            airfoil_files = [f for f in airfoil_files if (f.endswith('.dat') or f.endswith('.bez'))]       
             airfoil_files = sorted (airfoil_files, key=str.casefold)
             airfoil_file = airfoil_files[0]
             NoteMsg ("No airfoil file as argument. Showing example airfoils in '%s'" %airfoil_dir)

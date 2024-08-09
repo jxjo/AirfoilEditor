@@ -18,8 +18,8 @@ from PyQt6.QtWidgets    import QFileDialog, QWidget
 from ui.widgets         import * 
 
 from model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
-from model.airfoil            import GEO_BASIC, GEO_SPLINE, NORMAL
-from model.airfoil_geometry   import Geometry, Side_Airfoil_Bezier, UPPER, LOWER
+from model.airfoil            import GEO_BASIC, GEO_SPLINE, usedAs
+from model.airfoil_geometry   import Geometry, Side_Airfoil_Bezier, linetype
 from model.airfoil_geometry   import Match_Side_Bezier
 from model.airfoil_examples   import Root_Example
 
@@ -42,7 +42,7 @@ def create_airfoil_from_path (pathFilename) -> Airfoil:
             airfoil = Airfoil_Hicks_Henne (pathFileName=pathFilename)
         else: 
             airfoil = Airfoil(pathFileName=pathFilename, geometry=GEO_BASIC)
-    airfoil.set_usedAs (NORMAL)
+    airfoil.set_usedAs (usedAs.NORMAL)
     airfoil.load()
 
     if airfoil.isLoaded:                      # could have been error in loading

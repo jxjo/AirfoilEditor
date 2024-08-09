@@ -52,7 +52,6 @@
 
 from enum import Enum
 import numpy as np
-import logging
 import time
 from copy import copy, deepcopy
 
@@ -63,10 +62,10 @@ from model.spline import print_array_compact
 
 from common_utils import ErrorMsg
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-UPPER       = 'upper'
-LOWER       = 'lower'
-THICKNESS   = 'thickness'
 CAMBER      = 'camber'
 
 
@@ -75,21 +74,32 @@ CAMBER      = 'camber'
 # Enums 
 # -----------------------------------------------------------------------------
 
+class linetype (Enum):
+    """ enums for the different type of Lines """
+
+    UPPER       = ('upper','up')
+    LOWER       = ('lower','low')
+    THICKNESS   = ('thickness','t')
+    CAMBER      = ('camber','c')
+
 
 class mod (Enum):
     """ possible modifications of airfoil geometry"""
     
     NORMALIZE       = ("normalized","norm")
     REPANEL         = ("repan","p")
-    MAX_THICK       = ("thick","t")
-    MAX_THICK_X     = ("thick_x","tx")
-    MAX_CAMB        = ("camp","t")
-    MAX_CAMB_X      = ("camb_x","tx")
-    TE_GAP          = ("te_gap","t")
+    MAX_THICK       = ("thickness","t")
+    MAX_CAMB        = ("camber","c")
+    MAX_UPPER       = ("upper","u")
+    MAX_LOWER       = ("lower","u")
+    TE_GAP          = ("te_gap","te")
     LE_RADIUS       = ("le_radius","r")
     STRAK           = ("blend","blend")
 
 
+class GeometryException(Exception):
+    """ raised when geometry calculation failed """
+    pass
 
 # -----------------------------------------------------------------------------
 # Match geometry 
@@ -101,7 +111,7 @@ class Match_Side_Bezier:
     Controller for matching a single Side_Airfoil with Bezier
     """
     def __init__ (self, side : 'Side_Airfoil_Bezier', 
-                  target_side: 'Side_Airfoil',
+                  target_side: 'Line',
                   target_curv_at_le : float = None,
                   max_te_curv : float = None):
         """match a single Side_Bezier to a target side 
@@ -275,7 +285,7 @@ class Match_Side_Bezier:
 
 
 
-    def _define_targets (self, target_side: 'Side_Airfoil'):
+    def _define_targets (self, target_side: 'Line'):
         """ 
         returns target points where deviation is evaluated during optimization 
         """
@@ -574,20 +584,20 @@ class Curvature_Abstract:
         self._iLe      = None                   # index of le in curvature array
 
     @property
-    def upper (self) -> 'Side_Airfoil': 
+    def upper (self) -> 'Line': 
         # to be overlaoded
         pass
 
     @property
-    def lower (self) -> 'Side_Airfoil': 
+    def lower (self) -> 'Line': 
         # to be overloaded
         pass
 
-    def side(self, sideName) -> 'Side_Airfoil': 
+    def side(self, sidetype) -> 'Line': 
         """return Side_Airfoil with curvature for 'side_name' - where x 0..1"""
-        if sideName == UPPER: 
+        if sidetype == linetype.UPPER: 
             return self.upper
-        elif sideName == LOWER:
+        elif sidetype == linetype.LOWER:
             return self.lower
         else: 
             return None
@@ -670,7 +680,7 @@ class Curvature_of_xy (Curvature_Abstract):
         super().__init__()
 
         self._spline = Spline2D (x, y)
-        logging.debug (f"New curvature spline")
+        logger.debug (f"New curvature spline")
         self._x      = x
         self._y      = y
         self._iLe = int(np.argmin (self._x))
@@ -679,16 +689,18 @@ class Curvature_of_xy (Curvature_Abstract):
     def upper (self): 
         " return Side_Airfoil with curvature on the upper side"
         if self._upper is None: 
-            self._upper = Side_Airfoil (np.flip(self._x[: self.iLe+1]),
-                                         np.flip(self.curvature [: self.iLe+1]), name=UPPER )
+            self._upper = Line (np.flip(self._x[: self.iLe+1]),
+                                np.flip(self.curvature [: self.iLe+1]), 
+                                linetype=linetype.UPPER )
         return self._upper 
 
     @property
     def lower (self): 
         " return Side_Airfoil with curvature on the lower side"
         if self._lower is None: 
-            self._lower = Side_Airfoil (self._x[self.iLe: ],
-                                        self.curvature [self.iLe: ], name=LOWER )
+            self._lower = Line (self._x[self.iLe: ],
+                                self.curvature [self.iLe: ],
+                                linetype=linetype.LOWER )
         return self._lower 
 
     @property
@@ -714,16 +726,18 @@ class Curvature_of_Spline (Curvature_Abstract):
     def upper (self): 
         " return Side_Airfoil with curvature on the upper side"
         if self._upper is None: 
-            self._upper = Side_Airfoil (np.flip(self._x[: self.iLe+1]),
-                                         np.flip(self.curvature [: self.iLe+1]), name=UPPER )
+            self._upper = Line (np.flip(self._x[: self.iLe+1]),
+                                        np.flip(self.curvature [: self.iLe+1]), 
+                                        linetype=linetype.UPPER )
         return self._upper 
 
     @property
     def lower (self): 
         " return Side_Airfoil with curvature on the lower side"
         if self._lower is None: 
-            self._lower = Side_Airfoil (self._x[self.iLe: ],
-                                         self.curvature [self.iLe: ], name=LOWER )
+            self._lower = Line (self._x[self.iLe: ],
+                                        self.curvature [self.iLe: ],
+                                        linetype=linetype.LOWER )
         return self._lower 
 
     @property
@@ -750,16 +764,18 @@ class Curvature_of_Bezier (Curvature_Abstract):
     def upper (self): 
         " return Side_Airfoil with curvature on the upper side"
         if self._upper is None: 
-            self._upper = Side_Airfoil (self._upper_side.x, 
-                                         - self._upper_side.curvature.y, name=UPPER)
+            self._upper = Line (self._upper_side.x, 
+                                        - self._upper_side.curvature.y, 
+                                        linetype=linetype.UPPER)
         return self._upper 
 
     @property
     def lower (self): 
         " return Side_Airfoil with curvature on the lower side"
         if self._lower is None: 
-            self._lower = Side_Airfoil (self._lower_side.x, 
-                                         self._lower_side.curvature.y, name=LOWER)
+            self._lower = Line (self._lower_side.x, 
+                                        self._lower_side.curvature.y,
+                                        linetype=linetype.LOWER)
         return self._lower 
 
     @property
@@ -769,16 +785,7 @@ class Curvature_of_Bezier (Curvature_Abstract):
 
 
 
-
-# -----------------------------------------------------------------------------
-#   Side_Airfoil Classes 
-# -----------------------------------------------------------------------------
-
-class High_Point (Point): 
-    """ point representing the high point of the curve of Side_Airfoil """
-
-
-class Side_Airfoil: 
+class Line: 
     """ 
     2D line of an airfoil like upper, lower side, camber line, curvature etc...
     with x 0..1
@@ -791,24 +798,18 @@ class Side_Airfoil:
     isBezier        = False
     isHicksHenne    = False
 
-    def __init__ (self, x,y, name=None, onChange=None):
+    def __init__ (self, x,y, 
+                  linetype : linetype|None = None, 
+                  name : str|None = None):
 
         self._x         = x
         self._y         = y
+        self._type      = linetype 
         self._name      = name 
         self._threshold = 0.1                   # threshold for reversal dectection 
         self._highpoint = None                  # the high Point of the line  
         self._max_spline = None                 # little helper spline to get maximum 
-
-        self._callback_changed  = onChange      # callback when self was changed           
-
-
-    def _changed (self):
-        """ self changed - handle callbacks"""
-
-        if callable(self._callback_changed):
-            self._callback_changed (self.name)
-
+         
 
     @property
     def x (self): return self._x
@@ -819,7 +820,17 @@ class Side_Airfoil:
         self._y = anArr
     
     @property
-    def name (self): return self._name
+    def type (self) -> linetype:
+        """ the linetype of self"""
+        return self._type
+
+    @property
+    def name (self):       
+        if self._name is None:
+            return self._type.value[0] if self._type is not None else ''
+        else: 
+            return self._name
+        
     def set_name (self,aName): 
         self._name = aName
     
@@ -837,12 +848,12 @@ class Side_Airfoil:
     @property 
     def isUpper (self) -> bool:
         """ upper side? """
-        return self.name == UPPER 
+        return self.type == linetype.UPPER 
 
     @property 
     def isLower (self) -> bool:
         """ upper side? """
-        return self.name == LOWER 
+        return self.type == linetype.LOWER 
 
     @property
     def highpoint (self) -> Point:
@@ -854,8 +865,10 @@ class Side_Airfoil:
         """
 
         if self._highpoint is None: 
-            self._highpoint = Point (self._get_maximum(), 
-                                        onChange=self._handle_highpoint_change)
+
+            xy = self._get_maximum()
+            self._highpoint = Point (xy)
+
         return self._highpoint
 
 
@@ -888,34 +901,40 @@ class Side_Airfoil:
         return reversals 
     
 
-    def _handle_highpoint_change (self, x_changed : bool, y_changed : bool, 
-                                  xy_prev : tuple = None, moving=False): 
+
+    def set_highpoint (self, target : tuple|Point) -> tuple: 
         """ 
-        callback from highpoint - handle new x,y of highpoint 
+        set / move the highpoint of self - returns new xy
         """
 
-        if not x_changed and not y_changed: return 
+        if isinstance (target, Point):
+            x_new = target.x
+            y_new = target.y
+        else: 
+            x_new = target[0]
+            y_new = target[1]
+
 
         # if e.g. camber is already = 0.0, a new camber line cannot be build
         # if np.max(self.y) == 0.0: return
 
-        if y_changed:
-            y_new = self.highpoint.y
-            if y_new <= 0.0: 
-                self._y = np.zeros(len(self._y))
-            else: 
-                y_cur = xy_prev[1]
-                self._y = self._y * (y_new / y_cur)
+        # optimize - no move if coordinate didn't change 
 
-        if x_changed:
-            x_cur = xy_prev[0]
-            x_new = self.highpoint.x
-            self._move_max_x (x_cur, x_new)             # a little bit more complicated ...
+        x_isNew, y_isNew = self.highpoint.isNew (x_new, y_new)         
 
-        if moving:
-            pass                                        # on move do not inform parent
-        else:  
-            self._changed ()                            # final pos - inform parent 
+        if y_isNew:
+            y_cur = self.highpoint.y
+            y_new = self._move_max_y (y_cur, y_new)
+            self.highpoint.set_y (y_new)
+
+        if x_isNew:
+            x_cur = self.highpoint.x
+            x_new = self._move_max_x (x_cur, x_new)             # a little bit more complicated ...
+            self.highpoint.set_x (x_new)
+
+        # logger.debug (f"{self} - new highpoint xy: {self.highpoint.xy}")
+        return (x_new, y_new)                           # final pos   
+
 
 
     def yFn (self,x):
@@ -943,17 +962,18 @@ class Side_Airfoil:
     def _get_maximum (self) -> tuple[float, float]: 
         """ 
         calculates and returns the x,y position of the maximum y value of self
+            If self is symmetrical return (0.5,0)  
         """
         max_y = abs(np.max(self.y))
         min_y = abs(np.min(self.y))
         
-        if max_y == 0.0 and min_y == 0.0:              # optimize 
+        if max_y == 0.0 and min_y == 0.0:              # optimize symmetrical
             xmax = 0.5 
             ymax = 0.0 
         else: 
-            if max_y > min_y:                   # upper side 
+            if max_y > min_y:                          # upper side 
                 imax = np.argmax(self.y)
-            else:                               # lower side
+            else:                                      # lower side
                 imax = np.argmin(self.y)
 
             # build a little helper spline to find exact maximum
@@ -961,7 +981,10 @@ class Side_Airfoil:
 
                 istart = imax - 3
                 iend   = imax + 3
-                self._max_spline = Spline1D (self.x[istart:iend+1], self.y[istart:iend+1])
+                try: 
+                    self._max_spline = Spline1D (self.x[istart:iend+1], self.y[istart:iend+1])
+                except: 
+                    pass
 
                 # nelder mead search
                 xstart = self.x[istart]
@@ -993,54 +1016,11 @@ class Side_Airfoil:
         return self._max_spline.eval (x)
 
 
-    def _move_max_x (self, x_cur, x_new):
+
+    def _move_max_x (self, x_cur : float, x_new : float):
         """ 
-        moves the point of maximum to newMaxX  
-        """
-        raise NotImplementedError
-
-
-    def _reset (self):
-        """ reinit self if x,y has changed""" 
-        self._maximum  = None                 # thickness distribution
-
-
-
-class Side_Airfoil_Spline (Side_Airfoil): 
-    """ 
-    1D line of an airfoil like upper, lower side, camber line, curvature etc...
-    with x 0..1
-
-    Represented by a 1D spline
-
-    """
-
-    def __init__ (self, *args, **kwargs):
-
-        self._spline    = None                  # 1D Spline to get max values of line
-        super().__init__ (*args, **kwargs) 
-
-  
-    @property 
-    def spline (self) -> Spline1D:
-        """ spline representation of self """
-        if self._spline is None: 
-            self._spline = Spline1D (self.x, self.y)
-        return self._spline
-
-
-    def yFn (self,x):
-        """ returns interpolated y values based on a x-value
-        """
-        return self.spline.eval (x)
-
-
-    # ------------------ private ---------------------------
-
-
-    def _move_max_x (self, x_cur, x_new):
-        """ 
-        moves the point of maximum to x_new  
+        Moves the point of maximum to x_new.
+        Returns new (limited) x_new  
         """
 
         # sanity check - only a certain range of move is possible 
@@ -1080,7 +1060,70 @@ class Side_Airfoil_Spline (Side_Airfoil):
         # ensure start and end is really, really the same (numerical issues) 
         newY[0] = self._y[0]
         newY[-1] = self._y[-1]
-        self._y = newY         
+        self._y = newY 
+        return x_new        
+
+
+    def _move_max_y (self, y_cur : float, y_new : float):
+        """ 
+        Moves the point of maximum to y_new.
+        Returns new (limited) y_new  
+        """
+
+        # sanity check - only a certain range of move is possible
+
+        if y_cur == 0.0:
+            y_new = 0.0      
+        elif self.type == linetype.LOWER:             # range is negativ 
+            y_new = max (-0.5, y_new)
+            y_new = min (-0.005, y_new)
+        else: 
+            y_new = max (0.005, y_new)
+            y_new = min (0.5, y_new)
+
+        # the approach is quite simple: scale all y values by factor new/old
+
+        self._y = self._y * (y_new / self.highpoint.y)
+
+        return y_new 
+           
+
+    def _reset (self):
+        """ reinit self if x,y has changed""" 
+        self._maximum  = None                 # thickness distribution
+
+
+
+class Line_Splined (Line): 
+    """ 
+    1D line of an airfoil like upper, lower side, camber line, curvature etc...
+    with x 0..1
+
+    Represented by a 1D spline
+
+    """
+
+    def __init__ (self, *args, **kwargs):
+
+        self._spline    = None                  # 1D Spline to get max values of line
+        super().__init__ (*args, **kwargs) 
+
+  
+    @property 
+    def spline (self) -> Spline1D:
+        """ spline representation of self """
+        if self._spline is None: 
+            self._spline = Spline1D (self.x, self.y)
+        return self._spline
+
+
+    def yFn (self,x):
+        """ returns interpolated y values based on a x-value
+        """
+        return self.spline.eval (x)
+
+
+    # ------------------ private ---------------------------
 
 
     def _reset (self):
@@ -1091,14 +1134,14 @@ class Side_Airfoil_Spline (Side_Airfoil):
 
 
 
-class Side_Airfoil_Bezier (Side_Airfoil): 
+class Side_Airfoil_Bezier (Line): 
     """ 
     1D line of an airfoil like upper, lower side based on a Bezier curve with x 0..1
     """
 
     isBezier        = True
 
-    def __init__ (self, px, py, name=None, nPoints = 101):
+    def __init__ (self, px, py, nPoints = 101, **kwargs):
         """
         1D line of an airfoil like upper, lower side based on a Bezier curve with x 0..1
 
@@ -1106,10 +1149,9 @@ class Side_Airfoil_Bezier (Side_Airfoil):
         ----------
         px, py : array of control point coordinates 
         nPoints : number of points 
-        name : either UPPER or LOWER
              
         """
-        super().__init__(None, None, name=name)
+        super().__init__(None, None, **kwargs)
 
         if px is None or py is None:
             raise ValueError ("Bezier points missing")
@@ -1203,13 +1245,13 @@ class Side_Airfoil_Bezier (Side_Airfoil):
         !! as side is going from 0..1 the upper side has negative value 
         !! compared to curvature of airfoil which is 1..0..1
         """
-        return Side_Airfoil (self.x, self.bezier.curvature(self._u), name='curvature')
+        return Line (self.x, self.bezier.curvature(self._u), name='curvature')
    
 
     def yFn (self,x):
         """ returns evaluated y values based on a x-value - in high precision
         """
-        logging.debug (f"{self} eval y on x={x}")
+        logger.debug (f"{self} eval y on x={x}")
         return self.bezier.eval_y_on_x (x, fast=False)
 
 
@@ -1316,14 +1358,14 @@ class Side_Airfoil_Bezier (Side_Airfoil):
 
 
 
-class Side_Airfoil_HicksHenne (Side_Airfoil): 
+class Side_Airfoil_HicksHenne (Line): 
     """ 
     1D line of an airfoil like upper, lower side based on a seed and hh bump functions
     """
 
     isHicksHenne    = True
 
-    def __init__ (self, seed_x, seed_y, hhs, name):
+    def __init__ (self, seed_x, seed_y, hhs, **kwargs):
         """
         1D line of an airfoil like upper, lower side based on a seed and hh bump functions
 
@@ -1331,10 +1373,9 @@ class Side_Airfoil_HicksHenne (Side_Airfoil):
         ----------
         seed_x, seed_y : coordinates of side 1 line, x = 0..1 
         hhs : list of hicks henne functions  
-        name : either UPPER or LOWER
-             
         """
-        super().__init__(None, None, name=name)
+
+        super().__init__(None, None, **kwargs)
 
         if not hhs:
             self._hhs = []
@@ -1401,13 +1442,15 @@ class Geometry ():
 
     """
 
+    EPSILON_LE_CLOSE =  1e-6                    # max norm2 distance of le_real 
+
     isBasic         = True
     isSplined       = False 
     isBezier        = False
     isHicksHenne    = False
     description     = "based on linear interpolation"
 
-    sideDefaultClass = Side_Airfoil
+    sideDefaultClass = Line
 
     def __init__ (self, 
                   x : np.ndarray, y: np.ndarray,
@@ -1421,8 +1464,15 @@ class Geometry ():
 
         self._callback_changed = onChange       # callback when self was changed (by user) 
 
-        self._thickness : Side_Airfoil = None   # thickness distribution
-        self._camber    : Side_Airfoil = None   # camber line
+        self._thickness : Line = None           # thickness distribution
+        self._camber    : Line = None           # camber line
+        self._upper     : Line = None           # upper side
+        self._lower     : Line = None           # lower side
+
+        self._max_thick_initial = None          # to detect changes 
+        self._max_camb_initial  = None
+        self._max_upper_initial = None
+        self._max_lower_initial = None
 
         self._curvature : Curvature_of_Spline = None  # curvature object
 
@@ -1434,21 +1484,24 @@ class Geometry ():
         return f"<{type(self).__name__}>"
 
 
-    def _changed (self, aMod : mod, val = None ):
-        """ geometry changed 
+    def _changed (self, aMod : mod, 
+                  val : float|str|None = None,
+                  remove_empty = False):
+        """ handle geometry changed 
             - save the modification made aMod with optional val
             - handle callbacks"""
 
-        # store modification made 
+        # store modification made - can be list or single mod 
 
-        if isinstance (val,float): val = round (val,2)
-        self._modification_dict[aMod] = val
+        if remove_empty and (val is None or not (str(val))):
+            self._modification_dict.pop (aMod, None)            # remove empty item
+        else:                     
+            self._modification_dict[aMod] = val
 
         # info Airfoil via callback  
 
         if callable(self._callback_changed):
             self._callback_changed ()
-
 
     @property
     def modifications (self) -> list [tuple]:
@@ -1501,12 +1554,35 @@ class Geometry ():
         return self.x, self.y
     
 
-    def set_xy_org (self, x, y):
-        """ set coordinates of the (master) airfoil of self """
+    def _push_xy (self): 
+        """ copy xy to _x,_y"""
+        self._x = np.copy (self._x_org)
+        self._y = np.copy (self._y_org)
+
+    def _pop_xy (self): 
+        """ get xy from _x,_y"""
+        if self._x is not None and self._y is not None: 
+            self._set_xy (self._x, self._y)
+ 
+    def _clear_xy (self): 
+        """ clear working _x,_y"""
+        self._x = None
+        self._y = None 
+        self._reset()
+ 
+
+    def _set_xy (self, x, y):
+        """ 
+        final set of (valid) xy coordinates 
+        - will remove temporary _x,_y
+        - will remove lines, splines, """
 
         # ensure copy of x,y and being numpy 
         self._x_org     = np.asarray (x)
         self._y_org     = np.asarray (y)  
+        self._x         = None
+        self._y         = None 
+        self._reset()
 
 
     @property
@@ -1530,7 +1606,23 @@ class Geometry ():
         elif yteUp != - yteLow: 
             normalized = False        
 
+        # for splined: LE real could differ from LE 
+        normalized = normalized and self.isLe_closeTo_le_real
+
         return normalized
+
+
+    @property
+    def isLe_closeTo_le_real (self): 
+        """ true if LE of x,y cordinates nearly equal to the real (splined) leading edge.
+            If not the airfoil should be repaneled... """
+
+        xle, yle   = self.le
+        xleS, yleS = self.le_real
+        norm2 = np.linalg.norm ([abs(xle-xleS), abs(yle-yleS)])
+
+        return norm2 <= self.EPSILON_LE_CLOSE
+
 
     @property
     def isSymmetrical (self) -> bool:
@@ -1564,8 +1656,20 @@ class Geometry ():
 
     @property
     def le_radius (self): 
-        """ leading edge radius which is the reciprocal of curvature at le """
+        """ 
+        Leading edge radius which is the reciprocal of curvature at le 
+        """
         return  1.0 / self.curvature.at_le
+
+    def _le_radius (self, moving=False): 
+        """ when 'moving' the radius of a temporary curvature based on _x,_y is returned"""
+        if moving: 
+            curv = Curvature_of_xy (self._x, self._y) 
+        else: 
+            curv = self.curvature
+        print (1.0 / curv.at_le)
+        return  1.0 / curv.at_le
+
 
     @property
     def nPanels (self): 
@@ -1617,35 +1721,42 @@ class Geometry ():
 
 
     @property
-    def upper(self) -> 'Side_Airfoil': 
+    def upper(self) -> 'Line': 
         """the upper surface as a line object - where x 0..1"""
-        return self.sideDefaultClass (np.flip (self.x [0: self.iLe + 1]),
-                              np.flip (self.y [0: self.iLe + 1]), name=UPPER)
-            
-    @property
-    def lower(self) -> 'Side_Airfoil': 
-        """the lower surface as a line object - where x 0..1"""
-        return self.sideDefaultClass (self.x[self.iLe:], self.y[self.iLe:], name=LOWER)
+        if self._upper is None: 
+            self._upper = self.sideDefaultClass (np.flip (self.x [0: self.iLe + 1]),
+                                        np.flip (self.y [0: self.iLe + 1]),
+                                        linetype=linetype.UPPER)
+        return self._upper 
 
-    def side(self, sideName) -> 'Side_Airfoil': 
+    @property
+    def lower(self) -> 'Line': 
+        """the lower surface as a line object - where x 0..1"""
+        if self._lower is None: 
+            self._lower =  self.sideDefaultClass (self.x[self.iLe:], 
+                                        self.y[self.iLe:],
+                                        linetype=linetype.LOWER)
+        return self._lower 
+
+    def side(self, sidetype) -> 'Line': 
         """side with 'side_name' as a line object - where x 0..1"""
-        if sideName == UPPER: 
+        if sidetype == linetype.UPPER: 
             return self.upper
-        elif sideName == LOWER:
+        elif sidetype == linetype.LOWER:
             return self.lower
         else: 
             return None
 
 
     @property
-    def camber (self) -> 'Side_Airfoil': 
+    def camber (self) -> 'Line': 
         """ return the camber line """
         if self._camber is None: 
             self._create_camb_thick()
         return self._camber
 
     @property
-    def thickness (self) -> 'Side_Airfoil': 
+    def thickness (self) -> 'Line': 
         """ the thickness distribution as a line object """
         if self._thickness is None: 
             self._create_camb_thick()
@@ -1681,10 +1792,36 @@ class Geometry ():
         return self._curvature 
 
 
+    @property 
+    def lines_dict (self) -> dict[linetype, Line]:
+        """ returns a dict with linetypes and their instances"""
+        return {linetype.UPPER      : self.upper,
+                linetype.LOWER      : self.lower,
+                linetype.THICKNESS  : self.thickness,
+                linetype.CAMBER     : self.camber}
 
 
-    def set_te_gap (self, newGap, xBlend = 0.8):
-        """ set self te gap.
+    def set_te_gap (self, newGap, xBlend = 0.8, moving=False):
+        """ set te gap - must be / will be normalized .
+
+        Arguments: 
+            newGap:   in y-coordinates - typically 0.01 or so 
+            xblend:   the blending distance from trailing edge 0..1 - Default 0.8
+        """
+
+        try: 
+            self._set_te_gap (newGap, xBlend) 
+            self._rebuild_from_upper_lower ()
+            if not moving:
+                self._reset () 
+                self._changed (mod.TE_GAP, round(self.te_gap * 100, 7))   # finalize (parent) airfoil 
+ 
+        except GeometryException:
+            self._clear_xy()
+    
+
+    def _set_te_gap (self, newGap, xBlend = 0.8):
+        """ set te gap of upper and lower 
          The procedere is based on xfoil allowing to define a blending distance from le.
 
         Arguments: 
@@ -1692,100 +1829,170 @@ class Geometry ():
             xblend:   the blending distance from trailing edge 0..1 - Default 0.8
         """
 
-        # currently le must be at 0,0 - te must be at 1,gap/2 (normalized airfoil) 
-        if not self.isNormalized: 
-            self.normalize ()
-            if not self.isNormalized: 
-                logging.error ("Airfoil can't be normalized. Te gap can't be set.")
-                return  
-        
-        x = np.copy (self.x) 
-        y = np.copy (self.y) 
+        newGap = max(0.0, newGap)
+        newGap = min(0.1, newGap)
+
+        gap = self.upper.y[-1] * 2 
+        dgap = newGap - gap 
         xBlend = min( max( xBlend , 0.0 ) , 1.0 )
 
-        gap = y[0] - y[-1]
-        dgap = newGap - gap 
-        ile = self.iLe
+        for side in [self.upper, self.lower]:
 
-        # go over each point, changing the y-thickness appropriately
-        for i in range(len(x)):
-            # thickness factor tails off exponentially away from trailing edge
-            if (xBlend == 0.0): 
-                tfac = 0.0
-                if (i == 0 or i == (len(x)-1)):
-                    tfac = 1.0
-            else:
-                arg = min ((1.0 - x[i]) * (1.0/xBlend -1.0), 15.0)
-                tfac = np.exp(-arg)
+            y_new = np.zeros (len(side.x))
+            for i in range(len(side.x)):
+                # thickness factor tails off exponentially away from trailing edge
+                if (xBlend == 0.0): 
+                    tfac = 0.0
+                    if (i == 0 or i == (len(self._x)-1)):
+                        tfac = 1.0
+                else:
+                    arg = min ((1.0 - side.x[i]) * (1.0/xBlend -1.0), 15.0)
+                    tfac = np.exp(-arg)
 
-            if i <= ile: 
-                y[i] = y[i] + 0.5 * dgap * x[i] * tfac # * gap 
-            else:
-                y[i] = y[i] - 0.5 * dgap * x[i] * tfac # * gap   
+                if side.type == linetype.UPPER:
+                    y_new[i] = side.y[i] + 0.5 * dgap * side.x[i] * tfac 
+                else:
+                    y_new[i] = side.y[i] - 0.5 * dgap * side.x[i] * tfac  
 
-        self._x, self._y = x, y 
-        
-        # handle changes 
+            side.set_y (y_new)
 
-        self._reset()
-        self._changed (mod.TE_GAP, newGap*100)
 
 
     def set_le_radius (self, new_radius : float, xBlend : float = 0.1):
         """ set le radius which is the reciprocal of curvature at le
-         The procedere is based on xfoil allowing to define a blending distance from le.
 
         Arguments: 
             factor:   to increase/decrease le radius 
             xblend:   the blending distance from leading edge 0.001..1 - Default 0.1
         """
-        new_radius = min(0.1,  new_radius)
-        new_radius = max(0.001, new_radius)
 
-        factor = new_radius / self.le_radius 
+        try: 
+            self._set_le_radius (new_radius, xBlend) 
+            self._rebuild_from_camb_thick ()
+            self._reset () 
+            self._changed (mod.LE_RADIUS, round(new_radius*100,2))
+ 
+        except GeometryException:
+            self._clear_xy()
+    
+
+    def _set_le_radius (self, new_radius : float, xBlend : float = 0.1):
+        """ set le radius which is the reciprocal of curvature at le """
+
+        # The procedere is based on xfoil allowing to define a blending distance from le.
+
+        new_radius = min(0.05,  new_radius)
+        new_radius = max(0.002, new_radius)
+
+        cur_radius = 1 / self.curvature.at_le
+
+        factor = new_radius / cur_radius
         xBlend = min( max( xBlend , 0.001 ) , 1.0 )
 
         # go over each thickness point, changing the thickness appropriately
 
         for i in range(len(self.thickness.x)):
-
             # thickness factor tails off exponentially away from trailing edge
             arg = min (self.thickness.x[i] / xBlend, 15.0)
             srfac = (abs (factor)) ** 0.5 
             tfac = 1.0 - (1.0 - srfac) * np.exp(-arg)
             self.thickness.y [i] = self.thickness.y [i] * tfac
 
-        self._rebuild_from_camb_thick ()
-        self._reset()
-        self._changed (mod.LE_RADIUS, new_radius*100)
-
  
-    def set_max_thick (self, val): 
+    def set_max_thick (self, val : float): 
         """ change max thickness"""
+        self.set_highpoint_of (self.thickness,(None, val))
+        
 
-        self.thickness.highpoint.set_y(val)
-        self._changed (mod.MAX_THICK, val*100)
-
-
-    def set_max_thick_x (self, val): 
+    def set_max_thick_x (self, val : float): 
         """ change max thickness x position"""
-
-        self.thickness.highpoint.set_x(val)
-        self._changed (mod.MAX_THICK_X, val*100)
+        self.set_highpoint_of (self.thickness,(val,None))
 
 
-    def set_max_camb (self, val): 
+    def set_max_camb (self, val : float): 
         """ change max camber"""
-
-        self.camber.highpoint.set_y(val)
-        self._changed (mod.MAX_CAMB, val*100)
+        self.set_highpoint_of (self.camber,(None, val))
 
 
-    def set_max_camb_x (self, val): 
+    def set_max_camb_x (self, val : float): 
         """ change max camber x position"""
+        self.set_highpoint_of (self.camber,(val, None))
+        self.camber.set_highpoint ((val, None))
+           
 
-        self.camber.highpoint.set_x(val)
-        self._changed (mod.MAX_CAMB_X, val*100)
+    def set_highpoint_of (self, aLine: Line, xy : tuple, moving=False): 
+        """ change highpoint of a line - update airfoil """
+
+        try: 
+            
+            xy_cur = aLine.highpoint.xy
+
+            aLine.set_highpoint (xy)
+
+            if not moving:
+
+                if aLine.type == linetype.THICKNESS and xy[0] == None:
+                    # optimize in case of thickness - direct change of upper and lower 
+                    self._set_max_thick_upper_lower (xy_cur[1], xy[1])
+                    self._rebuild_from_upper_lower ()
+
+                    amod = mod.MAX_THICK
+                    lab = aLine.highpoint.label_changed (self._max_thick_initial)
+
+                if aLine.type == linetype.THICKNESS:
+                    self._rebuild_from_camb_thick ()
+
+                    amod = mod.MAX_THICK
+                    lab = aLine.highpoint.label_changed (self._max_thick_initial)
+
+                elif aLine.type == linetype.CAMBER:
+                    self._rebuild_from_camb_thick ()
+
+                    amod = mod.MAX_CAMB
+                    lab = aLine.highpoint.label_changed (self._max_camb_initial)
+
+                elif aLine.type == linetype.UPPER:
+                    self._rebuild_from_upper_lower ()
+ 
+                    amod = mod.MAX_CAMB
+                    lab = ''
+
+                elif aLine.type == linetype.LOWER:
+                    self._rebuild_from_upper_lower ()
+ 
+                    amod = mod.MAX_LOWER
+                    lab = ''
+
+                else:
+                    raise ValueError (f"{aLine.type} not supprted for set_highpoint") 
+
+                self._reset()
+                self._normalize()
+                self._changed (amod, lab, remove_empty=True)
+
+
+        except GeometryException: 
+            logger.warning (f"{self} set highpoint failed for {aLine}")
+            self._clear_xy ()
+
+
+
+    def _set_max_thick_upper_lower (self, thick_cur : float, thick_new : float):
+        """ 
+        Set max thickness by direct change of y coordinates of upper and lower side  
+            - not via thickness line 
+        """
+
+        # currently le must be at 0,0 - te must be at 1,gap/2 (normalized airfoil) 
+        if not self.isNormalized:
+            raise GeometryException ("Airfoil isn't normalized. Thickness can't be set.")
+
+        # the approach is quite simple: scale all y values by factor new/old
+
+        self.upper.set_y (self.upper.y * thick_new / thick_cur)        
+        self.lower.set_y (self.lower.y * thick_new / thick_cur)        
+
+
 
 
     def upper_new_x (self, new_x): 
@@ -1801,7 +2008,7 @@ class Geometry ():
 
         upper_y = np.round(upper_y, 10)
 
-        return self.sideDefaultClass (new_x, upper_y, name=UPPER)
+        return self.sideDefaultClass (new_x, upper_y, linetype=linetype.UPPER)
 
 
     def lower_new_x (self, new_x): 
@@ -1817,7 +2024,7 @@ class Geometry ():
 
         lower_y = np.round(lower_y, 10)
 
-        return self.sideDefaultClass (new_x, lower_y, name=LOWER)
+        return self.sideDefaultClass (new_x, lower_y, linetype=linetype.LOWER)
 
 
     def normalize (self) -> bool:
@@ -1827,12 +2034,14 @@ class Geometry ():
 
         if self.isNormalized: return False
 
-        normalized = self._normalize() 
-
-        if normalized: 
-            self._reset ()                   # tell child objects like thickness
-            self._changed (mod.NORMALIZE)
-        return normalized
+        try: 
+            self._push_xy ()                    # ensure a copy of x,y 
+            self._normalize() 
+            self._pop_xy ()                     # make copy to xy
+            self._changed (mod.NORMALIZE)       # finalize (parent) airfoil 
+ 
+        except GeometryException:
+            self._clear_xy()
     
 
     def _normalize (self) -> bool:
@@ -1844,17 +2053,20 @@ class Geometry ():
 
         if self.isNormalized: return False
 
-        # ensure a copy of x,y 
-        if self._x is None:
-            self._x = np.asarray (self.x)
-            self._y = np.asarray (self.y) 
-
-        # Translate so that the leading edge is at 0,0 
+        # current LE shall be new 0,0 
+         
+        norm2 = self._le_real_norm2 ()
         xLe, yLe = self.le_real
+        logger.debug (f"{self} normalize xy: ({xLe:.7f},{yLe:.7f}) - norm2: {norm2:.7f} ")
+
+        # sanity 
+        if norm2 > 0.1: 
+            raise GeometryException (f"{self} - LE ({xLe},{yLe}) too far away from 0,0 ")
+ 
+        # Translate so that the leading edge is at 0,0 
+
         xn = self._x - xLe
         yn = self._y - yLe
-        norm2 = np.linalg.norm ([abs(xLe), abs(yLe)])
-        logging.debug (f"{self} normalize xy: ({xLe},{yLe}) - norm2: {norm2} ")
 
         # Rotate the airfoil so chord is on x-axis 
         angle = np.arctan2 ((yn[0] + yn[-1])/ 2.0, (xn[0] + xn[-1])/ 2.0) 
@@ -1893,7 +2105,7 @@ class Geometry ():
         self._x = np.round (xn, 10) + 0.0
         self._y = np.round (yn, 10) + 0.0 
 
-        return True
+        return 
 
 
     def repanel (self, **kwargs):
@@ -1902,6 +2114,13 @@ class Geometry ():
             to be overloaded
         """
         raise NotImplementedError
+    
+    def _repanel (self, **kwargs):
+        """repanel self with a new cosinus distribution 
+
+            to be overloaded
+        """
+        pass
     
 
     def strak (self, geo1_in : 'Geometry', geo2_in : 'Geometry', blendBy):
@@ -1954,35 +2173,26 @@ class Geometry ():
             upper2 = geo2.upper
             lower2 = geo2.lower
 
-            upper_x  = geo2.upper.x
-            lower_x  = geo2.lower.x
+            x_upper  = geo2.upper.x
+            x_lower  = geo2.lower.x
 
         # now blend upper and lower of both airfoils 
-        upper_y = (1 - blendBy) * upper1.y + blendBy * upper2.y
-        lower_y = (1 - blendBy) * lower1.y + blendBy * lower2.y
+        y_upper = (1 - blendBy) * upper1.y + blendBy * upper2.y
+        y_lower = (1 - blendBy) * lower1.y + blendBy * lower2.y
         
         # rebuild x,y coordinates 
-        self._x = np.concatenate ((np.flip(upper_x), lower_x[1:]))
-        self._y = np.concatenate ((np.flip(upper_y), lower_y[1:]))
-
+        self._rebuild_from (x_upper, y_upper, x_lower, y_lower)
         self._reset()
         self._changed (mod.STRAK)
 
 
     # ------------------ private ---------------------------
 
+    def _le_real_norm2 (self) -> float:
+        """ norm2 of le_real coordinates """
 
-    def _handle_camb_thick_change (self, side_name : str): 
-        """ 
-        callback from side THICKNESS or CAMBER when they were changed (by user)
-        """
-
-        logging.debug (f"{self} - rebuild because of {side_name} change")
-
-        self._rebuild_from_camb_thick ()
-        self._reset()
-
-        # _changed is done in the setter of thickness, camber 
+        xLe, yLe = self.le_real
+        return np.linalg.norm ([abs(xLe), abs(yLe)])
 
 
     def _create_camb_thick (self): 
@@ -2002,17 +2212,28 @@ class Geometry ():
         #   --> tmp new geo which will be normalized 
 
         if not self.isNormalized:
-            logging.debug (f"{self} normalizing for thickness ")
+            logger.debug (f"{self} normalizing for thickness ")
             geo_norm = self.__class__(np.copy(self.x), np.copy(self.y))
+            geo_norm._push_xy ()                        # init _x,_y
             geo_norm._normalize()
 
             if not geo_norm.isNormalized:
-                logging.error (f"{self} normalizing failed ")
+                logger.error (f"{self} normalizing failed ")
             upper = geo_norm.upper
             lower = geo_norm.lower_new_x (upper.x) 
         else: 
             upper = self.upper
+            from timeit import default_timer as timer
+            start = timer()
+
             lower = self.lower_new_x (upper.x)
+            end = timer()
+            print("Time lower", end - start)  
+
+        # sanity 
+        
+        if not lower.isNormalized or not upper.isNormalized:
+            raise ValueError (f"{self} _create_camb_thick: Upper and Lower are not normalized")
 
         # thickness and camber can now easily calculated 
 
@@ -2025,16 +2246,31 @@ class Geometry ():
             camber_y = np.zeros (len(camber_y))
 
         self._thickness = self.sideDefaultClass (upper.x, thickness_y, 
-                                            name = THICKNESS,
-                                            onChange = self._handle_camb_thick_change)
-        self._camber    = self.sideDefaultClass (upper.x, camber_y, 
-                                            name=CAMBER,
-                                            onChange = self._handle_camb_thick_change)
+                                            linetype=linetype.THICKNESS)
 
-        if not self.thickness.isNormalized or not self.camber.isNormalized:
-            raise ValueError ("eval thickness: Thickness or Camber are not normalized")
+        self._camber    = self.sideDefaultClass (upper.x, camber_y, 
+                                            linetype=linetype.CAMBER)
+        
+        # keep initial max values for change detection 
+
+        if self._max_thick_initial is None: 
+            self._max_thick_initial = self._thickness.highpoint.xy
+        if self._max_camb_initial is None: 
+            self._max_camb_initial  = self._camber.highpoint.xy
 
         return 
+
+    def _rebuild_from (self, x_upper, y_upper, x_lower, y_lower):
+        """ rebuilds self out upper and lower x and y values  """
+
+        self._x = np.concatenate ((np.flip(x_upper), x_lower[1:]))
+        self._y = np.concatenate ((np.flip(y_upper), y_lower[1:]))
+
+    def _rebuild_from_upper_lower (self):
+        """ rebuilds self out upper and lower side"""
+
+        self._rebuild_from (self.upper.x, self.upper.y, self.lower.x, self.lower.y)
+
 
 
     def _rebuild_from_camb_thick(self):
@@ -2054,9 +2290,10 @@ class Geometry ():
         x_lower = self.thickness.x
         y_lower = self.camber.y - self.thickness.y / 2.0
 
-        self._x = np.concatenate ((np.flip(x_upper), x_lower[1:]))
-        self._y = np.concatenate ((np.flip(y_upper), y_lower[1:]))
+        self._rebuild_from (x_upper, y_upper, x_lower, y_lower)
 
+        # retain the old panel distribution 
+        # self._repanel (retain=True) does not work 
 
 
     def _reset (self):
@@ -2067,6 +2304,8 @@ class Geometry ():
 
     def _reset_lines (self):
         """ reinit the dependand lines of self""" 
+        self._upper      = None                 # upper side 
+        self._lower      = None                 # lower side 
         self._thickness  = None                 # thickness distribution
         self._camber     = None                 # camber line
         self._curvature  = None                 # curvature 
@@ -2089,7 +2328,7 @@ class Geometry_Splined (Geometry):
  
     description     = "based on spline interpolation"
 
-    sideDefaultClass = Side_Airfoil_Spline
+    sideDefaultClass = Line_Splined
 
     def __init__ (self, *args, **kwargs):
         super().__init__( *args, **kwargs)        
@@ -2105,13 +2344,13 @@ class Geometry_Splined (Geometry):
 
         if self._spline is None: 
             self._spline = Spline2D (self.x, self.y)
-            logging.debug (f"{self} New Spline ")
+            logger.debug (f"{self} New Spline ")
         return self._spline
 
     @property
     def le_real (self): 
         """ le calculated based on spline """
-        #overloading
+        #overloadded
         xLe, yLe = self.xyFn (self.uLe)   
         # + 0.0 ensures not to have -0.0 
         return round(xLe,7) + 0.0, round(yLe,7) + 0.0 
@@ -2120,30 +2359,12 @@ class Geometry_Splined (Geometry):
     def uLe (self): 
         """ u (arc) value of the leading edge """
         if self._uLe is None: 
-            self._uLe = self._le_find()
+            try: 
+                self._uLe = self._le_find()
+            except: 
+                self._uLe = self.spline.u[self.iLe] 
+                logger.warning (f"{self} le_find failed - taking geometric uLe:{self._uLe:.7f}")
         return self._uLe
-
-    @property
-    def _isLe_closeTo_le_real (self): 
-        """ true if LE of x,y cordinates nearly equal to the real (splined) leading edge.
-            If not the airfoil should be repaneled...! """
-
-        epsilon=5e-7                            # not too strict because of airfoil le artefacts (JX-GP-033)
-
-        xle, yle   = self.le
-        xleS, yleS = self.le_real
-        if abs(xle-xleS) > epsilon or abs(yle-yleS) > epsilon: 
-            return False
-        else: 
-            return True
-
-    @property
-    def isNormalized (self):
-        """ 
-        true if LE is at 0,0 and TE is symmetrical at x=1
-           and real le (spline) is close to le
-        """
-        return super().isNormalized and self._isLe_closeTo_le_real
 
 
     @property
@@ -2162,7 +2383,7 @@ class Geometry_Splined (Geometry):
     #-----------
 
 
-    def upper_new_x (self, new_x) -> 'Side_Airfoil_Spline': 
+    def upper_new_x (self, new_x) -> 'Line_Splined': 
         """
         returns side_Airfoil having new_x and new, calculated y coordinates
         
@@ -2186,11 +2407,11 @@ class Geometry_Splined (Geometry):
 
         upper_y = np.round(upper_y, 10)
 
-        return self.sideDefaultClass (new_x, upper_y, name=UPPER)
+        return self.sideDefaultClass (new_x, upper_y, linetype=linetype.UPPER)
 
 
 
-    def lower_new_x (self, new_x) -> 'Side_Airfoil_Spline': 
+    def lower_new_x (self, new_x) -> 'Line_Splined': 
         """
         returns side_Airfoil having new_x and new, calculated y coordinates
         
@@ -2213,15 +2434,26 @@ class Geometry_Splined (Geometry):
                 uEnd   = 1.0 
                 uGuess = interpolate (new_x[0], new_x[-1], uStart, 1.0, x)   # best guess as start value
 
-                u = findMin (lambda xlow: abs(self.spline.evalx(xlow) - x), uGuess, 
-                            bounds=(uStart, uEnd), no_improve_thr=1e-8) 
+                umin = max (uStart, uGuess - 0.1 )
+                umax = min (uEnd, uGuess + 0.1 )
+
+                # find min using Secant - fast but not for LE 
+                if i > 6: 
+                    n = 4
+                    u, niter  = secant_fn (lambda u: self.spline.evalx(u) - x,
+                                            umin, umax, n)
+                else: 
+                    # find u value for x using Nelder Mead 
+                    u = findMin (lambda xlow: abs(self.spline.evalx(xlow) - x), uGuess, 
+                                bounds=(uStart, uEnd), no_improve_thr=1e-8) 
 
                 # with the new u-value we get the y value on lower side 
+                # print (i, u, uGuess)
                 lower_y[i] = self.spline.evaly (u)
 
         lower_y = np.round(lower_y, 10)
 
-        return self.sideDefaultClass (new_x, lower_y, name=LOWER)
+        return self.sideDefaultClass (new_x, lower_y, linetype=linetype.LOWER)
 
 
     def _normalize (self):
@@ -2233,7 +2465,6 @@ class Geometry_Splined (Geometry):
         # on numeric issues (decimals) 
         # there try to iterate to a good result 
 
-        epsilon=1e-9                            # a little smaller then is _isLE_close...
         isNormalized = False
         n = 0
 
@@ -2241,19 +2472,20 @@ class Geometry_Splined (Geometry):
 
             n += 1
 
-            self._reset_spline ()
-            self._repanel () 
+            if n > 1:
+                self._reset_spline ()
+                self._repanel (retain=True) 
 
-            super()._normalize()                # classic normalize based on coordinates
+            super()._normalize()                # normalize based on coordinates
 
             # is real and splined le close enough
-            xle, yle   = self.le
-            xleS, yleS = self.le_real
-            norm2 = np.linalg.norm ([abs(xle-xleS), abs(yle-yleS)])
-            if norm2 < epsilon:
+            norm2 = self._le_real_norm2()
+
+            logger.debug (f"{self} normalize spline iteration #{n} - norm2: {norm2:.7f}")
+
+            if norm2 <= self.EPSILON_LE_CLOSE:
                 isNormalized = True
 
-            logging.debug (f"{self} normalize spline iteration #{n} - norm2: {norm2:.7f}")
 
         return isNormalized
 
@@ -2298,56 +2530,87 @@ class Geometry_Splined (Geometry):
             te_bunch (float, optional): trailing edge bunch. Defaults to 0.7.
         """
 
-        self._repanel (nPanels = nPanels, 
-                       nPan_upper = nPan_upper, nPan_lower  = nPan_lower,
-                       le_bunch = le_bunch, te_bunch = te_bunch)
+        try: 
+            self._push_xy ()
 
-        # reset the child lines, keep current spline as it was the master
-        self._reset_lines()
+            self._repanel (nPanels = nPanels, 
+                            nPan_upper = nPan_upper, nPan_lower  = nPan_lower,
+                            le_bunch = le_bunch, te_bunch = te_bunch)
+            
+            # repanel could lead to a slightly different le 
+            super()._normalize()               # do not do iteration in self.normalize       
+            self._pop_xy ()
+            self._changed (mod.REPANEL)
 
-        # repanel could lead to a slightly different le 
-        super()._normalize()                    # do not do iteration in self.normalize
-
-        self._changed (mod.REPANEL)
+        except GeometryException: 
+            self._clear_xy()       
 
 
-    def _repanel (self,  nPanels : int = None, 
+
+    def _repanel (self, retain : bool = False, 
+                        nPanels : int = None, 
                         nPan_upper : int = None, nPan_lower : int = None,
                         le_bunch : float = 0.84, te_bunch : float = 0.7):
-        """ inner repanel without normailzation and change handling  """
+        """ 
+        Inner repanel without normalization and change handling
+            - retain = True keeps the current distribution for the new calculated LE 
+        """
 
-        # explicit panels for upper and lower have precedence 
-        if not (nPan_upper and nPan_lower):
+        if not retain: 
+            # explicit panels for upper and lower have precedence 
+            if not (nPan_upper and nPan_lower):
 
-            # new total number of panels  
-            if nPanels: 
+                # new total number of panels  
+                if nPanels: 
 
-                # in case of odd number of panels, upper side will have +1 panels 
-                if nPanels % 2 == 0:
-                    nPan_upper = int (nPanels / 2)
-                    nPan_lower = nPan_upper
-                else: 
-                    nPan_lower = int(nPanels / 2)
-                    nPan_upper = nPan_lower + 1 
+                    # in case of odd number of panels, upper side will have +1 panels 
+                    if nPanels % 2 == 0:
+                        nPan_upper = int (nPanels / 2)
+                        nPan_lower = nPan_upper
+                    else: 
+                        nPan_lower = int(nPanels / 2)
+                        nPan_upper = nPan_lower + 1 
 
-            # keep the current number of panels 
-            else:
-                nPan_upper = self.iLe
-                nPan_lower = self.nPanels - nPan_upper
+                # keep the current number of panels 
+                else:
+                    nPan_upper = self.iLe
+                    nPan_lower = self.nPanels - nPan_upper
 
-        logging.debug (f"{self} _repanel {nPan_upper} {nPan_lower}")
-        
-        # reset arc length of le - will be new calculated
-        self._ule = None 
+            
+            
+            # reset arc length of le - will be new calculated
+            self._uLe = None 
 
-        # new distribution for upper and lower - points = +1 
-        u_cos_upper = self._get_panel_distribution (nPan_upper+1, le_bunch, te_bunch)
-        u_new_upper = np.abs (np.flip(u_cos_upper) -1) * self.uLe
+            # new distribution for upper and lower - points = +1 
+            u_cos_upper = self._get_panel_distribution (nPan_upper+1, le_bunch, te_bunch)
+            u_new_upper = np.abs (np.flip(u_cos_upper) -1) * self.uLe
 
-        u_cos_lower = self._get_panel_distribution (nPan_lower+1, le_bunch, te_bunch)
-        u_new_lower = u_cos_lower * (1- self.uLe) + self.uLe
+            u_cos_lower = self._get_panel_distribution (nPan_lower+1, le_bunch, te_bunch)
+            u_new_lower = u_cos_lower * (1- self.uLe) + self.uLe
+
+        else: 
+            # get distribution from current 
+            uLe     = self.spline.u [self.iLe]
+                   
+            u_upper = self.spline.u [:self.iLe+1]
+            u_lower = self.spline.u [self.iLe:]
+
+            uLe_new = self.uLe
+
+            # stretch current distribution to fit to new uLe 
+            stretch = uLe_new / uLe
+            u_new_upper = u_upper * stretch                 # 0.0 ... uLe 
+            u_lower_0   = u_lower - uLe
+            u_new_lower = uLe_new + u_lower_0 / stretch     # uLe ... 1.0
+
+            u_new_lower [-1] = 1.0
+            nPan_upper = self.iLe
+            nPan_lower = self.nPanels - nPan_upper
 
         # add new upper and lower 
+
+        logger.debug (f"{self} _repanel {nPan_upper} {nPan_lower}")
+
         u_new = np.concatenate ((u_new_upper, u_new_lower[1:]))
 
         # new calculated x,y coordinates  
@@ -2356,7 +2619,7 @@ class Geometry_Splined (Geometry):
         self._x = np.round (x, 10)
         self._y = np.round (y, 10)
 
-        return 
+        return True
 
 
     # ------------------ private ---------------------------
@@ -2447,19 +2710,20 @@ class Geometry_Splined (Geometry):
     def _le_find (self):
         """ returns u (arc) value of leading edge based on scalar product tangent and te vector = 0"""
 
-        iLeGuess = np.argmin (self.x)          # first guess for Le point 
+        iLe_guess = np.argmin (self.x)              # first guess for Le point 
+        uLe_guess = self.spline.u[iLe_guess-1]      # '-1'  a little aside 
 
+        umin = max (0.4, uLe_guess-0.1)
+        umax = min (0.6, uLe_guess+0.1)
+ 
         # exact determination of root  = scalar product = 0.0 
-        try: 
-            uLe = findRoot (self.scalarProductFn, self.spline.u[iLeGuess-1] , bounds=(0.4, 0.6)) 
-            # logging.debug (f"{self} le_find u={uLe}")
-        except: 
-            uLe = self.spline.u [iLeGuess]
-            logging.warning (f"{self} LE not found - taking geometric LE u={uLe}")
+        uLe = findRoot (self.scalarProductFn, uLe_guess , bounds=(umin, umax)) 
+        logger.debug (f"{self} le_find u_guess:{uLe_guess:.7f} u:{uLe:.7f}")
+
         return uLe
 
 
-    def get_y_on (self, side, xIn): 
+    def get_y_on (self, side : linetype, xIn): 
         """
         Evalutes y values right on 'side' having x-values xIn.
         Note: if self isn't normalized, it will be normalized prior to evaluation
@@ -2476,17 +2740,17 @@ class Geometry_Splined (Geometry):
 
         iLe = np.argmin (self.x)
 
-        if side == LOWER: 
+        if side == linetype.LOWER: 
             uStart = self.spline.u[iLe] 
             uEnd   = self.spline.u[-1]  
             uGuess = 0.75          
-        elif side == UPPER:
+        elif side == linetype.UPPER:
             uStart = self.spline.u[0] 
             # uEnd   = self.spline.u[iLe-1]   
             uEnd   = self.spline.u[iLe]   
             uGuess = 0.25         
         else:
-            raise ValueError ("'%s' not supported" % side)
+            raise ValueError ("'%s' not supported" % side.value[0])
 
         ux = np.zeros (len(xIn))
         for i, xi in enumerate (xIn): 
@@ -2502,8 +2766,8 @@ class Geometry_Splined (Geometry):
 
         # ensure Le is 0,0 and Te is at 1
         if   xIn[0]  == self.x[iLe]:                    yOut[0]  = self.y[iLe]
-        elif xIn[-1] == self.x[0]  and side == UPPER:   yOut[-1] = self.y[0]
-        elif xIn[-1] == self.x[-1] and side == LOWER:   yOut[-1] = self.y[-1]
+        elif xIn[-1] == self.x[0]  and side == linetype.UPPER:   yOut[-1] = self.y[0]
+        elif xIn[-1] == self.x[-1] and side == linetype.LOWER:   yOut[-1] = self.y[-1]
 
         return yOut 
 
@@ -2518,7 +2782,7 @@ class Geometry_Bezier (Geometry):
     isBezier        = True
     description     = "based on 2 Bezier curves"
 
-    sideDefaultClass = Side_Airfoil
+    sideDefaultClass = Line
 
     def __init__ (self, *kwargs):
         """new Geometry based on two Bezier curves for upper and lower side """
@@ -2550,7 +2814,7 @@ class Geometry_Bezier (Geometry):
             # default side
             px = [   0,  0.0, 0.33,  1]
             py = [   0, 0.06, 0.12,  0]    
-            self._upper = Side_Airfoil_Bezier (px, py, name=UPPER)
+            self._upper = Side_Airfoil_Bezier (px, py, linetype=linetype.UPPER)
         return self._upper 
 
     @property
@@ -2561,19 +2825,19 @@ class Geometry_Bezier (Geometry):
             # default side 
             px = [   0,   0.0,  0.25,   1]
             py = [   0, -0.04, -0.07,   0]  
-            self._lower = Side_Airfoil_Bezier (px, py, name=LOWER)
+            self._lower = Side_Airfoil_Bezier (px, py, linetype=linetype.LOWER)
 
         return self._lower 
     
-    def set_newSide_for (self, curveType, px,py): 
+    def set_newSide_for (self, side: linetype, px,py): 
         """creates either a new upper or lower side in self
         curveType is either UPPER or LOWER """
 
         if not (px is None or py is None):
-            if curveType == UPPER: 
-                self._upper = Side_Airfoil_Bezier (px, py, name=UPPER)
-            elif curveType == LOWER:
-                self._lower = Side_Airfoil_Bezier (px, py, name=LOWER)
+            if side == linetype.UPPER: 
+                self._upper = Side_Airfoil_Bezier (px, py, linetype=linetype.UPPER)
+            elif side == linetype.LOWER:
+                self._lower = Side_Airfoil_Bezier (px, py, linetype=linetype.LOWER)
             self._reset_lines()
 
     @property
@@ -2668,7 +2932,7 @@ class Geometry_Bezier (Geometry):
     # ------------------ private ---------------------------
 
 
-    def upper_new_x (self, new_x) -> 'Side_Airfoil': 
+    def upper_new_x (self, new_x) -> 'Line': 
         """
         returns side_Airfoil having new_x and new, calculated y coordinates
         Using bezier interpolation  
@@ -2681,10 +2945,10 @@ class Geometry_Bezier (Geometry):
 
         upper_y = np.round(upper_y, 10)
 
-        return Side_Airfoil (new_x, upper_y, name=LOWER)
+        return Line (new_x, upper_y, linetype=linetype.LOWER)
         
 
-    def lower_new_x (self, new_x)  -> 'Side_Airfoil': 
+    def lower_new_x (self, new_x)  -> 'Line': 
         """
         returns side_Airfoil having new_x and new, calculated y coordinates
         Using bezier interpolation  
@@ -2705,7 +2969,7 @@ class Geometry_Bezier (Geometry):
 
         lower_y = np.round(lower_y, 10)
 
-        return Side_Airfoil (new_x, lower_y, name=LOWER)
+        return Line (new_x, lower_y, linetype=linetype.LOWER)
 
 
 
@@ -2719,7 +2983,7 @@ class Geometry_HicksHenne (Geometry):
     isHicksHenne    = True
     description     = "based on a seed and hicks henne functions"
 
-    sideDefaultClass = Side_Airfoil
+    sideDefaultClass = Line
 
     def __init__ (self, seed_x : np.ndarray, seed_y : np.ndarray, **kwargs):
         """new Geometry based on a seed airfoil and hicks henne bump (hh) functions for upper and lower side"""
@@ -2738,7 +3002,7 @@ class Geometry_HicksHenne (Geometry):
             iLe = int(np.argmin (self._seed_x))
             upper_x = np.flip (self._seed_x [0: iLe + 1])
             upper_y = np.flip (self._seed_y [0: iLe + 1])
-            self._upper = Side_Airfoil_HicksHenne (upper_x, upper_y, [], name=UPPER)
+            self._upper = Side_Airfoil_HicksHenne (upper_x, upper_y, [], type=linetype.UPPER)
         return self._upper 
             
     @property
@@ -2749,7 +3013,7 @@ class Geometry_HicksHenne (Geometry):
             iLe = int(np.argmin (self._seed_x))
             lower_x = self._seed_x [iLe:]
             lower_y = self._seed_y [iLe:]
-            self._lower = Side_Airfoil_HicksHenne (lower_x, lower_y, [], name=LOWER)
+            self._lower = Side_Airfoil_HicksHenne (lower_x, lower_y, [], type=linetype.LOWER)
         return self._lower 
             
     @property

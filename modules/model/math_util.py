@@ -10,7 +10,8 @@ import math
 from bisect import bisect_left
 
 import logging
-
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
 
 
 #------------ time to run -----------------------------------
@@ -33,40 +34,27 @@ class Point:
     Simple point class with basic functionality
     """
 
-    @overload
-    def __init__ (self, x : float, y : float ): ...
- 
-    @overload
-    def __init__ (self, xy : tuple ): ...
-   
-    @overload
-    def __init__ (self, p : 'Point' ): ...
 
-    def __init__ (self, a, b = None, onChange=None ):
+    def __init__ (self, a, b = None, 
+                  x_limits : tuple|None = None, y_limits : tuple|None = None ):
         """ 
         Create new point. The arguments a,b can be 
             - x, y cordinates 
             - (x,y,) tuple of coordinates
             - Point (x,y) 
-            
-        'onChange' will be invoked when self changes 
         """
 
         self._x = None 
-        self._x_prev = None 
         self._x_fixed = False
-        self._x_limits = (None, None) 
+        self._x_limits = x_limits 
 
         self._y = None
-        self._y_prev = None 
         self._y_fixed = False
-        self._y_limits = (None, None) 
+        self._y_limits = y_limits 
+          
+        self.set_xy (a, b)
 
-        self._callback_changed = onChange if callable(onChange) else None 
-           
-        self.set_xy (a, b, initial=True) 
-
-        # logging.debug (f"{self} new")
+        logger.debug (f"{self} new")
 
 
     def __repr__(self) -> str:
@@ -86,21 +74,39 @@ class Point:
     def xy (self) -> tuple[float]:
         return (self.x, self._y)
 
+    def label_changed (self, xy_initial : tuple) -> str:
+        """ returns a short label 7.4@30.6 for y,x changed values as percent""" 
+
+        x_isChanged = round(xy_initial[0] ,4) != round (self.x, 4)
+        y_isChanged = round(xy_initial[1] ,4) != round (self.y, 4)
+
+        if y_isChanged:
+            lab = f"{self._y*100:.1f}"
+        else: 
+            lab = ""
+        if x_isChanged: 
+            lab = f"{lab}@{self._x*100:.1f}"
+        return lab 
+
+    def set_x_limits (self, lim : tuple): 
+        """ set new x coordinate limits"""
+        self._x_limits = lim
+ 
+    def set_y_limits (self, lim : tuple): 
+        """ set new y coordinate limits"""
+        self._y_limits = lim
+ 
 
     def set_x (self, x : float): 
         """ set new x coordinate"""
-        self._x_prev = self._x
-        self._x, x_changed = self._set_val (self._x, x, self._x_limits, self._x_fixed)
-        self._handle_changes (x_changed, False)
+        self._x = self._set_val (self._x, x, self._x_limits, self._x_fixed)
        
     def set_y (self, y : float): 
         """ set new y coordinate"""
-        self._y_prev = self._y
-        self._y, y_changed = self._set_val (self._y, y, self._y_limits, self._y_fixed)
-        self._handle_changes (False, y_changed)
+        self._y = self._set_val (self._y, y, self._y_limits, self._y_fixed)
 
 
-    def set_xy (self, a, b=None, initial : bool =False, moving : bool = False):
+    def set_xy (self, a, b=None):
         """ 
         Set new point coordinates. The arguments a, b can be 
             - x, y cordinates 
@@ -122,17 +128,24 @@ class Point:
         else:
             raise ValueError (f"Point - cannot init with {a}, {b}")
         
-        self._x_prev = self._x
-        self._y_prev = self._y
-        
-        self._x, x_changed = self._set_val (self._x, x_new, self._x_limits, self._x_fixed)
-        self._y, y_changed = self._set_val (self._y, y_new, self._y_limits, self._y_fixed)
+        self._x = self._set_val (self._x, x_new, self._x_limits, self._x_fixed)
+        self._y = self._set_val (self._y, y_new, self._y_limits, self._y_fixed)
 
-        if not initial: 
-            self._handle_changes (x_changed, y_changed, moving=moving)
+
+    def isNew (self, x_new, y_new, decimals=7) -> tuple[bool]:
+        """ returns True/False for x_new and y_new if they are different from current x,y,"""
+
+        if x_new:
+            x_isNew = round(x_new,decimals) != round (self.x, decimals)
         else: 
-            self._x_prev = self._x                   # ... was None 
-            self._y_prev = self._y
+            x_isNew = False 
+
+        if y_new:
+            y_isNew = round(y_new,decimals) != round (self.y, decimals)
+        else: 
+            y_isNew = False 
+
+        return x_isNew, y_isNew
 
 
 
@@ -141,34 +154,19 @@ class Point:
 
         if is_fixed:
             new_val = val 
-            has_changed = False 
         else: 
             new_val = float(new_val)
 
-            min_val = limits [0] if limits [0] is not None else new_val 
-            max_val = limits [1] if limits [1] is not None else new_val
+            min_val = limits [0] if limits is not None else new_val 
+            max_val = limits [1] if limits is not None else new_val
 
             new_val = max (new_val, min_val)
             new_val = min (new_val, max_val)
 
             new_val = round (new_val,10)            # avoid float issues 
-            has_changed = val != new_val 
 
-        return new_val, has_changed  
+        return new_val 
 
-
-    def _handle_changes (self, x_changed : bool, y_changed : bool, moving : bool=False):
-        """ calls parent if x or y changed """
-
-        x = "x" if x_changed else "_"
-        y = "y" if y_changed else "_"
-        logging.debug (f"{self} changed {x},{y}")
-
-        if self._callback_changed: 
-            if x_changed or y_changed:
-                xy_prev = (self._x_prev, self._y_prev)
-                print ("---> point xy ", self.xy)
-                self._callback_changed (x_changed, y_changed, xy_prev, moving=moving)
     
 
 
@@ -403,6 +401,61 @@ def bisection_fn (f,a,b,N, tolerance=None):
     return (a_n + b_n)/2, n
 
 
+def secant_fn (f,a,b,N):
+    '''Approximate solution of f(x)=0 on interval [a,b] by the secant method.
+
+    Parameters
+    ----------
+    f : function
+        The function for which we are trying to approximate a solution f(x)=0.
+    a,b : numbers
+        The interval in which to search for a solution. The function returns
+        None if f(a)*f(b) >= 0 since a solution is not guaranteed.
+    N : (positive) integer
+        The number of iterations to implement.
+
+    Returns
+    -------
+    m_N : number
+        The x intercept of the secant line on the the Nth interval
+            m_n = a_n - f(a_n)*(b_n - a_n)/(f(b_n) - f(a_n))
+        The initial interval [a_0,b_0] is given by [a,b]. If f(m_n) == 0
+        for some intercept m_n then the function returns this solution.
+        If all signs of values f(a_n), f(b_n) and f(m_n) are the same at any
+        iterations, the secant method fails and return None.
+
+    Examples
+    --------
+    >>> f = lambda x: x**2 - x - 1
+    >>> secant(f,1,2,5)
+    1.6180257510729614
+    '''
+
+    # from https://patrickwalls.github.io/mathematicalpython/root-finding/secant/
+
+    if f(a)*f(b) >= 0:
+        print("Secant method fails.")
+        return None
+    a_n = a
+    b_n = b
+    for n in range(1,N+1):
+        m_n = a_n - f(a_n)*(b_n - a_n)/(f(b_n) - f(a_n))
+        f_m_n = f(m_n)
+        if f(a_n)*f_m_n < 0:
+            a_n = a_n
+            b_n = m_n
+        elif f(b_n)*f_m_n < 0:
+            a_n = m_n
+            b_n = b_n
+        elif f_m_n == 0:
+            # print("Found exact solution.")
+            return m_n, n
+        else:
+            print("Secant method fails.")
+            return None
+    return a_n - f(a_n)*(b_n - a_n)/(f(b_n) - f(a_n)), n
+
+
 
 #------------ Newton iteration - find Root  -----------------------------------
 
@@ -444,7 +497,6 @@ def newton(f,Df,x0,epsilon = 10e-8 , max_iter= 50, bounds=None):
             elif xn < bounds[0]: xn = bounds[0]
 
         fxn = f(xn)
-
         if abs(fxn) < epsilon:
             break
 
@@ -455,6 +507,7 @@ def newton(f,Df,x0,epsilon = 10e-8 , max_iter= 50, bounds=None):
             else: 
                 raise ValueError ("Newton iteration: Zero derivative. No solution found.")
         xn = xn - fxn/Dfxn
+        print (n, xn, fxn, Dfxn, - fxn/Dfxn)
 
     return xn, n
 
@@ -801,15 +854,15 @@ def nelder_mead_wrap  (fn, xStart,
     return xmin
 
 
-def findMin (fn, xStart, bounds=None, no_improve_thr=10e-10): 
+def findMin (fn, xStart, bounds=None, no_improve_thr=10e-10) -> float: 
     xmin =  nelder_mead_wrap (fn, xStart, bounds=bounds, no_improve_thr=no_improve_thr)    
     return xmin 
 
-def findMax (fn, xStart, bounds=None): 
+def findMax (fn, xStart, bounds=None) -> float: 
     xmax =  nelder_mead_wrap(lambda x: - (fn(x)), xStart, bounds=bounds)    
     return xmax 
 
-def findRoot (fn, xStart, bounds=None, no_improve_thr=10e-12): 
+def findRoot (fn, xStart, bounds=None, no_improve_thr=10e-12) -> float: 
     xRoot =  nelder_mead_wrap(lambda x: abs(fn(x)), xStart, no_improve_thr=no_improve_thr,  bounds=bounds)    
     return xRoot 
 

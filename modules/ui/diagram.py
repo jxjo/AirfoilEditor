@@ -218,8 +218,8 @@ class Diagram_Item (pg.PlotItem):
         self._show   = show 
         self._section_panel = None 
 
-        # initial show or hide 
-        self.setVisible (show) 
+        # initial show or hide - user super() - avoid refresh
+        super().setVisible (show) 
 
 
     def __repr__(self) -> str:
@@ -231,7 +231,10 @@ class Diagram_Item (pg.PlotItem):
     def setVisible (self, aBool):
         """ Qt overloaded to signal parent """
         super().setVisible (aBool)
+
+        self.refresh_artists()                      # data could have been changed in the meantime
         self.sig_visible.emit (self, aBool)
+
 
     @property
     def viewBox (self) -> pg.ViewBox:

@@ -5,34 +5,43 @@
     Airfoil and operations on it 
 
 """
-from typing import Type
-import logging
-
 import os
-from pathlib import Path
+from typing             import Type
+from enum               import Enum, StrEnum
+from pathlib            import Path
+
 import numpy as np
-from model.math_util import * 
-from common_utils import * 
+
+from model.math_util    import * 
+from common_utils       import * 
 from model.airfoil_geometry import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
-from model.airfoil_geometry import Side_Airfoil, Side_Airfoil_Bezier, UPPER, LOWER
+from model.airfoil_geometry import Line, Side_Airfoil_Bezier, linetype
+
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
-# geometry soecification 
+#-------------------------------------------------------------------------------
+# enums   
+#-------------------------------------------------------------------------------
+
+class usedAs (StrEnum):
+    """ airfoil types for some usage semantics in application """
+    NORMAL      = ""
+    SEED        = "Seed"
+    SEED_DESIGN = "Seed of design"
+    REF1        = "Reference 1" 
+    REF2        = "Reference 2" 
+    DESIGN      = "Design"
+    FINAL       = "Final"
+
+# geometry specification 
 
 GEO_BASIC  = Geometry
 GEO_SPLINE = Geometry_Splined
 
-# airfoil types for some usage semantics in application 
 
-NORMAL      = ""
-SEED        = "Seed"
-SEED_DESIGN = "Seed of design"
-REF1        = "Reference 1" 
-REF2        = "Reference 2" 
-DESIGN      = "Design"
-FINAL       = "Final"
-
-AIRFOIL_TYPES = [NORMAL, SEED, SEED_DESIGN, REF1, REF2, DESIGN, FINAL]
 
 
 #--------------------------------------------------------------------------
@@ -191,7 +200,6 @@ class Airfoil:
 
         self._x = self.geo.x
         self._y = self.geo.y
-        self.geo.set_xy_org (self._x, self._y)          # update the copy of x,y in geo 
 
         self.set_isModified (True)
 
@@ -319,25 +327,12 @@ class Airfoil:
         """ number of coordinate points"""
         return self.geo.nPoints 
 
-    @property
-    def te_gap (self): 
-        """ trailing edge gap in y/c"""
-        return self.geo.te_gap
         
     @property
     def isSymmetrical(self):
         """ true if max camber is 0.0 - so it's a symmetric airfoil"""
         return self.geo.isSymmetrical
     
-    @property
-    def camber (self) -> 'Side_Airfoil': 
-        """ camber line as Line object"""
-        return self.geo.camber 
-
-    @property
-    def thickness (self) -> 'Side_Airfoil': 
-        """ thickness distribution as Line object """
-        return self.geo.thickness
 
     @property
     def nPanelsNew (self): 
@@ -379,12 +374,23 @@ class Airfoil:
 
     @property
     def usedAs (self):
-        """ usage type of self like DESIGN <- Airfoil_Types"""
+        """ usage type (enum usedAs) of self like DESIGN"""
         return self._usedAs
     def set_usedAs (self, aType): 
-        if aType in AIRFOIL_TYPES:
+        if aType in usedAs:
             self._usedAs = aType
-    
+
+    @property
+    def usedAsDesign (self): 
+        """ short for self used as DESIGN """ 
+        return self._usedAs == usedAs.DESIGN
+
+    def useAsDesign (self, aBool=True): 
+        """ set usedAs property to DESIGN"""
+        if aBool: 
+            self.set_usedAs (usedAs.DESIGN)
+        else: 
+            self.set_usedAs (usedAs.NORMAL)
 
     #-----------------------------------------------------------
 
@@ -814,15 +820,15 @@ class Airfoil_Bezier(Airfoil):
                     line = line.lower()
                     if "start" in line:
                         if "top" in line: 
-                            curveType = UPPER
+                            side = linetype.UPPER
                         else:
-                            curveType = LOWER 
+                            side = linetype.LOWER 
                         px, py = [], []
                     elif "end" in line:
                         if not px : raise ValueError("Start line missing")
-                        if "top"    in line and curveType == LOWER: raise ValueError ("Missing 'Bottom End'")  
-                        if "bottom" in line and curveType == UPPER: raise ValueError ("Missing 'Bottom Top'") 
-                        self.set_newSide_for (curveType, px,py)
+                        if "top"    in line and side == linetype.LOWER: raise ValueError ("Missing 'Bottom End'")  
+                        if "bottom" in line and side == linetype.UPPER: raise ValueError ("Missing 'Bottom Top'") 
+                        self.set_newSide_for (side, px,py)
                     else:     
                         splitline = line.strip().split()
                         if len(splitline) == 1:                        # couldn't split line - try tab as separator
@@ -1059,7 +1065,7 @@ class Airfoil_Hicks_Henne(Airfoil):
         x,y = [], []                             # x,y of sedd
         top_hhs = []                             # array of hh functions 
         bot_hhs = []
-        curveType = None
+        side = None
 
         try: 
             hhs = []
@@ -1078,22 +1084,22 @@ class Airfoil_Hicks_Henne(Airfoil):
                 elif "start" in line_low:
 
                     if "top" in line_low: 
-                        curveType = UPPER
+                        side = linetype.UPPER
                     else:
-                        curveType = LOWER 
+                        side = linetype.LOWER 
                     hhs = []
 
                 elif "end" in line_low:
 
-                    if not curveType : raise ValueError("Start line missing")
-                    if "top"    in line_low and curveType == LOWER: raise ValueError ("Missing 'Bottom End'")  
-                    if "bottom" in line_low and curveType == UPPER: raise ValueError ("Missing 'Bottom Top'") 
+                    if not side : raise ValueError("Start line missing")
+                    if "top"    in line_low and side == linetype.LOWER: raise ValueError ("Missing 'Bottom End'")  
+                    if "bottom" in line_low and side == linetype.UPPER: raise ValueError ("Missing 'Bottom Top'") 
 
-                    if curveType == LOWER:
+                    if side == linetype.LOWER:
                         bot_hhs = hhs
                     else: 
                         top_hhs = hhs 
-                    curveType = None
+                    side = None
 
                 else:     
 

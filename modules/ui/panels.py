@@ -8,7 +8,8 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 """
 
 import logging
-
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
 
 from PyQt6.QtCore       import Qt
 from PyQt6.QtCore       import QSize, QMargins, pyqtSignal 
@@ -164,7 +165,7 @@ class Edit_Panel (Panel):
         if l_panel is None: l_panel = self._init_layout()       # subclass will create layout 
 
         if l_panel is None: 
-            logging.warning (f"{self.name}: Layout for panel still missing ")
+            logger.warning (f"{self.name}: Layout for panel still missing ")
         else: 
             l_panel.setContentsMargins (QMargins(15, 0, 0, 0))   # inset left 
             l_panel.setSpacing(2)
@@ -181,7 +182,7 @@ class Edit_Panel (Panel):
         self.setLayout (l_main)
 
         # initial switch state 
-        self.set_switched_on (self._switched_on)
+        self.set_switched_on (self._switched_on, initial=True)
 
 
     def header_text (self) -> str: 
@@ -194,7 +195,7 @@ class Edit_Panel (Panel):
         """ True if self is switched on"""
         return self._switched_on
     
-    def set_switched_on (self, aBool : bool):
+    def set_switched_on (self, aBool : bool, initial=False):
         """ switch on/off 
             - optional hide main panel 
             - emit sig_switched
@@ -209,8 +210,9 @@ class Edit_Panel (Panel):
             else: 
                 self._set_height (40)
 
-        # signal to Diagram_Item 
-        self.sig_switched.emit (self._switched_on)
+        # signal to Diagram_Item - but not during init 
+        if not initial: 
+            self.sig_switched.emit (self._switched_on)
 
 
     @property
@@ -223,7 +225,7 @@ class Edit_Panel (Panel):
         """ refreshes all Widgets on self """
         for w in self.widgets:
             w.refresh(disable=disable)
-        logging.debug (f"{self} - refresh")
+        logger.debug (f"{self} - refresh")
 
 
     def set_enabled_widgets (self, aBool):
@@ -330,7 +332,7 @@ class Test_Panels (QMainWindow):
 if __name__ == "__main__":
 
     from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout
-    logging.basicConfig(level=logging.DEBUG)
+    # logging.basicConfig(level=logging.DEBUG)
  
     app = QApplication([])
     app.setStyle('fusion')
