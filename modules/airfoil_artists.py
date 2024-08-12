@@ -8,14 +8,14 @@ The "Artists" to plot a airfoil object on a matplotlib axes
 """
 import numpy as np
 
-from ui.artist                  import *
-from common_utils               import *
+from base.artist                  import *
+from base.common_utils               import *
 
 from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Geometry_Bezier
 from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
 
 from model.airfoil_geometry     import Curvature_Abstract, linetype
-from model.spline               import HicksHenne
+from base.spline                import HicksHenne, Bezier
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
 from PyQt6.QtCore               import pyqtSignal, QObject
@@ -199,23 +199,24 @@ class Moveable_Highpoint (Moveable_Point):
                          **kwargs)
 
 
-    def _label_static (self,*_):
+    def label_static (self):
 
         if self._line.type == linetype.CAMBER and self._geo.isSymmetrical: 
             return  "No camber - symmetrical" 
         else:  
-            return super()._label_static()
+            return super().label_static()
 
-    def _label_moving (self,x,y):
+    def label_moving (self):
 
         if self._line.type == linetype.CAMBER and self._geo.isSymmetrical: 
             return  "No camber - symmetrical" 
         else:  
-            return f"{y:.2%} @ {x:.2%}"
+            return f"{self.y:.2%} @ {self.x:.2%}"
 
 
     def _moving (self, _):
-
+        """ slot - point is moved by mouse """
+        # overlaoded to update airfoil geo 
         # update highpoint coordinates
         self._geo.set_highpoint_of (self._line, (self.x, self.y), moving=True)
 
@@ -227,8 +228,8 @@ class Moveable_Highpoint (Moveable_Point):
 
 
     def _finished (self, _):
-
-        # final highpoint coordinates
+        """ slot - point is move finished """
+        # overlaoded to update airfoil geo 
         self._geo.set_highpoint_of (self._line, (self.x, self.y), moving=False)
 
         # update parent plot item 
@@ -263,7 +264,7 @@ class Moveable_TE_Point (Moveable_Point):
 
         xy = self._te_point_xy()
 
-        super().__init__(xy, movable=movable, **kwargs)
+        super().__init__(xy, movable=movable, show_label_static = movable,**kwargs)
 
     
     def _te_point_xy (self): 
@@ -271,7 +272,7 @@ class Moveable_TE_Point (Moveable_Point):
     
 
     def _moving (self, _):
-        """ callback when point is moved"""
+        """ slot -point is moved"""
 
         # update highpoint coordinates
         self._geo.set_te_gap (self.y * 2 , moving=True)
@@ -285,16 +286,16 @@ class Moveable_TE_Point (Moveable_Point):
 
 
     def _finished (self, _):
-        """ callback when point moving is finished"""
+        """ slot - point moving is finished"""
 
         # final highpoint coordinates
         self._geo.set_te_gap (self.y * 2, moving=False)
         self._changed()
 
 
-    def _label_moving (self,x,y):
+    def label_moving (self):
 
-        return f"{self.name}  {y*2:.2%} "
+        return f"{self.name}  {self.y*2:.2%} "
 
     def _label_opts (self, moving=False, hover=False) -> dict:
         """ returns the label options as dict """
@@ -339,7 +340,7 @@ class Moveable_LE_Point (Moveable_Point):
   
 
     def _moving (self, _):
-        """ callback when point is moved"""
+        """ slot - when point is moved"""
 
         # update radius 
         new_radius = self.x / 2
@@ -355,7 +356,7 @@ class Moveable_LE_Point (Moveable_Point):
 
 
     def _finished (self, _):
-        """ callback when point moving is finished"""
+        """ slot - point moving is finished"""
 
         # final highpoint coordinates
         new_radius = self.x / 2
@@ -363,59 +364,62 @@ class Moveable_LE_Point (Moveable_Point):
         self._changed()
 
 
-    def _label_moving (self,x,y):
+    def label_moving (self):
 
-        return f"{self.name}  {x/2:.2%} "
+        return f"{self.name}  {self.x/2:.2%} "
 
 
 
-class Moveable_Bezier (pg.PlotCurveItem):
+
+
+class Moveable_Side_Bezier (Moveable_Bezier):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
-    a Side_Airfoil_Bezier which can be changed by the controllpoints
-    where the points can be moved 
-
+    an airfoil Side_Bezier. 
+    The Bezier curve which can be changed by the controllpoints
+    
     Points are implemented with Moveable_Points
     A Moveable_Point can also be fixed ( movable=False).
     See pg.TargetItem for all arguments 
 
+    Callback 'on_changed' will return the (new) list of 'points'
+
     """
     def __init__ (self, 
+                  airfoil : Airfoil_Bezier,
                   side : Side_Airfoil_Bezier,
-                  color = None, 
-                  movable = False,
-                  on_changed = None, 
                   **kwargs):
 
-        self._callback_changed = on_changed
-        self._point_items = []
+        self._airfoil = airfoil
+        self._side = side 
+        points = side.controlPoints_as_points
 
-        self.movable = movable 
+        super().__init__(points, **kwargs)
 
-        # Control points  
-        x = side.bezier.points_x
-        y = side.bezier.points_y
+    def _add_point (self):
+        pass
+        # p1.scene().sigMouseMoved.connect(mouseMoved)
+        # https://pyqtgraph.readthedocs.io/en/latest/api_reference/graphicsscene/graphicsscene.html
 
-        # init polyline  
-        penColor = QColor (color).darker (120)
-        pen = pg.mkPen (penColor, width=1, style=Qt.PenStyle.DotLine)
+    def _delete_point (self, aPoint : Moveable_Point):
+        """ slot - point is should be deleted """
+        # overloaded - don't delete point 1 
+        if aPoint.id == 1: return
+        super()._delete_point (aPoint)        
 
-        super().__init__(x, y, pen=pen)
 
-        # init Movable_Points 
+    def _finished_point (self, aPoint):
+        """ slot - point move is finished """
 
-        symbol = 's'
-        if side.type == linetype.UPPER:
-            label_anchor = (0,1)
-        else:
-            label_anchor = (0,0)
+        # overloaded - update airfoil geometry 
+        px, py = self.points_xy()
+        self._airfoil.geo.set_controlPoints_of (self._side, px, py)      
 
-        for i in range (len(x)):
-            p = Moveable_Point ((x[i],y[i]), parent=self, name=f"P{str(i)}",
-                                color=color, symbol=symbol, size=7, label_anchor=label_anchor, 
-                                **kwargs) 
-            self._point_items.append(p)
-            p.setZValue (10)
+        if callable(self._callback_changed):
+            timer = QTimer()   
+            # delayed emit to leave scope of mouse event handling 
+            timer.singleShot(10, self._callback_changed)
+
 
 
 
@@ -425,12 +429,13 @@ class Moveable_Bezier (pg.PlotCurveItem):
 class Airfoil_Artist (Artist):
     """Plot the airfoils contour  """
 
+    sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
+
 
     def __init__ (self, *args, **kwargs):
 
         self._show_panels = False                       # show ony panels 
         self._label_with_airfoil_type = False           # include airfoil type in label 
-        self._show_shape_function = True                # show Bezier or Hicks Henne shape functions
 
         super().__init__ (*args, **kwargs)
 
@@ -447,12 +452,6 @@ class Airfoil_Artist (Artist):
         if self._show_panels: 
             self.set_show_points (False)
 
-    @property
-    def show_shape_function(self): return self._show_shape_function
-    def set_show_shape_function (self, aBool): 
-        """ user switch to show shape function like Bezier control points  """
-        self._show_shape_function = aBool 
-        self.plot()
 
     def set_show_points (self, aBool):
         """ user switch to show point (marker ) """
@@ -561,10 +560,6 @@ class Airfoil_Artist (Artist):
                     self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
                                       text=text,anchor=(0.5,1) )
 
-                # optional plot of shape functon like Bezier control points
-
-                if self.show_shape_function and airfoil.isBezierBased: 
-                    self._plot_bezier (airfoil, color) 
 
 
     def _get_modifications (self, airfoil : Airfoil) -> str: 
@@ -583,68 +578,6 @@ class Airfoil_Artist (Artist):
     #         self.draw_hicksHenne (airfoil)
     #         if self.show_title: 
     #             self._plot_title ('Hicks Henne based', va='top', ha='left', wspace=0.05, hspace=0.05)
-
-
-    # print a table for the max values 
-    # if self.showLegend == 'extended':
-    #     self._print_values (iair, airfoil, color)
-    # elif self.showLegend == 'normal':
-    #     self._print_name (iair, airfoil, color)
-
-
-
-    def _plot_bezier(self, airfoil: Airfoil_Bezier, color):
-        """ draw Bezier control points of airfoil """
-
-        for side in [airfoil.geo.upper, airfoil.geo.lower]:
-
-            p = Moveable_Bezier (side, color=color, movable=airfoil.usedAsDesign) 
-            self._add(p)
-           
-
-
-    # def draw_hicksHenne (self, airfoil: Airfoil_Bezier):
-    #     """ draw hicks henne functions of airfoil """
-
-    #     linewidth   = 1
-    #     linestyle   = ':'
-
-    #     side : Side_Airfoil_HicksHenne
-
-    #     for side in [airfoil.geo.upper, airfoil.geo.lower]:
-    #     # side = airfoil.geo.upper
-
-    #         if side.name == UPPER:
-    #             delta_y =  0.1
-    #         else:
-    #             delta_y = -0.1
-
-    #         hh : HicksHenne
-    #         for ih, hh in enumerate(side.hhs):
-
-    #             # plot hh function 
-    #             x = side.x 
-    #             y = hh.eval (x) 
-    #             p = self.ax.plot (x,y * 10 + delta_y, linestyle, linewidth=linewidth , alpha=1) 
-    #             self._add(p)
-
-    #             # plot maximum marker 
-    #             x = hh.location
-    #             y = hh.strength  * 10 + delta_y
-    #             color =self._get_color (p) 
-    #             p = self.ax.plot (x, y, color=color, **ms_point)
-    #             self._add(p)
-
-    #             p = self.ax.annotate(f'{ih+1}  w{hh.width:.2f}', (x, y), fontsize='small',
-    #                 xytext=(3, 3), textcoords='offset points', color = color)
-    #             self._add(p)
-
-    #         # print info text 
-
-    #         if self.show_title:    
-    #             p = _plot_side_title (self.ax, side)
-    #             self._add(p)
-
 
 
     # def _print_name (self, iair, airfoil: Airfoil, color):
@@ -695,48 +628,76 @@ class Airfoil_Artist (Artist):
 
 
 
-# class Airfoil_Line_Artist (Artist):
-#     """Superclass for plotting a line like curvature of upper and lower side of an airfoil
-#     """
-#     def __init__ (self, axes, modelFn, **kwargs):
-#         super().__init__ (axes, modelFn, **kwargs)
+class Bezier_Artist (Artist):
+    """Plot and edit airfoils Bezier control points """
 
-#         self._upper  = True                     # including upper and lower lines 
-#         self._lower  = True
-#         self._points = False                    # show point marker 
+    sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
 
-#     def refresh(self, figureUpdate=False, upper=None, lower=None):
-#         """ overloaded to switch upper/lower on/off"""
-#         if upper is not None: self._upper = upper
-#         if lower is not None: self._lower = lower
-#         super().refresh (figureUpdate=figureUpdate)
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
 
-#     @property
-#     def upper(self): return self._upper
-#     def set_upper (self, aBool): self._upper = aBool 
 
-#     @property
-#     def lower(self): return self._lower
-#     def set_lower (self, aBool): self._lower = aBool 
+    def _plot (self): 
     
-#     @property
-#     def points(self): return self._points
-#     def set_points (self, aBool): self._points = aBool 
+        airfoil: Airfoil
 
-#     @property
-#     def _marker_style (self):
-#         """ the marker style to show points"""
-#         if self._points: return ms_points
-#         else:            return dict()
+        for airfoil in self.airfoils:
+            if airfoil.isBezierBased and airfoil.isLoaded:
 
-    
-#     @property
-#     def airfoils (self): 
-#         return self.model
-    
-#     def _plot (self): 
-#         # to be overloaded
-#         pass
+                color = _color_airfoil_of (airfoil.usedAs)
+
+                side : Side_Airfoil_Bezier
+                for side in [airfoil.geo.upper, airfoil.geo.lower]:
+
+                    p = Moveable_Side_Bezier (airfoil, side, color=color, movable=airfoil.usedAsDesign,
+                                              on_changed=self.sig_airfoil_changed.emit) 
+                    self._add(p)
+ 
+
+
+    # def draw_hicksHenne (self, airfoil: Airfoil_Bezier):
+    #     """ draw hicks henne functions of airfoil """
+
+    #     linewidth   = 1
+    #     linestyle   = ':'
+
+    #     side : Side_Airfoil_HicksHenne
+
+    #     for side in [airfoil.geo.upper, airfoil.geo.lower]:
+    #     # side = airfoil.geo.upper
+
+    #         if side.name == UPPER:
+    #             delta_y =  0.1
+    #         else:
+    #             delta_y = -0.1
+
+    #         hh : HicksHenne
+    #         for ih, hh in enumerate(side.hhs):
+
+    #             # plot hh function 
+    #             x = side.x 
+    #             y = hh.eval (x) 
+    #             p = self.ax.plot (x,y * 10 + delta_y, linestyle, linewidth=linewidth , alpha=1) 
+    #             self._add(p)
+
+    #             # plot maximum marker 
+    #             x = hh.location
+    #             y = hh.strength  * 10 + delta_y
+    #             color =self._get_color (p) 
+    #             p = self.ax.plot (x, y, color=color, **ms_point)
+    #             self._add(p)
+
+    #             p = self.ax.annotate(f'{ih+1}  w{hh.width:.2f}', (x, y), fontsize='small',
+    #                 xytext=(3, 3), textcoords='offset points', color = color)
+    #             self._add(p)
+
+    #         # print info text 
+
+    #         if self.show_title:    
+    #             p = _plot_side_title (self.ax, side)
+    #             self._add(p)
+
+
 
 
 class Curvature_Artist (Artist):
@@ -777,7 +738,7 @@ class Curvature_Artist (Artist):
 
     def _plot (self): 
 
-        from model.math_util    import derivative1
+        from base.math_util    import derivative1
 
         nairfoils = len(self.airfoils)
         

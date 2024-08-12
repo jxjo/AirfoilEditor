@@ -15,7 +15,7 @@ from PyQt6.QtCore       import QSize, QMargins
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout
 from PyQt6.QtWidgets    import QFileDialog, QWidget
 
-from ui.widgets         import * 
+from base.widgets         import * 
 
 from model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
 from model.airfoil            import GEO_BASIC, GEO_SPLINE, usedAs

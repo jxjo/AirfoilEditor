@@ -12,8 +12,8 @@ from pathlib            import Path
 
 import numpy as np
 
-from model.math_util    import * 
-from common_utils       import * 
+from base.math_util          import * 
+from base.common_utils       import * 
 from model.airfoil_geometry import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
 from model.airfoil_geometry import Line, Side_Airfoil_Bezier, linetype
 
@@ -733,13 +733,8 @@ class Airfoil_Bezier(Airfoil):
     def geo (self) -> Geometry_Bezier:
         """ the geometry strategy of self"""
         if self._geo is None: 
-            self._geo = Geometry_Bezier ()
+            self._geo = self._geometryClass (onChange = self._handle_geo_changed)
         return self._geo
-
-    def set_geo (self, geometry: Geometry_Bezier):
-        """ set new geometry bezier object  """
-        # do nothing as only Geometry_Bezier is supported
-        pass
 
 
     def set_xy (self, x, y):
@@ -952,17 +947,13 @@ class Airfoil_Hicks_Henne(Airfoil):
     @property
     def geo (self) -> Geometry_HicksHenne:
         """ the geometry strategy of self"""
+        if self._geo is None: 
+            self._geo = self._geometryClass (onChange = self._handle_geo_changed)
         return self._geo
-
-    def set_geo (self, geometry: Geometry_Bezier):
-        """ set new geometry hicks henne object  """
-        if not isinstance (geometry, self._geometryClass): return 
-        self._geo = geometry  
 
 
     def set_xy (self, x, y):
         """ hh - do nothing """
-
         # overloaded - hh geometry is master of data 
         pass
 
@@ -1038,7 +1029,7 @@ class Airfoil_Hicks_Henne(Airfoil):
         reads hicks henne definition from file. 
         """    
 
-        from spline import HicksHenne
+        from base.spline import HicksHenne
 
         with open(fromPath, 'r') as file:            
 

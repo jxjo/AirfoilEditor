@@ -32,14 +32,14 @@ from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QStack
 # let python find the other modules in modules relativ to path of self  
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
-from common_utils           import * 
 
 from model.airfoil          import Airfoil, usedAs 
 from model.airfoil_geometry import Geometry
 
-from ui.panels              import Panel, Edit_Panel
-from ui.widgets             import *
-from ui.diagram             import * 
+from base.common_utils      import * 
+from base.panels            import Panel, Edit_Panel
+from base.widgets           import *
+from base.diagram           import * 
 
 from airfoil_widgets        import * 
 from airfoil_artists        import *
@@ -49,8 +49,17 @@ from airfoil_artists        import *
 # The App   
 #-------------------------------------------------------------------------------
 
+# ------ globals -----
+
 AppName    = "Airfoil Editor"
 AppVersion = "2.0 beta"
+
+Main : 'Main_Window' = None 
+
+def signal_airfoil_changed ():
+    """ main airfoil change signal """
+    if Main: Main.sig_airfoil_changed.emit()
+
 
 class Main_Window (QMainWindow):
     '''
@@ -87,7 +96,7 @@ class Main_Window (QMainWindow):
         self._airfoil_sav = None                    # airfoil saved in edit_mode 
 
         self._edit_mode = False                     # edit/view mode of app 
-        self._edit_panel = None 
+        self._data_panel = None 
         self._file_panel = None
 
         self.parentApp = parentApp
@@ -124,20 +133,27 @@ class Main_Window (QMainWindow):
         #  || file panel ||        edit panel             >||
         #                 | Geometry  | Coordinates | ... >| 
 
-        self._edit_panel  = Panel ()
+        self._data_panel  = Panel ()
         l_edit = QHBoxLayout()
-        l_edit.addWidget (Panel_Geometry   (self, self.airfoil), stretch= 5)
-        l_edit.addWidget (Panel_Panels     (self, self.airfoil), stretch= 4)
-        l_edit.addWidget (Panel_LE_TE_Coordinates      (self, self.airfoil), stretch= 4)
+        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 5)
+        l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 4)
+        l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 4)
+        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 4)
         l_edit.addStretch (3)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
-        self._edit_panel.setLayout (l_edit)
+        self._data_panel.setLayout (l_edit)
 
-        self._file_panel = Panel_File (self, self.airfoil)
+        self._file_panel  = Panel ()
+        l_file = QHBoxLayout()
+        l_file.addWidget (Panel_View_Mode        (self, self.airfoil))
+        l_file.addWidget (Panel_Edit_Mode   (self, self.airfoil))
+        l_file.setContentsMargins (QMargins(0, 0, 0, 0))
+        self._file_panel.setLayout (l_file)
+
 
         l_lower = QHBoxLayout()
         l_lower.addWidget (self._file_panel)
-        l_lower.addWidget (self._edit_panel, stretch=2)
+        l_lower.addWidget (self._data_panel, stretch=2)
         l_lower.setContentsMargins (QMargins(0, 0, 0, 0))
         lower = QWidget ()
         lower.setLayout (l_lower)
@@ -197,15 +213,15 @@ class Main_Window (QMainWindow):
         # finally signal airfoil changed 
         if self._edit_mode != aBool: 
             self._edit_mode = aBool
-            self.sig_airfoil_changed.emit ()        # signal new airfoil 
+            signal_airfoil_changed ()               # signal new airfoil 
         else: 
             self.refresh()                          # set disable/enable during init 
         
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
-        self._edit_panel.refresh(disable=not self.edit_mode)
-        self._file_panel.refresh(disable=not self.edit_mode)
+        self._data_panel.refresh(disable=not self.edit_mode)
+        self._file_panel.refresh(disable=False)
 
 
     def airfoil (self) -> Airfoil:
@@ -272,23 +288,21 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     def _on_airfoil_widget_changed (self):
         """ user changed data in widget"""
         # logging.debug (f"{self} widget changed slot")
-        self.myApp.sig_airfoil_changed.emit ()
+        signal_airfoil_changed ()
 
 
 
-class Panel_File (Panel_Airfoil_Abstract):
+class Panel_View_Mode (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
     name = 'File'
     _width  = 220                   # fixed width 
 
-    def __init__ (self, *args, **kwargs):
 
-        self._edit_panel : QWidget = None 
-        self._view_panel : QWidget = None 
-        self._stack_widget : QStackedWidget = None 
-
-        super().__init__ (*args, **kwargs)
+    @property
+    def _isVisible (self) -> bool:
+        """ overloaded: only visible if edit_moder """
+        return not self.myApp.edit_mode
 
 
     def _on_airfoil_widget_changed (self, object_class, setter_name, newVal ):
@@ -299,67 +313,55 @@ class Panel_File (Panel_Airfoil_Abstract):
 
     def _init_layout (self): 
 
-        # self has two panels each for view and edit mode 
-
-        # view panel 
-
-        l_view = QGridLayout()
+        l = QGridLayout()
         r,c = 0, 0 
-        Airfoil_Select_Open_Widget (l_view,r,c, withOpen=True, asSpin=False, signal=False,
+        Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False, signal=False,
                                     get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
-        SpaceR (l_view,r, stretch=2)
+        SpaceR (l,r, stretch=2)
         r += 1
-        Button (l_view,r,c, text="Edit Airfoil", width=100, 
+        Button (l,r,c, text="Edit Airfoil", width=100, 
                 set=lambda : self.myApp.set_edit_mode(True))
-        l_view.setColumnStretch (1,2)
-        l_view.setContentsMargins (QMargins(0, 0, 0, 0)) 
+        l.setColumnStretch (1,2)
+        l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
-        self._view_panel = QWidget()
-        self._view_panel.setLayout (l_view)
+        return l 
+ 
 
-        # edit panel 
 
-        l_edit = QGridLayout()
-        r,c = 0, 0 
-        Field (l_edit,r,c, colSpan=3, obj=self.airfoil, prop=Airfoil.fileName, disable=True)
-        r += 1
-        SpaceR (l_edit,r)
-        l_edit.setRowStretch (r,2)
-        r += 1
-        Button (l_edit,r,c, text="Ok",  width=None, set=self.edit_ok)
-        c += 1
-        SpaceC (l_edit,c)
-        c += 1
-        Button (l_edit,r,c, text="Cancel",  width=None, set=self.edit_cancel)
-        r += 1
-        l_edit.setColumnStretch (1,2)
-        l_edit.setContentsMargins (QMargins(0, 0, 0, 0)) 
+class Panel_Edit_Mode (Panel_Airfoil_Abstract):
+    """ File panel with open / save / ... """
 
-        self._edit_panel = QWidget()
-        self._edit_panel.setLayout (l_edit)
+    name = 'Edit Mode'
+    _width  = 220                   # fixed width 
 
-        # main panel 
+    @property
+    def _isVisible (self) -> bool:
+        """ overloaded: only visible if edit_moder """
+        return self.myApp.edit_mode
+
+
+    def _init_layout (self): 
+
+        self.set_background_color (color='deeppink', alpha=0.2)
 
         l = QGridLayout()
-
-        self._stack_widget = QStackedWidget ()
-        self._stack_widget.addWidget(self._view_panel)
-        self._stack_widget.addWidget(self._edit_panel)
-
-        l.addWidget (self._stack_widget, 0, 0, 1, 1)
-        self._switch_panel()
+        r,c = 0, 0 
+        Field (l,r,c, colSpan=3, obj=self.airfoil, prop=Airfoil.fileName, disable=True)
+        r += 1
+        SpaceR (l,r)
+        l.setRowStretch (r,2)
+        r += 1
+        Button (l,r,c, text="Ok",  width=None, set=self.edit_ok)
+        c += 1
+        SpaceC (l,c)
+        c += 1
+        Button (l,r,c, text="Cancel",  width=None, set=self.edit_cancel)
+        r += 1
+        l.setColumnStretch (1,2)
+        l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         return l
-
-
-    def header_text (self) -> str: 
-        """ returns text of header - default self.name"""
-        # overwritten 
-        if self.myApp.edit_mode:
-            return f"Edit Mode"
-        else: 
-            return f"{self.name}"
         
     
     def edit_ok (self): 
@@ -370,23 +372,6 @@ class Panel_File (Panel_Airfoil_Abstract):
         """ leave edit mode with 'cancel'"""
         self.myApp.set_edit_mode (False) 
 
-
-    def _switch_panel(self):
-        """ show/hide  edit/view_panel depending on edit_mode"""
-
-        if self.myApp.edit_mode:
-            self._stack_widget.setCurrentWidget (self._edit_panel)
-            self.set_background_color (color='deeppink', alpha=0.2)
-        else: 
-            self._stack_widget.setCurrentWidget (self._view_panel)
-            self.reset__background_color () 
-
-
-    def refresh (self, disable=None):
-        # overloaded to switch panel 
-
-        self._switch_panel ()               # edit/view mode 
-        super().refresh()                   # do not disable self
 
 
 
@@ -447,10 +432,10 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         r += 1
         FieldF (l,r,c, lab="Angle at LE", obj=self.geo, prop=Geometry.panelAngle_le, width=70, dec=1, unit="°", style=self._style_angle)
         SpaceC (l,c+2, width=10, stretch=0)
-        Label  (l,r,c+3,width=60, get=lambda: f"at index {self.geo().iLe}")
+        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().iLe}")
         r += 1
         FieldF (l,r,c, lab="Angle min", get=lambda: self.geo().panelAngle_min[0], width=70, dec=1, unit="°")
-        Label  (l,r,c+3,width=60, get=lambda: f"at index {self.geo().panelAngle_min[1]}")
+        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().panelAngle_min[1]}")
         r += 1
         SpaceR (l,r,height=5)
         r += 1
@@ -497,12 +482,18 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
 
 
-class Panel_LE_TE_Coordinates  (Panel_Airfoil_Abstract):
+class Panel_LE_TE  (Panel_Airfoil_Abstract):
     """ info about LE and TE coordinates"""
 
     name = 'Coordinates'
 
     _width  = (320, None)
+
+    @property
+    def _isVisible (self) -> bool:
+        """ overloaded: only visible if geo is not Bezier """
+        return not self.geo().isBezier
+
 
     def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
         """ add Widgets to header layout"""
@@ -589,6 +580,93 @@ class Panel_LE_TE_Coordinates  (Panel_Airfoil_Abstract):
 
 
 
+
+class Panel_Bezier (Panel_Airfoil_Abstract):
+    """ Panelling information """
+
+    name = 'Bezier'
+    _width  = (300, None)
+
+    @property
+    def _isVisible (self) -> bool:
+        """ overloaded: only visible if geo is Bezier """
+        return self.geo().isBezier
+
+    def upper (self) -> Side_Airfoil_Bezier:
+        if self.geo().isBezier:
+            return self.geo().upper
+
+    def lower (self) -> Side_Airfoil_Bezier:
+        if self.geo().isBezier:
+            return self.geo().lower
+
+    def curv_upper (self) -> Line:
+        if self.geo().isBezier:
+            return self.geo().curvature.upper
+
+    def curv_lower (self) -> Line:
+        if self.geo().isBezier:
+            return self.geo().curvature.lower
+
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+
+        r,c = 0, 0 
+        FieldI (l,r,c,   lab="No of points", obj=self.upper, prop=Side_Airfoil_Bezier.nControlPoints,  width=70)
+        FieldI (l,r,c+2,                     obj=self.lower, prop=Side_Airfoil_Bezier.nControlPoints,  width=70)
+        r += 1
+        FieldF (l,r,c,   lab="Curv at LE",   get=lambda: self.curv_upper().y[0],  width=70,
+                                             style=self._style_curv_le)
+        FieldF (l,r,c+2,                     get=lambda: self.curv_lower().y[0],  width=70,
+                                             style=self._style_curv_le)
+        r += 1
+        FieldF (l,r,c,   lab="Curv at TE",   get=lambda: self.curv_upper().y[-1],  width=70,
+                                             style=lambda: self._style_curv_te(self.curv_upper()))
+        FieldF (l,r,c+2,                     get=lambda: self.curv_lower().y[-1],  width=70, 
+                                             style=lambda: self._style_curv_te(self.curv_lower()))
+ 
+        r += 1
+        SpaceR (l,r, height=5)
+        r += 1
+        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT)        
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnStretch (c+3,1)
+        l.setRowStretch    (r-1,2)
+        
+        return l
+ 
+    def _style_curv_le (self):
+        """ returns style.WARNING if curvature at LE is too different"""
+        if abs(self.curv_upper().y[0] - self.curv_lower().y[0]) > 10: 
+            return style.WARNING
+        else: 
+            return style.NORMAL
+
+    def _style_curv_te (self, aCurv: Line):
+        """ returns style.WARNING if curvature at LE is too different"""
+        if abs(aCurv.y[-1]) > 10: 
+            return style.WARNING
+        else: 
+            return style.NORMAL
+
+
+    def _messageText (self): 
+
+        text = []
+        if abs(self.curv_upper().y[0] - self.curv_lower().y[0]) > 10 : 
+           text.append("- Curvature at LE is too different")
+        if abs(self.curv_upper().y[-1]) > 10: 
+           text.append("- Curvature at TE (upper) is quite high")
+        if abs(self.curv_lower().y[-1]) > 10: 
+           text.append("- Curvature at TE (lower) is quite high")
+
+        text = '\n'.join(text)
+        return text 
+
+
+
 #-------------------------------------------------------------------------------
 # Diagram   
 #-------------------------------------------------------------------------------
@@ -605,15 +683,20 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, 
-                                                show=True,
-                                                show_legend=True)
-        self.line_artist = Airfoil_Line_Artist (self, self.airfoils, 
-                                                show=False,
-                                                show_legend=True)
-        self.line_artist.sig_airfoil_changed.connect (self._parent.myApp.sig_airfoil_changed.emit)
+        self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show=True, show_legend=True)
+        self.airfoil_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
+
+        self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
+        self.line_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
+
+        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= self._is_bezier_based())
+        self.bezier_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
+         
         # setup view box 
-             
+
+        self.viewBox.setDefaultPadding(0.05)
+        self.viewBox.setXRange( 0, 1) # , padding=0.05
+
         self.viewBox.setAspectLocked()
         self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         # self.viewBox.setAutoPan(y=None)
@@ -623,10 +706,18 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def airfoils (self) -> list[Airfoil]: 
         return self.data_list()
     
+    def _is_bezier_based (self) -> bool: 
+        """ is one of airfoils Bezier based? """
+        a : Airfoil
+        for a in self.airfoils():
+            if a.isBezierBased: return True
+        return False 
+
 
     def refresh_artists (self):
         self.airfoil_artist.refresh() 
         self.line_artist.refresh() 
+        self.bezier_artist.refresh() 
 
     @property
     def section_panel (self) -> Edit_Panel:
@@ -644,8 +735,9 @@ class Diagram_Item_Airfoil (Diagram_Item):
                     set=self.line_artist.set_show) 
             r += 1
             CheckBox (l,r,c, text="Shape function (Bezier)", 
-                    get=lambda: self.airfoil_artist.show_shape_function,
-                    set=self.airfoil_artist.set_show_shape_function) 
+                    get=lambda: self.bezier_artist.show,
+                    set=self.bezier_artist.set_show,
+                    disable=lambda : not self._is_bezier_based()) 
             r += 1
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
@@ -676,7 +768,9 @@ class Diagram_Item_Curvature (Diagram_Item):
                                                 show_legend=True)
         # setup view box 
 
-        self._set_range () 
+        self._set_YRange () 
+        self.viewBox.setDefaultPadding (0.05)
+        self.viewBox.setXRange (0, 1, padding=0.05)  
         self.showGrid(x=True, y=True)
 
 
@@ -689,7 +783,7 @@ class Diagram_Item_Curvature (Diagram_Item):
         return self._logMode
     def set_logMode (self, aBool):
         self._logMode = aBool is True
-        self._set_range ()
+        self._set_YRange ()
 
     @property
     def link_x (self) -> bool:
@@ -745,7 +839,7 @@ class Diagram_Item_Curvature (Diagram_Item):
         return self._section_panel 
 
 
-    def _set_range (self):
+    def _set_YRange (self):
         """ set range of axes"""
 
         if self.logMode: 
@@ -754,6 +848,8 @@ class Diagram_Item_Curvature (Diagram_Item):
         else: 
             self.setLogMode (y=False)
             self.viewBox.setYRange(-2.0, 2.0)
+
+        self.viewBox.setDefaultPadding (0.05)
 
 
 
@@ -899,8 +995,8 @@ if __name__ == "__main__":
     # print (font.defaultFamily(), font.family(), font.families())
     app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
 
-    main = Main_Window (airfoil_file)
-    main.show()
+    Main = Main_Window (airfoil_file)
+    Main.show()
     app.exec()
 
     

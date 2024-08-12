@@ -16,8 +16,8 @@ from PyQt6.QtGui        import QPalette
 
 import pyqtgraph as pg # import PyQtGraph after PyQt6
 
-from ui.widgets         import Widget, Label
-from ui.panels          import Edit_Panel
+from base.widgets         import Widget, Label
+from base.panels          import Edit_Panel
 
 
 class Diagram (QWidget):

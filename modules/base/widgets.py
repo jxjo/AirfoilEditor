@@ -286,11 +286,11 @@ class Widget:
             # overwrite self disable state 
             if disable == True: 
                 self._disabled = True 
-            else: 
-                if self._disabled_getter == True: 
-                    pass                        # disable is fixed 
-                else:
-                    self._disabled = False
+            # else: 
+            #     if self._disabled_getter == True: 
+            #         pass                        # disable is fixed 
+            #     else:
+            #         self._disabled = False
 
             # logger.debug (f"{self} - refresh (disable={disable})")
 
@@ -343,9 +343,12 @@ class Widget:
         Optional 'id' is used as argument of bound method 'getter'
         'default' is taken, if 'getter' results in None 
         """
-        if isinstance (getter, property):         # getter is a property of obj 
+        if isinstance (getter, property):               # getter is a property of obj 
             o = obj() if callable (obj) else obj
-            val = getter.__get__(o, type(o))
+            if o is not None:
+                val = getter.__get__(o, type(o))
+            else: 
+                val = None 
 
         elif callable(getter):                          # getter is a bound method ?
             if not id is None:                          # an object Id was set to identify object
@@ -801,7 +804,7 @@ class FieldI (Field_With_Label, QSpinBox):
     def _get_properties (self): 
         # overloaded
         super()._get_properties () 
-        self._val = int (self._val) 
+        self._val = int (self._val) if self._val is not None else 0 
         self._lim = self._get_value (self._lim_getter)
 
 

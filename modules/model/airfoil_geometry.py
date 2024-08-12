@@ -55,12 +55,10 @@ import numpy as np
 import time
 from copy import copy, deepcopy
 
-from model.math_util import * 
-from model.spline import Spline1D, Spline2D, Bezier
-from model.spline import HicksHenne
-from model.spline import print_array_compact
+from base.math_util    import * 
+from base.spline import Spline1D, Spline2D, Bezier
+from base.spline import HicksHenne
 
-from common_utils import ErrorMsg
 
 import logging
 logger = logging.getLogger(__name__)
@@ -92,6 +90,8 @@ class mod (Enum):
     MAX_CAMB        = ("camber","c")
     MAX_UPPER       = ("upper","u")
     MAX_LOWER       = ("lower","u")
+    BEZIER_LOWER    = ("Bezier lower","mod")
+    BEZIER_UPPER    = ("Bezier upper","mod")
     TE_GAP          = ("te_gap","te")
     LE_RADIUS       = ("le_radius","r")
     STRAK           = ("blend","blend")
@@ -1216,15 +1216,38 @@ class Side_Airfoil_Bezier (Line):
         return self._bezier 
 
     @property
-    def controlPoints (self): 
-        """ bezier control points """
+    def controlPoints (self) -> list[tuple]: 
+        """ bezier control points as xy"""
         return self.bezier.points
+    
     def set_controlPoints(self, px_or_p, py=None):
         """ set the bezier control points"""
         self._bezier.set_points (px_or_p, py)
 
     @property
-    def nPoints (self): 
+    def controlPoints_as_points (self) -> list[Point]: 
+        """ bezier control points as Points"""
+        points = []
+        nPoints = self.nControlPoints
+
+        for i in range(nPoints):
+
+            point = Point (self.controlPoints[i])               # xy tuple 
+
+            if i == 0 or i == (nPoints-1):                      # first and last fixed 
+                point.set_fixed (True)
+            elif i == 1 :                                       # le tangent only y  
+                point.set_x_limits ((0,0))
+            else:       
+                point.set_x_limits ((0,1))
+
+            points.append(point)
+
+        return points 
+
+
+    @property
+    def nControlPoints (self): 
         """ number of bezier control points """
         return len(self.bezier.points)
 
@@ -1917,7 +1940,6 @@ class Geometry ():
     def set_max_camb_x (self, val : float): 
         """ change max camber x position"""
         self.set_highpoint_of (self.camber,(val, None))
-        self.camber.set_highpoint ((val, None))
            
 
     def set_highpoint_of (self, aLine: Line, xy : tuple, moving=False): 
@@ -2223,12 +2245,12 @@ class Geometry ():
             lower = geo_norm.lower_new_x (upper.x) 
         else: 
             upper = self.upper
-            from timeit import default_timer as timer
-            start = timer()
+            # from timeit import default_timer as timer
+            # start = timer()
 
             lower = self.lower_new_x (upper.x)
-            end = timer()
-            print("Time lower", end - start)  
+            # end = timer()
+            # print("Time lower", end - start)  
 
         # sanity 
         
@@ -2784,14 +2806,25 @@ class Geometry_Bezier (Geometry):
 
     sideDefaultClass = Line
 
-    def __init__ (self, *kwargs):
+    def __init__ (self, **kwargs):
         """new Geometry based on two Bezier curves for upper and lower side """
-        super().__init__(None, None, *kwargs)        
+        super().__init__(None, None, **kwargs)        
 
         self._upper      = None                 # upper side as Side_Airfoil_Bezier object
         self._lower      = None                 # lower side 
 
-    
+
+    def _reset_lines (self):
+        """ reinit the dependand lines of self""" 
+
+        # overloaded Bezier do not reset upper and lower as they define the geometry
+        self.upper._highpoint = None            # but highpoints must be reset
+        self.lower._highpoint = None 
+        self._thickness  = None                 # thickness distribution
+        self._camber     = None                 # camber line
+        self._curvature  = None                 # curvature 
+
+
     @property
     def isNormalized (self):
         """ true - Bezier is always normalized"""
@@ -2839,6 +2872,23 @@ class Geometry_Bezier (Geometry):
             elif side == linetype.LOWER:
                 self._lower = Side_Airfoil_Bezier (px, py, linetype=linetype.LOWER)
             self._reset_lines()
+
+
+    def set_controlPoints_of (self, aSide : Side_Airfoil_Bezier,
+                              px_or_p, py = None,
+                              moving = False):
+        """ set the bezier control points"""
+
+        aSide.set_controlPoints (px_or_p, py)
+
+        if not moving: 
+
+            self._reset()
+            if aSide.isUpper:
+                self._changed (mod.BEZIER_UPPER, '')
+            else:
+                self._changed (mod.BEZIER_LOWER, '')
+
 
     @property
     def x (self):

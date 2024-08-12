@@ -11,7 +11,7 @@ import numpy as np
 from copy import deepcopy
 import math
 
-from model.math_util import findMin, newton
+from base.math_util import findMin, newton
 
 
 #------------ Helper -----------------------------------

@@ -17,8 +17,8 @@ from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, Q
 from PyQt6.QtWidgets    import QMainWindow, QWidget
 from PyQt6.QtGui        import QPalette, QColor
 
-from ui.widgets         import set_background
-from ui.widgets         import Widget, Label, CheckBox, size
+from base.widgets         import set_background
+from base.widgets         import Widget, Label, CheckBox, size
 
 
 
@@ -34,13 +34,6 @@ class Panel (QWidget):
 
     _width  = None
     _height = None 
-
-    @staticmethod
-    def refresh_childs (parent: QWidget, disable=None):
-        """ refresh all childs of parent"""
-        p : Panel
-        for p in parent.findChildren (Panel):
-            p.refresh(disable=disable) 
 
 
     def __init__(self, parent = None, 
@@ -104,7 +97,7 @@ class Panel (QWidget):
 
 
     def refresh (parent: QWidget, disable=None):
-        """ refresh all child panels self"""
+        """ refresh all child Panels self"""
         p : Panel
         for p in parent.findChildren (Panel):
             p.refresh(disable=disable) 
@@ -190,6 +183,13 @@ class Edit_Panel (Panel):
         # can be overwritten 
         return self.name 
 
+
+    @property 
+    def _isVisible (self) -> bool:
+        """ True if self is visible - can be overloaded """
+        return True
+
+
     @property 
     def switched_on (self) -> bool:
         """ True if self is switched on"""
@@ -223,9 +223,15 @@ class Edit_Panel (Panel):
 
     def refresh(self, disable=None):
         """ refreshes all Widgets on self """
-        for w in self.widgets:
-            w.refresh(disable=disable)
-        logger.debug (f"{self} - refresh")
+
+        # hide / show self 
+        self.setVisible (self._isVisible)
+
+        # refresh widgets of self only if visible 
+        if self._isVisible:
+            for w in self.widgets:
+                w.refresh(disable=disable)
+            logger.debug (f"{self} - refresh")
 
 
     def set_enabled_widgets (self, aBool):

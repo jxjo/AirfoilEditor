@@ -21,6 +21,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt       import QtCore, QtWidgets
 from pyqtgraph.graphicsItems.ScatterPlotItem import Symbols
+from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
 # from pyqtgraph.graphicsItems.GraphicsItem import GraphicsItemChange
 
 
@@ -28,7 +29,9 @@ from pyqtgraph.graphicsItems.ScatterPlotItem import Symbols
 from PyQt6.QtCore       import Qt, QTimer, QObject
 from PyQt6.QtGui        import QColor, QFont, QPen
 
-from common_utils       import *
+from base.common_utils  import *
+from base.math_util     import Point 
+from base.spline        import Bezier 
 
 
 
@@ -131,11 +134,15 @@ class Moveable_Point (pg.TargetItem):
 
     """
 
-    name = 'Point'                  # name of self - shown in 'label'
+    name = 'Point'                          # name of self - shown in 'label'
 
-    def __init__ (self, xy : tuple, 
+    sigShiftClick = QtCore.Signal(object)   # signal when point is shift clicked
+
+    def __init__ (self, 
+                  xy_or_point : tuple | Point, 
                   parent = None,                # to attach self to parent (polyline)
                   name : str = None, 
+                  id = None, 
                   symbol = '+',
                   size = None,
                   movable : bool = False,
@@ -146,8 +153,22 @@ class Moveable_Point (pg.TargetItem):
                   on_changed = None,
                   **kwargs):
 
+        if isinstance (xy_or_point, Point):
+            point = xy_or_point
+            xy = point.xy
+            if point._fixed: 
+                movable  = False
+            self._x_limits = point.x_limits
+            self._y_limits = point.y_limits
+        else: 
+            xy = xy_or_point
+            self._x_limits = None
+            self._y_limits = None
+
         self.name = name if name is not None else self.name
-        self._callback_changed = on_changed
+        self._id = id
+        self._callback_changed = on_changed if callable(on_changed) else None 
+
         self._show_label_static = show_label_static
         self._label_anchor = label_anchor
 
@@ -157,6 +178,7 @@ class Moveable_Point (pg.TargetItem):
         self._symbol_movable = symbol 
         self._symbol_fixed   = symbol
 
+        # set pen colors and brushes 
 
         if movable:
             symbol = self._symbol_movable
@@ -166,7 +188,9 @@ class Moveable_Point (pg.TargetItem):
             hoverBrush = qcolors.HOVER
 
             pen = pg.mkPen (color, width=1) 
-            hoverPen = pg.mkPen (color, width=1)
+            hoverPen = pg.mkPen (qcolors.HOVER, width=1)
+
+            self._movingBrush =  QColor('black') 
 
         else: 
             symbol = self._symbol_fixed
@@ -185,7 +209,7 @@ class Moveable_Point (pg.TargetItem):
         super().__init__(pos=xy, pen= pen, brush = brush, 
                          hoverPen = hoverPen, hoverBrush = hoverBrush,
                          symbol=symbol, size=size, movable=movable,
-                         label = self._label_static, 
+                         label = self._get_label_static, 
                          labelOpts = self._label_opts(),
                          **kwargs)
 
@@ -193,16 +217,47 @@ class Moveable_Point (pg.TargetItem):
         if parent is not None: 
             self.setParentItem (parent)
 
+        # points are above other things
+        self.setZValue (10)
+
         # default callback setup 
         self.sigPositionChanged.connect (self._moving)
         self.sigPositionChangeFinished.connect (self._finished)
 
+    @property
+    def xy (self) -> tuple[float]: 
+        """ returns x,y coordinates checked against limits"""
+        x = self.pos().x()
+        y = self.pos().y()  
+        limited = False       
+        if self._x_limits:
+            if x < self._x_limits[0]:
+                limited = True
+                x = self._x_limits[0] 
+            if x > self._x_limits[1]:
+                limited = True
+                x = self._x_limits[1] 
+        if self._y_limits:
+            if y < self._y_limits[0]:
+                limited = True
+                y = self._y_limits[0] 
+            if y > self._y_limits[1]:
+                limited = True
+                y = self._y_limits[1] 
+
+        if limited:                                                 # push movement back 
+            self.setPos ((x,y)) 
+        return x,y
 
     @property
-    def x (self) -> float: return self.pos().x()
+    def x (self) -> float: return self.xy[0]
 
     @property
-    def y (self) -> float: return self.pos().y()
+    def y (self) -> float: return self.xy[1]
+
+
+    @property
+    def id (self): return self._id 
 
 
     def set_name (self, aName :str):
@@ -210,22 +265,28 @@ class Moveable_Point (pg.TargetItem):
         self.name = aName
         self._label.valueChanged()                  # force label callback
 
+    def _get_label_static (self,*_):   return self.label_static ()
+    def _get_label_moving (self,*_):   return self.label_moving ()
+    def _get_label_hover (self,*_):    return self.label_hover ()
 
-    def _label_static (self,*_) -> str:
 
+    def label_static (self) -> str:
+        """ the static label - can be overloaded """
         if self._show_label_static:
             return f"{self.name}" 
         else:
             return None
 
-    def _label_moving (self, x, y):
+    def label_moving (self):
+        """ the label when moving - can be overloaded """
+        return f"{self.name} {self.y:.4n}@{self.x:.4n}"
 
-        return f"{self.name} {y:.4n}@{x:.4n}"
 
-    def _label_hover (self,*_):
-
-        return self._label_moving (self.x, self.y)
+    def label_hover (self):
+        """ the label when hovered - can be overloaded """
+        return self.label_moving ()
         # return f"Point {self.y:.4n}@{self.x:.4n} hovered"
+
 
     def _label_opts (self, moving=False, hover=False) -> dict:
         """ returns the label options as dict """
@@ -259,16 +320,24 @@ class Moveable_Point (pg.TargetItem):
 
     # TargetItem overloaded ---------------------------
 
+    def mouseClickEvent(self, ev : MouseClickEvent):
+        """ pg overloaded - ghandle shift_click """
+        if self.movable :
+            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier: 
+                self.sigShiftClick.emit(self) 
+        return super().mouseClickEvent(ev)
+
     def mouseDragEvent(self, ev):
 
         super().mouseDragEvent (ev) 
 
         if ev.isStart() and self.moving:
-            self.setLabel (self._label_moving, self._label_opts(moving=True))
+            self.setLabel (self._get_label_moving, self._label_opts(moving=True))
+            self.setMovingBrush ()
             self.setPath (Symbols[self._symbol_moving])
 
         if ev.isFinish() and not self.moving:
-            self.setLabel (self._label_static, self._label_opts(moving=False))
+            self.setLabel (self._get_label_static, self._label_opts(moving=False))
             self.setPath (Symbols[self._symbol_movable])
 
 
@@ -285,14 +354,160 @@ class Moveable_Point (pg.TargetItem):
 
         if not self.mouseHovering is hover:
             if hover:
-                self.setLabel (self._label_hover, self._label_opts(hover=hover))
+                self.setLabel (self._get_label_hover, self._label_opts(hover=hover))
             else: 
-                self.setLabel (self._label_static, self._label_opts(hover=hover))        
+                self.setLabel (self._get_label_static, self._label_opts(hover=hover))        
                 
         super().setMouseHover(hover)
 
 
+    def setMovingBrush(self):
+        """Set the brush that fills the symbol when moving.
+        """
+        if self.moving:
+            self.currentBrush = self._movingBrush
+            self.update()
 
+
+
+class Moveable_Bezier_Point (Moveable_Point):
+    """ 
+    Represents one control point of a Side_Bezier,
+    """
+
+    def label_moving (self):
+        return f"x {self.x:.3f}\ny {self.y:.3f}"
+
+
+
+class Moveable_Bezier (pg.PlotCurveItem):
+    """
+    pg.PlotCurveItem/UIGraphicsItem which represents 
+    a Bezier curve which can be changed by the controllpoints
+    
+    Points are implemented with Moveable_Points
+    A Moveable_Point can also be fixed ( movable=False).
+    See pg.TargetItem for all arguments 
+
+    Callback 'on_changed' will return the (new) list of 'points'
+
+    """
+    def __init__ (self, 
+                  points : list[Point], 
+                  id = None, 
+                  color = None, 
+                  movable = False,
+                  label_anchor = (0,1),
+                  show_static = False,                  # plot also when not in move 
+                  on_changed = None, 
+                  **kwargs):
+
+        self._callback_changed = on_changed
+        self._id = id 
+        self.movable = movable 
+
+        # Control points  
+        self._points = points 
+ 
+
+        # init polyline of control points as PlotCurveItem
+          
+        if movable:
+            penColor = QColor (qcolors.EDITABLE).darker (120)
+        else:
+            penColor = QColor (color).darker (150)
+        pen = pg.mkPen (penColor, width=1, style=Qt.PenStyle.DotLine)
+
+        # px, py = zip(*points) 
+        super().__init__(*self.points_xy(), pen=pen)
+
+        # init control points as Movable_Points 
+
+        symbol = 's'
+
+        for i, point in enumerate (points):
+
+            p = Moveable_Bezier_Point (point, parent=self, name=f"P{str(i)}", id = i, movable=movable, 
+                                color=color, symbol=symbol, size=7, label_anchor=label_anchor, 
+                                **kwargs) 
+            p.sigPositionChanged.connect        (self._moving_point)
+            p.sigPositionChangeFinished.connect (self._finished_point)
+            p.sigShiftClick.connect             (self._delete_point)
+
+        # init temp PlotCurve to represent Bezier during move 
+
+        self._bezier = None
+        self._bezier_item = None 
+        self._u = None
+
+        if movable or show_static: 
+            self._u = np.linspace (0.0, 1.0, 50)
+            self._bezier = Bezier (*self.points_xy())
+            x,y = self._bezier.eval(self._u)
+ 
+            pen = pg.mkPen (QColor (color), width=1, style=Qt.PenStyle.DashLine)
+            self._bezier_item = pg.PlotCurveItem (x,y, pen=pen)
+            self._bezier_item.setParentItem (self)
+
+            if not show_static:
+ 
+                self._bezier_item.hide()
+
+    @property
+    def id (self):
+        """ returns id of self """
+        return self._id 
+    
+    def points_xy (self) -> tuple[list]:
+        """returns coordinates of self._points as x, y lists """
+        x, y = [], []
+        for p in self._points:
+            x.append(p.x)
+            y.append(p.y)
+        return x, y
+
+
+    def _moving_point (self, aPoint : Moveable_Point):
+        """ slot - point is moved by mouse """
+        i = aPoint.id
+        self._points[i].set_xy(aPoint.xy)
+        self.setData(*self.points_xy())
+
+        if self._bezier_item: 
+            # update of bezier
+            x,y = self._bezier.eval(self._u)
+            self._bezier_item.setData (x, y)
+            self._bezier_item.show()
+
+
+    def _delete_point (self, aPoint : Moveable_Point):
+        """ slot - point is should be deleted """
+
+        # a minimum of 3 control points 
+        if len(self._points) <= 3: return   
+
+        # remove from list, update bezier and polyline   
+        i = aPoint.id
+        del self._points[i]
+        self.setData(*self.points_xy())
+
+        if self._bezier_item: 
+            # update of bezier
+            x,y = self._bezier.eval(self._u)
+            self._bezier_item.setData (x, y)
+            self._bezier_item.show()
+
+        self._finished_point (aPoint)
+        aPoint.scene().removeItem(aPoint)                   # final delete 
+
+
+    def _finished_point (self, aPoint):
+        """ slot - point move is finished """
+        
+        if callable(self._callback_changed):
+            timer = QTimer()   
+            # delayed emit 
+            timer.singleShot(10, lambda: self._callback_changed(self))
 
 
 

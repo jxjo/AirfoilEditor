@@ -45,13 +45,13 @@ class Point:
         """
 
         self._x = None 
-        self._x_fixed = False
         self._x_limits = x_limits 
 
         self._y = None
-        self._y_fixed = False
         self._y_limits = y_limits 
-          
+
+        self._fixed = False
+
         self.set_xy (a, b)
 
         logger.debug (f"{self} new")
@@ -73,6 +73,15 @@ class Point:
     @property
     def xy (self) -> tuple[float]:
         return (self.x, self._y)
+
+    @property
+    def x_limits (self) -> tuple:
+        return self._x_limits
+
+    @property
+    def y_limits (self) -> tuple:
+        return self._y_limits
+
 
     def label_changed (self, xy_initial : tuple) -> str:
         """ returns a short label 7.4@30.6 for y,x changed values as percent""" 
@@ -96,14 +105,18 @@ class Point:
         """ set new y coordinate limits"""
         self._y_limits = lim
  
+    def set_fixed (self, fixed : bool):
+        """ set if either x and y are fixed """
+        self._fixed = fixed is True 
+
 
     def set_x (self, x : float): 
         """ set new x coordinate"""
-        self._x = self._set_val (self._x, x, self._x_limits, self._x_fixed)
+        self._x = self._set_val (self._x, x, self._x_limits, self._fixed)
        
     def set_y (self, y : float): 
         """ set new y coordinate"""
-        self._y = self._set_val (self._y, y, self._y_limits, self._y_fixed)
+        self._y = self._set_val (self._y, y, self._y_limits, self._fixed)
 
 
     def set_xy (self, a, b=None):
@@ -128,8 +141,8 @@ class Point:
         else:
             raise ValueError (f"Point - cannot init with {a}, {b}")
         
-        self._x = self._set_val (self._x, x_new, self._x_limits, self._x_fixed)
-        self._y = self._set_val (self._y, y_new, self._y_limits, self._y_fixed)
+        self._x = self._set_val (self._x, x_new, self._x_limits, self._fixed)
+        self._y = self._set_val (self._y, y_new, self._y_limits, self._fixed)
 
 
     def isNew (self, x_new, y_new, decimals=7) -> tuple[bool]:
