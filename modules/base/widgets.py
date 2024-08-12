@@ -286,13 +286,11 @@ class Widget:
             # overwrite self disable state 
             if disable == True: 
                 self._disabled = True 
-            # else: 
-            #     if self._disabled_getter == True: 
-            #         pass                        # disable is fixed 
-            #     else:
-            #         self._disabled = False
+            else: 
+                # extra get_value with default False
+                self._disabled  = self._get_value (self._disabled_getter, default=False)
 
-            # logger.debug (f"{self} - refresh (disable={disable})")
+            # logger.debug (f"{self} - refresh (disable={disable} -> {self._disabled})")
 
             self._set_Qwidget ()
 
@@ -1231,6 +1229,7 @@ class ComboBox (Field_With_Label, QComboBox):
 
         super()._set_Qwidget ()
 
+        self.clear()                                # addItems append to list
         self.addItems (self._options)
         self.setCurrentText (self._val)
 

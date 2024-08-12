@@ -856,7 +856,7 @@ class Line:
         return self.type == linetype.LOWER 
 
     @property
-    def highpoint (self) -> Point:
+    def highpoint (self) -> JPoint:
         """
         Point repesentating the maximum y point value of self
 
@@ -867,7 +867,7 @@ class Line:
         if self._highpoint is None: 
 
             xy = self._get_maximum()
-            self._highpoint = Point (xy)
+            self._highpoint = JPoint (xy)
 
         return self._highpoint
 
@@ -902,12 +902,12 @@ class Line:
     
 
 
-    def set_highpoint (self, target : tuple|Point) -> tuple: 
+    def set_highpoint (self, target : tuple|JPoint) -> tuple: 
         """ 
         set / move the highpoint of self - returns new xy
         """
 
-        if isinstance (target, Point):
+        if isinstance (target, JPoint):
             x_new = target.x
             y_new = target.y
         else: 
@@ -1225,14 +1225,14 @@ class Side_Airfoil_Bezier (Line):
         self._bezier.set_points (px_or_p, py)
 
     @property
-    def controlPoints_as_points (self) -> list[Point]: 
+    def controlPoints_as_points (self) -> list[JPoint]: 
         """ bezier control points as Points"""
         points = []
         nPoints = self.nControlPoints
 
         for i in range(nPoints):
 
-            point = Point (self.controlPoints[i])               # xy tuple 
+            point = JPoint (self.controlPoints[i])               # xy tuple 
 
             if i == 0 or i == (nPoints-1):                      # first and last fixed 
                 point.set_fixed (True)
@@ -1286,10 +1286,12 @@ class Side_Airfoil_Bezier (Line):
         self.bezier.set_point ( 1, 0.0, y) 
 
 
-    def insert_controlPoint_at (self, x, y): 
-        """ insert a new Bezier control point at x,y - taking care of order of points 
-        Returns index, where inserted or None if not successful
-                and x,y coordinates of new point after checks """
+    def check_new_controlPoint_at (self, x, y): 
+        """ 
+        Checks a new Bezier control point at x,y - taking care of order of points. 
+        Returns index, where it would be inserted or None if not successful
+            and a JPoint with x,y coordinates after checks 
+        """
 
         px = self.bezier.points_x
 
@@ -1312,10 +1314,7 @@ class Side_Airfoil_Bezier (Line):
         if (dx_right < 0.01) or (dx_left < 0.01): 
            return None, None, None
 
-        # update Bezier now, so redraw wil use the new curve 
-        self.bezier.set_points (cpoints )
-
-        return i_insert, x, y 
+        return i_insert, JPoint (x,y) 
     
 
     def delete_controlPoint_at (self, index): 

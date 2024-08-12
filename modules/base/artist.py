@@ -30,18 +30,9 @@ from PyQt6.QtCore       import Qt, QTimer, QObject
 from PyQt6.QtGui        import QColor, QFont, QPen
 
 from base.common_utils  import *
-from base.math_util     import Point 
+from base.math_util     import JPoint 
 from base.spline        import Bezier 
 
-
-
-cl_background       = '#101010'
-cl_labelGrid        = '#B0B0B0'    
-cl_axes             = '#606060'
-cl_text             = '#D0D0D0'
-cl_textHeader       = '#808080'
-cl_userHint         = '#E0A721'
-cl_toolbar          = ('gray85', 'gray35')
 
 
 class qcolors (StrEnum):
@@ -121,7 +112,7 @@ pg.setConfigOptions(mouseRateLimit=30)
 # ---------------------------------------------------------------------------
 
 
-class Moveable_Point (pg.TargetItem):
+class Movable_Point (pg.TargetItem):
     """
     Abstract pg.TargetItem/UIGraphicsItem which represents a single, moveable point.
     
@@ -139,7 +130,7 @@ class Moveable_Point (pg.TargetItem):
     sigShiftClick = QtCore.Signal(object)   # signal when point is shift clicked
 
     def __init__ (self, 
-                  xy_or_point : tuple | Point, 
+                  xy_or_point : tuple | JPoint, 
                   parent = None,                # to attach self to parent (polyline)
                   name : str = None, 
                   id = None, 
@@ -153,7 +144,7 @@ class Moveable_Point (pg.TargetItem):
                   on_changed = None,
                   **kwargs):
 
-        if isinstance (xy_or_point, Point):
+        if isinstance (xy_or_point, JPoint):
             point = xy_or_point
             xy = point.xy
             if point._fixed: 
@@ -370,7 +361,7 @@ class Moveable_Point (pg.TargetItem):
 
 
 
-class Moveable_Bezier_Point (Moveable_Point):
+class Movable_Bezier_Point (Movable_Point):
     """ 
     Represents one control point of a Side_Bezier,
     """
@@ -380,7 +371,7 @@ class Moveable_Bezier_Point (Moveable_Point):
 
 
 
-class Moveable_Bezier (pg.PlotCurveItem):
+class Movable_Bezier (pg.PlotCurveItem):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
     a Bezier curve which can be changed by the controllpoints
@@ -393,7 +384,7 @@ class Moveable_Bezier (pg.PlotCurveItem):
 
     """
     def __init__ (self, 
-                  points : list[Point], 
+                  points : list[JPoint], 
                   id = None, 
                   color = None, 
                   movable = False,
@@ -427,7 +418,7 @@ class Moveable_Bezier (pg.PlotCurveItem):
 
         for i, point in enumerate (points):
 
-            p = Moveable_Bezier_Point (point, parent=self, name=f"P{str(i)}", id = i, movable=movable, 
+            p = Movable_Bezier_Point (point, parent=self, name=f"P{str(i)}", id = i, movable=movable, 
                                 color=color, symbol=symbol, size=7, label_anchor=label_anchor, 
                                 **kwargs) 
             p.sigPositionChanged.connect        (self._moving_point)
@@ -467,7 +458,7 @@ class Moveable_Bezier (pg.PlotCurveItem):
         return x, y
 
 
-    def _moving_point (self, aPoint : Moveable_Point):
+    def _moving_point (self, aPoint : Movable_Point):
         """ slot - point is moved by mouse """
         i = aPoint.id
         self._points[i].set_xy(aPoint.xy)
@@ -475,12 +466,13 @@ class Moveable_Bezier (pg.PlotCurveItem):
 
         if self._bezier_item: 
             # update of bezier
+            self._bezier.set_points(*self.points_xy())
             x,y = self._bezier.eval(self._u)
             self._bezier_item.setData (x, y)
             self._bezier_item.show()
 
 
-    def _delete_point (self, aPoint : Moveable_Point):
+    def _delete_point (self, aPoint : Movable_Point):
         """ slot - point is should be deleted """
 
         # a minimum of 3 control points 

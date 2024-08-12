@@ -3,7 +3,7 @@
 
 """  
 
-The "Artists" to plot a airfoil object on a matplotlib axes
+The "Artists" to plot a airfoil object on a pg.PlotItem 
 
 """
 import numpy as np
@@ -19,16 +19,6 @@ from base.spline                import HicksHenne, Bezier
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
 from PyQt6.QtCore               import pyqtSignal, QObject
-
-cl_fill             = 'whitesmoke'
-cl_editing          = 'deeppink'
-cl_editing_lower    = 'orchid'
-cl_helperLine       = 'orange'
-ls_curvature        = '-'
-ls_curvature_lower  = '--'
-ls_difference       = '-.'
-ls_camber           = '--'
-ls_thickness        = ':'
 
 
 
@@ -165,7 +155,7 @@ def _linestyle_of (aType : linetype) -> QColor:
 
 
 
-class Moveable_Highpoint (Moveable_Point):
+class Movable_Highpoint (Movable_Point):
     """ 
     Represents the highpoint of an airfoil Line object,
     which can be moved to change the highpoint 
@@ -238,7 +228,7 @@ class Moveable_Highpoint (Moveable_Point):
 
 
 
-class Moveable_TE_Point (Moveable_Point):
+class Movable_TE_Point (Movable_Point):
     """ 
     Represents the upper TE point. 
     When moved the upper and lower plot item will be updated
@@ -314,7 +304,7 @@ class Moveable_TE_Point (Moveable_Point):
 
 
 
-class Moveable_LE_Point (Moveable_Point):
+class Movable_LE_Point (Movable_Point):
     """ 
     Represents the LE radius . 
     When moved the LE radius will be updated
@@ -372,7 +362,7 @@ class Moveable_LE_Point (Moveable_Point):
 
 
 
-class Moveable_Side_Bezier (Moveable_Bezier):
+class Movable_Side_Bezier (Movable_Bezier):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
     an airfoil Side_Bezier. 
@@ -396,19 +386,50 @@ class Moveable_Side_Bezier (Moveable_Bezier):
 
         super().__init__(points, **kwargs)
 
-    def _add_point (self):
-        pass
-        # p1.scene().sigMouseMoved.connect(mouseMoved)
-        # https://pyqtgraph.readthedocs.io/en/latest/api_reference/graphicsscene/graphicsscene.html
 
-    def _delete_point (self, aPoint : Moveable_Point):
+    def scene_clicked (self, ev : MouseClickEvent):
+        """ 
+        slot - mouse click in scene of self 
+            - handle add Bezier point with crtl-click either on upper or lower side
+        """ 
+
+        # handle on ctrl-click
+        if not (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier): return  
+       
+        # get scene coordinates of click pos and map to view box 
+        vb : pg.ViewBox = self.getViewBox()
+        pos : pg.Point = vb.mapSceneToView(ev.scenePos())
+        pos_x = pos.x()
+        pos_y = pos.y()
+
+        # typically there are 2 instances of self - upper and lower Bezier 
+        if pos_y < 0.0 and self._side.isLower:
+            self._add_point (pos_x, pos_y)
+        elif pos_y >= 0.0 and self._side.isUpper:
+            self._add_point (pos_x, pos_y)
+
+
+    def _add_point (self, pos_x, pos_y):
+       """ slot -""" 
+
+       index, point = self._side.check_new_controlPoint_at (pos_x, pos_y)
+       
+       if index is not None: 
+
+            self._points.insert (index, point)
+
+            # _finished will do the rest - and init complete refresh
+            self._finished_point()
+ 
+
+    def _delete_point (self, aPoint : Movable_Point):
         """ slot - point is should be deleted """
         # overloaded - don't delete point 1 
         if aPoint.id == 1: return
         super()._delete_point (aPoint)        
 
 
-    def _finished_point (self, aPoint):
+    def _finished_point (self, aPoint = None):
         """ slot - point move is finished """
 
         # overloaded - update airfoil geometry 
@@ -645,14 +666,21 @@ class Bezier_Artist (Artist):
             if airfoil.isBezierBased and airfoil.isLoaded:
 
                 color = _color_airfoil_of (airfoil.usedAs)
+                movable = airfoil.usedAsDesign
 
                 side : Side_Airfoil_Bezier
                 for side in [airfoil.geo.upper, airfoil.geo.lower]:
 
-                    p = Moveable_Side_Bezier (airfoil, side, color=color, movable=airfoil.usedAsDesign,
+                    p = Movable_Side_Bezier (airfoil, side, color=color, movable=movable,
                                               on_changed=self.sig_airfoil_changed.emit) 
                     self._add(p)
  
+                    # connect to mouse click in scene to add a new Bezier control point 
+
+                    if movable:
+                        sc : pg.GraphicsScene = p.scene()
+                        sc.sigMouseClicked.connect (p.scene_clicked)
+
 
 
     # def draw_hicksHenne (self, airfoil: Airfoil_Bezier):
@@ -1030,7 +1058,7 @@ class Airfoil_Line_Artist (Artist, QObject):
 
                     # plot its highpoint 
 
-                    ph = Moveable_Highpoint (airfoil.geo, line, p, 
+                    ph = Movable_Highpoint (airfoil.geo, line, p, 
                                              movable=airfoil.usedAsDesign, color=color,
                                              on_changed=self.sig_airfoil_changed.emit )
                     self._add (ph) 
@@ -1040,7 +1068,7 @@ class Airfoil_Line_Artist (Artist, QObject):
                 if airfoil.usedAsDesign:
                     upper_item = self._get_plot_item (airfoil.geo.upper.name)
                     lower_item = self._get_plot_item (airfoil.geo.lower.name)
-                    pt = Moveable_TE_Point (airfoil.geo, upper_item, lower_item, 
+                    pt = Movable_TE_Point (airfoil.geo, upper_item, lower_item, 
                                             movable=airfoil.usedAsDesign, color=color,
                                             on_changed=self.sig_airfoil_changed.emit )
                     self._add (pt) 
@@ -1051,7 +1079,7 @@ class Airfoil_Line_Artist (Artist, QObject):
                 radius = airfoil.geo.le_radius
                 circle_item = self._plot_point (radius, 0, color=color, size=2*radius, pxMode=False, 
                                                 style=Qt.PenStyle.DotLine, brushAlpha=0.3, brushColor='black')
-                pl = Moveable_LE_Point (airfoil.geo, circle_item, 
+                pl = Movable_LE_Point (airfoil.geo, circle_item, 
                                         movable=airfoil.usedAsDesign, color=color,
                                         on_changed=self.sig_airfoil_changed.emit )
                 self._add(pl) 

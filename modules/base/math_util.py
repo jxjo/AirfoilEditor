@@ -29,11 +29,12 @@ logger.setLevel(logging.WARNING)
 
 from typing import overload
 
-class Point:
+class JPoint:
     """    
     Simple point class with basic functionality
-    """
 
+    'J' because there are so many Point classes ...
+    """
 
     def __init__ (self, a, b = None, 
                   x_limits : tuple|None = None, y_limits : tuple|None = None ):
@@ -135,7 +136,7 @@ class Point:
         elif isinstance (a, tuple):
             x_new = float (a[0])
             y_new = float (a[1])
-        elif isinstance (a, Point):
+        elif isinstance (a, JPoint):
             x_new = a.x, 
             y_new = a.y 
         else:
@@ -885,7 +886,7 @@ def findRoot (fn, xStart, bounds=None, no_improve_thr=10e-12) -> float:
 
 if __name__ == "__main__":
 
-    a = Point (1,3)    
-    a = Point ((1,3))
-    a = Point (Point(1,3))
-    b = Point (1) 
+    a = JPoint (1,3)    
+    a = JPoint ((1,3))
+    a = JPoint (JPoint(1,3))
+    b = JPoint (1) 

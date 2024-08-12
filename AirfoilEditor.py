@@ -135,10 +135,10 @@ class Main_Window (QMainWindow):
 
         self._data_panel  = Panel ()
         l_edit = QHBoxLayout()
-        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 5)
-        l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 4)
-        l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 4)
-        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 4)
+        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 2)
+        l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 2)
+        l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 2)
+        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 2)
         l_edit.addStretch (3)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
         self._data_panel.setLayout (l_edit)
@@ -352,11 +352,11 @@ class Panel_Edit_Mode (Panel_Airfoil_Abstract):
         SpaceR (l,r)
         l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c, text="Ok",  width=None, set=self.edit_ok)
+        Button (l,r,c, text="Ok",  width=85, set=self.edit_ok)
         c += 1
         SpaceC (l,c)
         c += 1
-        Button (l,r,c, text="Cancel",  width=None, set=self.edit_cancel)
+        Button (l,r,c, text="Cancel",  width=85, set=self.edit_cancel)
         r += 1
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
@@ -366,7 +366,30 @@ class Panel_Edit_Mode (Panel_Airfoil_Abstract):
     
     def edit_ok (self): 
         """ leave edit mode with 'ok'"""
-        self.myApp.set_edit_mode (False) 
+
+        # save in directory of original airfoil with new name  
+        airfoil = self.airfoil()
+
+        if airfoil.isModified: 
+            airfoilDir = os.path.split(airfoil.pathFileName)[0]
+            if airfoilDir == '': 
+                airfoilDirMSG = 'Current directory'
+            else:
+                airfoilDirMSG = airfoilDir
+
+            try: 
+                airfoil.saveAs (dir = airfoilDir)
+
+                # elf._save_fileTypes()
+                message = f"{airfoil.name}\n\nsaved to directory\n\n{airfoilDirMSG}" 
+                QMessageBox.information (self, "Airfoil save", message)
+
+                self.myApp.set_edit_mode (False) 
+
+            except: 
+                message = "Airfoil name not valid.\n\nAirfoil could not be saved"
+                QMessageBox.critical (self, "Airfoil save", message)
+
 
     def edit_cancel (self): 
         """ leave edit mode with 'cancel'"""
@@ -388,20 +411,25 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         Field  (l,r,c, lab="Name", obj=self.airfoil, prop=Airfoil.name, width=(100,None), colSpan=4)
 
         r,c = 1, 0 
-        FieldF (l,r,c, lab="Thickness", obj=self.geo, prop=Geometry.max_thick, width=70, unit="%", step=0.1)
+        FieldF (l,r,c, lab="Thickness", obj=self.geo, prop=Geometry.max_thick, width=70, unit="%", step=0.1,
+                disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="Camber", obj=self.geo, prop=Geometry.max_camb, width=70, unit="%", step=0.1)
+        FieldF (l,r,c, lab="Camber", obj=self.geo, prop=Geometry.max_camb, width=70, unit="%", step=0.1,
+                disable=self._disabled_for_airfoil)
         r += 1
         FieldF (l,r,c, lab="TE gap", obj=self.geo, prop=Geometry.te_gap, width=70, unit="%", step=0.1)
 
         r,c = 1, 2 
         SpaceC (l,c)
         c += 1 
-        FieldF (l,r,c, lab="at", obj=self.geo, prop=Geometry.max_thick_x, width=70, unit="%", step=0.1)
+        FieldF (l,r,c, lab="at", obj=self.geo, prop=Geometry.max_thick_x, width=70, unit="%", step=0.1,
+                disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="at", obj=self.geo, prop=Geometry.max_camb_x, width=70, unit="%", step=0.1)
+        FieldF (l,r,c, lab="at", obj=self.geo, prop=Geometry.max_camb_x, width=70, unit="%", step=0.1,
+                disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="LE radius", obj=self.geo, prop=Geometry.le_radius, width=70, unit="%", step=0.1)
+        FieldF (l,r,c, lab="LE radius", obj=self.geo, prop=Geometry.le_radius, width=70, unit="%", step=0.1,
+                disable=self._disabled_for_airfoil)
         r += 1
         SpaceR (l,r)
         r += 1
@@ -415,6 +443,9 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         l.setRowStretch    (r-1,2)
         return l 
 
+    def _disabled_for_airfoil (self):
+        """ returns disable for eg. bezier based - thickness can't be changed """
+        return self.airfoil().isBezierBased
 
 
 class Panel_Panels (Panel_Airfoil_Abstract):
