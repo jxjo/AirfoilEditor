@@ -11,53 +11,58 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
+from copy               import copy
+
 from PyQt6.QtCore       import Qt
 from PyQt6.QtCore       import QSize, QMargins, pyqtSignal 
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
-from PyQt6.QtWidgets    import QMainWindow, QWidget
+from PyQt6.QtWidgets    import QMainWindow, QWidget, QDialog, QDialogButtonBox
 from PyQt6.QtGui        import QPalette, QColor
 
-from base.widgets         import set_background
-from base.widgets         import Widget, Label, CheckBox, size
+from base.widgets       import set_background
+from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, SpaceR
 
 
 
 #-------------------------------------------
 
-
 class Panel (QWidget):
     """ 
-    Superclass for all types of panels like Edit, Diagram 
+    Just a plain Panel - as container for other Edit_Panels
+    Superclass for other types of panels like Edit
+        - handle size of widget  
+        - having title / header name 
+        - has dataObject via getter (callable) 
     """
 
-    name = "Abstract Panel"             # will be title 
+    name = "Panel"             # will be title 
 
     _width  = None
     _height = None 
 
 
-    def __init__(self, parent = None, 
+    def __init__(self,  
+                 parent=None,
                  getter = None, 
                  width=None, 
                  height=None, 
-                 header=None,
-                 **kwargs):
-        super().__init__(parent, **kwargs)
+                 title=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
 
-        self._getter = getter
         self._parent = parent
+        self._getter = getter
 
         if width is not None: 
             self._width = width
         if height is not None: 
             self._height = height
 
-        if header is not None: 
-            self.name = header 
+        # set width and height 
+        Widget._set_width  (self, self._width)
+        Widget._set_height (self, self._height)
 
-        # set size limits 
-        self._set_height (self._height)
-        self._set_width  (self._width)
+        if title is not None: 
+            self.name = title 
 
 
     def __repr__(self) -> str:
@@ -67,34 +72,22 @@ class Panel (QWidget):
 
     @property
     def dataObject (self): 
-        # to be ooverloaded - or implemented with semantic name 
+        # to be overloaded - or implemented with semantic name 
         if callable(self._getter):
             return self._getter()
         else: 
             return self._getter
-    
-    def _set_height (self, height):
-        """ set self min/max height """
-        if isinstance (height, tuple):
-            min_height = height[0]
-            max_height = height[1]
-        else:
-            min_height = height
-            max_height = height
-        if min_height: self.setMinimumHeight(min_height)
-        if max_height: self.setMaximumHeight(max_height)        
 
-    def _set_width (self, width):
-        """ set self min/max width """
-        if isinstance (width, tuple):
-            min_width = width[0]
-            max_width = width[1]
-        else:
-            min_width = width
-            max_width = width
-        if min_width: self.setMinimumWidth(min_width)
-        if max_width: self.setMaximumWidth(max_width)
-
+    def set_background_color (self, darker_factor : int | None = None,
+                                    color : QColor | int | None  = None,
+                                    alpha : float | None = None):
+        """ 
+        Set background color of a QWidget either by
+            - darker_factor > 100  
+            - color: QColor or string for new color
+            - alpha: transparency 0..1 
+        """
+        set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
 
     def refresh (parent: QWidget, disable=None):
         """ refresh all child Panels self"""
@@ -103,10 +96,13 @@ class Panel (QWidget):
             p.refresh(disable=disable) 
 
 
+#-------------------------------------------
+
 
 class Edit_Panel (Panel):
     """ 
-    Abstract superclass for the edit like panels 
+    Panel with a title and an optional on/off switch 
+    having a layout area for content  
     """
 
     _height = (150, None) 
@@ -130,24 +126,23 @@ class Edit_Panel (Panel):
 
         l_panel = layout 
 
-        # set background color - save the original one 
+        # set background color  
 
-        set_background (self, darker_factor = 105)
-        self._palette_sav = self.palette()          # save this current color palette 
+        self.set_background_color (darker_factor = 105)
 
-        # header layout - with optional on/off switch 
+        # title layout - with optional on/off switch 
 
         self._head = QWidget(self)
         l_head = QHBoxLayout(self._head)
         l_head.setContentsMargins (QMargins(0,0,0,5))
 
         if self._switchable:
-            CheckBox (l_head, fontSize=size.HEADER, text=self.header_text(),
+            CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
                       get=lambda: self.switched_on, set=self.set_switched_on)
             if on_switched is not None: 
                 self.sig_switched.connect (on_switched)
         else: 
-            Label (l_head, fontSize=size.HEADER, get=self.header_text)
+            Label (l_head, fontSize=size.HEADER, get=self.title_text)
 
         self._add_to_header_layout (l_head)     # optional individual widgets
  
@@ -165,7 +160,7 @@ class Edit_Panel (Panel):
             self._panel.setLayout (l_panel)
             # set_background (self._panel, darker_factor=150)
 
-        # main layout with header and panel 
+        # main layout with title and panel 
 
         l_main   = QVBoxLayout()
         l_main.addWidget (self._head)
@@ -178,8 +173,8 @@ class Edit_Panel (Panel):
         self.set_switched_on (self._switched_on, initial=True)
 
 
-    def header_text (self) -> str: 
-        """ returns text of header - default self.name"""
+    def title_text (self) -> str: 
+        """ returns text of title - default self.name"""
         # can be overwritten 
         return self.name 
 
@@ -206,9 +201,9 @@ class Edit_Panel (Panel):
             self._panel.setVisible (self.switched_on)
 
             if self.switched_on:
-                self._set_height (self._height)
+                Widget._set_height (self, self._height)
             else: 
-                self._set_height (40)
+                Widget._set_height (self, 40)
 
         # signal to Diagram_Item - but not during init 
         if not initial: 
@@ -243,23 +238,6 @@ class Edit_Panel (Panel):
                 w.set_enabled (aBool) 
 
 
-    def set_background_color (self, darker_factor : int | None = None,
-                                    color : QColor | int | None  = None,
-                                    alpha : float | None = None):
-        """ 
-        Set background color of a QWidget either by
-            - darker_factor > 100  
-            - color: QColor or string for new color
-            - alpha: transparency 0..1 
-        """
-
-        set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
-
-    def reset__background_color (self): 
-        """ reset background to color after __init__"""
-        self.setPalette (self._palette_sav)
-
-
     def _init_layout(self) -> QLayout:
         """ init and return main layout"""
 
@@ -274,6 +252,126 @@ class Edit_Panel (Panel):
         pass
 
 
+# ------------ Dialog  -----------------------------------
+
+class Dialog (QDialog):
+
+    name = "Dialog"             # will be title 
+
+    _width  = None
+    _height = None 
+
+
+    def __init__(self,  
+                 parent=None,
+                 getter = None, 
+                 width=None, 
+                 height=None, 
+                 title=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
+
+        self._parent = parent
+        self._getter = getter
+
+        self._dataObject_copy = copy (self.dataObject)
+
+        if width is not None: 
+            self._width = width
+        if height is not None: 
+            self._height = height
+
+        # set width and height 
+        Widget._set_width  (self, self._width)
+        Widget._set_height (self, self._height)
+
+        if title is not None: 
+            self.name = title 
+
+        self.setWindowTitle (self.name)
+
+        # inital content panel content - layout in >init  
+
+        panel = QWidget () 
+        l_panel = self._init_layout()       # subclass will create layout 
+        l_panel.setContentsMargins (QMargins(15, 15, 15, 10))   # inset left 
+        # l_panel.setSpacing(2)
+        panel.setLayout (l_panel)
+        set_background (panel, darker_factor=105)
+
+        # Qt button at footer
+
+        buttonBox = QDialogButtonBox(self._QButtons())
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        
+        l_button = QHBoxLayout()
+        l_button.addWidget(buttonBox)
+        l_button.setContentsMargins (QMargins(5, 0, 15, 0))
+        # set_background (buttonBox, darker_factor=120)
+
+ 
+        # main layout with title and panel 
+
+        l_main   = QVBoxLayout()
+        l_main.addWidget (panel, stretch=1)
+        l_main.addLayout (l_button)
+        l_main.setContentsMargins (QMargins(5, 5, 5, 15))
+        l_main.setSpacing(15)
+        self.setLayout (l_main)
+
+        # connect to change signal of widget 
+        for w in self.widgets:
+            w.sig_changed.connect (self._on_widget_changed)
+
+
+
+    def _init_layout(self) -> QLayout:
+        """ init and return main layout"""
+
+        # to be implemented by sub class
+        return QVBoxLayout ()
+
+
+    def _QButtons (self):
+        """return QButtons enum for button box at footer """
+        # to overload 
+        return QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+
+
+    @property
+    def dataObject (self): 
+        """ dataObject the dialog got from parent """
+        # to be overloaded - or implemented with semantic name 
+        if callable(self._getter):
+            return self._getter()
+        else: 
+            return self._getter
+
+    @property
+    def dataObject_copy (self): 
+        """ shallow copy of dataObject"""
+        # to be overloaded - or implemented with semantic name 
+        return self._dataObject_copy
+
+    @property
+    def widgets (self) -> list[Widget]:
+        """ list of widgets defined in self """
+        return self.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
+ 
+    def _on_widget_changed (self):
+        """ slot for change of widgets"""
+        # to be overloaded 
+        pass
+
+
+    def refresh(self, disable=None):
+        """ refreshes all Widgets on self """
+
+        for w in self.widgets:
+            w.refresh(disable=disable)
+        logger.debug (f"{self} - refresh")
+
+
 
 # ------------------------------------------------------------------------------
 # ------------ test functions - to activate  -----------------------------------
@@ -282,24 +380,40 @@ class Edit_Panel (Panel):
 class Test_Panel (Edit_Panel):
 
     name = "Airfoil Data"
-    width  = (100, 140)
-    height = (100, None)
+    _width  = 200
+    _height = (100, None)
 
     def _init_layout (self)-> QLayout: 
         l = QGridLayout()
         Label  (l,0,0,get="Ein Label")
+        Button (l,2,0, text= "Open dialog", set=self._open_dialog)
         l.setRowStretch (0,1)
+        return l 
+
+    def _open_dialog (self):
+
+        dlg = Test_Dialog(parent=self, title="mein Titel", height=400, width=600)
+        dlg.exec ()
+
+
+class Test_Dialog (Dialog):
+
+    def _init_layout(self) -> QLayout:
+        l = QGridLayout()
+        Label  (l,0,0,get="Hallo Dialog")
+        SpaceR (l,1)
+        Label  (l,2,0,get="ganz unten")
+        l.setRowStretch (1,1)
         return l 
 
 
 class Test_Panel2 (Edit_Panel):
 
     name   = "Curvature"
-    width  = (150, None)
-    height = (200, None)
+    _width  = 200
+    _height = (200, None)
 
     def _init_layout (self) -> QLayout: 
-        from widgets import FieldI
         l = QGridLayout()
         r = 0 
         Label  (l,0,0, colSpan=2, get="Ein Läbele extra lang")
@@ -309,10 +423,11 @@ class Test_Panel2 (Edit_Panel):
         r += 1
         Label  (l,r,0,get="Span")
         FieldI (l,r,1,get="2980", lim=(0,9999), unit="mm", step=10, width=(100, None))
-
+        r+= 1
+        SpaceR (l,r)
         l.setColumnStretch (1,3)
         l.setColumnStretch (2,1)
-        l.setRowStretch (r+1,1)
+        l.setRowStretch (r, 1)
         return l 
 
 
@@ -325,7 +440,7 @@ class Test_Panels (QMainWindow):
         self.setMinimumSize(QSize(400, 200))
 
         air_panel  = Test_Panel  (self) 
-        curv_panel = Test_Panel2 (self) 
+        curv_panel = Test_Panel2 (self, switchable=True,hide_switched=True) 
 
         container = QWidget()
         l = QHBoxLayout ()

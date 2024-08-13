@@ -58,12 +58,6 @@ class Airfoil:
     isBezierBased       = False
     isHicksHenneBased   = False
 
-    # defaults for panelling - can be overwritten from Settings 
-
-    nPanels_default     = 160                       # repanel: no of panels 
-    le_bunch_default    = 0.86                      # repanel: panel bunch at leading edge
-    te_bunch_default    = 0.7   	                # repanel: panel bunch at trailing edge
-
 
     def __init__(self, x= None, y = None, name = None,
                  geometry : Type[Geometry]  = None, 
@@ -84,9 +78,10 @@ class Airfoil:
             self.workingDir = os.path.normpath (workingDir)
         else: 
             self.workingDir   = ''
-        self._name        = name if name is not None else ''
-        self._name_org    = None                 # will hold original bname for modification label
-        self.sourceName   = None                 # long name out of the two blended airfoils (TSrakAirfoil)
+        self._name          = name if name is not None else ''
+        self._name_org      = None                 # will hold original name for modification label
+        self._fileName_org  = None                 # will hold original fileName 
+        self.sourceName     = None                 # long name out of the two blended airfoils (TSrakAirfoil)
 
         if not x is None: x = x if isinstance(x,np.ndarray) else np.asarray (x)
         self._x     = x
@@ -198,19 +193,22 @@ class Airfoil:
     def _handle_geo_changed (self):
         """ callback from geometry when it was changed (by user) """
 
+        # load new coordinates from modified geometry 
         self._x = self.geo.x
         self._y = self.geo.y
 
+        # set new name
+        if self._name_org is None: self._name_org = self.name
+        self.set_name (self._name_org + self.geo.modifications_as_label)
+
+        # set new filename 
+        if self._fileName_org is None: self._fileName_org = self.fileName
+        fileName_without = os.path.splitext(self._fileName_org)[0]
+        fileName_ext     = os.path.splitext(self._fileName_org)[1]
+        self.set_fileName (fileName_without + self.geo.modifications_as_label + fileName_ext)
+
         self.set_isModified (True)
-
         logging.debug (f"{self} - geometry changed: {self.geo.modifications_as_label} ")
-
-        # airfoil will get new name 
-        if self._name_org is None: 
-            self._name_org = self.name
-        self.set_name (self._name_org + "_" + self.geo.modifications_as_label)
-
-
 
 
     # ----------  Properties ---------------
@@ -260,12 +258,18 @@ class Airfoil:
 
 
     @property
-    def name (self): return self._name 
+    def name (self): 
+        """ name of airfoil - when it is modified including modifications description"""
+        return self._name 
+        
     def set_name (self, newName):
         """  Set name of the airfoil 
         Note:  This will not rename an existing airfoil (file). Use rename instead...
         """
+        if self._name_org is None: 
+            self._name_org = self.name
         self._name = newName
+
         self.set_isModified (True)
 
     @property
@@ -273,7 +277,8 @@ class Airfoil:
         """ name of airfoil shortend at the beginning to 23 chars"""
         if len(self.name) <= 23:    return self.name
         else:                       return "..." + self.name[-20:]
-            
+
+
     @property
     def polarSet (self):
         """ Property which is set from outside - Airfoil doesn't know about it... """ 
@@ -335,44 +340,6 @@ class Airfoil:
     
 
     @property
-    def nPanelsNew (self): 
-        """ number of panels when being repaneled"""
-        if self._nPanelsNew is None: 
-            return self.nPanels_default
-        else: 
-            return self._nPanelsNew 
-    def set_nPanelsNew (self, newVal): 
-        """ set number of panels and repanel"""
-        newVal = max (40,  newVal)
-        newVal = min (500, newVal) 
-        self._nPanelsNew = int (newVal)
-        self.repanel()
-
-    @property
-    def le_bunch (self): 
-        """ leading edge bunch of panels"""
-        if self._le_bunch is None: 
-            return self.le_bunch_default
-        else: 
-            return self._le_bunch
-    def set_le_bunch (self, newVal): 
-        """ set leading edge bunch of panels and repanel"""
-        self._le_bunch = newVal
-        self.repanel()
-
-    @property
-    def te_bunch (self): 
-        """ trailing edge bunch of panels"""
-        if self._te_bunch is None: 
-            return self.te_bunch_default
-        else: 
-            return self._te_bunch
-    def set_te_bunch (self, newVal): 
-        """ set trailing edge bunch of panels and repanel"""
-        self._te_bunch = newVal
-        self.repanel()
-
-    @property
     def usedAs (self):
         """ usage type (enum usedAs) of self like DESIGN"""
         return self._usedAs
@@ -410,15 +377,26 @@ class Airfoil:
         else:
             ErrorMsg ("Airfoil \'%s\' does not exist. Couldn\'t be set" % fullPath)
 
+
     @property
     def fileName (self):
-        """
-        filename of airfoil like 'JX-GT-15.dat'
-        """
-        if not self.pathFileName is None: 
-            return os.path.basename(self.pathFileName) 
-        else:
-            return None
+        """ filename of airfoil like 'JX-GT-15.dat' """
+        if self.pathFileName is None: return 
+        return os.path.basename(self.pathFileName) 
+
+    def set_fileName (self, aFileName : str):
+        """ set new fileName """
+        if not aFileName: return 
+        self.pathFileName = os.path.join (self.pathName, aFileName)
+
+    def set_name_from_fileName (self):
+        """ set current fileName as name of airfoil """
+        self.set_name (os.path.splitext(self.fileName)[0])
+
+    def set_fileName_from_name (self):
+        """ set current fileName as name of airfoil """
+        self.set_fileName (self.name + os.path.splitext(self.fileName)[1]) 
+
 
     @property
     def pathName (self):

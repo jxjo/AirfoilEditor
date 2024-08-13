@@ -8,20 +8,19 @@ Higher level Widgets to handle Airfoil UI operations like Open and Select
 """
 
 import os
-import fnmatch 
-import logging
+import fnmatch             
 
-from PyQt6.QtCore       import QSize, QMargins
-from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout
-from PyQt6.QtWidgets    import QFileDialog, QWidget
+from PyQt6.QtCore           import QMargins
+from PyQt6.QtWidgets        import QHBoxLayout, QLayout
+from PyQt6.QtWidgets        import QFileDialog, QWidget
 
-from base.widgets         import * 
+from base.widgets           import * 
+from base.panels            import Dialog 
 
-from model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
-from model.airfoil            import GEO_BASIC, GEO_SPLINE, usedAs
-from model.airfoil_geometry   import Geometry, Side_Airfoil_Bezier, linetype
-from model.airfoil_geometry   import Match_Side_Bezier
-from model.airfoil_examples   import Root_Example
+
+from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
+from model.airfoil          import GEO_BASIC, usedAs
+from model.airfoil_examples import Root_Example
 
 
 # ----- common methods -----------
@@ -90,7 +89,7 @@ class Airfoil_Open_Widget (Widget, QWidget):
     the new <Airfoil> as argument 
     """
 
-    default_width  = 80
+    _width  = 80
 
     def __init__(self, *args,
                  set = None,                # will set new airfoil
@@ -104,7 +103,7 @@ class Airfoil_Open_Widget (Widget, QWidget):
         if asIcon:
             widget= ToolButton (None, icon=ToolButton.ICON_OPEN, set=self._open)
         else: 
-            widget = Button    (None, text="&Open", width=self.default_width, set=self._open)
+            widget = Button    (None, text="&Open", width=self._width, set=self._open)
 
         # assign widget to parent layout 
 
@@ -138,7 +137,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     When user deleted, 'set' is called with None 
     """
 
-    default_width  = (120, None)
+    _width  = (120, None)
 
     def __init__(self, *args,
                  get = None,                # get current / initial airfoil 
@@ -260,3 +259,67 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             if airfoil is not None: 
                 self._set_value (airfoil)           # call parent with new airfoil 
 
+
+
+
+
+class Airfoil_Save_Dialog (Dialog):
+    """ 
+    Button - either Text or Icon to open Airfoil with file select 
+
+    When user successfully selected an airfoil file, 'set' is called with 
+    the new <Airfoil> as argument 
+    """
+
+    _width  = (500, None)
+    _height = 300
+
+    name = "Save Airfoil ..."
+
+    @property
+    def airfoil (self) -> Airfoil:
+        return self.dataObject_copy
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        SpaceR (l, r) 
+        r += 1
+        Field  (l,r,c,   lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None))
+        Button (l,r,c+2, text="Use Filename", set=self.airfoil.set_name_from_fileName, width=80,
+                         signal=True)
+        r += 1
+        SpaceR (l, r, stretch=0) 
+        r += 1
+        Field  (l,r,c,   lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None))
+        Button (l,r,c+2, text="Use Name", set=self.airfoil.set_fileName_from_name, width=80,
+                         signal=True)
+        r += 1
+        Field  (l,r,c, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName, width=(150,None))
+
+        r += 1
+        SpaceR (l, r, stretch=4) 
+        # l.setRowStretch    (r,1)
+        l.setColumnStretch (1,1)
+        l.setColumnMinimumWidth (0,100)
+        return l
+
+    def _on_widget_changed (self):
+        """ slot for change of widgets"""
+        self.refresh()
+
+    def accept(self):
+        """ Qt overloaded - ok - save airfoil"""
+
+        # set original airfoil with data 
+        airfoil : Airfoil = self.dataObject 
+        airfoil_copy : Airfoil = self.dataObject_copy
+
+        airfoil.set_name (airfoil_copy.name)
+        airfoil.set_pathFileName (airfoil_copy.pathFileName, noCheck=True)
+
+        airfoil.save ()
+
+        super().accept() 

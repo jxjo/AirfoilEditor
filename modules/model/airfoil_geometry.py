@@ -1543,7 +1543,7 @@ class Geometry ():
         return mods
 
     @property
-    def modifications_as_label (self) -> list [tuple]:
+    def modifications_as_label (self) -> str:
         """returns a short label string of all modifications  'norm_t8.1_cx40.3'"""
         mods = []
         # build list of relevant modifications (use short name) 
@@ -2353,6 +2353,12 @@ class Geometry_Splined (Geometry):
 
     isBasic         = False
     isSplined       = True 
+
+    # defaults for panelling - can be overwritten from Settings 
+
+    nPanels_default     = 160                       # repanel: no of panels 
+    le_bunch_default    = 0.86                      # repanel: panel bunch at leading edge
+    te_bunch_default    = 0.7   	                # repanel: panel bunch at trailing edge
  
     description     = "based on spline interpolation"
 
@@ -2407,6 +2413,46 @@ class Geometry_Splined (Geometry):
         """ return the angle in degrees at knots"""
         return np.arctan (self.spline.deriv1(self.spline.u)) * 180 / np.pi
     
+
+
+    @property
+    def nPanelsNew (self): 
+        """ number of panels when being repaneled"""
+        if self._nPanelsNew is None: 
+            return self.nPanels_default
+        else: 
+            return self._nPanelsNew 
+    def set_nPanelsNew (self, newVal): 
+        """ set number of panels and repanel"""
+        newVal = max (40,  newVal)
+        newVal = min (500, newVal) 
+        self._nPanelsNew = int (newVal)
+        self.repanel()
+
+    @property
+    def le_bunch (self): 
+        """ leading edge bunch of panels"""
+        if self._le_bunch is None: 
+            return self.le_bunch_default
+        else: 
+            return self._le_bunch
+    def set_le_bunch (self, newVal): 
+        """ set leading edge bunch of panels and repanel"""
+        self._le_bunch = newVal
+        self.repanel()
+
+    @property
+    def te_bunch (self): 
+        """ trailing edge bunch of panels"""
+        if self._te_bunch is None: 
+            return self.te_bunch_default
+        else: 
+            return self._te_bunch
+    def set_te_bunch (self, newVal): 
+        """ set trailing edge bunch of panels and repanel"""
+        self._te_bunch = newVal
+        self.repanel()
+
 
     #-----------
 

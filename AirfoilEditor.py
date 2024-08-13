@@ -33,7 +33,7 @@ from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QStack
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 
-from model.airfoil          import Airfoil, usedAs 
+from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
 from model.airfoil_geometry import Geometry
 
 from base.common_utils      import * 
@@ -370,25 +370,32 @@ class Panel_Edit_Mode (Panel_Airfoil_Abstract):
         # save in directory of original airfoil with new name  
         airfoil = self.airfoil()
 
-        if airfoil.isModified: 
-            airfoilDir = os.path.split(airfoil.pathFileName)[0]
-            if airfoilDir == '': 
-                airfoilDirMSG = 'Current directory'
-            else:
-                airfoilDirMSG = airfoilDir
+        dlg = Airfoil_Save_Dialog (parent=self, getter=self.airfoil)
+        ok = dlg.exec()
 
-            try: 
-                airfoil.saveAs (dir = airfoilDir)
+        if ok:
+            self.myApp.set_edit_mode (False) 
+        
 
-                # elf._save_fileTypes()
-                message = f"{airfoil.name}\n\nsaved to directory\n\n{airfoilDirMSG}" 
-                QMessageBox.information (self, "Airfoil save", message)
+        # if airfoil.isModified: 
+        #     airfoilDir = os.path.split(airfoil.pathFileName)[0]
+        #     if airfoilDir == '': 
+        #         airfoilDirMSG = 'Current directory'
+        #     else:
+        #         airfoilDirMSG = airfoilDir
 
-                self.myApp.set_edit_mode (False) 
+        #     try: 
+        #         airfoil.saveAs (dir = airfoilDir)
 
-            except: 
-                message = "Airfoil name not valid.\n\nAirfoil could not be saved"
-                QMessageBox.critical (self, "Airfoil save", message)
+        #         # elf._save_fileTypes()
+        #         message = f"{airfoil.name}\n\nsaved to directory\n\n{airfoilDirMSG}" 
+        #         QMessageBox.information (self, "Airfoil save", message)
+
+        #         self.myApp.set_edit_mode (False) 
+
+        #     except: 
+        #         message = "Airfoil name not valid.\n\nAirfoil could not be saved"
+        #         QMessageBox.critical (self, "Airfoil save", message)
 
 
     def edit_cancel (self): 
@@ -773,7 +780,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (header=self.name, layout=l, height=140, 
+            self._section_panel = Edit_Panel (title=self.name, layout=l, height=140, 
                                               switchable=True, on_switched=self.setVisible)
 
         return self._section_panel 
@@ -864,7 +871,7 @@ class Diagram_Item_Curvature (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (header=self.name, layout=l, 
+            self._section_panel = Edit_Panel (title=self.name, layout=l, 
                                               height=200, switchable=True, switched=False, on_switched=self.setVisible)
 
         return self._section_panel 
@@ -973,7 +980,7 @@ class Diagram_Airfoil (Diagram):
             l.setColumnStretch (0,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (header="Reference Airfoils", layout=l, height=100,
+            self._section_panel = Edit_Panel (title="Reference Airfoils", layout=l, height=100,
                                               switchable=True, switched=False, on_switched=self.set_show_airfoils_ref)
 
         return self._section_panel 

@@ -78,7 +78,7 @@ class style (Enum):
 
 
 class size (Enum):
-    HEADER         = 14
+    HEADER         = 13
     NORMAL         = 11 
 
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
@@ -137,13 +137,9 @@ class Widget:
 
         sig_changed         a Value in an input field was changed and set into object 
 
-
     """
 
-    # Signals
-
-    sig_changed  = pyqtSignal()    # (Object class name, Method as string, new value)
-
+    # static helper functions
 
     @staticmethod
     def refresh_childs (parent: QWidget):
@@ -153,13 +149,48 @@ class Widget:
             w.refresh() 
 
 
+    @staticmethod
+    def _set_height (widget :QWidget , height):
+        """ set self min/max height """
+        if height is None: 
+            return 
+        elif isinstance (height, tuple):
+            min_height = height[0]
+            max_height = height[1]
+        else:
+            min_height = height
+            max_height = height
+        if min_height: widget.setMinimumHeight(min_height)
+        if max_height: widget.setMaximumHeight(max_height)        
+
+
+    @staticmethod
+    def _set_width (widget :QWidget , width):
+        """ set self min/max width """
+        if width is None: 
+            return 
+        elif isinstance (width, tuple):
+            min_width = width[0]
+            max_width = width[1]
+        else:
+            min_width = width
+            max_width = width
+        if min_width: widget.setMinimumWidth(min_width)
+        if max_width: widget.setMaximumWidth(max_width)
+
+    # Signals
+
+    sig_changed  = pyqtSignal()    # (Object class name, Method as string, new value)
+
+    # constants 
+
     LIGHT_INDEX = 0                             # = Qt color index 
     DARK_INDEX  = 1 
 
     light_mode = True                           # common setting of light/dark mode 
                                        
-    default_width  = None
-    default_height = None 
+    _width  = None
+    _height = None 
 
 
     def __init__(self,
@@ -195,8 +226,8 @@ class Widget:
         self._rowSpan = rowSpan
         self._colSpan = colSpan 
         self._alignment = align 
-        self._width  = width  if width  is not None else self.default_width
-        self._height = height if height is not None else self.default_height
+        self._width  = width  if width  is not None else self._width
+        self._height = height if height is not None else self._height
 
         # "get & set" or "obj & prop" variant    
 
@@ -520,37 +551,13 @@ class Widget:
         # set font 
         if self._fontSize == size.HEADER:
             font = widget.font() 
-            font.setPointSize(14)
+            font.setPointSize(size.HEADER.value)
             font.setWeight (QFont.Weight.ExtraLight) #Medium #DemiBold
             widget.setFont(font)
 
-        # set width 
-        if self._width is not None: 
-            if isinstance (self._width, tuple):
-                min_width = self._width[0]
-                max_width = self._width[1]
-            elif isinstance (self._width, int):
-                min_width = self._width
-                max_width = self._width
-            else: 
-                min_width = None
-                max_width = None
-            if min_width: widget.setMinimumWidth(min_width)
-            if max_width: widget.setMaximumWidth(max_width)
-
-        # set height 
-        if self._height is not None: 
-            if isinstance (self._height, tuple):
-                min_height = self._height[0]
-                max_height = self._height[1]
-            elif isinstance (self._height, int):
-                min_height = self._height
-                max_height = self._height
-            else: 
-                min_height = None
-                max_height = None
-            if min_height: widget.setMinimumHeight(min_height)
-            if max_height: widget.setMaximumHeight(max_height)
+        # set width and height 
+        Widget._set_width  (widget, self._width)
+        Widget._set_height (widget, self._height)
 
         # toolTip 
         if self._toolTip is not None:
@@ -770,7 +777,7 @@ class FieldI (Field_With_Label, QSpinBox):
     Integer entry field with spin buttons
     """
     
-    default_height = 26 
+    _height = 26 
 
     def __init__(self, *args, 
                  step = None,
@@ -870,7 +877,7 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
     Float entry field with spin buttons
     """
 
-    default_height = 26 
+    _height = 26 
 
     def __init__(self, *args, 
                  step : float = None,
@@ -1030,8 +1037,8 @@ class ToolButton (Widget, QToolButton):
         - when clicked, 'set' is called without argument 
     """
 
-    default_width  = 24
-    default_height = 24 
+    _width  = 24
+    _height = 24 
 
     # --- icons ---- 
 
@@ -1196,7 +1203,7 @@ class ComboBox (Field_With_Label, QComboBox):
         - when clicked, 'set' is called argument with selected text as argument 
     """
         
-    default_height = 24 
+    _height = 24 
 
     def __init__(self, *args, 
                  options = [], 
