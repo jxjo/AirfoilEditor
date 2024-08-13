@@ -288,6 +288,7 @@ class Test_Panel (Edit_Panel):
     def _init_layout (self)-> QLayout: 
         l = QGridLayout()
         Label  (l,0,0,get="Ein Label")
+        l.setRowStretch (0,1)
         return l 
 
 
@@ -342,7 +343,7 @@ if __name__ == "__main__":
  
     app = QApplication([])
     app.setStyle('fusion')
-    app.setStyleSheet ("QWidget { font-family: 'Roboto' }")
+    app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
 
     w = Test_Panels()
     w.show()

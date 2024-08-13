@@ -3,11 +3,12 @@
     "configurations": [
         {
             "name": "Python: File",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "justMyCode": true,
-            "cwd": "${fileDirname}"
+            "cwd": "${fileDirname}",
+            "env": { "PYTHONPATH": "${fileDirname}/.." }  // to start modules and find 'base' subDir
         }
     ]
 }

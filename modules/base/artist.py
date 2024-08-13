@@ -209,7 +209,7 @@ class Movable_Point (pg.TargetItem):
             self.setParentItem (parent)
 
         # points are above other things
-        self.setZValue (10)
+        self.setZValue (10)                     # only within same parent item
 
         # default callback setup 
         self.sigPositionChanged.connect (self._moving)

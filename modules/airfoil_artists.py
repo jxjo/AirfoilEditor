@@ -384,7 +384,12 @@ class Movable_Side_Bezier (Movable_Bezier):
         self._side = side 
         points = side.controlPoints_as_points
 
-        super().__init__(points, **kwargs)
+        if side.isUpper:
+            label_anchor = (0,1) 
+        else: 
+            label_anchor = (0,0)
+
+        super().__init__(points, label_anchor=label_anchor, **kwargs)
 
 
     def scene_clicked (self, ev : MouseClickEvent):
@@ -669,7 +674,7 @@ class Bezier_Artist (Artist):
                 movable = airfoil.usedAsDesign
 
                 side : Side_Airfoil_Bezier
-                for side in [airfoil.geo.upper, airfoil.geo.lower]:
+                for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
 
                     p = Movable_Side_Bezier (airfoil, side, color=color, movable=movable,
                                               on_changed=self.sig_airfoil_changed.emit) 

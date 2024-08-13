@@ -1232,12 +1232,24 @@ class Side_Airfoil_Bezier (Line):
 
         for i in range(nPoints):
 
-            point = JPoint (self.controlPoints[i])               # xy tuple 
+            point = JPoint (self.controlPoints[i])              # xy tuple 
 
-            if i == 0 or i == (nPoints-1):                      # first and last fixed 
+            if self.isUpper:
+                y_lim = (0,1)
+            else:
+                y_lim = (-1,0) 
+
+            if i == 0 :                                         # first fixed 
                 point.set_fixed (True)
-            elif i == 1 :                                       # le tangent only y  
+            elif i == (nPoints-1):                              # te vertical move
+                if self.isUpper: 
+                    point.set_x_limits ((1,1))
+                    point.set_y_limits (y_lim)
+                else: 
+                    point.set_fixed (True)
+            elif i == 1 :                                       # le tangent vertical move
                 point.set_x_limits ((0,0))
+                point.set_y_limits (y_lim)
             else:       
                 point.set_x_limits ((0,1))
 
@@ -1279,11 +1291,6 @@ class Side_Airfoil_Bezier (Line):
 
 
     # ------------------
-
-    def _set_p1y (self, y): 
-        """ set the y-coordinate of P1 which is the LE tangent """
-
-        self.bezier.set_point ( 1, 0.0, y) 
 
 
     def check_new_controlPoint_at (self, x, y): 
@@ -2874,11 +2881,15 @@ class Geometry_Bezier (Geometry):
 
 
     def set_controlPoints_of (self, aSide : Side_Airfoil_Bezier,
-                              px_or_p, py = None,
+                              px : list[float],
+                              py : list[float], 
                               moving = False):
         """ set the bezier control points"""
 
-        aSide.set_controlPoints (px_or_p, py)
+        aSide.set_controlPoints (px, py)
+
+        if aSide.isUpper:                                   # ensure te is symmetrical 
+            self.lower.set_te_gap (- aSide.te_gap)
 
         if not moving: 
 
