@@ -528,11 +528,15 @@ class Airfoil_Artist (Artist):
                 # the first airfoil get's in the title 
 
                 if iair == 0:
-                    subTitle = None 
+                    mods = None 
                     if airfoil.usedAsDesign:
-                        subTitle = self._get_modifications (airfoil)
-                    elif airfoil.isBezierBased:
-                        subTitle = 'Bezier based'
+                        mods = self._get_modifications (airfoil)
+                    if mods:
+                        subTitle = "Mods: " + mods
+                    elif not mods and airfoil.isBezierBased:
+                        subTitle = 'Based on 2 Bezier curves'
+                    else: 
+                        subTitle = None 
                     self._plot_title (airfoil.name, subTitle=subTitle )
 
                     label = None                                # suppress legend 

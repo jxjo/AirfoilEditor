@@ -364,19 +364,24 @@ class Airfoil:
 
     def set_pathFileName (self,fullPath, noCheck=False):
         """
-        Set der fullpaths of airfoils location and file \n
+        Set fullpaths of airfoils location and file \n
         ! This will not move or copy the airfoil physically - use copyAs instead
-
-        Args:
-            :fullPath: String like '..\\myAirfoils\\JX-GT-15.dat'
-            :noCheck:  = TRUE - no check if fullpath exists - default FALSE 
         """
-
         if noCheck or (os.path.isfile(fullPath)):
             self.pathFileName = fullPath
         else:
-            ErrorMsg ("Airfoil \'%s\' does not exist. Couldn\'t be set" % fullPath)
+            raise ValueError ("Airfoil \'%s\' does not exist. Couldn\'t be set" % fullPath)
 
+
+    def set_pathName (self, aDir : str, noCheck=False):
+        """
+        Set fullpaths of airfoils directory \n
+        ! This will not move or copy the airfoil physically
+        """
+        if noCheck or (os.path.isdir(aDir)):
+            self.pathFileName = os.path.join (aDir, self.fileName)
+        else:
+            raise ValueError ("Directory \'%s\' does not exist. Couldn\'t be set" % aDir)
 
     @property
     def fileName (self):

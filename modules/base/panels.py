@@ -306,7 +306,7 @@ class Dialog (QDialog):
         
         l_button = QHBoxLayout()
         l_button.addWidget(buttonBox)
-        l_button.setContentsMargins (QMargins(5, 0, 15, 0))
+        l_button.setContentsMargins (QMargins(5, 0, 25, 0))
         # set_background (buttonBox, darker_factor=120)
 
  

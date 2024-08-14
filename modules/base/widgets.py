@@ -66,10 +66,9 @@ class button_style (Enum):
 
 class style (Enum):
     """ enums for style getter  - tuple for light and dark theme """
-
     # color see https://www.w3.org/TR/SVG11/types.html#ColorKeywords
 
-                    #  light dark
+                  #  light dark
     NORMAL        = (None, None)
     COMMENT       = ("dimgray","lightGray")  
     ERROR         = ('red', 'red')
@@ -209,7 +208,8 @@ class Widget:
                  disable = None, 
                  hide = None,
                  style = style.NORMAL,
-                 fontSize= size.NORMAL): 
+                 fontSize = size.NORMAL,
+                 toolTip = None): 
         
         # needed to build reference so self won't be garbage collected 
         super().__init__ ()
@@ -286,7 +286,7 @@ class Widget:
         self._palette_normal = None       # will be copy of palette - for style reset  
         self._fontSize = fontSize
 
-        self._toolTip = None
+        self._toolTip = toolTip
 
 
     def __repr__(self) -> str:
@@ -998,10 +998,13 @@ class Button (Widget, QPushButton):
     def __init__(self, *args,
                  signal = False,            # default is not to signal change 
                  text = None, 
+                 button_style = button_style.SECONDARY,
                  **kwargs):
         super().__init__(*args, signal=signal,**kwargs)
 
         self._text = text 
+        self._button_style = None 
+        self._button_style_getter = button_style
 
         self._get_properties ()
         self._set_Qwidget_static ()
@@ -1020,10 +1023,25 @@ class Button (Widget, QPushButton):
         return f"<{type(self).__name__}{text}>"
     
 
+    def _get_properties (self): 
+        # overloaded
+        super()._get_properties () 
+        self._button_style = self._get_value (self._button_style_getter)
+
+
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
         self.setText (self._text)
+
+
+    def _set_Qwidget (self): 
+        """ set properties of self Qwidget like data"""
+        super()._set_Qwidget ()        
+        if self._button_style == button_style.PRIMARY:
+            self.setDefault (True)
+        else: 
+            self.setDefault(False)
 
 
     def _on_pressed(self):
@@ -1270,7 +1288,8 @@ class ComboSpinBox (Field_With_Label, QComboBox):
         self._options = None
         self._get_properties ()
 
-        self._toolTip = 'Use mouse wheel to browse through items'
+        if self._toolTip is None: 
+            self._toolTip = 'Use mouse wheel to browse through items'
 
         # add spin buttons on helper widget 
 

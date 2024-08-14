@@ -54,14 +54,14 @@ from airfoil_artists        import *
 AppName    = "Airfoil Editor"
 AppVersion = "2.0 beta"
 
-Main : 'Main_Window' = None 
+Main : 'App_Main' = None 
 
 def signal_airfoil_changed ():
     """ main airfoil change signal """
     if Main: Main.sig_airfoil_changed.emit()
 
 
-class Main_Window (QMainWindow):
+class App_Main (QMainWindow):
     '''
         The AirfoilEditor App
 
@@ -180,37 +180,49 @@ class Main_Window (QMainWindow):
         return self._edit_mode
 
 
+    def modify_airfoil (self):
+        """ modify airfoil - switch to edit mode """
+        if self.edit_mode: return 
+
+        # enter edit_mode - save original, create working copy as splined airfoil 
+        self._airfoil_sav = self._airfoil
+        try:                                            # normal airfoil - allows new geometry
+            airfoil  = self._airfoil.asCopy (nameExt=None, geometry=GEO_SPLINE)
+        except:                                         # bezier or hh does not allow new geometry
+            airfoil  = self._airfoil.asCopy (nameExt=None)
+        airfoil.useAsDesign()                           # will have another visualization 
+        airfoil.normalize()                     
+
+        self.set_airfoil (airfoil, silent=True)         # set without signal   
+        self.set_edit_mode (True)       
+
+
+    def modify_airfoil_finished (self, ok=False):
+        """ modify airfoil finished - switch to view mode """
+
+        if not self.edit_mode: return 
+
+        if ok:
+            dlg = Airfoil_Save_Dialog (parent=self, getter=self.airfoil)
+            ok_save = dlg.exec()
+            if not ok_save: return                      # save was cancelled - return to edit mode 
+
+        # leave edit_mode - restore original airfoil 
+        if not ok:
+            airfoil = self._airfoil_sav                 # restore old airfoil 
+        else: 
+            airfoil = self.airfoil()
+        self._airfoil_sav = None 
+
+        airfoil.useAsDesign (False)                     # will have another visualization 
+        airfoil.set_isModified (False)                  # just sanity
+        self.set_airfoil (airfoil, silent=True) 
+        self.set_edit_mode (False)       
+
+
     def set_edit_mode (self, aBool : bool):
         """ switch edit / view mode """
 
-        if not self.edit_mode and aBool: 
-
-            # enter edit_mode - save original, create working copy as splined airfoil 
-            self._airfoil_sav = self._airfoil
-            try:                                    # normal airfoil - allows new geometry
-                airfoil  = self._airfoil.asCopy (nameExt=None, geometry=GEO_SPLINE)
-            except:                                 # bezier or hh does not allow new geometry
-                airfoil  = self._airfoil.asCopy (nameExt=None)
-            airfoil.useAsDesign()                   # will have another visualization 
-
-            airfoil.normalize()                     
-
-            self.set_airfoil (airfoil, silent=True) # set without signal  
-
-        elif self.edit_mode and not aBool:
-
-            # leave edit_mode - restore original airfoil 
-            ok = self._on_leaving_edit_mode ()      # check save etc...
-            if ok: 
-                airfoil = self._airfoil_sav
-                airfoil.useAsDesign (False)         # will have another visualization 
-                airfoil.set_isModified (False)      # no save in the beginning needed
-                self.set_airfoil (airfoil, silent=True) 
-                self._airfoil_sav = None 
-            else: 
-                return                              # user cancel
-
-        # finally signal airfoil changed 
         if self._edit_mode != aBool: 
             self._edit_mode = aBool
             signal_airfoil_changed ()               # signal new airfoil 
@@ -267,7 +279,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     """
 
     @property
-    def myApp (self) -> Main_Window:
+    def myApp (self) -> App_Main:
         return self._parent 
 
     def airfoil (self) -> Airfoil: 
@@ -305,7 +317,7 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
         return not self.myApp.edit_mode
 
 
-    def _on_airfoil_widget_changed (self, object_class, setter_name, newVal ):
+    def _on_airfoil_widget_changed (self, *_ ):
         """ user changed data in widget"""
         # overloaded - do not react on self widget changes 
         pass
@@ -318,10 +330,15 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
         Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False, signal=False,
                                     get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
-        SpaceR (l,r, stretch=2)
+        SpaceR (l,r, height=10)
         r += 1
-        Button (l,r,c, text="Edit Airfoil", width=100, 
-                set=lambda : self.myApp.set_edit_mode(True))
+        Button (l,r,c, text="Modify Airfoil", width=100, 
+                set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel")
+        r += 1
+        SpaceR (l,r, stretch=4)
+        r += 1
+        Button (l,r,c, text="Exit", width=100, 
+                set=self.myApp.close)
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
@@ -352,57 +369,19 @@ class Panel_Edit_Mode (Panel_Airfoil_Abstract):
         SpaceR (l,r)
         l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c, text="Ok",  width=85, set=self.edit_ok)
+        Button (l,r,c,  text="Ok",  width=85,button_style=button_style.PRIMARY,
+                        set=lambda : self.myApp.modify_airfoil_finished(ok=True))
         c += 1
         SpaceC (l,c)
         c += 1
-        Button (l,r,c, text="Cancel",  width=85, set=self.edit_cancel)
+        Button (l,r,c,  text="Cancel",  width=85, 
+                        set=lambda : self.myApp.modify_airfoil_finished(ok=False))
         r += 1
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         return l
         
-    
-    def edit_ok (self): 
-        """ leave edit mode with 'ok'"""
-
-        # save in directory of original airfoil with new name  
-        airfoil = self.airfoil()
-
-        dlg = Airfoil_Save_Dialog (parent=self, getter=self.airfoil)
-        ok = dlg.exec()
-
-        if ok:
-            self.myApp.set_edit_mode (False) 
-        
-
-        # if airfoil.isModified: 
-        #     airfoilDir = os.path.split(airfoil.pathFileName)[0]
-        #     if airfoilDir == '': 
-        #         airfoilDirMSG = 'Current directory'
-        #     else:
-        #         airfoilDirMSG = airfoilDir
-
-        #     try: 
-        #         airfoil.saveAs (dir = airfoilDir)
-
-        #         # elf._save_fileTypes()
-        #         message = f"{airfoil.name}\n\nsaved to directory\n\n{airfoilDirMSG}" 
-        #         QMessageBox.information (self, "Airfoil save", message)
-
-        #         self.myApp.set_edit_mode (False) 
-
-        #     except: 
-        #         message = "Airfoil name not valid.\n\nAirfoil could not be saved"
-        #         QMessageBox.critical (self, "Airfoil save", message)
-
-
-    def edit_cancel (self): 
-        """ leave edit mode with 'cancel'"""
-        self.myApp.set_edit_mode (False) 
-
-
 
 
 class Panel_Geometry (Panel_Airfoil_Abstract):
@@ -912,7 +891,7 @@ class Diagram_Airfoil (Diagram):
         self.myApp.sig_airfoil_changed.connect (self._on_airfoil_changed)
 
     @property
-    def myApp (self) -> Main_Window:
+    def myApp (self) -> App_Main:
         return super().myApp  
 
     @property
@@ -1033,7 +1012,7 @@ if __name__ == "__main__":
     # print (font.defaultFamily(), font.family(), font.families())
     app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
 
-    Main = Main_Window (airfoil_file)
+    Main = App_Main (airfoil_file)
     Main.show()
     app.exec()
 

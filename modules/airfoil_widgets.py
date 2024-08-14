@@ -101,9 +101,9 @@ class Airfoil_Open_Widget (Widget, QWidget):
         self._set_Qwidget_static ()
 
         if asIcon:
-            widget= ToolButton (None, icon=ToolButton.ICON_OPEN, set=self._open)
+            widget= ToolButton (None, icon=ToolButton.ICON_OPEN, set=self._open, toolTip="Select airfoil")
         else: 
-            widget = Button    (None, text="&Open", width=self._width, set=self._open)
+            widget = Button    (None, text="&Open", width=self._width, set=self._open, toolTip="Select airfoil")
 
         # assign widget to parent layout 
 
@@ -271,8 +271,8 @@ class Airfoil_Save_Dialog (Dialog):
     the new <Airfoil> as argument 
     """
 
-    _width  = (500, None)
-    _height = 300
+    _width  = (450, None)
+    _height = 240
 
     name = "Save Airfoil ..."
 
@@ -284,31 +284,79 @@ class Airfoil_Save_Dialog (Dialog):
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
-        r,c = 0, 0 
+        r = 0 
         SpaceR (l, r) 
         r += 1
-        Field  (l,r,c,   lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None))
-        Button (l,r,c+2, text="Use Filename", set=self.airfoil.set_name_from_fileName, width=80,
-                         signal=True)
+        Field  (l,r,0, lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None),
+                       style=self._style_names)
+        Button (l,r,2, text="Sync", set=self.airfoil.set_name_from_fileName, width=35,
+                       hide=self._names_are_equal, signal=True,
+                       toolTip="Use filename as airfoil name")
         r += 1
         SpaceR (l, r, stretch=0) 
         r += 1
-        Field  (l,r,c,   lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None))
-        Button (l,r,c+2, text="Use Name", set=self.airfoil.set_fileName_from_name, width=80,
-                         signal=True)
+        Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None),
+                       style=self._style_names)
+        Button (l,r,2, text="Sync", set=self.airfoil.set_fileName_from_name, width=35,
+                       hide=self._names_are_equal, signal=True,
+                       toolTip="Use airfoil name as filename")
         r += 1
-        Field  (l,r,c, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName, width=(150,None))
-
+        Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName, width=(150,None),
+                       disable=True)
+        ToolButton (l,r,2, icon=ToolButton.ICON_OPEN, set=self._open_dir, signal=True,
+                    toolTip = 'Select directory of airfoil') 
         r += 1
-        SpaceR (l, r, stretch=4) 
-        # l.setRowStretch    (r,1)
-        l.setColumnStretch (1,1)
-        l.setColumnMinimumWidth (0,100)
+        SpaceR (l, r, stretch=1) 
+        r += 1
+        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT)
+        r += 1
+        SpaceR (l, r, height=1, stretch=4) 
+        l.setColumnStretch (1,5)
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,35)
         return l
+
 
     def _on_widget_changed (self):
         """ slot for change of widgets"""
         self.refresh()
+
+
+    def _names_are_equal (self) -> bool: 
+        """ is airfoil name different from filename?"""
+        fileName_without = os.path.splitext(self.airfoil.fileName)[0]
+        return fileName_without == self.airfoil.name
+
+
+    def _style_names (self):
+        """ returns style.WARNING if names are different"""
+        if not self._names_are_equal(): 
+            return style.WARNING
+        else: 
+            return style.NORMAL
+
+
+    def _messageText (self): 
+        """ info / wanrning text"""
+        text = []
+        if not self._names_are_equal():
+             text.append("Name of airfoil and its filename are different.")
+             text.append("You maybe want to 'sync' either the name or the filename.")
+        text = '\n'.join(text)
+        return text 
+
+
+
+    def _open_dir (self):
+        """ open directory and set to airfoil """
+
+        select_dir = os.path.dirname(self.airfoil.pathName)     # take parent of current
+        pathName_new = QFileDialog.getExistingDirectory(self, caption="Select directory",
+                                                           directory=select_dir)
+        if pathName_new:                         # user pressed open
+            self.airfoil.set_pathName (pathName_new)
+
+
 
     def accept(self):
         """ Qt overloaded - ok - save airfoil"""
