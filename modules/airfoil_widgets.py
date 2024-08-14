@@ -7,6 +7,10 @@ Higher level Widgets to handle Airfoil UI operations like Open and Select
 
 """
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
+
 import os
 import fnmatch             
 

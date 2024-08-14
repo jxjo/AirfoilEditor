@@ -9,7 +9,7 @@ Additional generic (compound) widgets based on original CTK widgets
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 import os
 import types
@@ -138,44 +138,6 @@ class Widget:
 
     """
 
-    # static helper functions
-
-    @staticmethod
-    def refresh_childs (parent: QWidget):
-        """ refresh all childs of parent"""
-        w : Widget
-        for w in parent.findChildren (Widget):
-            w.refresh() 
-
-
-    @staticmethod
-    def _set_height (widget :QWidget , height):
-        """ set self min/max height """
-        if height is None: 
-            return 
-        elif isinstance (height, tuple):
-            min_height = height[0]
-            max_height = height[1]
-        else:
-            min_height = height
-            max_height = height
-        if min_height: widget.setMinimumHeight(min_height)
-        if max_height: widget.setMaximumHeight(max_height)        
-
-
-    @staticmethod
-    def _set_width (widget :QWidget , width):
-        """ set self min/max width """
-        if width is None: 
-            return 
-        elif isinstance (width, tuple):
-            min_width = width[0]
-            max_width = width[1]
-        else:
-            min_width = width
-            max_width = width
-        if min_width: widget.setMinimumWidth(min_width)
-        if max_width: widget.setMaximumWidth(max_width)
 
     # Signals
 
@@ -293,6 +255,46 @@ class Widget:
         # overwritten to get a nice print string 
         text = f" '{str(self._val)}'" if self._val is not None else ''
         return f"<{type(self).__name__}{text}>"
+
+
+    #--- static helper functions
+
+    @staticmethod
+    def refresh_childs (parent: QWidget):
+        """ refresh all childs of parent"""
+        w : Widget
+        for w in parent.findChildren (Widget):
+            w.refresh() 
+
+
+    @staticmethod
+    def _set_height (widget :QWidget , height):
+        """ set self min/max height """
+        if height is None: 
+            return 
+        elif isinstance (height, tuple):
+            min_height = height[0]
+            max_height = height[1]
+        else:
+            min_height = height
+            max_height = height
+        if min_height: widget.setMinimumHeight(min_height)
+        if max_height: widget.setMaximumHeight(max_height)        
+
+
+    @staticmethod
+    def _set_width (widget :QWidget , width):
+        """ set self min/max width """
+        if width is None: 
+            return 
+        elif isinstance (width, tuple):
+            min_width = width[0]
+            max_width = width[1]
+        else:
+            min_width = width
+            max_width = width
+        if min_width: widget.setMinimumWidth(min_width)
+        if max_width: widget.setMaximumWidth(max_width)
 
 
     #---  public methods 

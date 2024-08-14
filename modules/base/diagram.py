@@ -112,7 +112,7 @@ class Diagram (QWidget):
 
 
     @property
-    def section_panel (self):
+    def section_panel (self) -> Edit_Panel | None:
         """ small section panel representing self in view panel"""
         # overload for constructor 
         return  self._section_panel
@@ -123,6 +123,9 @@ class Diagram (QWidget):
         item : Diagram_Item
         for item in self.diagram_items:
             item.refresh() 
+
+        if self.section_panel:
+            self.section_panel.refresh()
 
 
     def create_diagram_items ():

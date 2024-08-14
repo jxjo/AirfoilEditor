@@ -320,69 +320,11 @@ class Match_Side_Bezier:
         more or less close to target
         """
 
-        ncp = self.ncp
-        targets_x = self._targets_x
-        targets_y = self._targets_y
-        target_y_te = self._target_y_te
+        target_line = Line(self._targets_x, self._targets_y)
 
-        cp_x, cp_y = [0.0] * ncp, [0.0] * ncp
+        controlPoints = Side_Airfoil_Bezier.estimated_controlPoints (target_line, self.ncp) 
 
-        # initial x values of fixed points 
-        cp_x[0]   = 0.0                                 # LE and TE fix pos 
-        cp_y[0]   = 0.0                                 # LE and TE fix pos 
-        cp_x[1]   = 0.0 
-        cp_x[-1]  = 1.0
-        cp_y[-1]  = target_y_te
-
-        np_between =  ncp - 3                           
-        if np_between == 1: 
-            dx = 0.35                                   # only 1 point between take 40% chord
-        else:                                           # equal distribution between   
-            dx = 1.0 / (np_between + 1)
-
-        # build x values and first estimate of y 
-        x = 0.0 
-        for ib in range(np_between): 
-            icp = 2 + ib
-            x += dx
-            i = find_closest_index (targets_x, x)
-            cp_x[icp] = targets_x[i] 
-            cp_y[icp] = targets_y[i] 
-
-        # y of start tangent 
-
-        if ncp == 3: 
-            if self._isLower:
-                cp_y[1] = min (targets_y) * 1.8
-                cp_y[1] = min (cp_y[icp], -0.025)
-            else: 
-                cp_y[1] = max (targets_y) * 1.8
-        else:
-            xhelp = cp_x[2] * 0.6                       #   take y-coord near LE depending
-            i = find_closest_index (targets_x, xhelp)              
-            cp_y[1] = targets_y[i]    
-        if self._isLower:
-            cp_y[1] = min (cp_y[1], -0.025)
-        else: 
-            cp_y[1] = max (cp_y[1], 0.025)
-
-        # adjust y values between le and te for best fit 
-
-        for icp in range (2,ncp-1):
-            if ncp == 6: 
-                y_fac = 1.2
-            elif ncp == 5:
-                y_fac = 1.3
-            elif ncp == 4:
-                y_fac = 1.6
-            else: 
-                y_fac = 1.15 
-
-            if icp == 2:
-                y_fac *= 1.2                                    # the second point even higher 
-            cp_y[icp]  = cp_y[icp] * y_fac                      # control point a little higher than target
-
-        self.bezier.set_points (cp_x, cp_y)                     # a new Bezier curve 
+        self.bezier.set_points (controlPoints)                     # a new Bezier curve 
 
 
     def _map_bezier_to_variables (self): 
@@ -1165,6 +1107,77 @@ class Side_Airfoil_Bezier (Line):
 
         # eval Bezier for u - x,y - values will be cached in 'Bezier'
         self.bezier.eval(self._u)
+
+
+    @staticmethod
+    def estimated_controlPoints (aLine: Line, ncp : int) -> list[tuple]:
+        """
+        Returns an estimation for the bezier control points xy
+        based on the coordinates of aLine 
+        """
+
+        if ncp < 3 or ncp > 10:
+            raise ValueError ("No of controlpoints for new Bezier must be > 2 and < 11")
+
+        cp_x, cp_y = [0.0] * ncp, [0.0] * ncp
+
+        # initial x values of fixed points 
+        cp_x[0]   = 0.0                                 # LE and TE fix pos 
+        cp_y[0]   = 0.0                                 # LE and TE fix pos 
+        cp_x[1]   = 0.0 
+        cp_x[-1]  = 1.0
+        cp_y[-1]  = aLine.y[-1]
+
+        np_between =  ncp - 3                           
+        if np_between == 1: 
+            dx = 0.35                                   # only 1 point between take 40% chord
+        else:                                           # equal distribution between   
+            dx = 1.0 / (np_between + 1)
+
+        # build x values and first estimate of y 
+        x = 0.0 
+        for ib in range(np_between): 
+            icp = 2 + ib
+            x += dx
+            i = find_closest_index (aLine.x, x)
+            cp_x[icp] = aLine.x[i] 
+            cp_y[icp] = aLine.y[i] 
+
+        # y of start tangent 
+
+        if ncp == 3: 
+            if aLine.isLower:
+                cp_y[1] = min (aLine.y) * 1.8
+                cp_y[1] = min (cp_y[icp], -0.025)
+            else: 
+                cp_y[1] = max (aLine.y) * 1.8
+        else:
+            xhelp = cp_x[2] * 0.6                       #   take y-coord near LE depending
+            i = find_closest_index (aLine.x, xhelp)              
+            cp_y[1] = aLine.y[i]    
+        if aLine.isLower:
+            cp_y[1] = min (cp_y[1], -0.025)
+        else: 
+            cp_y[1] = max (cp_y[1], 0.025)
+
+        # adjust y values between le and te for best fit 
+
+        for icp in range (2,ncp-1):
+            if ncp == 6: 
+                y_fac = 1.2
+            elif ncp == 5:
+                y_fac = 1.3
+            elif ncp == 4:
+                y_fac = 1.6
+            else: 
+                y_fac = 1.15 
+
+            if icp == 2:
+                y_fac *= 1.2                              # the second point even higher 
+            cp_y[icp]  = cp_y[icp] * y_fac                # control point a little higher than target
+
+        return list(zip(cp_x, cp_y)) 
+
 
 
     def set_panel_distribution (self, nPoints):
@@ -2995,6 +3008,9 @@ class Geometry_Bezier (Geometry):
         #overloaded to directly manipulate Bezier
         self.upper.set_te_gap (  newGap / 2)
         self.lower.set_te_gap (- newGap / 2)
+
+        self._reset () 
+        self._changed (mod.TE_GAP, round(self.te_gap * 100, 7))   # finalize (parent) airfoil 
 
 
     @property

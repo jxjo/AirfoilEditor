@@ -530,7 +530,7 @@ class Artist(QObject):
 
     COLOR_HEADER        = "whitesmoke"
     COLOR_NORMAL        = "silver"
-    COLOR_LEGEND        = "gray"
+    COLOR_LEGEND        = "darkgray"
 
 
     def __init__ (self, pi: pg.PlotItem , 

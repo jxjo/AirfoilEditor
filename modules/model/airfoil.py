@@ -198,7 +198,8 @@ class Airfoil:
         self._y = self.geo.y
 
         # set new name
-        if self._name_org is None: self._name_org = self.name
+        if not self._name_org : self._name_org = self.name
+
         self.set_name (self._name_org + self.geo.modifications_as_label)
 
         # set new filename 
@@ -266,7 +267,7 @@ class Airfoil:
         """  Set name of the airfoil 
         Note:  This will not rename an existing airfoil (file). Use rename instead...
         """
-        if self._name_org is None: 
+        if not self._name_org: 
             self._name_org = self.name
         self._name = newName
 
@@ -684,7 +685,9 @@ class Airfoil_Bezier(Airfoil):
     isBezierBased  = True
 
 
-    def __init__(self, name = None, pathFileName=None, workingDir= None):
+    def __init__(self, name = None, pathFileName=None, workingDir= None,
+                 cp_upper = None,
+                 cp_lower = None):
         """
         Main constructor for new Bezier Airfoil
 
@@ -696,6 +699,41 @@ class Airfoil_Bezier(Airfoil):
 
         self._geometryClass  = Geometry_Bezier      # geometry startegy 
         self._isLoaded       = False                # bezier definition loaded? 
+
+        if cp_upper is not None: 
+            self.geo.upper.set_controlPoints (cp_upper)
+        if cp_lower is not None: 
+            self.geo.lower.set_controlPoints (cp_lower)
+
+
+    @classmethod
+    def onAirfoil (cls, anAirfoil : Airfoil):
+        """
+        Alternate constructor for new Airfoil based on dictionary 
+
+        The new Bezier airfoil will just have a rough estimation for the Bezier curves,
+        which have to be optimized with 'match bezier'
+        """
+
+        # new name and filename
+        name = anAirfoil.name + '_bezier'
+ 
+        # get estimated controlpoints for upper and lower 
+        cp_upper = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.upper, 5)
+        cp_lower = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.lower, 5)
+
+        airfoil_new =  cls (name=name, cp_upper=cp_upper, cp_lower=cp_lower)
+
+        # new pathFileName
+        fileName_without = os.path.splitext(anAirfoil.fileName)[0]
+        fileName_ext     = os.path.splitext(anAirfoil.fileName)[1] 
+        pathFileName = os.path.join (anAirfoil.pathName, fileName_without + '_bezier' + fileName_ext)
+        airfoil_new.set_pathFileName (pathFileName, noCheck=True)
+
+        airfoil_new.set_isLoaded (True)
+
+        return airfoil_new 
+
 
     @property
     def pathFileName_bezier (self) -> str: 
@@ -877,10 +915,9 @@ class Airfoil_Bezier(Airfoil):
         if geometry is not None: 
             raise ValueError ("Airfoil_Bezier does not support new geometry class")
 
-        airfoil =  Airfoil_Bezier (name = name, pathFileName = pathFileName)
-
-        airfoil.geo.upper.set_controlPoints (self.geo.upper.controlPoints)
-        airfoil.geo.lower.set_controlPoints (self.geo.lower.controlPoints)
+        airfoil =  Airfoil_Bezier (name = name, pathFileName = pathFileName,
+                                   cp_upper = self.geo.upper.controlPoints,
+                                   cp_lower = self.geo.lower.controlPoints)
         airfoil.set_isLoaded (True)
 
         return airfoil 
