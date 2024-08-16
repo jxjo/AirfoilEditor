@@ -1000,6 +1000,19 @@ class Side_Airfoil_Bezier (Line):
 
 
 
+    def norm2_deviation_to (self, target_line : 'Line' )  -> float:
+        """returns norm2 deviation of self to a target_line"""
+
+        # evaluate the new y values on Bezier for the target x-coordinate   
+        y_new = np.zeros (len(target_line.y))
+        for i, x in enumerate(target_line.x) :
+            y_new[i] = self._bezier.eval_y_on_x (x, fast=True, epsilon=1e-7)
+
+        # calculate abs difference between bezier y and target y
+        devi = np.abs((y_new - target_line.y))
+        return np.linalg.norm (devi)
+
+
 
 class Side_Airfoil_HicksHenne (Line): 
     """ 

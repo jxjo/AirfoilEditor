@@ -522,6 +522,10 @@ def newton(f,Df,x0,epsilon = 10e-8 , max_iter= 50, bounds=None):
                 raise ValueError ("Newton iteration: Zero derivative. No solution found.")
         xn = xn - fxn/Dfxn
 
+    if bounds is not None: 
+        if   xn > bounds[1]: xn = bounds[1]
+        elif xn < bounds[0]: xn = bounds[0]
+
     return xn, n
 
 

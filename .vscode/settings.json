@@ -6,5 +6,6 @@
         "modules"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "debugpy.debugJustMyCode": false
 }

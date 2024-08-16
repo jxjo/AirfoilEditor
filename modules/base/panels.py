@@ -307,14 +307,10 @@ class Dialog (QDialog):
         panel.setLayout (l_panel)
         set_background (panel, darker_factor=105)
 
-        # Qt button at footer
+        # Qt buttonBox at footer
 
-        buttonBox = QDialogButtonBox(self._QButtons())
-        buttonBox.accepted.connect(self.accept)
-        buttonBox.rejected.connect(self.reject)
-        
         l_button = QHBoxLayout()
-        l_button.addWidget(buttonBox)
+        l_button.addWidget(self._button_box())
         l_button.setContentsMargins (QMargins(5, 0, 25, 0))
         # set_background (buttonBox, darker_factor=120)
 
@@ -340,6 +336,15 @@ class Dialog (QDialog):
         # to be implemented by sub class
         return QVBoxLayout ()
 
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+        buttons = QDialogButtonBox.StandardButton.Ok | \
+                  QDialogButtonBox.StandardButton.Cancel
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        return buttonBox 
+        buttonBox.clicked.connect(self.button_clicked)
 
     def _QButtons (self):
         """return QButtons enum for button box at footer """
@@ -370,6 +375,12 @@ class Dialog (QDialog):
     def _on_widget_changed (self):
         """ slot for change of widgets"""
         # to be overloaded 
+        pass
+
+
+    def button_clicked (self, aButton): 
+        """ slot for button of buttonbox clicked. Can be overloaded"""
+        print ("Button clicked ", aButton)
         pass
 
 

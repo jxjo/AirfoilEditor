@@ -46,6 +46,9 @@ def _color_airfoil_of (airfoil_type : usedAs) -> QColor:
     elif airfoil_type == usedAs.REF2:
         color = 'orange'
         alpha = 0.9
+    elif airfoil_type == usedAs.TARGET:
+        color = 'springgreen'
+        alpha = 0.7
     else:
         color = 'gray'
     qcolor =  QColor (color) 
@@ -672,7 +675,7 @@ class Bezier_Artist (Artist):
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
-    def refresh (self):
+    def refresh_controlPoints (self):
 
         p : Movable_Side_Bezier
         for p in self._plots: 

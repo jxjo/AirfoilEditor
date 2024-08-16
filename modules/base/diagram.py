@@ -115,7 +115,7 @@ class Diagram (QWidget):
     def section_panel (self) -> Edit_Panel | None:
         """ small section panel representing self in view panel"""
         # overload for constructor 
-        return  self._section_panel
+        return self._section_panel
     
 
     def refresh(self): 
@@ -263,11 +263,12 @@ class Diagram_Item (pg.PlotItem):
     def refresh(self): 
         """ refresh my artits and section panel """
         if self.section_panel is not None: 
-            self.section_panel.refresh()
-
             # refresh artists only if self section is switched on 
             if self.section_panel.switched_on:
-                self.refresh_artists() 
+                self.refresh_artists()          # first artist and then panel 
+
+            self.section_panel.refresh()
+
         else: 
             self.refresh_artists() 
 

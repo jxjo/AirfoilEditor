@@ -34,6 +34,7 @@ class usedAs (StrEnum):
     REF1        = "Reference 1" 
     REF2        = "Reference 2" 
     DESIGN      = "Design"
+    TARGET      = "Target"
     FINAL       = "Final"
 
 # geometry specification 

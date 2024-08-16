@@ -766,7 +766,8 @@ class Field (Field_With_Label, QLineEdit):
     def _set_Qwidget (self):
         """ set value and properties of self Qwidget"""
         super()._set_Qwidget ()
-        self.setText (self._val)
+        val = self._val if self._val is not None else ''
+        self.setText (val)
 
 
     def _on_finished(self):

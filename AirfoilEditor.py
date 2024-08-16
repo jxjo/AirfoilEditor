@@ -103,7 +103,8 @@ class App_Main (QMainWindow):
         self._airfoil = None                        # current airfoil 
         self._airfoil_sav = None                    # airfoil saved in edit_mode 
         self._airfoil_ref1 = None                   # reference airfoils 
-        self._airfoil_ref2 = None       
+        self._airfoil_ref2 = None  
+        self._airfoil_target = None                 # target for match Bezier     
 
         self._edit_mode = False                     # edit/view mode of app 
         self._data_panel = None 
@@ -229,7 +230,10 @@ class App_Main (QMainWindow):
 
         airfoil.useAsDesign (False)                     # will have another visualization 
         airfoil.set_isModified (False)                  # just sanity
+
         self.set_airfoil (airfoil, silent=True) 
+        self.set_airfoil_target (None, silent=True)     # if returned from match Bezier 
+
         self.set_edit_mode (False)       
 
 
@@ -242,7 +246,7 @@ class App_Main (QMainWindow):
         airfoil.useAsDesign()                           # will have another visualization 
         airfoil.normalize()                     
 
-        self.set_airfoil_ref1 (self._airfoil_sav)       # current will be reference for Bezier
+        self.set_airfoil_target (self._airfoil_sav, silent=True) # current will be reference for Bezier
         self.set_airfoil (airfoil, silent=True)         # set without signal   
         self.set_edit_mode (True)       
 
@@ -272,8 +276,9 @@ class App_Main (QMainWindow):
         """ list of airfoils (current, ref1 and ref2) 
         Childs should acces only via this function to enable a new airfoil to be set """
         airfoils = [self._airfoil]
-        if self.airfoil_ref1: airfoils.append (self.airfoil_ref1)
-        if self.airfoil_ref2: airfoils.append (self.airfoil_ref2)
+        if self.airfoil_ref1:       airfoils.append (self.airfoil_ref1)
+        if self.airfoil_ref2:       airfoils.append (self.airfoil_ref2)
+        if self.airfoil_target:     airfoils.append (self.airfoil_target)
         return airfoils
 
 
@@ -289,20 +294,29 @@ class App_Main (QMainWindow):
     @property
     def airfoil_ref1 (self) -> Airfoil:
         return self._airfoil_ref1
-    def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
+    def set_airfoil_ref1 (self, airfoil: Airfoil | None = None, silent=False): 
         self._airfoil_ref1 = airfoil 
         if airfoil: airfoil.set_usedAs (usedAs.REF1)
-        self.sig_airfoil_ref_changed.emit()
-
+        if not silent: self.sig_airfoil_ref_changed.emit()
 
     @property
     def airfoil_ref2 (self) -> Airfoil:
         return self._airfoil_ref2
-    def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
+    def set_airfoil_ref2 (self, airfoil: Airfoil | None = None, silent=False): 
         self._airfoil_ref2 = airfoil 
         if airfoil: airfoil.set_usedAs (usedAs.REF2)
-        self.sig_airfoil_ref_changed.emit()
+        if not silent: self.sig_airfoil_ref_changed.emit()
 
+    @property
+    def airfoil_target (self) -> Airfoil:
+        return self._airfoil_target
+    def set_airfoil_target (self, airfoil: Airfoil | None = None, silent=False): 
+        if airfoil: 
+            airfoil.set_usedAs (usedAs.TARGET)
+        elif self._airfoil_target:
+            self._airfoil_target.set_usedAs (usedAs.NORMAL) 
+        self._airfoil_target = airfoil 
+        if not silent: self.sig_airfoil_ref_changed.emit()
 
 
     def _on_leaving_edit_mode (self) -> bool: 
@@ -777,7 +791,8 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     def setVisible (self, aBool):
         """ qt overloaded: to init if geo is Bezier """
         # assign new layout to my panel
-        self._reinit_layout ()
+        if aBool != self.isVisible():
+            self._reinit_layout ()
         super().setVisible(aBool)
 
 
@@ -797,7 +812,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
     @property
     def target_airfoil (self) -> Airfoil:
-        return self.myApp.airfoil_ref1
+        return self.myApp.airfoil_target
 
     @property
     def target_upper (self) -> Line:
@@ -816,16 +831,26 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
         r,c = 0, 0 
         Label  (l,r,c, get="Reference", width=60)
-        Airfoil_Select_Open_Widget (l,r,c+1, withOpen=True, asSpin=False,
-                    get=lambda: self.myApp.airfoil_ref1, set=self.myApp.set_airfoil_ref1,
+        Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, withOpen=True, asSpin=False,
+                    get=lambda: self.myApp.airfoil_target, set=self.myApp.set_airfoil_target,
                     initialDir=self.myApp.airfoils()[0], addEmpty=True)
  
+        # r += 1
+        # SpaceR (l,r, height=10, stretch=0)
         r += 1
-        SpaceR (l,r, height=5)
+        Label  (l,r,c+1, get="Upper")
+        Label  (l,r,c+2, get="Lower")
         r += 1
-        Button (l,r,c ,  text="Match Upper", width=80,
+        FieldF (l,r,c  , lab="Deviation", width=60, dec=2, unit="%",
+                get=lambda: self.upper.norm2_deviation_to (self.target_upper))
+        FieldF (l,r,c+2,                  width=60, dec=2, unit="%",
+                get=lambda: self.lower.norm2_deviation_to (self.target_lower))
+        r += 1
+        SpaceR (l,r, stretch=1)
+        r += 1
+        Button (l,r,c+1, text="Match", width=60,
                 set=lambda: self._match_bezier (self.upper, self.target_upper))
-        Button (l,r,c+1, text="Match Lower", width=80,
+        Button (l,r,c+2, text="Match", width=60,
                 set=lambda: self._match_bezier (self.lower, self.target_lower))
 
         l.setColumnMinimumWidth (0,60)
@@ -839,8 +864,10 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
          
          matcher = Match_Bezier (self, aSide, aTarget_line)
 
-         matcher.sig_new_bezier.connect (self.myApp.sig_bezier_changed.emit)
+         matcher.sig_new_bezier.connect     (self.myApp.sig_bezier_changed.emit)
+         matcher.sig_match_finished.connect (self.myApp.sig_airfoil_changed.emit)
          matcher.exec ()
+
 
 
 
@@ -867,7 +894,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
         self.line_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
 
-        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= self._is_bezier_based())
+        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= self._one_is_bezier_based())
         self.bezier_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
          
         # setup view box 
@@ -886,7 +913,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def airfoils (self) -> list[Airfoil]: 
         return self.data_list()
     
-    def _is_bezier_based (self) -> bool: 
+    def _one_is_bezier_based (self) -> bool: 
         """ is one of airfoils Bezier based? """
         a : Airfoil
         for a in self.airfoils():
@@ -897,7 +924,13 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def refresh_artists (self):
         self.airfoil_artist.refresh() 
         self.line_artist.refresh() 
-        self.bezier_artist.refresh() 
+
+        # show Bezier shape function when current airfoil is Design and Bezier 
+        cur_airfoil : Airfoil = self.airfoils()[0]
+        if cur_airfoil.isBezierBased and cur_airfoil.usedAsDesign:
+            self.bezier_artist.set_show (True)
+        else: 
+            self.bezier_artist.refresh() 
 
     @property
     def section_panel (self) -> Edit_Panel:
@@ -917,7 +950,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             CheckBox (l,r,c, text="Shape function (Bezier)", 
                     get=lambda: self.bezier_artist.show,
                     set=self.bezier_artist.set_show,
-                    disable=lambda : not self._is_bezier_based()) 
+                    disable=lambda : not self._one_is_bezier_based()) 
             r += 1
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
@@ -1057,24 +1090,34 @@ class Diagram_Airfoil (Diagram):
     @property
     def myApp (self) -> App_Main:
         return super().myApp  
+ 
 
     @property
     def airfoil_ref1 (self) -> Airfoil | None:
-        for a in self.airfoils():
-            if a.usedAs == usedAs.REF1: return a
-
+        return self.myApp.airfoil_ref1
     def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
         self.myApp.set_airfoil_ref1 (airfoil) 
         self.refresh ()
 
     @property
     def airfoil_ref2 (self) -> Airfoil:
-        for a in self.airfoils():
-            if a.usedAs == usedAs.REF2: return a
+        return self.myApp.airfoil_ref2
     def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
         self.myApp.set_airfoil_ref2 (airfoil) 
         self.refresh ()
 
+    @property
+    def airfoil_target (self) -> Airfoil | None:
+        return self.myApp.airfoil_target
+    def set_airfoil_target (self, airfoil: Airfoil | None = None): 
+        self.myApp.set_airfoil_target (airfoil) 
+        self.refresh ()
+    @property
+    def airfoil_target_name (self) -> str:
+        if self.myApp.airfoil_target:
+            return self.myApp.airfoil_target.name
+        else:
+            return '' 
 
     @property
     def show_airfoils_ref (self) -> bool: 
@@ -1085,14 +1128,11 @@ class Diagram_Airfoil (Diagram):
    
 
     def airfoils (self) -> list[Airfoil]: 
-        airfoils = self.data_list()
+        """ the airfoil(s) currently to show as list"""
         if not self.show_airfoils_ref:
-            #remove reference airfoils from list 
-            airfoil : Airfoil
-            for airfoil in airfoils: 
-                if airfoil.usedAs == usedAs.REF1 or airfoil.usedAs == usedAs.REF2:
-                    airfoils.remove (airfoil)
-        return airfoils
+            return [self.data_list()[0]]
+        else: 
+            return self.data_list()
 
 
     def create_diagram_items (self):
@@ -1112,7 +1152,10 @@ class Diagram_Airfoil (Diagram):
         if self._section_panel is None:
         
             l = QGridLayout()
-            r,c = 0, 0 
+            r,c = 0, 0
+            Field (l,r,c, get=lambda: self.airfoil_target_name, disable=True,
+                          hide=lambda: self.airfoil_target is None)
+            r += 1
             Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False,
                                 get=lambda: self.airfoil_ref1, set=self.set_airfoil_ref1,
                                 initialDir=self.airfoils()[0], addEmpty=True)
@@ -1124,7 +1167,7 @@ class Diagram_Airfoil (Diagram):
             l.setColumnStretch (0,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title="Reference Airfoils", layout=l, height=100,
+            self._section_panel = Edit_Panel (title="Reference Airfoils", layout=l, height=130,
                                               switchable=True, switched=False, on_switched=self.set_show_airfoils_ref)
 
         return self._section_panel 
@@ -1134,6 +1177,15 @@ class Diagram_Airfoil (Diagram):
         """ slot to handle airfoil changed signal """
 
         # logging.debug (f"{self} on airfoil changed")
+
+        # is there a target airfoil (match Bezier)? switch ref panel on
+        airfoil : Airfoil
+        for airfoil in self.data_list():            # ... self.airfoils() is filtered
+            if airfoil.usedAs == usedAs.TARGET: 
+                self._show_airfoils_ref = True
+                self.section_panel.set_switched_on (True, initial=True)
+                break
+
         self.refresh()
 
 #--------------------------------
