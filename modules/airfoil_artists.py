@@ -391,6 +391,12 @@ class Movable_Side_Bezier (Movable_Bezier):
 
         super().__init__(points, label_anchor=label_anchor, **kwargs)
 
+    def refresh_controlPoints (self):
+        """ refresh controll points from side"""
+
+        self._points = self._side.controlPoints_as_points
+        self.setData(*self.points_xy())
+
 
     def scene_clicked (self, ev : MouseClickEvent):
         """ 
@@ -666,6 +672,11 @@ class Bezier_Artist (Artist):
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
+    def refresh (self):
+
+        p : Movable_Side_Bezier
+        for p in self._plots: 
+            p.refresh_controlPoints()
 
     def _plot (self): 
     

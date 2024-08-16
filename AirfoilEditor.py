@@ -44,6 +44,8 @@ from base.diagram           import *
 from airfoil_widgets        import * 
 from airfoil_artists        import *
 
+from match_bezier           import Match_Bezier
+
 
 #-------------------------------------------------------------------------------
 # The App   
@@ -79,6 +81,7 @@ class App_Main (QMainWindow):
 
     sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
     sig_airfoil_ref_changed = pyqtSignal()          # reference airfoils changed 
+    sig_bezier_changed      = pyqtSignal()          # new bezier during match bezier 
 
 
     def __init__(self, airfoil_file, parentApp=None):
@@ -95,7 +98,7 @@ class App_Main (QMainWindow):
             QMessageBox.information (self, self.name , f"\n'{airfoil_file}'\n\n... does not exist. Showing example airfoil.\n")
             airfoil_file = "Root_Example"
 
-        self.setMinimumSize(QSize(1300, 700))
+        self.setMinimumSize(QSize(1500, 700))
 
         self._airfoil = None                        # current airfoil 
         self._airfoil_sav = None                    # airfoil saved in edit_mode 
@@ -143,11 +146,11 @@ class App_Main (QMainWindow):
 
         self._data_panel  = Panel ()
         l_edit = QHBoxLayout()
-        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 2)
+        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 3)
         l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 1)
         l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 1)
-        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 2)
-        l_edit.addWidget (Panel_Bezier_Match(self, self.airfoil), stretch= 2)
+        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 1)
+        l_edit.addWidget (Panel_Bezier_Match(self, self.airfoil), stretch= 3)
         
         l_edit.addStretch (2)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
@@ -382,6 +385,8 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
         r += 1
         Button (l,r,c, text="Modify Airfoil", width=100, 
                 set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel")
+        r += 1
+        SpaceR (l,r, height=10, stretch=0)
         r += 1
         Button (l,r,c, text="New as Bezier", width=100, 
                 set=self.myApp.new_as_Bezier, disable=lambda: self.airfoil().isBezierBased,
@@ -658,10 +663,23 @@ class Panel_Bezier (Panel_Airfoil_Abstract):
     name = 'Bezier'
     _width  = (260, None)
 
+
+    # ---- overloaded 
+
     @property
     def _isVisible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         return self.geo().isBezier
+    
+    def setVisible (self, aBool):
+        """ qt overloaded: to init if geo is Bezier """
+
+        # assign new layout to my panel
+        self._reinit_layout ()
+
+        super().setVisible(aBool)
+
+    # ----
 
     def upper (self) -> Side_Airfoil_Bezier:
         if self.geo().isBezier:
@@ -683,6 +701,9 @@ class Panel_Bezier (Panel_Airfoil_Abstract):
     def _init_layout (self):
 
         l = QGridLayout()
+
+        # self only for Bezier based airfoil 
+        if not self._isVisible: return l 
 
         r,c = 0, 0 
         FieldI (l,r,c,   lab="No of points", obj=self.upper, prop=Side_Airfoil_Bezier.nControlPoints,  width=70)
@@ -745,28 +766,53 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     name = 'Bezier Match'
     _width  = (250, None)
 
-    def _on_airfoil_widget_changed (self):
-        """ user changed data in widget"""
-        # overloaded - do not signal signal_airfoil_changed
-        # signal_airfoil_changed ()
 
+    # ---- overloaded 
 
     @property
     def _isVisible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         return self.geo().isBezier and self.myApp.edit_mode
+    
+    def setVisible (self, aBool):
+        """ qt overloaded: to init if geo is Bezier """
+        # assign new layout to my panel
+        self._reinit_layout ()
+        super().setVisible(aBool)
 
+
+    def _on_airfoil_widget_changed (self):
+        """ user changed data in widget"""
+        # overloaded - do not signal signal_airfoil_changed
+
+    # ----
+
+    @property
     def upper (self) -> Side_Airfoil_Bezier:
-        if self.geo().isBezier:
-            return self.geo().upper
+        if self.geo().isBezier: return self.geo().upper
 
+    @property
     def lower (self) -> Side_Airfoil_Bezier:
-        if self.geo().isBezier:
-            return self.geo().lower
+        if self.geo().isBezier: return self.geo().lower
+
+    @property
+    def target_airfoil (self) -> Airfoil:
+        return self.myApp.airfoil_ref1
+
+    @property
+    def target_upper (self) -> Line:
+        if self.target_airfoil: return self.target_airfoil.geo.upper
+
+    @property
+    def target_lower (self) -> Line:
+        if self.target_airfoil: return self.target_airfoil.geo.lower
+
 
     def _init_layout (self):
 
         l = QGridLayout()
+
+        if not self._isVisible: return l 
 
         r,c = 0, 0 
         Label  (l,r,c, get="Reference", width=60)
@@ -777,20 +823,25 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         r += 1
         SpaceR (l,r, height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT)        
+        Button (l,r,c ,  text="Match Upper", width=80,
+                set=lambda: self._match_bezier (self.upper, self.target_upper))
+        Button (l,r,c+1, text="Match Lower", width=80,
+                set=lambda: self._match_bezier (self.lower, self.target_lower))
+
         l.setColumnMinimumWidth (0,60)
         l.setColumnStretch (c+1,1)
-        l.setRowStretch    (r-1,2)
+        # l.setRowStretch    (r-1,2)
         
         return l
  
  
+    def _match_bezier (self, aSide : Side_Airfoil_Bezier, aTarget_line : Line ): 
+         
+         matcher = Match_Bezier (self, aSide, aTarget_line)
 
-    def _messageText (self): 
+         matcher.sig_new_bezier.connect (self.myApp.sig_bezier_changed.emit)
+         matcher.exec ()
 
-        text = []
-        text = '\n'.join(text)
-        return text 
 
 
 
@@ -828,6 +879,8 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         # self.viewBox.setAutoPan(y=None)
         self.showGrid(x=True, y=True)
+
+        self._parent.myApp.sig_bezier_changed.connect (self.bezier_artist.refresh)
 
 
     def airfoils (self) -> list[Airfoil]: 

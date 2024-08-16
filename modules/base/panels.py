@@ -96,6 +96,7 @@ class Panel (QWidget):
             p.refresh(disable=disable) 
 
 
+
 #-------------------------------------------
 
 
@@ -244,6 +245,14 @@ class Edit_Panel (Panel):
         # to be implemented by sub class
         pass
 
+
+    def _reinit_layout (self):
+        """ replaces current panel layout with a new initialized one """
+
+        # assign new layout to my panel - trick: first re-parent current layout to dummy
+        QWidget().setLayout(self._panel.layout())
+        self._panel.setLayout (self._init_layout ())
+        
 
     def _add_to_header_layout(self, l_head : QHBoxLayout) -> QLayout:
         """ add Widgets to header layout"""

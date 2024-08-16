@@ -418,7 +418,7 @@ class Widget:
             setter = getattr (o.__class__, set_name)
 
         if setter is None:  
-            logger.warning (f"{self} setter function '{set_name} does not exist in {o.__class__}")
+            logger.debug (f"{self} setter function '{set_name} does not exist in {o.__class__}")
 
         return setter 
 
