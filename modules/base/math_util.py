@@ -106,8 +106,13 @@ class JPoint:
         """ set new y coordinate limits"""
         self._y_limits = lim
  
+    @property
+    def fixed (self) -> bool:
+        """ True if x and y are fixed """
+        return self._fixed
+    
     def set_fixed (self, fixed : bool):
-        """ set if either x and y are fixed """
+        """ set if x and y are fixed """
         self._fixed = fixed is True 
 
 
@@ -678,27 +683,28 @@ def nelder_mead (f, x_start,
                 step=0.1, no_improve_thr=10e-10,                # for scalar product
                 no_improv_break=12, max_iter=50,
                 bounds = None,                                  # extension 
-                alpha=1., gamma=2., rho=-0.5, sigma=0.5):
+                alpha=1., gamma=2., rho=-0.5, sigma=0.5,
+                stop_callback=False):
     '''
         Nelder-Mead optimization algorithm to determine the minimum of a fuction
 
         Allows multi dimensional optimization of scalar function f. 
         For 1D use 'nelder_mead_1D' which should be faster  
 
-        Parameters
-        ----------
-        f : function to optimize, must return a scalar score
+        Arguments:
+
+        f       : function to optimize, must return a scalar score
         x_start : np array - initial position
         step    : float - look-around radius in initial step
         no_improv_thr: float - an improvement lower than no_improv_thr
         no_improv_break : int -break after no_improv_break iterations 
-        bounds : list of tuple(float) - (min, max) pair for boundary of x. None - no boundary. 
-        max_iter : int - always break after this number of iterations.
-        alpha, gamma, rho, sigma (floats): parameters of the algorithm
-            (see Wikipedia page for reference)
+        bounds  : list of tuple(float) - (min, max) pair for boundary of x. None - no boundary. 
+        max_iter: int - always break after this number of iterations.
+        alpha, gamma, rho, sigma (floats): parameters of the algorithm (see Wikipedia page for reference)
+        stop_callback : optional method for stop condition
              
-        Returns
-        -------
+        Returns:
+         
         (xbest,score) : np array tuple - x of minimum  , best score 
         niter : int - iterations needed 
         """
@@ -722,8 +728,13 @@ def nelder_mead (f, x_start,
             
         return f(x)
 
+    # sanity
+
+    if stop_callback and not callable (stop_callback):
+        stop_callback = False
 
     # init
+
     dim = len(x_start)
     if bounds is None: 
         bounds = [None] * dim                         # dummy bounds for all x
@@ -744,12 +755,16 @@ def nelder_mead (f, x_start,
     # simplex iter
     iters = 0
     # xr, xe, xc = 0, 0, 0 
+
     while 1:
         # order
-        # print ("Iter: ", iters, xr, xe,xc)
         res.sort(key=lambda x: x[1])
         best = res[0][1]
 
+        # stop request?
+        if stop_callback(): 
+            return res[0], iters
+        
         # break after max_iter
         if max_iter and iters >= max_iter:
             return res[0], iters

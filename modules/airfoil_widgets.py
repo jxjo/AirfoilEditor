@@ -275,8 +275,8 @@ class Airfoil_Save_Dialog (Dialog):
     the new <Airfoil> as argument 
     """
 
-    _width  = (450, None)
-    _height = 240
+    _width  = (500, None)
+    _height = 250
 
     name = "Save Airfoil ..."
 
@@ -293,15 +293,14 @@ class Airfoil_Save_Dialog (Dialog):
         r += 1
         Field  (l,r,0, lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None),
                        style=self._style_names)
-        Button (l,r,2, text="Sync", set=self.airfoil.set_name_from_fileName, width=35,
+        Button (l,r,2, text="Use Filename", set=self.airfoil.set_name_from_fileName, width=90,
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use filename as airfoil name")
         r += 1
         SpaceR (l, r, stretch=0) 
         r += 1
-        Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None),
-                       style=self._style_names)
-        Button (l,r,2, text="Sync", set=self.airfoil.set_fileName_from_name, width=35,
+        Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None))
+        Button (l,r,2, text="Use Name", set=self.airfoil.set_fileName_from_name, width=90,
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use airfoil name as filename")
         r += 1
@@ -312,7 +311,7 @@ class Airfoil_Save_Dialog (Dialog):
         r += 1
         SpaceR (l, r, stretch=1) 
         r += 1
-        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT)
+        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=(30,None))
         r += 1
         SpaceR (l, r, height=1, stretch=4) 
         l.setColumnStretch (1,5)
@@ -321,9 +320,12 @@ class Airfoil_Save_Dialog (Dialog):
         return l
 
 
-    def _on_widget_changed (self):
+    def _on_widget_changed (self, *_):
         """ slot for change of widgets"""
-        self.refresh()
+
+        # delayed refresh as pressed button hides itsself 
+        timer = QTimer()                                
+        timer.singleShot(50, self.refresh)     # delayed emit 
 
 
     def _names_are_equal (self) -> bool: 

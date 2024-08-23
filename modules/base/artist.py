@@ -21,12 +21,13 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt       import QtCore, QtWidgets
 from pyqtgraph.graphicsItems.ScatterPlotItem import Symbols
+from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
 # from pyqtgraph.graphicsItems.GraphicsItem import GraphicsItemChange
 
 
 
-from PyQt6.QtCore       import Qt, QTimer, QObject
+from PyQt6.QtCore       import Qt, QTimer, QObject, QPoint
 from PyQt6.QtGui        import QColor, QFont, QPen
 
 from base.common_utils  import *
@@ -144,17 +145,14 @@ class Movable_Point (pg.TargetItem):
                   on_changed = None,
                   **kwargs):
 
+        # use JPoint to check xy limits 
+
         if isinstance (xy_or_point, JPoint):
-            point = xy_or_point
-            xy = point.xy
-            if point._fixed: 
-                movable  = False
-            self._x_limits = point.x_limits
-            self._y_limits = point.y_limits
+            self._jpoint = xy_or_point
         else: 
-            xy = xy_or_point
-            self._x_limits = None
-            self._y_limits = None
+            self._jpoint = JPoint (xy_or_point)
+
+        movable = movable and (not self._jpoint.fixed)
 
         self.name = name if name is not None else self.name
         self._id = id
@@ -195,9 +193,9 @@ class Movable_Point (pg.TargetItem):
             hoverPen = pg.mkPen (color, width=1) 
             hoverBrush = QColor(color)
 
-        # label 
+        # init TargetItem  
 
-        super().__init__(pos=xy, pen= pen, brush = brush, 
+        super().__init__(pos=self._jpoint.xy, pen= pen, brush = brush, 
                          hoverPen = hoverPen, hoverBrush = hoverBrush,
                          symbol=symbol, size=size, movable=movable,
                          label = self._get_label_static, 
@@ -218,27 +216,18 @@ class Movable_Point (pg.TargetItem):
     @property
     def xy (self) -> tuple[float]: 
         """ returns x,y coordinates checked against limits"""
+        # get coordinates of TargetItem 
         x = self.pos().x()
         y = self.pos().y()  
-        limited = False       
-        if self._x_limits:
-            if x < self._x_limits[0]:
-                limited = True
-                x = self._x_limits[0] 
-            if x > self._x_limits[1]:
-                limited = True
-                x = self._x_limits[1] 
-        if self._y_limits:
-            if y < self._y_limits[0]:
-                limited = True
-                y = self._y_limits[0] 
-            if y > self._y_limits[1]:
-                limited = True
-                y = self._y_limits[1] 
 
-        if limited:                                                 # push movement back 
-            self.setPos ((x,y)) 
-        return x,y
+        # jpoint will take care of the x,y limits 
+        self._jpoint.set_xy (x,y)
+        xy = self._jpoint.xy
+
+        # and reset maybe corrected x,y, 
+        self.setPos (xy) 
+
+        return xy
 
     @property
     def x (self) -> float: return self.xy[0]
@@ -294,15 +283,15 @@ class Movable_Point (pg.TargetItem):
 
 
     def _moving (self):
-        """ callback when point is moved by mouse """
+        """ default slot - point is moved by mouse """
         # to be overlaoded 
 
     def _finished (self):
-        """ callback when point move is finished """
+        """ default slot -  when point move is finished """
         # to be overlaoded 
 
     def _changed (self): 
-        """ handle callback when finished """
+        """ handle callback to parent when finished """
         if callable(self._callback_changed):
             # callback / emit signal delayed so we leave the scope of Graphics 
             timer = QTimer()                                
@@ -310,6 +299,20 @@ class Movable_Point (pg.TargetItem):
 
 
     # TargetItem overloaded ---------------------------
+
+    def setPos_silent (self, *args): 
+        """ same as superclass targetItem.setPos but doesn't signal sigPositionChanged """
+
+        # jpoint will take care of the x,y limits 
+        self._jpoint.set_xy (*args)
+        xy = self._jpoint.xy
+
+        # used for high speed refresh 
+        newPos = pg.Point(xy)
+        if self._pos != newPos:
+            self._pos = newPos
+            GraphicsObject.setPos(self, self._pos)            # call grand pa to avoid signal 
+
 
     def mouseClickEvent(self, ev : MouseClickEvent):
         """ pg overloaded - ghandle shift_click """
@@ -374,7 +377,7 @@ class Movable_Bezier_Point (Movable_Point):
 class Movable_Bezier (pg.PlotCurveItem):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
-    a Bezier curve which can be changed by the controllpoints
+    a Bezier curve which can be changed by the controlpoints
     
     Points are implemented with Moveable_Points
     A Moveable_Point can also be fixed ( movable=False).
@@ -384,7 +387,7 @@ class Movable_Bezier (pg.PlotCurveItem):
 
     """
     def __init__ (self, 
-                  points : list[JPoint], 
+                  jpoints : list[JPoint], 
                   id = None, 
                   color = None, 
                   movable = False,
@@ -397,8 +400,8 @@ class Movable_Bezier (pg.PlotCurveItem):
         self._id = id 
         self.movable = movable 
 
-        # Control points  
-        self._points = points 
+        # Control jpoints  
+        self._jpoints : list[JPoint] = jpoints 
  
 
         # init polyline of control points as PlotCurveItem
@@ -409,32 +412,31 @@ class Movable_Bezier (pg.PlotCurveItem):
             penColor = QColor (color).darker (150)
         pen = pg.mkPen (penColor, width=1, style=Qt.PenStyle.DotLine)
 
-        # px, py = zip(*points) 
-        super().__init__(*self.points_xy(), pen=pen)
+        super().__init__(*self.jpoints_xy(), pen=pen)
 
         # init control points as Movable_Points 
 
         symbol = 's'
 
-        for i, point in enumerate (points):
+        for i, jpoint in enumerate (jpoints):
 
-            p = Movable_Bezier_Point (point, parent=self, name=f"P{str(i)}", id = i, movable=movable, 
+            p = Movable_Bezier_Point (jpoint, parent=self, name=f"P{str(i)}", id = i, movable=movable, 
                                 color=color, symbol=symbol, size=7, label_anchor=label_anchor, 
                                 **kwargs) 
             p.sigPositionChanged.connect        (self._moving_point)
             p.sigPositionChangeFinished.connect (self._finished_point)
             p.sigShiftClick.connect             (self._delete_point)
 
+
         # init temp PlotCurve to represent Bezier during move 
 
-        self._bezier = None
-        self._bezier_item = None 
-        self._u = None
+        self._bezier = None                             # a helper bezier to show during move 
+        self._u = None                                  # u distribution of helper bezier 
+        self._bezier_item = None                        # plotItem of bezier 
 
         if movable or show_static: 
-            self._u = np.linspace (0.0, 1.0, 50)
-            self._bezier = Bezier (*self.points_xy())
-            x,y = self._bezier.eval(self._u)
+
+            x,y = self.bezier.eval(self.u)
  
             pen = pg.mkPen (QColor (color), width=1, style=Qt.PenStyle.DashLine)
             self._bezier_item = pg.PlotCurveItem (x,y, pen=pen)
@@ -448,11 +450,47 @@ class Movable_Bezier (pg.PlotCurveItem):
     def id (self):
         """ returns id of self """
         return self._id 
+
+
+    @property
+    def bezier (self) -> Bezier:
+        """ the Bezier self is working with ad displayed on move  """
+        # can be overloaded 
+        # here - we use a helper bezier to show during move  
+        if self._bezier is None: 
+            self._bezier = Bezier (*self.jpoints_xy())
+        return self._bezier
+
+    @property
+    def u (self) -> list:
+        """ the Bezier paramter  """
+        # can be overloaded 
+        if self._u is None: 
+            self._u = np.linspace (0.0, 1.0, 50)                # only 50 points for speed
+        return self._u
+
+
+    def _movable_points (self) -> list [Movable_Bezier_Point]:
+        """ list of movable points of self """
+        movable_points = [] 
+        for item in self.childItems ():
+            if isinstance(item, Movable_Bezier_Point):
+                movable_points.append (item)
+        return movable_points
     
-    def points_xy (self) -> tuple[list]:
-        """returns coordinates of self._points as x, y lists """
+
+    def jpoints_xy (self) -> tuple[list]:
+        """returns coordinates of self_jpoints as x, y lists """
         x, y = [], []
-        for p in self._points:
+        for p in self._jpoints:
+            x.append(p.x)
+            y.append(p.y)
+        return x, y
+
+    def points_xy (self) -> tuple[list]:
+        """returns coordinates of self_movable_points as x, y lists """
+        x, y = [], []
+        for p in self._movable_points():
             x.append(p.x)
             y.append(p.y)
         return x, y
@@ -461,36 +499,34 @@ class Movable_Bezier (pg.PlotCurveItem):
     def _moving_point (self, aPoint : Movable_Point):
         """ slot - point is moved by mouse """
         i = aPoint.id
-        self._points[i].set_xy(aPoint.xy)
-        self.setData(*self.points_xy())
+        self._jpoints[i].set_xy(aPoint.xy)                  # update self point list 
+        self.setData(*self.points_xy())                     # update self (polyline) 
 
-        if self._bezier_item: 
-            # update of bezier
-            self._bezier.set_points(*self.points_xy())
-            x,y = self._bezier.eval(self._u)
+        if self._bezier_item:            
+            self.bezier.set_points(*self.points_xy())      # update of bezier
+            x,y = self.bezier.eval(self.u)
             self._bezier_item.setData (x, y)
             self._bezier_item.show()
 
 
     def _delete_point (self, aPoint : Movable_Point):
-        """ slot - point is should be deleted """
+        """ slot - point should be deleted """
 
         # a minimum of 3 control points 
-        if len(self._points) <= 3: return   
+        if len(self._jpoints) <= 3: return   
 
-        # remove from list, update bezier and polyline   
+        # remove from list
         i = aPoint.id
-        del self._points[i]
-        self.setData(*self.points_xy())
+        del self._jpoints[i]                                # update self point list 
+        self.setData(*self.points_xy())                     # update self (polyline) 
 
         if self._bezier_item: 
-            # update of bezier
-            x,y = self._bezier.eval(self._u)
+            x,y = self.bezier.eval(self.u)                  # update of bezier
             self._bezier_item.setData (x, y)
             self._bezier_item.show()
 
         self._finished_point (aPoint)
-        aPoint.scene().removeItem(aPoint)                   # final delete 
+        aPoint.scene().removeItem(aPoint)                   # final delete from scene 
 
 
     def _finished_point (self, aPoint):
@@ -499,7 +535,7 @@ class Movable_Bezier (pg.PlotCurveItem):
         if callable(self._callback_changed):
             timer = QTimer()   
             # delayed emit 
-            timer.singleShot(10, lambda: self._callback_changed(self))
+            timer.singleShot(10, lambda: self._callback_changed())
 
 
 

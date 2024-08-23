@@ -16,8 +16,9 @@ from copy               import copy
 from PyQt6.QtCore       import Qt
 from PyQt6.QtCore       import QSize, QMargins, pyqtSignal 
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
-from PyQt6.QtWidgets    import QMainWindow, QWidget, QDialog, QDialogButtonBox
-from PyQt6.QtGui        import QPalette, QColor
+from PyQt6.QtWidgets    import QMainWindow, QWidget, QDialog, QDialogButtonBox, QLabel
+from PyQt6.QtGui        import QPalette, QColor, QShowEvent
+from PyQt6              import sip
 
 from base.widgets       import set_background
 from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, SpaceR
@@ -89,12 +90,11 @@ class Panel (QWidget):
         """
         set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
 
-    def refresh (parent: QWidget, disable=None):
+    def refresh (parent: QWidget):
         """ refresh all child Panels self"""
         p : Panel
         for p in parent.findChildren (Panel):
-            p.refresh(disable=disable) 
-
+            p.refresh() 
 
 
 #-------------------------------------------
@@ -125,8 +125,6 @@ class Edit_Panel (Panel):
         self._hide_switched = hide_switched
         self._switched_on = switched
 
-        l_panel = layout 
-
         # set background color  
 
         self.set_background_color (darker_factor = 105)
@@ -150,28 +148,27 @@ class Edit_Panel (Panel):
         # inital content panel content - layout in >init  
 
         self._panel  = QWidget() 
-
-        if l_panel is None: l_panel = self._init_layout()       # subclass will create layout 
-
-        if l_panel is None: 
-            logger.warning (f"{self.name}: Layout for panel still missing ")
-        else: 
-            l_panel.setContentsMargins (QMargins(15, 0, 0, 0))   # inset left 
-            l_panel.setSpacing(2)
-            self._panel.setLayout (l_panel)
-            # set_background (self._panel, darker_factor=150)
+        self._set_panel_layout (layout=layout) 
 
         # main layout with title and panel 
 
         l_main   = QVBoxLayout()
         l_main.addWidget (self._head)
-        l_main.addWidget (self._panel)
-        l_main.setContentsMargins (QMargins(10, 1, 15, 5))
+        l_main.addWidget (self._panel, stretch=2)
+        l_main.setContentsMargins (QMargins(10, 5, 15, 5))
         l_main.setSpacing(2)
         self.setLayout (l_main)
 
         # initial switch state 
         self.set_switched_on (self._switched_on, initial=True)
+
+        # initial enabled/disabled state
+        self.set_disabeld_widgets (self._isDisabled) 
+
+        # initial visibility 
+        if not self._shouldBe_visible:         
+            self.setVisible (False)             # setVisible(True) results in a dummy window on startup 
+
 
 
     def title_text (self) -> str: 
@@ -181,9 +178,15 @@ class Edit_Panel (Panel):
 
 
     @property 
-    def _isVisible (self) -> bool:
+    def _shouldBe_visible (self) -> bool:
         """ True if self is visible - can be overloaded """
         return True
+
+
+    @property 
+    def _isDisabled (self) -> bool:
+        """ True if the widgets of self are disabled  - can be overloaded """
+        return False
 
 
     @property 
@@ -213,30 +216,85 @@ class Edit_Panel (Panel):
 
     @property
     def widgets (self) -> list[Widget]:
-        """ list of widgets defined in self """
-        return self.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
+        """ list of widgets defined in self panel area"""
+        return self._panel.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
+
+
+    @property
+    def header_widgets (self) -> list[Widget]:
+        """ list of widgets defined in self panel area"""
+        return self._head.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
  
 
-    def refresh(self, disable=None):
+    def refresh(self):
         """ refreshes all Widgets on self """
 
-        # hide / show self 
-        self.setVisible (self._isVisible)
+        # reinit layout if visbility changed 
+        reinit_layout = self._shouldBe_visible != self.isVisible()
+
+        # logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout}")
+
+        if reinit_layout:
+
+            self._set_panel_layout () 
+            # hide / show self 
+            self.setVisible (self._shouldBe_visible)
+            logger.debug (f"{self} - setVisible({self._shouldBe_visible})")
 
         # refresh widgets of self only if visible 
-        if self._isVisible:
-            for w in self.widgets:
-                w.refresh(disable=disable)
-            logger.debug (f"{self} - refresh")
+        if self._shouldBe_visible:
+            self.set_disabeld_widgets (self._isDisabled)
 
 
-    def set_enabled_widgets (self, aBool):
+    def set_disabeld_widgets (self, disable : bool):
         """ enable / disable all widgets of self - except Labels (color!) """
 
         w : Widget
         for w in self.widgets:
-            if not isinstance (w, Label):       # label would become grey 
-                w.set_enabled (aBool) 
+            w.refresh (disable=disable)
+
+        # refresh also header 
+        for w in self.header_widgets:
+            w.refresh (disable=disable)
+
+
+    def _set_panel_layout (self, layout = None ):
+        """ 
+        Set layout of self._panel   
+            - typically defined in subclass in _init_layout
+            - or as init argument 'layout'"""
+
+        # remove existing layout with all its content 
+        if self._panel.layout():
+            self._clear_existing_panel_layout ()
+
+        if layout is None:
+            if self._shouldBe_visible:
+                layout = self._init_layout()        # subclass will create layout 
+            else: 
+                # if the panel shouldn't be visible repalce the normal panel layout
+                # with a dummy, so get/set of the normal panel widgets won't get trouble 
+                layout = QVBoxLayout()               
+                wdt = QLabel ("This shouldn't be visible")
+                layout.addWidget (wdt)
+
+        layout.setContentsMargins (QMargins(15, 0, 0, 0))   # inset left 
+        layout.setSpacing(2)
+        self._panel.setLayout (layout)
+
+
+    def _clear_existing_panel_layout(self):
+        """ removes all items from the existing panel layout"""
+        layout = self._panel.layout()
+        if layout is not None: 
+            while layout.count():
+                child = layout.takeAt(0)
+                childWidget = child.widget()
+                if childWidget:
+                    childWidget.setParent(None)
+                    childWidget.deleteLater()
+        # finally remove self 
+        sip.delete (self._panel.layout())
 
 
     def _init_layout(self) -> QLayout:
@@ -245,14 +303,6 @@ class Edit_Panel (Panel):
         # to be implemented by sub class
         pass
 
-
-    def _reinit_layout (self):
-        """ replaces current panel layout with a new initialized one """
-
-        # assign new layout to my panel - trick: first re-parent current layout to dummy
-        QWidget().setLayout(self._panel.layout())
-        self._panel.setLayout (self._init_layout ())
-        
 
     def _add_to_header_layout(self, l_head : QHBoxLayout) -> QLayout:
         """ add Widgets to header layout"""
@@ -300,12 +350,13 @@ class Dialog (QDialog):
 
         # inital content panel content - layout in >init  
 
-        panel = QWidget () 
+        self._panel = QWidget () 
+        self.set_background_color (darker_factor=105)
+
         l_panel = self._init_layout()       # subclass will create layout 
-        l_panel.setContentsMargins (QMargins(15, 15, 15, 10))   # inset left 
+        l_panel.setContentsMargins (QMargins(15, 10, 15, 10))   # inset left 
         # l_panel.setSpacing(2)
-        panel.setLayout (l_panel)
-        set_background (panel, darker_factor=105)
+        self._panel.setLayout (l_panel)
 
         # Qt buttonBox at footer
 
@@ -318,7 +369,7 @@ class Dialog (QDialog):
         # main layout with title and panel 
 
         l_main   = QVBoxLayout()
-        l_main.addWidget (panel, stretch=1)
+        l_main.addWidget (self._panel, stretch=1)
         l_main.addLayout (l_button)
         l_main.setContentsMargins (QMargins(5, 5, 5, 15))
         l_main.setSpacing(15)
@@ -328,6 +379,17 @@ class Dialog (QDialog):
         for w in self.widgets:
             w.sig_changed.connect (self._on_widget_changed)
 
+
+    def set_background_color (self, darker_factor : int | None = None,
+                                    color : QColor | int | None  = None,
+                                    alpha : float | None = None):
+        """ 
+        Set background color of a QWidget either by
+            - darker_factor > 100  
+            - color: QColor or string for new color
+            - alpha: transparency 0..1 
+        """
+        set_background (self._panel, darker_factor=darker_factor, color=color, alpha=alpha)
 
 
     def _init_layout(self) -> QLayout:
@@ -372,7 +434,7 @@ class Dialog (QDialog):
         """ list of widgets defined in self """
         return self.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
  
-    def _on_widget_changed (self):
+    def _on_widget_changed (self,*_):
         """ slot for change of widgets"""
         # to be overloaded 
         pass

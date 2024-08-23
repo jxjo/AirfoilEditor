@@ -23,11 +23,14 @@ import os
 import sys
 import argparse
 from pathlib import Path
+
 import logging
+
 
 from PyQt6.QtCore           import QSize, QMargins
 from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QMessageBox, QStackedWidget 
 from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QStackedLayout
+from PyQt6.QtGui            import QShowEvent
 
 # let python find the other modules in modules relativ to path of self  
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
@@ -44,8 +47,10 @@ from base.diagram           import *
 from airfoil_widgets        import * 
 from airfoil_artists        import *
 
-from match_bezier           import Match_Bezier
+from match_bezier           import Match_Bezier, Matcher
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 #-------------------------------------------------------------------------------
 # The App   
@@ -79,9 +84,11 @@ class App_Main (QMainWindow):
 
     # Signals 
 
-    sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
-    sig_airfoil_ref_changed = pyqtSignal()          # reference airfoils changed 
-    sig_bezier_changed      = pyqtSignal()          # new bezier during match bezier 
+    sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
+    sig_airfoil_ref_changed     = pyqtSignal()          # reference airfoils changed 
+    sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
+    sig_airfoil_target_changed  = pyqtSignal(bool)      # target airfoil changed 
+    sig_bezier_changed          = pyqtSignal(linetype)  # new bezier during match bezier 
 
 
     def __init__(self, airfoil_file, parentApp=None):
@@ -98,7 +105,7 @@ class App_Main (QMainWindow):
             QMessageBox.information (self, self.name , f"\n'{airfoil_file}'\n\n... does not exist. Showing example airfoil.\n")
             airfoil_file = "Root_Example"
 
-        self.setMinimumSize(QSize(1500, 700))
+        self.setMinimumSize(QSize(1600, 700))
 
         self._airfoil = None                        # current airfoil 
         self._airfoil_sav = None                    # airfoil saved in edit_mode 
@@ -128,9 +135,6 @@ class App_Main (QMainWindow):
         self.sig_airfoil_changed.connect (self._on_airfoil_changed)
         self.sig_airfoil_ref_changed.connect (self._on_airfoil_changed)
 
-        # View mode is default 
-
-        self.set_edit_mode (False) 
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
@@ -145,19 +149,19 @@ class App_Main (QMainWindow):
         #  || file panel ||        edit panel             >||
         #                 | Geometry  | Coordinates | ... >| 
 
-        self._data_panel  = Panel ()
+        self._data_panel  = Panel (title="Data panel")
         l_edit = QHBoxLayout()
-        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 3)
+        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 2)
         l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 1)
         l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 1)
         l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 1)
-        l_edit.addWidget (Panel_Bezier_Match(self, self.airfoil), stretch= 3)
+        l_edit.addWidget (Panel_Bezier_Match(self, self.airfoil), stretch= 2)
         
-        l_edit.addStretch (2)
+        l_edit.addStretch (3)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
         self._data_panel.setLayout (l_edit)
 
-        self._file_panel  = Panel ()
+        self._file_panel  = Panel (title="File panel")
         l_file = QHBoxLayout()
         l_file.addWidget (Panel_View_Mode        (self, self.airfoil))
         l_file.addWidget (Panel_Edit_Mode   (self, self.airfoil))
@@ -187,6 +191,7 @@ class App_Main (QMainWindow):
         l_main.setContentsMargins (QMargins(5, 5, 5, 5))
 
         return l_main 
+
 
     @property
     def edit_mode (self) -> bool: 
@@ -232,7 +237,7 @@ class App_Main (QMainWindow):
         airfoil.set_isModified (False)                  # just sanity
 
         self.set_airfoil (airfoil, silent=True) 
-        self.set_airfoil_target (None, silent=True)     # if returned from match Bezier 
+        self.set_airfoil_target (None, refresh=False)   # set_edit_mode will do refresh
 
         self.set_edit_mode (False)       
 
@@ -246,8 +251,8 @@ class App_Main (QMainWindow):
         airfoil.useAsDesign()                           # will have another visualization 
         airfoil.normalize()                     
 
-        self.set_airfoil_target (self._airfoil_sav, silent=True) # current will be reference for Bezier
-        self.set_airfoil (airfoil, silent=True)         # set without signal   
+        self.set_airfoil_target (self._airfoil_sav, refresh=False) # current will be reference for Bezier
+        self.set_airfoil (airfoil, silent=True)       # set_edit_mode will do refresh
         self.set_edit_mode (True)       
 
 
@@ -257,14 +262,14 @@ class App_Main (QMainWindow):
         if self._edit_mode != aBool: 
             self._edit_mode = aBool
             signal_airfoil_changed ()               # signal new airfoil 
-        else: 
-            self.refresh()                          # set disable/enable during init 
+            if aBool: 
+                self.sig_enter_edit_mode.emit()
         
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
-        self._data_panel.refresh(disable=not self.edit_mode)
-        self._file_panel.refresh(disable=False)
+        self._data_panel.refresh()
+        self._file_panel.refresh()
 
 
     def airfoil (self) -> Airfoil:
@@ -287,6 +292,7 @@ class App_Main (QMainWindow):
         to enable a new airfoil to be set """
 
         self._airfoil = aNew
+        logger.debug (f"New airfoil: {aNew.name}")
         self.setWindowTitle (AppName + "  v" + str(AppVersion) + "  [" + self.airfoil().fileName + "]")
         if not silent: 
             self.sig_airfoil_changed.emit ()
@@ -310,13 +316,14 @@ class App_Main (QMainWindow):
     @property
     def airfoil_target (self) -> Airfoil:
         return self._airfoil_target
-    def set_airfoil_target (self, airfoil: Airfoil | None = None, silent=False): 
+    def set_airfoil_target (self, airfoil: Airfoil | None = None, refresh=True): 
         if airfoil: 
             airfoil.set_usedAs (usedAs.TARGET)
         elif self._airfoil_target:
             self._airfoil_target.set_usedAs (usedAs.NORMAL) 
         self._airfoil_target = airfoil 
-        if not silent: self.sig_airfoil_ref_changed.emit()
+        
+        self.sig_airfoil_target_changed.emit(refresh)
 
 
     def _on_leaving_edit_mode (self) -> bool: 
@@ -327,7 +334,7 @@ class App_Main (QMainWindow):
     def _on_airfoil_changed (self):
         """ slot to handle airfoil changed signal """
 
-        logging.debug (f"{self} on airfoil changed")
+        logger.debug (f"{str(self)} on airfoil changed")
 
         self.refresh()
 
@@ -348,25 +355,35 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         return self._parent 
 
     def airfoil (self) -> Airfoil: 
+
         return self.dataObject
 
     def geo (self) -> Geometry:
         return self.airfoil().geo
     
 
-    def __init__ (self, *args, **kwargs):
-        super().__init__ (*args, **kwargs)
+    def _set_panel_layout (self, layout = None ):
+        """ Set layout of self._panel """
+        # overloaded to connect to widgets changed signal
 
-        # connect to change signal of widget 
+        super()._set_panel_layout (layout=layout)
         for w in self.widgets:
             w.sig_changed.connect (self._on_airfoil_widget_changed)
 
 
-    def _on_airfoil_widget_changed (self):
+    def _on_airfoil_widget_changed (self, widget):
         """ user changed data in widget"""
-        # logging.debug (f"{self} widget changed slot")
+        logger.debug (f"{self} {widget} widget changed slot")
         signal_airfoil_changed ()
 
+
+    # ---- overloaded 
+
+    @property
+    def _isDisabled (self) -> bool:
+        """ overloaded: only enabled in edit mode of App """
+        return not self.myApp.edit_mode
+    
 
 
 class Panel_View_Mode (Panel_Airfoil_Abstract):
@@ -377,10 +394,15 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
 
 
     @property
-    def _isVisible (self) -> bool:
+    def _shouldBe_visible (self) -> bool:
         """ overloaded: only visible if edit_moder """
         return not self.myApp.edit_mode
 
+    @property
+    def _isDisabled (self) -> bool:
+        """ overloaded: only enabled in edit mode of App """
+        return False
+    
 
     def _on_airfoil_widget_changed (self, *_ ):
         """ user changed data in widget"""
@@ -395,12 +417,13 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
         Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False, signal=False,
                                     get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
-        SpaceR (l,r, height=10)
+        SpaceR (l,r, height=5)
         r += 1
         Button (l,r,c, text="Modify Airfoil", width=100, 
-                set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel")
+                set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel",
+                button_style=button_style.PRIMARY)
         r += 1
-        SpaceR (l,r, height=10, stretch=0)
+        SpaceR (l,r, height=5, stretch=0)
         r += 1
         Button (l,r,c, text="New as Bezier", width=100, 
                 set=self.myApp.new_as_Bezier, disable=lambda: self.airfoil().isBezierBased,
@@ -424,7 +447,7 @@ class Panel_Edit_Mode (Panel_Airfoil_Abstract):
     _width  = 220                   # fixed width 
 
     @property
-    def _isVisible (self) -> bool:
+    def _shouldBe_visible (self) -> bool:
         """ overloaded: only visible if edit_moder """
         return self.myApp.edit_mode
 
@@ -440,10 +463,10 @@ class Panel_Edit_Mode (Panel_Airfoil_Abstract):
         SpaceR (l,r)
         l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c,  text="Save && Close", width=100, button_style=button_style.PRIMARY,
+        Button (l,r,c,  text="Finish ...", width=100, 
                         set=lambda : self.myApp.modify_airfoil_finished(ok=True))
         r += 1
-        SpaceR (l,r, stretch=0)
+        SpaceR (l,r, height=5, stretch=0)
         r += 1
         Button (l,r,c,  text="Cancel",  width=100, 
                         set=lambda : self.myApp.modify_airfoil_finished(ok=False))
@@ -494,10 +517,8 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (3,60)
-        # l.setColumnStretch (0,1)
         l.setColumnStretch (1,2)
         l.setColumnStretch (2,1)
-        l.setRowStretch    (r-1,2)
         return l 
 
     def _disabled_for_airfoil (self):
@@ -520,12 +541,12 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         r += 1
         FieldF (l,r,c, lab="Angle at LE", obj=self.geo, prop=Geometry.panelAngle_le, width=70, dec=1, unit="°", style=self._style_angle)
         SpaceC (l,c+2, width=10, stretch=0)
-        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().iLe}",
-                        hide=lambda: self.airfoil().isBezierBased)
+        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().iLe}")
+                        # hide=lambda: self.airfoil().isBezierBased)
         r += 1
         FieldF (l,r,c, lab="Angle min", get=lambda: self.geo().panelAngle_min[0], width=70, dec=1, unit="°")
-        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().panelAngle_min[1]}",
-                        hide=lambda: self.airfoil().isBezierBased)
+        # Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().panelAngle_min[1]}",
+        #                 hide=lambda: self.airfoil().isBezierBased)
         r += 1
         SpaceR (l,r,height=5)
         r += 1
@@ -575,14 +596,14 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 class Panel_LE_TE  (Panel_Airfoil_Abstract):
     """ info about LE and TE coordinates"""
 
-    name = 'Coordinates'
+    name = 'Leading, Trailing Edge'
 
-    _width  = (300, None)
+    _width  = (320, None)
 
     @property
-    def _isVisible (self) -> bool:
+    def _shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is not Bezier """
-        return not self.geo().isBezier
+        return not (self.geo().isBezier and self.myApp.edit_mode)
 
 
     def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
@@ -635,7 +656,10 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     def _style_le_real (self):
         """ returns style.WARNING if LE spline isn't close to LE"""
         if self.geo().isLe_closeTo_le_real: 
-            return style.NORMAL
+            if self.geo().isBasic:
+                return style.NORMAL
+            else: 
+                return style.GOOD
         else: 
             return style.WARNING
 
@@ -645,7 +669,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         if val != target_val: 
             return style.WARNING
         else: 
-            return style.NORMAL
+            return style.GOOD
 
 
     def _messageText (self): 
@@ -675,101 +699,53 @@ class Panel_Bezier (Panel_Airfoil_Abstract):
     """ Info about Bezier curves upper and lower  """
 
     name = 'Bezier'
-    _width  = (260, None)
+    _width  = (180, None)
 
 
     # ---- overloaded 
 
     @property
-    def _isVisible (self) -> bool:
+    def _shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         return self.geo().isBezier
     
-    def setVisible (self, aBool):
-        """ qt overloaded: to init if geo is Bezier """
-
-        # assign new layout to my panel
-        self._reinit_layout ()
-
-        super().setVisible(aBool)
-
     # ----
 
+    def geo (self) -> Geometry_Bezier:
+        return super().geo()
+
+    @property
     def upper (self) -> Side_Airfoil_Bezier:
         if self.geo().isBezier:
             return self.geo().upper
 
+    @property
     def lower (self) -> Side_Airfoil_Bezier:
         if self.geo().isBezier:
             return self.geo().lower
-
-    def curv_upper (self) -> Line:
-        if self.geo().isBezier:
-            return self.geo().curvature.upper
-
-    def curv_lower (self) -> Line:
-        if self.geo().isBezier:
-            return self.geo().curvature.lower
 
 
     def _init_layout (self):
 
         l = QGridLayout()
 
-        # self only for Bezier based airfoil 
-        if not self._isVisible: return l 
-
         r,c = 0, 0 
-        FieldI (l,r,c,   lab="No of points", obj=self.upper, prop=Side_Airfoil_Bezier.nControlPoints,  width=70)
-        FieldI (l,r,c+2,                     obj=self.lower, prop=Side_Airfoil_Bezier.nControlPoints,  width=70)
+        Label (l,r,c+1, get="Points")
+
         r += 1
-        FieldF (l,r,c,   lab="Curv at LE",   get=lambda: self.curv_upper().y[0],  width=70,
-                                             style=self._style_curv_le)
-        FieldF (l,r,c+2,                     get=lambda: self.curv_lower().y[0],  width=70,
-                                             style=self._style_curv_le)
+        FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.nControlPoints,  width=50, step=1, lim=(3,10),
+                         set=lambda n : self.geo().set_nControlPoints_of (self.upper, n))
         r += 1
-        FieldF (l,r,c,   lab="Curv at TE",   get=lambda: self.curv_upper().y[-1],  width=70,
-                                             style=lambda: self._style_curv_te(self.curv_upper()))
-        FieldF (l,r,c+2,                     get=lambda: self.curv_lower().y[-1],  width=70, 
-                                             style=lambda: self._style_curv_te(self.curv_lower()))
- 
+        FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.nControlPoints,  width=50, step=1, lim=(3,10),
+                         set=lambda n : self.geo().set_nControlPoints_of (self.lower, n))
+
         r += 1
-        SpaceR (l,r, height=5)
-        r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT)        
-        l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (c+3,1)
-        l.setRowStretch    (r-1,2)
+        SpaceR (l,r, height=10, stretch=2)
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnStretch (c+2,4)
         
         return l
  
-    def _style_curv_le (self):
-        """ returns style.WARNING if curvature at LE is too different"""
-        if abs(self.curv_upper().y[0] - self.curv_lower().y[0]) > 10: 
-            return style.WARNING
-        else: 
-            return style.NORMAL
-
-    def _style_curv_te (self, aCurv: Line):
-        """ returns style.WARNING if curvature at LE is too different"""
-        if abs(aCurv.y[-1]) > 10: 
-            return style.WARNING
-        else: 
-            return style.NORMAL
-
-
-    def _messageText (self): 
-
-        text = []
-        if abs(self.curv_upper().y[0] - self.curv_lower().y[0]) > 10 : 
-           text.append("- Curvature at LE is too different")
-        if abs(self.curv_upper().y[-1]) > 10: 
-           text.append("- Curvature at TE (upper) is quite high")
-        if abs(self.curv_lower().y[-1]) > 10: 
-           text.append("- Curvature at TE (lower) is quite high")
-
-        text = '\n'.join(text)
-        return text 
 
 
 
@@ -778,27 +754,15 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     """ Match Bezier functions  """
 
     name = 'Bezier Match'
-    _width  = (250, None)
+    _width  = (370, None)
 
 
     # ---- overloaded 
 
     @property
-    def _isVisible (self) -> bool:
+    def _shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         return self.geo().isBezier and self.myApp.edit_mode
-    
-    def setVisible (self, aBool):
-        """ qt overloaded: to init if geo is Bezier """
-        # assign new layout to my panel
-        if aBool != self.isVisible():
-            self._reinit_layout ()
-        super().setVisible(aBool)
-
-
-    def _on_airfoil_widget_changed (self):
-        """ user changed data in widget"""
-        # overloaded - do not signal signal_airfoil_changed
 
     # ----
 
@@ -811,6 +775,20 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         if self.geo().isBezier: return self.geo().lower
 
     @property
+    def curv_upper (self) -> Line:
+        if self.geo().isBezier:
+            return self.geo().curvature.upper
+
+    @property
+    def curv_lower (self) -> Line:
+        if self.geo().isBezier:
+            return self.geo().curvature.lower
+
+    @property
+    def curv (self) -> Curvature_Abstract:
+        return self.geo().curvature
+
+    @property
     def target_airfoil (self) -> Airfoil:
         return self.myApp.airfoil_target
 
@@ -821,54 +799,143 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     @property
     def target_lower (self) -> Line:
         if self.target_airfoil: return self.target_airfoil.geo.lower
+        
+
+    def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
+        """ add Widgets to header layout"""
+
+        l_head.addSpacing (20)
+  
+        Airfoil_Select_Open_Widget (l_head, withOpen=True, asSpin=False,  width=(100,None),
+                    get=lambda: self.myApp.airfoil_target, set=self.myApp.set_airfoil_target,
+                    initialDir=self.myApp.airfoils()[0], addEmpty=True)
+
+    def __init__ (self,*args, **kwargs):
+        super().__init__(*args,**kwargs)
+
+        self.myApp.sig_airfoil_target_changed.connect(self._on_airfoil_target_changed)
 
 
     def _init_layout (self):
 
+        self._target_curv_le = None 
+        self._target_curv_le_weighting = None
+        self._max_te_curv = None 
+
         l = QGridLayout()
 
-        if not self._isVisible: return l 
+        if self.target_airfoil is not None: 
 
-        r,c = 0, 0 
-        Label  (l,r,c, get="Reference", width=60)
-        Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, withOpen=True, asSpin=False,
-                    get=lambda: self.myApp.airfoil_target, set=self.myApp.set_airfoil_target,
-                    initialDir=self.myApp.airfoils()[0], addEmpty=True)
- 
-        # r += 1
-        # SpaceR (l,r, height=10, stretch=0)
-        r += 1
-        Label  (l,r,c+1, get="Upper")
-        Label  (l,r,c+2, get="Lower")
-        r += 1
-        FieldF (l,r,c  , lab="Deviation", width=60, dec=2, unit="%",
-                get=lambda: self.upper.norm2_deviation_to (self.target_upper))
-        FieldF (l,r,c+2,                  width=60, dec=2, unit="%",
-                get=lambda: self.lower.norm2_deviation_to (self.target_lower))
-        r += 1
-        SpaceR (l,r, stretch=1)
-        r += 1
-        Button (l,r,c+1, text="Match", width=60,
-                set=lambda: self._match_bezier (self.upper, self.target_upper))
-        Button (l,r,c+2, text="Match", width=60,
-                set=lambda: self._match_bezier (self.lower, self.target_lower))
+            self._target_curv_le = self.target_airfoil.geo.curvature.best_around_le 
 
-        l.setColumnMinimumWidth (0,60)
-        l.setColumnStretch (c+1,1)
-        # l.setRowStretch    (r-1,2)
-        
+            r,c = 0, 0 
+            Label  (l,r,c+1, get="Deviation", width=70)
+
+            r += 1
+            Label  (l,r,c,   get="Upper Side")
+            FieldF (l,r,c+1, width=60, dec=3, unit="%",
+                             get=lambda: self._norm2 (self.upper),
+                             style=lambda: Match_Bezier.style_deviation (self._norm2 (self.upper)))
+            r += 1
+            Label  (l,r,c,   get="Lower Side")
+            FieldF (l,r,c+1, width=60, dec=3, unit="%",
+                             get=lambda: self._norm2 (self.lower),
+                             style=lambda: Match_Bezier.style_deviation (self._norm2 (self.lower)))
+
+            r,c = 0, 2 
+            SpaceC(l,  c, width=5)
+            c += 1
+            Label (l,r,c, colSpan=2, get="LE curvature TE")
+    
+            r += 1
+            FieldF (l,r,c  , get=lambda: self.curv_upper.max_xy[1], width=40, dec=0, 
+                    style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self.curv_upper))
+            FieldF (l,r,c+1, get=lambda: self.curv_upper.te[1],     width=40, dec=1, 
+                    style=lambda: Match_Bezier.style_curv_te(self.curv_upper))
+
+            r += 1
+            FieldF (l,r,c  , get=lambda: self.curv_lower.max_xy[1], width=40, dec=0, 
+                    style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self.curv_lower))
+            FieldF (l,r,c+1, get=lambda: self.curv_lower.te[1],     width=40, dec=1, 
+                    style=lambda: Match_Bezier.style_curv_te(self.curv_lower))
+
+            r,c = 0, 5 
+            SpaceC (l,  c, width=10)
+            c += 1
+            r += 1
+            Button (l,r,c  , text="Match...", width=70,
+                            set=lambda: self._match_bezier (self.upper, self.target_upper))
+            r += 1
+            Button (l,r,c  , text="Match...", width=70,
+                            set=lambda: self._match_bezier (self.lower, self.target_lower))
+            c = 0 
+            r += 1
+            SpaceR (l,r, height=5, stretch=2)
+            r += 1
+            Label  (l,r,0, get=self._messageText, colSpan=5, height=(40, None), style=style.COMMENT)
+            l.setColumnMinimumWidth (0,70)
+            l.setColumnStretch (c+6,2)
+
+        else: 
+            SpaceR (l,0)
+            Label  (l,1,0, get="Select a target airfoil to match...", style=style.COMMENT)
+            SpaceR (l,2, stretch=2)
         return l
  
- 
+
     def _match_bezier (self, aSide : Side_Airfoil_Bezier, aTarget_line : Line ): 
-         
-         matcher = Match_Bezier (self, aSide, aTarget_line)
+        """ run match bezier (dialog) """ 
 
-         matcher.sig_new_bezier.connect     (self.myApp.sig_bezier_changed.emit)
-         matcher.sig_match_finished.connect (self.myApp.sig_airfoil_changed.emit)
-         matcher.exec ()
+        matcher = Match_Bezier (self.myApp, aSide, aTarget_line,
+                                target_curv_le = self.target_airfoil.geo.curvature.best_around_le)
+
+        matcher.sig_new_bezier.connect     (self.myApp.sig_bezier_changed.emit)
+        matcher.sig_match_finished.connect (self._on_match_finished)
+        matcher.exec ()
 
 
+    def _on_match_finished (self, aSide : Side_Airfoil_Bezier):
+        """ slot for match Bezier finished - reset airfoil"""
+
+        geo : Geometry_Bezier = self.geo()
+        geo.finished_change_of (aSide)              # will reset and handle changed  
+
+        self.myApp.sig_airfoil_changed.emit()
+
+
+    def _on_airfoil_target_changed (self,*_):
+        """ slot for changed target airfoil"""        
+        self.refresh()                              # refresh will also set new layout 
+
+
+    def _norm2 (self, side: Side_Airfoil_Bezier): 
+        """ norm2 deviation of airfoil to target """
+        if side.isUpper:
+            return Matcher.norm2_deviation_to (self.upper.bezier, self.target_upper)  
+        else:          
+            return Matcher.norm2_deviation_to (self.lower.bezier, self.target_lower)  
+
+
+    def _messageText (self): 
+        """ user warnings"""
+        text = []
+        s_upper_dev = Match_Bezier.style_deviation (self._norm2 (self.upper))
+        s_lower_dev = Match_Bezier.style_deviation (self._norm2 (self.lower))
+
+        s_upper_le = Match_Bezier.style_curv_le (self._target_curv_le, self.curv_upper)
+        s_lower_le = Match_Bezier.style_curv_le (self._target_curv_le, self.curv_lower)
+        s_upper_te = Match_Bezier.style_curv_te (self.curv_upper)
+        s_lower_te = Match_Bezier.style_curv_te (self.curv_lower)
+
+        if s_upper_dev == style.WARNING or s_lower_dev == style.WARNING:
+           text.append("- Deviation is quite high")
+        if s_upper_le == style.WARNING or s_lower_le == style.WARNING:
+           text.append("- Curvature at LE differs too much from target")
+        if s_upper_te == style.WARNING or s_lower_te == style.WARNING:
+           text.append("- Curvature at TE is quite high")
+
+        text = '\n'.join(text)
+        return text 
 
 
 
@@ -888,13 +955,15 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self._edit_mode_first_time = True           # switch to edit first time 
+
         self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show=True, show_legend=True)
         self.airfoil_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
 
         self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
         self.line_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
 
-        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= self._one_is_bezier_based())
+        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= True)
         self.bezier_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
          
         # setup view box 
@@ -907,8 +976,12 @@ class Diagram_Item_Airfoil (Diagram_Item):
         # self.viewBox.setAutoPan(y=None)
         self.showGrid(x=True, y=True)
 
-        self._parent.myApp.sig_bezier_changed.connect (self.bezier_artist.refresh)
+        self.myApp.sig_bezier_changed.connect  (self.bezier_artist.refresh_from_side)
+        self.myApp.sig_enter_edit_mode.connect (self._on_enter_edit_mode)
 
+    @property
+    def myApp (self):
+        return self._parent.myApp
 
     def airfoils (self) -> list[Airfoil]: 
         return self.data_list()
@@ -919,6 +992,17 @@ class Diagram_Item_Airfoil (Diagram_Item):
         for a in self.airfoils():
             if a.isBezierBased: return True
         return False 
+
+
+    def _on_enter_edit_mode (self):
+        """ slot user started edit mode """
+
+        if self._edit_mode_first_time:
+            # switch on show thickness/camber if it is the first time 
+            self.line_artist.set_show (True)
+            self.section_panel.refresh() 
+
+        self._edit_mode_first_time = False
 
 
     def refresh_artists (self):
@@ -1086,6 +1170,7 @@ class Diagram_Airfoil (Diagram):
 
         self.myApp.sig_airfoil_changed.connect (self._on_airfoil_changed)
         self.myApp.sig_airfoil_ref_changed.connect (self._on_airfoil_changed)
+        self.myApp.sig_airfoil_target_changed.connect (self._on_target_changed)
 
     @property
     def myApp (self) -> App_Main:
@@ -1176,7 +1261,14 @@ class Diagram_Airfoil (Diagram):
     def _on_airfoil_changed (self):
         """ slot to handle airfoil changed signal """
 
-        # logging.debug (f"{self} on airfoil changed")
+        logger.debug (f"{str(self)} on airfoil changed")
+        self.refresh()
+
+
+    def _on_target_changed (self, refresh=True):
+        """ slot to handle airfoil target changed signal """
+
+        logger.debug (f"{str(self)} on airfoil target changed")
 
         # is there a target airfoil (match Bezier)? switch ref panel on
         airfoil : Airfoil
@@ -1185,8 +1277,9 @@ class Diagram_Airfoil (Diagram):
                 self._show_airfoils_ref = True
                 self.section_panel.set_switched_on (True, initial=True)
                 break
-
-        self.refresh()
+        
+        if refresh: 
+            self.refresh()
 
 #--------------------------------
 

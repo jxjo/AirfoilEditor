@@ -707,8 +707,8 @@ class Airfoil_Bezier(Airfoil):
             self.geo.lower.set_controlPoints (cp_lower)
 
 
-    @classmethod
-    def onAirfoil (cls, anAirfoil : Airfoil):
+    @staticmethod
+    def onAirfoil (anAirfoil : Airfoil):
         """
         Alternate constructor for new Airfoil based on dictionary 
 
@@ -723,7 +723,7 @@ class Airfoil_Bezier(Airfoil):
         cp_upper = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.upper, 5)
         cp_lower = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.lower, 5)
 
-        airfoil_new =  cls (name=name, cp_upper=cp_upper, cp_lower=cp_lower)
+        airfoil_new =  Airfoil_Bezier (name=name, cp_upper=cp_upper, cp_lower=cp_lower)
 
         # new pathFileName
         fileName_without = os.path.splitext(anAirfoil.fileName)[0]

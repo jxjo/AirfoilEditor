@@ -858,6 +858,29 @@ class Bezier:
         return deriv2  
 
 
+
+    def deriv3 (self, u):
+        """
+        Evaluate third derivative of self at u 0..1
+
+        Parameters
+        ----------
+        u :   Scalar or an array of arc length at which to return 
+              the value of the spline or its derivatives. 
+        Returns
+        -------
+        c : An array of values representing the 2nd derivative evaluated at the points u.  
+        """
+
+        dx,  dy    = self.eval (u, der=1)
+        ddx, ddy   = self.eval (u, der=2)
+        dddx, dddy = self.eval (u, der=3)
+
+#        deriv2 = ddy * dx - ddx * dy
+        return  dddy / dddx 
+
+
+
     # -------------  end public --------------------
 
 
@@ -887,6 +910,9 @@ class Bezier:
             weights = np.ediff1d(weights) * n           # new weight = difference * n 
             n = n - 1                                   # lower 1 degree 
         if der > 1:                                     # derivative 2  
+            weights = np.ediff1d(weights) * n           # new weight = difference * n                           
+            n = n - 1                                   # lower 1 degree 
+        if der > 2:                                     # derivative 3  
             weights = np.ediff1d(weights) * n           # new weight = difference * n                           
             n = n - 1                                   # lower 1 degree 
 

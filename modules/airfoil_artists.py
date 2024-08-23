@@ -211,7 +211,7 @@ class Movable_Highpoint (Movable_Point):
         """ slot - point is moved by mouse """
         # overlaoded to update airfoil geo 
         # update highpoint coordinates
-        self._geo.set_highpoint_of (self._line, (self.x, self.y), moving=True)
+        self._geo.set_highpoint_of (self._line, (self.x, self.y), finished=False)
 
         # update self xy if we run against limits 
         self.setPos(self._line.highpoint.xy)
@@ -223,7 +223,7 @@ class Movable_Highpoint (Movable_Point):
     def _finished (self, _):
         """ slot - point is move finished """
         # overlaoded to update airfoil geo 
-        self._geo.set_highpoint_of (self._line, (self.x, self.y), moving=False)
+        self._geo.finished_change_of (self._line)
 
         # update parent plot item 
         self._changed()
@@ -394,11 +394,35 @@ class Movable_Side_Bezier (Movable_Bezier):
 
         super().__init__(points, label_anchor=label_anchor, **kwargs)
 
-    def refresh_controlPoints (self):
-        """ refresh controll points from side"""
+    @property
+    def bezier (self) -> Bezier:
+        """ the Bezier  self is working with """
+        # here - take Bezier of the 'side' 
+        return self._side.bezier
 
-        self._points = self._side.controlPoints_as_points
-        self.setData(*self.points_xy())
+    @property
+    def u (self) -> list:
+        """ the Bezier parameter  """
+        # here - take Bezier of the 'side' 
+        return self._side._u
+
+
+    def refresh (self):
+        """ refresh control points from side control points """
+
+        # update all my movable points at once 
+        movable_points = self._movable_points()
+        movable_point : Movable_Bezier_Point
+        for i, point_xy in enumerate(self._side.controlPoints): 
+            movable_point = movable_points[i]
+            movable_point.setPos_silent (point_xy)              # silent - no change signal 
+
+        self.setData(*self.points_xy())                         # update self (polyline) 
+
+        # if self._bezier_item is not None:   	                # update bezier item to be dispalyed
+        #     x,y = self.bezier.eval (self.u) 
+        #     self._bezier_item.setData (x, y)
+        #     self._bezier_item.show()
 
 
     def scene_clicked (self, ev : MouseClickEvent):
@@ -430,7 +454,7 @@ class Movable_Side_Bezier (Movable_Bezier):
        
        if index is not None: 
 
-            self._points.insert (index, point)
+            self._side.add_controlPoint (index, point)
 
             # _finished will do the rest - and init complete refresh
             self._finished_point()
@@ -447,14 +471,9 @@ class Movable_Side_Bezier (Movable_Bezier):
         """ slot - point move is finished """
 
         # overloaded - update airfoil geometry 
-        px, py = self.points_xy()
-        self._airfoil.geo.set_controlPoints_of (self._side, px, py)      
+        self._airfoil.geo.finished_change_of (self._side)      
 
-        if callable(self._callback_changed):
-            timer = QTimer()   
-            # delayed emit to leave scope of mouse event handling 
-            timer.singleShot(10, self._callback_changed)
-
+        super()._finished_point(aPoint)
 
 
 
@@ -675,11 +694,12 @@ class Bezier_Artist (Artist):
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
-    def refresh_controlPoints (self):
+    def refresh_from_side (self, aLinetype):
 
         p : Movable_Side_Bezier
         for p in self._plots: 
-            p.refresh_controlPoints()
+            if p._side.type == aLinetype:
+                p.refresh()
 
     def _plot (self): 
     
@@ -703,7 +723,6 @@ class Bezier_Artist (Artist):
                     if movable:
                         sc : pg.GraphicsScene = p.scene()
                         sc.sigMouseClicked.connect (p.scene_clicked)
-
 
 
     # def draw_hicksHenne (self, airfoil: Airfoil_Bezier):
@@ -826,13 +845,35 @@ class Curvature_Artist (Artist):
                         name = f"{side.name} - Derivative"
                         self._plot_dataItem (x, -derivative1(x,y), name=name, pen=pen)
 
-                    # print a table for the max values 
-                    # if self.showLegend == 'extended':
-                    #     self._print_values (iair, nairfoils, airfoil.name, side, side.name==UPPER, color)
+                    # plot max points at le and te 
+
+                    self._plot_le_te_max_point (side, color )
 
 
-        # self._plot_title (self.name, va='top', ha='center', wspace=0.1, hspace=0.05)
+    def _plot_le_te_max_point (self, aSide : Line, color ):
+        """ plot the max values at LE and te"""
 
+        point_color = QColor (color).darker (150)
+
+        # le 
+
+        if aSide.isUpper:
+            anchor = (0,1)
+        else: 
+            anchor = (0,0)
+        text = f"max {aSide.name} {aSide.max_xy[1]:.0f}"
+        self._plot_point (aSide.max_xy, color=point_color, text=text, anchor=anchor,
+                          textColor=Artist.COLOR_LEGEND)
+
+        # te 
+
+        if aSide.isUpper:
+            anchor = (1,1)
+        else: 
+            anchor = (1,0)
+        text = f"max {aSide.name} {aSide.te[1]:.1f}"
+        self._plot_point (aSide.te, color=point_color, text=text, anchor=anchor,
+                          textColor=Artist.COLOR_LEGEND)
 
 
     # def _plot_reversals (self, line : Side_Airfoil, color):

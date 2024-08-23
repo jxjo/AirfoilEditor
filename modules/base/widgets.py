@@ -3,7 +3,7 @@
 
 """  
 
-Additional generic (compound) widgets based on original CTK widgets
+Generic (compound) widgets based on original QWidgets
 
 """
 
@@ -74,6 +74,7 @@ class style (Enum):
     ERROR         = ('red', 'red')
     HINT          = ("blue", "blue")
     WARNING       = ('orange','orange')
+    GOOD          = ('mediumspringgreen','mediumspringgreen')
 
 
 class size (Enum):
@@ -141,7 +142,7 @@ class Widget:
 
     # Signals
 
-    sig_changed  = pyqtSignal()    # (Object class name, Method as string, new value)
+    sig_changed  = pyqtSignal(object)    # (Object class name, Method as string, new value)
 
     # constants 
 
@@ -254,7 +255,7 @@ class Widget:
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
         text = f" '{str(self._val)}'" if self._val is not None else ''
-        return f"<{type(self).__name__}{text}>"
+        return f"<{type(self).__name__}{text} {id(self)}>"
 
 
     #--- static helper functions
@@ -309,11 +310,10 @@ class Widget:
             logger.debug (str(self) + " - refresh while set callback")
 
             # leave callback and refresh in a few ms 
-            timer = QTimer()                                
-            timer.singleShot(10, self.refresh)     # delayed emit 
+            # timer = QTimer()                                
+            # timer.singleShot(10, self.refresh)     # delayed emit 
         
         else: 
-            # print (str(self) + " - refresh")
             self._get_properties ()
 
             # overwrite self disable state 
@@ -325,7 +325,7 @@ class Widget:
 
             # logger.debug (f"{self} - refresh (disable={disable} -> {self._disabled})")
 
-            self._set_Qwidget ()
+            self._set_Qwidget (refresh=True)
 
 
     def set_enabled (self, aBool : bool):
@@ -445,7 +445,7 @@ class Widget:
             qualname  = self._setter.__qualname__
         else: 
             qualname = ''
-        logger.debug (f"{self} changed and set: {qualname} ({newVal})")
+        # logger.debug (f"{self} changed and set: {qualname} ({newVal})")
 
         if self._obj is not None and isinstance (self._setter, types.FunctionType):            
 
@@ -493,8 +493,8 @@ class Widget:
         else: 
             qualname = ''
 
-        logger.debug (f"{self} emit sig_changed in 50ms: {qualname} ({newVal})")
-        self.sig_changed.emit ()
+        logger.debug (f"{self} emit sig_changed: {qualname} ({newVal})")
+        self.sig_changed.emit (self)
         # emit signal delayed so we leave the scope of Widget 
         # timer = QTimer()                                
         # timer.singleShot(50, self.sig_changed.emit)     # delayed emit 
@@ -525,22 +525,26 @@ class Widget:
         widget.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
 
-    #---  from / to CTkControl - inside the widget 
+    #---  from / to QWidget - inside the widget 
 
-    def _set_Qwidget (self): 
+    def _set_Qwidget (self, refresh=False): 
         """ set value and properties of self Qwidget"""
         # must be overloaded 
 
         # minimum for all 
-        self._set_Qwidget_style ()              # NORMAL, WARNING, etc 
-
         self._set_Qwidget_disabled ()
+        self._set_Qwidget_style ()              # NORMAL, WARNING, etc 
 
         widget : QWidget = self
         if self._hidden_getter:
-            widget.ensurePolished()
             # if widget.isHidden() != self._hidden:
-            widget.setVisible(not self._hidden)
+
+                # do not setVisible(True) during app startup as it would result 
+                # in a small dummy window shown...
+                if self._hidden or refresh:
+                    widget.setVisible(not self._hidden)
+                    if not self._hidden: 
+                        logger.debug (f"{self} - setVisible (currently={widget.isVisible()} ")
 
 
     def _set_Qwidget_static (self, widget = None): 
@@ -594,7 +598,7 @@ class Widget:
         # if not color_role in [QPalette.ColorRole.Text, QPalette.ColorRole.WindowText]:
         #     raise ValueError (f"{self}: color_role '{color_role}' not implemented")
 
-        if aStyle in [style.WARNING, style.ERROR, style.COMMENT]:
+        if aStyle in [style.WARNING, style.ERROR, style.COMMENT, style.GOOD]:
 
             palette : QPalette = self.palette()
             if self._palette_normal is None:                     # store normal palette for later reset 
@@ -607,7 +611,10 @@ class Widget:
 
             # if it's background color apply alpha
             if color_role == QPalette.ColorRole.Base:
-                color.setAlphaF (0.2)
+                color.setAlphaF (0.15)
+ 
+            # palette.setColor(self.backgroundRole(), color)
+            palette.setColor(color_role, color)
 
             palette.setColor(color_role, color)
 
@@ -686,9 +693,9 @@ class Field_With_Label (Widget):
         self.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
 
-    def _set_Qwidget (self): 
+    def _set_Qwidget (self, **kwargs): 
         """ set value and properties of self Qwidget"""
-        super()._set_Qwidget ()
+        super()._set_Qwidget ( **kwargs)
 
         # overloaded to also hide self label 
         if self._label and self._hidden_getter:
@@ -711,6 +718,9 @@ class Label (Widget, QLabel):
     """
     label text with word wrap 
     """
+
+    _height = 26 
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -730,10 +740,10 @@ class Label (Widget, QLabel):
         self._set_Qwidget_style_color (self._style, QPalette.ColorRole.WindowText)  
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
         self.setText (self._val)
 
 
@@ -763,9 +773,9 @@ class Field (Field_With_Label, QLineEdit):
         self.returnPressed.connect(self._on_finished)
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
         val = self._val if self._val is not None else ''
         self.setText (val)
 
@@ -816,10 +826,10 @@ class FieldI (Field_With_Label, QSpinBox):
         self._lim = self._get_value (self._lim_getter)
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
 
         if self._lim: 
             self.setRange (self._lim[0], self._lim[1])
@@ -858,8 +868,12 @@ class FieldI (Field_With_Label, QSpinBox):
 
         # Qt bug?
         # overwritten as Palette has to be set for LineEdit of self  
-        self.lineEdit().setPalette (palette) 
+        # bug: background double ainted 
+        # self.setPalette (palette) 
 
+        # ... this doesn't work 
+        self.lineEdit().setPalette (palette) 
+ 
 
     def stepBy (self, step):
         # Qt overloaded: Detect when a Spin Button is pressed with new value 
@@ -901,9 +915,15 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
 
         self._get_properties ()
         self._set_Qwidget_static ()
+        self.ensurePolished()
         self._set_Qwidget ()
 
         self._layout_add ()
+
+        # a (new) style isn't apllied when done during __init__ - so do it later 
+        if self._palette_normal is not None:            # indicates that a palette was set
+            timer = QTimer()                                
+            timer.singleShot(10, self._set_Qwidget_style)     
 
         # connect signals 
         self.editingFinished.connect(self._on_finished)
@@ -915,10 +935,10 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self._lim = self._get_value (self._lim_getter)
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
 
         if self._lim: 
             self.setRange (self._lim[0], self._lim[1])
@@ -962,6 +982,10 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
 
         # Qt bug?
         # overwritten as Palette has to be set for LineEdit of self  
+        # bug: background double ainted 
+        # self.setPalette (palette) 
+
+        # ... this doesn't work 
         self.lineEdit().setPalette (palette) 
 
 
@@ -1038,9 +1062,9 @@ class Button (Widget, QPushButton):
         self.setText (self._text)
 
 
-    def _set_Qwidget (self): 
+    def _set_Qwidget (self, **kwargs): 
         """ set properties of self Qwidget like data"""
-        super()._set_Qwidget ()        
+        super()._set_Qwidget (**kwargs)        
         if self._button_style == button_style.PRIMARY:
             self.setDefault (True)
         else: 
@@ -1143,10 +1167,10 @@ class ToolButton (Widget, QToolButton):
         return f"<{type(self).__name__}{text}>"
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
 
         if self.isEnabled() != (not self._disabled) :
             self.setDisabled(self._disabled)
@@ -1200,9 +1224,9 @@ class CheckBox (Widget, QCheckBox):
         self._val = self._val is True 
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
         self.setChecked (self._val)
 
 
@@ -1252,10 +1276,10 @@ class ComboBox (Field_With_Label, QComboBox):
         self._val = str(self._val) if self._val is not None else None
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
 
         self.clear()                                # addItems append to list
         self.addItems (self._options)
@@ -1367,10 +1391,10 @@ class ComboSpinBox (Field_With_Label, QComboBox):
         self._val = str(self._val)
 
 
-    def _set_Qwidget (self):
+    def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
-        super()._set_Qwidget ()
+        super()._set_Qwidget (**kwargs)
 
         self.addItems (self._options)
         self.setCurrentText (self._val)
@@ -1421,25 +1445,27 @@ class Test_Widgets (QMainWindow):
         r += 1
         Label  (l,r,0,get="Label",width=(90,None))
         Label  (l,r,1,get=lambda: f"Disabled: {str(self.disabled)}")
-        Label  (l,r,2,get=self.str_val)
+        Label  (l,r,2,get=self.str_val, style=style.GOOD)
         Label  (l,r,3,get=self.str_val, style=self.style )
         r += 1
         Label  (l,r,0,get="Field")
-        Field  (l,r,1,get="initial", set=self.set_str, width=(80, 120))
+        Field  (l,r,1,get="initial", set=self.set_str, width=(80, 120), style=style.ERROR)
         Field  (l,r,2,get=self.str_val, set=self.set_str, disable=lambda: self.disabled)
         Field  (l,r,3,get="Error", set=self.set_str, width=80, style=self.style, disable=lambda: self.disabled)
         r += 1
         Field  (l,r,0,lab="Field with label", get="initial", set=self.set_str, width=(80, 120))
         r += 1
         Label  (l,r,0,get="FieldI")
-        FieldI (l,r,1,get=15, set=self.set_int, lim=(0,100), unit="kg", step=1, specialText="Automatic", width=80)
-        FieldI (l,r,2,get=self.int_val, set=self.set_int, lim=(1,100), step=1, disable=lambda: self.disabled, width=(80, 100))
+        FieldI (l,r,1,get=15, set=self.set_int, lim=(0,100), unit="kg", step=1, specialText="Automatic", width=80, style=style.ERROR)
+        FieldI (l,r,2,get=self.int_val, set=self.set_int, lim=(1,100), step=1, disable=lambda: self.disabled, width=(80, 100), style=style.GOOD)
         FieldI (l,r,3,get=self.int_val, set=self.set_int, lim=(1,100), step=1, disable=lambda: self.disabled, style=self.style, width=(80, 100))
         r += 1
         Label  (l,r,0,get="FieldF")
         FieldF (l,r,1,get=-0.1234, set=self.set_float, width=80, lim=(-1,1), unit="m", step=0.1, dec=2, specialText="Automatic")
-        FieldF (l,r,2,get=self.float_val, set=self.set_float, lim=(1,100), dec=4, step=1.0, disable=lambda: self.disabled)
+        FieldF (l,r,2,get=self.float_val, set=self.set_float, lim=(1,100), dec=4, step=1.0, disable=lambda: self.disabled, style=style.GOOD)
         FieldF (l,r,3,get=self.float_val, set=self.set_float, lim=(1,100), width=80, dec=4, step=1.0, disable=True, style=self.style)
+        r += 1
+        FieldF (l,r,0, lab="FieldF combi",get=-0.1234, set=self.set_float, width=80, lim=(-1,1), unit="m", step=0.1, dec=2, specialText="Automatic", style=style.GOOD)
         r += 1
         Label  (l,r,0,get="ComboBox")
         ComboBox (l,r,1,options=["first","second"], set=self.set_str, width=80)
@@ -1493,9 +1519,9 @@ class Test_Widgets (QMainWindow):
     
     def style (self):
         if self.disabled:
-            return style.ERROR
-        else: 
             return style.NORMAL
+        else: 
+            return style.ERROR
     
     def set_str(self, aStr):
         if not isinstance (aStr, str): raise ValueError ("no string: ", aStr)

@@ -9,15 +9,15 @@ All abstract diagram items to build a complete diagram view
 
 import logging
 
-from PyQt6.QtCore       import QSize, QMargins, pyqtSignal
+from PyQt6.QtCore       import QSize, QMargins, pyqtSignal, QTimer
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
 from PyQt6.QtWidgets    import QMainWindow, QWidget, QWidgetItem
 from PyQt6.QtGui        import QPalette
 
-import pyqtgraph as pg # import PyQtGraph after PyQt6
+import pyqtgraph as pg                          # import PyQtGraph after PyQt6
+from pyqtgraph          import icons
 
-from base.widgets         import Widget, Label
-from base.panels          import Edit_Panel
+from base.panels        import Edit_Panel
 
 
 class Diagram (QWidget):
@@ -73,7 +73,12 @@ class Diagram (QWidget):
 
         self.setLayout (l_main)
 
-        
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        text = '' 
+        return f"<{type(self).__name__}{text}>"
+
+
     def data_list (self): 
         # to be overloaded - or implemented with semantic name   
 
@@ -221,8 +226,18 @@ class Diagram_Item (pg.PlotItem):
         self._show   = show 
         self._section_panel = None 
 
-        # initial show or hide - user super() - avoid refresh
+        ## Set up additional control button to reset range 
+        self._vb_state_initial = None
+        self._vb_state_changed = False 
+        self._resetBtn = pg.ButtonItem(icons.getGraphPixmap('auto'), 14, self)
+        self._resetBtn.mode = 'auto'
+        self._resetBtn.clicked.connect(self._resetBtnClicked)
+        timer = QTimer()                                
+        timer.singleShot(50, self._reset_prepare)           # delayed when all initial drawing done 
+
+        # initial show or hide - use super() - avoid refresh
         super().setVisible (show) 
+
 
 
     def __repr__(self) -> str:
@@ -237,6 +252,81 @@ class Diagram_Item (pg.PlotItem):
 
         self.refresh_artists()                      # data could have been changed in the meantime
         self.sig_visible.emit (self, aBool)
+
+    def close (self):
+        # PlotItem overload to remove button
+        self._resetBtn.setParent (None) 
+        self._resetBtn = None
+        super().close()
+
+
+    def resizeEvent(self, ev):
+        # PlotItem overload to remove button
+        if self._resetBtn is None:  ## already closed down
+            return
+        btnRect = self.mapRectFromItem(self._resetBtn, self._resetBtn.boundingRect())
+        y = self.size().height() - btnRect.height()
+        self._resetBtn.setPos(20, y)            # right aside autoBtn
+        super().resizeEvent (ev)
+
+
+    def updateButtons(self):
+        # PlotItem overload to show/hide reset button
+        super().updateButtons ()
+        try:
+            if self.mouseHovering and not self.buttonsHidden and self._vb_state_changed: #  and not all(self.vb.autoRangeEnabled()):
+                self._resetBtn.show()
+            else:
+                self._resetBtn.hide()
+        except RuntimeError:
+            pass  # this can happen if the plot has been deleted.
+
+
+    def _resetBtnClicked(self):
+        # if self.autoBtn.mode == 'auto':
+        #     self.enableAutoRange()
+        #     self.autoBtn.hide()
+        # else:
+        #     self.disableAutoRange()
+        if self._vb_state_initial is not None: 
+            # self.vb.setState (self._vb_state_initial)
+
+            self.viewBox.autoRange (padding=0)
+
+            self.viewBox.setDefaultPadding(0.05)
+            self.viewBox.setXRange( 0, 1, padding=0.05) # , padding=0.05
+
+            self.viewBox.setAspectLocked()
+            self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
+
+            self._vb_state_changed = False
+
+            # xRange = self._vb_state_initial['viewRange'] [0]
+            # yRange = self._vb_state_initial['viewRange'] [1]
+
+            # self.viewBox.setYRange( yRange[0], yRange[1], padding=0)
+            # self.viewBox.setXRange( xRange[0]+ 0.00000001, xRange[1], padding=0)
+            # self.vb.setRange( xRange=xRange, yRange=yRange, padding=0, disableAutoRange=True)  
+            # self.vb.prepareForPaint()
+            # pg.GraphicsWidget.update(self)
+            # self.vb.updateViewRange()
+            # self.vb.update()
+            print(self._vb_state_initial['viewRange'])
+
+    def _reset_prepare (self):
+        """ prepare reset button - save initial range"""
+
+        print (self, " prepare")
+        self._vb_state_initial = self.vb.getState(copy=True)
+        self.sigRangeChanged.connect(self._viewRangeChanged)
+
+
+    def _viewRangeChanged (self): 
+        """ slot - view Range changed"""
+        print (self, " viewRange changed")
+        self._vb_state_changed = True 
+        
+
 
 
     @property

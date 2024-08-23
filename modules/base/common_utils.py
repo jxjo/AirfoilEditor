@@ -25,7 +25,7 @@ def init_logging (level= logging.WARNING):
     """ initialize logging with level"""
 
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+#     ch.setLevel(logging.DEBUG)
 
     ch.setFormatter(CustomFormatter())
 
@@ -34,8 +34,8 @@ def init_logging (level= logging.WARNING):
                         handlers=[ch], 
                         level=level)  # DEBUG or WARNING
     # suppress debug messages from these modules 
-    logging.getLogger('PIL.PngImagePlugin').disabled = True
-    logging.getLogger('dxf_utils').disabled = True
+    # logging.getLogger('PIL.PngImagePlugin').disabled = True
+    # logging.getLogger('dxf_utils').disabled = True
 
 
 class CustomFormatter(logging.Formatter):

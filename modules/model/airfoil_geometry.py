@@ -75,10 +75,10 @@ CAMBER      = 'camber'
 class linetype (Enum):
     """ enums for the different type of Lines """
 
-    UPPER       = ('upper','up')
-    LOWER       = ('lower','low')
-    THICKNESS   = ('thickness','t')
-    CAMBER      = ('camber','c')
+    UPPER       = ('Upper','up')
+    LOWER       = ('Lower','low')
+    THICKNESS   = ('Thickness','t')
+    CAMBER      = ('Camber','c')
 
 
 class mod (Enum):
@@ -413,6 +413,18 @@ class Line:
             self._highpoint = JPoint (xy)
 
         return self._highpoint
+
+    @property
+    def max_xy (self) -> tuple:
+        """ x,y of y coordinate with abs max y-value"""
+        i_max = np.argmax(np.abs(self.y))
+        return self.x[i_max], self.y[i_max] 
+
+
+    @property
+    def te (self) -> tuple:
+        """ x,y of the last coordinate"""
+        return self.x[-1], self.y[-1] 
 
 
     @property
@@ -749,29 +761,34 @@ class Side_Airfoil_Bezier (Line):
         if ncp == 3: 
             if aLine.isLower:
                 cp_y[1] = min (aLine.y) * 1.8
-                cp_y[1] = min (cp_y[icp], -0.025)
             else: 
                 cp_y[1] = max (aLine.y) * 1.8
         else:
             xhelp = cp_x[2] * 0.6                       #   take y-coord near LE depending
-            i = find_closest_index (aLine.x, xhelp)              
-            cp_y[1] = aLine.y[i]    
+            i = find_closest_index (aLine.x, xhelp) 
+            if aLine.isLower:             
+                cp_y[1] = aLine.y[i] * 1.4
+            else:     
+                cp_y[1] = aLine.y[i]    
+
         if aLine.isLower:
-            cp_y[1] = min (cp_y[1], -0.025)
-        else: 
-            cp_y[1] = max (cp_y[1], 0.025)
+            cp_y[1] = min (cp_y[1], -0.03)              # otherwise lower le too sharp 
 
         # adjust y values between le and te for best fit 
 
         for icp in range (2,ncp-1):
+            if ncp == 8: 
+                y_fac = 1.1
+            if ncp == 7: 
+                y_fac = 1.15
             if ncp == 6: 
                 y_fac = 1.2
             elif ncp == 5:
-                y_fac = 1.3
+                y_fac = 1.2
             elif ncp == 4:
-                y_fac = 1.6
+                y_fac = 1.4
             else: 
-                y_fac = 1.15 
+                y_fac = 1.1 
 
             if icp == 2:
                 y_fac *= 1.2                              # the second point even higher 
@@ -876,6 +893,16 @@ class Side_Airfoil_Bezier (Line):
     def nControlPoints (self): 
         """ number of bezier control points """
         return len(self.bezier.points)
+    def set_nControlPoints (self, n : int ):
+        """ set new no of control points - reinit control points to estimatio """
+
+        n = max (3, n)
+        n = min (10, n)
+
+        if n != self.nControlPoints:
+            # get estimated controlpoints 
+            cp = Side_Airfoil_Bezier.estimated_controlPoints (self, n)
+            self.set_controlPoints (cp) 
 
 
     @property
@@ -905,6 +932,19 @@ class Side_Airfoil_Bezier (Line):
 
 
     # ------------------
+
+    def add_controlPoint (self, index, point : JPoint | tuple):
+        """ add a new controlPOint at index """
+
+        if isinstance (point, JPoint):
+            new_xy = (point.x, point.y)
+        else: 
+            new_xy = point 
+
+        points = self.bezier.points 
+        points.insert (index, new_xy)
+        self.bezier.set_points (points) 
+
 
 
     def check_new_controlPoint_at (self, x, y): 
@@ -997,20 +1037,6 @@ class Side_Airfoil_Bezier (Line):
         """ set te Bezier control point to y to change te gap """
         px = self.bezier.points_x
         self.bezier.set_point (-1, px[-1], y) 
-
-
-
-    def norm2_deviation_to (self, target_line : 'Line' )  -> float:
-        """returns norm2 deviation of self to a target_line"""
-
-        # evaluate the new y values on Bezier for the target x-coordinate   
-        y_new = np.zeros (len(target_line.y))
-        for i, x in enumerate(target_line.x) :
-            y_new[i] = self._bezier.eval_y_on_x (x, fast=True, epsilon=1e-7)
-
-        # calculate abs difference between bezier y and target y
-        devi = np.abs((y_new - target_line.y))
-        return np.linalg.norm (devi)
 
 
 
@@ -1185,7 +1211,9 @@ class Geometry ():
                     val = round(val,2) 
                 elif isinstance (val, float): 
                     val = round(val,1)
-                mods.append ((aMod.value[1],val))
+                name_val = (aMod.value[1],val)
+                if not (name_val in mods):                  # avoid dublicates 
+                    mods.append ((aMod.value[1],val))
 
         # we got final list of tuples - build string
         label = ''
@@ -1575,60 +1603,52 @@ class Geometry ():
         self.set_highpoint_of (self.camber,(val, None))
            
 
-    def set_highpoint_of (self, aLine: Line, xy : tuple, moving=False): 
+    def set_highpoint_of (self, aLine: Line, xy : tuple, finished=True): 
         """ change highpoint of a line - update airfoil """
 
         try: 
-            
-            xy_cur = aLine.highpoint.xy
-
             aLine.set_highpoint (xy)
-
-            if not moving:
-
-                if aLine.type == linetype.THICKNESS and xy[0] == None:
-                    # optimize in case of thickness - direct change of upper and lower 
-                    self._set_max_thick_upper_lower (xy_cur[1], xy[1])
-                    self._rebuild_from_upper_lower ()
-
-                    amod = mod.MAX_THICK
-                    lab = aLine.highpoint.label_changed (self._max_thick_initial)
-
-                if aLine.type == linetype.THICKNESS:
-                    self._rebuild_from_camb_thick ()
-
-                    amod = mod.MAX_THICK
-                    lab = aLine.highpoint.label_changed (self._max_thick_initial)
-
-                elif aLine.type == linetype.CAMBER:
-                    self._rebuild_from_camb_thick ()
-
-                    amod = mod.MAX_CAMB
-                    lab = aLine.highpoint.label_changed (self._max_camb_initial)
-
-                elif aLine.type == linetype.UPPER:
-                    self._rebuild_from_upper_lower ()
- 
-                    amod = mod.MAX_CAMB
-                    lab = ''
-
-                elif aLine.type == linetype.LOWER:
-                    self._rebuild_from_upper_lower ()
- 
-                    amod = mod.MAX_LOWER
-                    lab = ''
-
-                else:
-                    raise ValueError (f"{aLine.type} not supprted for set_highpoint") 
-
-                self._reset()
-                self._normalize()
-                self._changed (amod, lab, remove_empty=True)
-
-
         except GeometryException: 
             logger.warning (f"{self} set highpoint failed for {aLine}")
             self._clear_xy ()
+
+        if finished: 
+            self.finished_change_of (aLine)
+
+
+    def finished_change_of (self, aLine: Line): 
+        """ change highpoint of a line - update geometry """
+
+        if aLine.type == linetype.THICKNESS:
+            self._rebuild_from_camb_thick ()
+
+            amod = mod.MAX_THICK
+            lab = aLine.highpoint.label_changed (self._max_thick_initial)
+
+        elif aLine.type == linetype.CAMBER:
+            self._rebuild_from_camb_thick ()
+
+            amod = mod.MAX_CAMB
+            lab = aLine.highpoint.label_changed (self._max_camb_initial)
+
+        elif aLine.type == linetype.UPPER:
+            self._rebuild_from_upper_lower ()
+
+            amod = mod.MAX_CAMB
+            lab = ''
+
+        elif aLine.type == linetype.LOWER:
+            self._rebuild_from_upper_lower ()
+
+            amod = mod.MAX_LOWER
+            lab = ''
+
+        else:
+            raise ValueError (f"{aLine.type} not supprted for set_highpoint") 
+
+        self._reset()
+        self._normalize()
+        self._changed (amod, lab, remove_empty=True)
 
 
 
@@ -2553,24 +2573,31 @@ class Geometry_Bezier (Geometry):
             self._reset_lines()
 
 
-    def set_controlPoints_of (self, aSide : Side_Airfoil_Bezier,
-                              px : list[float],
-                              py : list[float], 
-                              moving = False):
-        """ set the bezier control points"""
-
-        aSide.set_controlPoints (px, py)
+    def finished_change_of (self, aSide : Side_Airfoil_Bezier):
+        """ confirm Bezier changes for aSide - update geometry"""
 
         if aSide.isUpper:                                   # ensure te is symmetrical 
             self.lower.set_te_gap (- aSide.te_gap)
 
-        if not moving: 
+        self._reset()
 
-            self._reset()
-            if aSide.isUpper:
-                self._changed (mod.BEZIER_UPPER, '')
-            else:
-                self._changed (mod.BEZIER_LOWER, '')
+        if aSide.isUpper:
+            self._changed (mod.BEZIER_UPPER, '')
+        else:
+            self._changed (mod.BEZIER_LOWER, '')
+
+
+
+    def set_nControlPoints_of (self, aSide : Side_Airfoil_Bezier, n : int):
+        """ set new no bezier control points for side"""
+
+        aSide.set_nControlPoints (n)
+
+        self._reset()
+        if aSide.isUpper:
+            self._changed (mod.BEZIER_UPPER, '')
+        else:
+            self._changed (mod.BEZIER_LOWER, '')
 
 
     @property
