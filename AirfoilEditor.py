@@ -105,7 +105,7 @@ class App_Main (QMainWindow):
             QMessageBox.information (self, self.name , f"\n'{airfoil_file}'\n\n... does not exist. Showing example airfoil.\n")
             airfoil_file = "Root_Example"
 
-        self.setMinimumSize(QSize(1600, 700))
+        self.setMinimumSize(QSize(1500, 700))
 
         self._airfoil = None                        # current airfoil 
         self._airfoil_sav = None                    # airfoil saved in edit_mode 
