@@ -105,7 +105,7 @@ class Airfoil_Open_Widget (Widget, QWidget):
         self._set_Qwidget_static ()
 
         if asIcon:
-            widget= ToolButton (None, icon=ToolButton.ICON_OPEN, set=self._open, toolTip="Select airfoil")
+            widget= ToolButton (None, icon=icon.OPEN, set=self._open, toolTip="Select airfoil")
         else: 
             widget = Button    (None, text="&Open", width=self._width, set=self._open, toolTip="Select airfoil")
 
@@ -306,7 +306,7 @@ class Airfoil_Save_Dialog (Dialog):
         r += 1
         Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName, width=(150,None),
                        disable=True)
-        ToolButton (l,r,2, icon=ToolButton.ICON_OPEN, set=self._open_dir, signal=True,
+        ToolButton (l,r,2, icon=icon.OPEN, set=self._open_dir, signal=True,
                     toolTip = 'Select directory of airfoil') 
         r += 1
         SpaceR (l, r, stretch=1) 

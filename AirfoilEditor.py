@@ -659,7 +659,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
             if self.geo().isBasic:
                 return style.NORMAL
             else: 
-                return style.GOOD
+                return style.NORMAL
         else: 
             return style.WARNING
 
@@ -669,7 +669,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         if val != target_val: 
             return style.WARNING
         else: 
-            return style.GOOD
+            return style.NORMAL
 
 
     def _messageText (self): 
@@ -953,31 +953,14 @@ class Diagram_Item_Airfoil (Diagram_Item):
     name = "View Airfoil"           # used for link and section header 
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
         self._edit_mode_first_time = True           # switch to edit first time 
 
-        self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show=True, show_legend=True)
-        self.airfoil_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
-
-        self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
-        self.line_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
-
-        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= True)
-        self.bezier_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
-         
-        # setup view box 
-
-        self.viewBox.setDefaultPadding(0.05)
-        self.viewBox.setXRange( 0, 1) # , padding=0.05
-
-        self.viewBox.setAspectLocked()
-        self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
-        # self.viewBox.setAutoPan(y=None)
-        self.showGrid(x=True, y=True)
+        super().__init__(*args, **kwargs)
 
         self.myApp.sig_bezier_changed.connect  (self.bezier_artist.refresh_from_side)
         self.myApp.sig_enter_edit_mode.connect (self._on_enter_edit_mode)
+
 
     @property
     def myApp (self):
@@ -1003,6 +986,34 @@ class Diagram_Item_Airfoil (Diagram_Item):
             self.section_panel.refresh() 
 
         self._edit_mode_first_time = False
+
+
+    def setup_artists (self):
+        """ create and setup the artists of self"""
+        
+        self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show=True, show_legend=True)
+        self.airfoil_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
+
+        self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
+        self.line_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
+
+        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= True)
+        self.bezier_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
+
+
+    def setup_viewRange (self):
+        """ define view range of this plotItem"""
+
+        self.viewBox.setDefaultPadding(0.05)
+
+        self.viewBox.autoRange ()               # first ensure best range x,y 
+        self.viewBox.setXRange( 0, 1)           # then set x-Range
+
+        self.viewBox.setAspectLocked()
+
+        self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
+
+        self.showGrid(x=True, y=True)
 
 
     def refresh_artists (self):
@@ -1039,7 +1050,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title=self.name, layout=l, height=140, 
+            self._section_panel = Edit_Panel (title=self.name, layout=l, height=130, 
                                               switchable=True, on_switched=self.setVisible)
 
         return self._section_panel 
@@ -1054,33 +1065,15 @@ class Diagram_Item_Curvature (Diagram_Item):
     name = "View Curvature"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
-        self._logMode = False
         self._link_x  = False 
 
-        self.curvature_artist = Curvature_Artist (self, self.airfoils, 
-                                                show=True,
-                                                show_derivative=False,
-                                                show_legend=True)
-        # setup view box 
-
-        self._set_YRange () 
-        self.viewBox.setDefaultPadding (0.05)
-        self.viewBox.setXRange (0, 1, padding=0.05)  
-        self.showGrid(x=True, y=True)
+        super().__init__(*args, **kwargs)
 
 
     def airfoils (self) -> list[Airfoil]: 
         return self.data_list()
     
-    @property
-    def logMode (self) -> bool:
-        """ log scale of y axes"""
-        return self._logMode
-    def set_logMode (self, aBool):
-        self._logMode = aBool is True
-        self._set_YRange ()
 
     @property
     def link_x (self) -> bool:
@@ -1093,6 +1086,24 @@ class Diagram_Item_Curvature (Diagram_Item):
             self.setXLink(Diagram_Item_Airfoil.name)
         else: 
             self.setXLink(None)
+
+    def setup_artists (self):
+        """ create and setup the artists of self"""
+        
+        self.curvature_artist = Curvature_Artist (self, self.airfoils, 
+                                                show=True, show_derivative=False, show_legend=True)
+
+
+    def setup_viewRange (self):
+        """ define view range of this plotItem"""
+
+        self.viewBox.setDefaultPadding(0.05)
+
+        self.viewBox.autoRange ()               # first ensure best range x,y 
+        self.viewBox.setXRange( 0, 1)           # then set x-Range
+        self.viewBox.setYRange(-2.0, 2.0)
+
+        self.showGrid(x=True, y=True)
 
 
     def refresh_artists (self):
@@ -1123,30 +1134,14 @@ class Diagram_Item_Curvature (Diagram_Item):
             CheckBox (l,r,c, text=f"X axes linked to '{Diagram_Item_Airfoil.name}'", 
                     get=lambda: self.link_x, set=self.set_link_x) 
             r += 1
-            CheckBox (l,r,c, text="Y axes log scale", 
-                    get=lambda: self.logMode,
-                    set=self.set_logMode) 
-            r += 1
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
             self._section_panel = Edit_Panel (title=self.name, layout=l, 
-                                              height=200, switchable=True, switched=False, on_switched=self.setVisible)
+                                              height=160, switchable=True, switched=False, on_switched=self.setVisible)
 
         return self._section_panel 
 
-
-    def _set_YRange (self):
-        """ set range of axes"""
-
-        if self.logMode: 
-            self.setLogMode (y=True)
-            self.viewBox.setYRange(-1, 3)    # this is the exponent 
-        else: 
-            self.setLogMode (y=False)
-            self.viewBox.setYRange(-2.0, 2.0)
-
-        self.viewBox.setDefaultPadding (0.05)
 
 
 

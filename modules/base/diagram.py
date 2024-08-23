@@ -8,16 +8,20 @@ All abstract diagram items to build a complete diagram view
 """
 
 import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
+
 
 from PyQt6.QtCore       import QSize, QMargins, pyqtSignal, QTimer
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
 from PyQt6.QtWidgets    import QMainWindow, QWidget, QWidgetItem
-from PyQt6.QtGui        import QPalette
+from PyQt6.QtGui        import QPalette, QIcon
 
 import pyqtgraph as pg                          # import PyQtGraph after PyQt6
 from pyqtgraph          import icons
 
 from base.panels        import Edit_Panel
+from base.widgets       import ToolButton, icon
 
 
 class Diagram (QWidget):
@@ -227,15 +231,29 @@ class Diagram_Item (pg.PlotItem):
         self._section_panel = None 
 
         ## Set up additional control button to reset range 
-        self._vb_state_initial = None
+
         self._vb_state_changed = False 
-        self._resetBtn = pg.ButtonItem(icons.getGraphPixmap('auto'), 14, self)
+        ico = ToolButton._get_icon (icon.RESETVIEW,light_mode = False)
+        self._resetBtn = pg.ButtonItem(pixmap=ico.pixmap(QSize(52,52)), width=16, parentItem=self)
         self._resetBtn.mode = 'auto'
-        self._resetBtn.clicked.connect(self._resetBtnClicked)
+        self._resetBtn.clicked.connect(self._resetBtn_clicked)
         timer = QTimer()                                
         timer.singleShot(50, self._reset_prepare)           # delayed when all initial drawing done 
 
+        # setup artists - must be override
+
+        self.setup_artists ()
+
+        # setup view range - must be override
+        
+        self.setup_viewRange ()
+
+        # setup view range - must be override
+        
+        self.setup_axis()
+
         # initial show or hide - use super() - avoid refresh
+ 
         super().setVisible (show) 
 
 
@@ -266,7 +284,7 @@ class Diagram_Item (pg.PlotItem):
             return
         btnRect = self.mapRectFromItem(self._resetBtn, self._resetBtn.boundingRect())
         y = self.size().height() - btnRect.height()
-        self._resetBtn.setPos(20, y)            # right aside autoBtn
+        self._resetBtn.setPos(20, y+3)            # right aside autoBtn
         super().resizeEvent (ev)
 
 
@@ -282,51 +300,22 @@ class Diagram_Item (pg.PlotItem):
             pass  # this can happen if the plot has been deleted.
 
 
-    def _resetBtnClicked(self):
-        # if self.autoBtn.mode == 'auto':
-        #     self.enableAutoRange()
-        #     self.autoBtn.hide()
-        # else:
-        #     self.disableAutoRange()
-        if self._vb_state_initial is not None: 
-            # self.vb.setState (self._vb_state_initial)
+    def _resetBtn_clicked(self):
+        """ reset button was clicked - set initial view range"""
 
-            self.viewBox.autoRange (padding=0)
-
-            self.viewBox.setDefaultPadding(0.05)
-            self.viewBox.setXRange( 0, 1, padding=0.05) # , padding=0.05
-
-            self.viewBox.setAspectLocked()
-            self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
-
+        if self._vb_state_changed:
+            self.setup_viewRange ()
             self._vb_state_changed = False
 
-            # xRange = self._vb_state_initial['viewRange'] [0]
-            # yRange = self._vb_state_initial['viewRange'] [1]
-
-            # self.viewBox.setYRange( yRange[0], yRange[1], padding=0)
-            # self.viewBox.setXRange( xRange[0]+ 0.00000001, xRange[1], padding=0)
-            # self.vb.setRange( xRange=xRange, yRange=yRange, padding=0, disableAutoRange=True)  
-            # self.vb.prepareForPaint()
-            # pg.GraphicsWidget.update(self)
-            # self.vb.updateViewRange()
-            # self.vb.update()
-            print(self._vb_state_initial['viewRange'])
 
     def _reset_prepare (self):
         """ prepare reset button - save initial range"""
-
-        print (self, " prepare")
-        self._vb_state_initial = self.vb.getState(copy=True)
         self.sigRangeChanged.connect(self._viewRangeChanged)
 
 
     def _viewRangeChanged (self): 
         """ slot - view Range changed"""
-        print (self, " viewRange changed")
         self._vb_state_changed = True 
-        
-
 
 
     @property
@@ -362,6 +351,28 @@ class Diagram_Item (pg.PlotItem):
         else: 
             self.refresh_artists() 
 
+
+    def setup_artists (self):
+        """ create and setup the artists of self"""
+        # must be implemented by subclass
+        
+        logger.warning (f"{self} no artists are setup")
+
+
+    def setup_viewRange (self):
+        """ define view range of this plotItem"""
+        # must be implemented by subclass
+        
+        logger.warning (f"{self} no view range defined")
+
+
+    def setup_axis (self):
+        """ setup axis of of this plotItem"""
+        # can be implemented by subclass
+        
+        # define a constant width 
+        yaxis : pg.AxisItem = self.getAxis ('left')
+        yaxis.setWidth (40)
 
 
     def refresh_artists (self): 

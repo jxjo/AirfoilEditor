@@ -13,7 +13,7 @@ logger.setLevel(logging.WARNING)
 
 import os
 import types
-import typing 
+from typing             import override
 from enum               import Enum, StrEnum
 
 from PyQt6.QtCore       import QEvent, QSize, Qt, QMargins, pyqtSignal, QTimer
@@ -23,7 +23,7 @@ from PyQt6.QtWidgets    import (
                             QApplication, QWidget, QPushButton, 
                             QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
                             QLabel, QToolButton, QCheckBox,
-                            QSpinBox, QComboBox,
+                            QSpinBox, QComboBox, QSlider, 
                             QSizePolicy)
 from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon
 
@@ -44,14 +44,16 @@ class icon (StrEnum):
     # color dark theme #C5C5C5, light theme #303030
     # size 96x96
 
-    ICON_SETTINGS   = "settings" 
-    ICON_COLLAPSE   = "collapse" 
-    ICON_OPEN       = "open"     
-    ICON_EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
-    ICON_DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
-    ICON_ADD        = "add"      
-    ICON_NEXT       = "next"     
-    ICON_PREVIOUS   = "previous" 
+    SETTINGS   = "settings" 
+    COLLAPSE   = "collapse" 
+    OPEN       = "open"     
+    EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
+    DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
+    ADD        = "add"      
+    NEXT       = "next"     
+    PREVIOUS   = "previous" 
+    FIT        = "fit" 
+    RESETVIEW  = "resetView" 
 
 
 class button_style (Enum):
@@ -172,10 +174,14 @@ class Widget:
                  hide = None,
                  style = style.NORMAL,
                  fontSize = size.NORMAL,
-                 toolTip = None): 
+                 toolTip = None,
+                 orientation = None): 
         
         # needed to build reference so self won't be garbage collected 
-        super().__init__ ()
+        if orientation is not None:         # special handling for slider which needs arg orientation
+            super().__init__ (orientation)
+        else: 
+            super().__init__ ()
 
         self._layout = layout  
 
@@ -865,13 +871,8 @@ class FieldI (Field_With_Label, QSpinBox):
 
     def _update_palette (self, palette: QPalette):
         """ set new QPalette for self"""
-
         # Qt bug?
         # overwritten as Palette has to be set for LineEdit of self  
-        # bug: background double ainted 
-        # self.setPalette (palette) 
-
-        # ... this doesn't work 
         self.lineEdit().setPalette (palette) 
  
 
@@ -982,10 +983,6 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
 
         # Qt bug?
         # overwritten as Palette has to be set for LineEdit of self  
-        # bug: background double ainted 
-        # self.setPalette (palette) 
-
-        # ... this doesn't work 
         self.lineEdit().setPalette (palette) 
 
 
@@ -1012,6 +1009,103 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         # get val from Qwidget - handle percent unit automatically 
 
         self._set_value (new_abs_val)
+
+
+class Slider (Widget, QSlider): 
+    """
+    
+    A value slider - extends the QSlider to handle float values
+
+    Default are 100 steps with a step size of 1% between the lim () 
+    """
+
+    _height = 26 
+
+    def __init__(self, *args, 
+                 step : float = None,
+                 dec : int = 2,
+                 lim = None, 
+                 **kwargs):
+        super().__init__(*args, orientation = Qt.Orientation.Horizontal,**kwargs)
+
+        self._step = float(step) if step is not None else None
+        self._dec  = int(dec) 
+        self._lim = None 
+        self._lim_getter = lim
+
+        self._slider_val = None
+        self._slider_min = 0 
+        self._slider_max = 100 
+
+        self._get_properties ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
+
+        self._layout_add ()
+
+        # connect signals 
+        self.valueChanged.connect(self._on_finished)
+
+
+    @override
+    def _get_properties (self): 
+        super()._get_properties () 
+        self._lim = self._get_value (self._lim_getter)
+
+
+    @override
+    def _set_Qwidget_static (self): 
+        """ set static properties of self Qwidget like width"""
+        super()._set_Qwidget_static ()
+
+        self.setMinimum (self._slider_min)
+        self.setMaximum (self._slider_max)
+        self.setSingleStep (1) 
+
+
+    @override
+    def _set_Qwidget (self, **kwargs):
+        """ set value and properties of self Qwidget"""
+        super()._set_Qwidget (**kwargs)
+
+        self._slider_val = self._from_val_to_slider ()
+        self.setValue (self._slider_val)
+
+
+    def _on_finished(self):
+      """ slot - finished slider movement"""
+      self._slider_val = self.value()
+
+      newVal = self._from_slider_to_val ()
+      newVal = round(newVal, self._dec)            # Qt sometimes has float artefacts 
+      self._set_value (newVal)
+
+
+    def _from_val_to_slider (self):
+        """ get the slider value from _val"""
+
+        if not isinstance (self._lim, tuple): 
+            raise ValueError (f"{self} slider limits are not set")
+
+        min_val = self._lim[0]
+        max_val = self._lim[1]
+
+        self._val = max (min_val, self._val)
+        self._val = min (max_val, self._val)
+
+        return int (100 * (self._val - min_val) / (max_val - min_val))
+
+
+    def _from_slider_to_val (self):
+        """ get widgets value from slider value (which is int)"""
+
+        min_val = self._lim[0]
+        max_val = self._lim[1]
+
+        s = (self._slider_val - self._slider_min) / (self._slider_max - self._slider_min)
+
+        return min_val + s * (max_val - min_val) 
 
 
 
@@ -1085,37 +1179,22 @@ class ToolButton (Widget, QToolButton):
     _width  = 24
     _height = 24 
 
-    # --- icons ---- 
-
-    # <a target="_blank" href="https://icons8.com/icon/15813/pfeil%3A-einklappen">Pfeil: Einklappen</a> 
-    # Icon von https://icons8.com
-    # Windows 11 icon style 
-    # color dark theme #C5C5C5, light theme #303030
-    # size 96x96
-
-    ICON_SETTINGS   = "settings" 
-    ICON_COLLAPSE   = "collapse" 
-    ICON_OPEN       = "open"     
-    ICON_EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
-    ICON_DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
-    ICON_ADD        = "add"      
-    ICON_NEXT       = "next"     
-    ICON_PREVIOUS   = "previous" 
-
     icon_cache = {                           # icon dict with an tuple of QIcons for light and dark mode 
-        ICON_SETTINGS: None,
-        ICON_COLLAPSE: None,
-        ICON_OPEN    : None,
-        ICON_EDIT    : None,            # https://icons8.com/icon/set/edit/family-windows--static
-        ICON_DELETE  : None,            # https://icons8.com/icon/set/delete/family-windows--static
-        ICON_ADD     : None,
-        ICON_NEXT    : None,
-        ICON_PREVIOUS: None,
+        icon.SETTINGS: None,
+        icon.COLLAPSE: None,
+        icon.OPEN    : None,
+        icon.EDIT    : None,            # https://icons8.com/icon/set/edit/family-windows--static
+        icon.DELETE  : None,            # https://icons8.com/icon/set/delete/family-windows--static
+        icon.ADD     : None,
+        icon.NEXT    : None,
+        icon.PREVIOUS: None,
+        icon.FIT     : None,
+        icon.RESETVIEW : None
         }
 
 
     @classmethod
-    def _get_icon(cls, icon_name, light_mode = True):
+    def _get_icon(cls, icon_name, light_mode = True) -> QIcon:
         """ load icon_name from file and store into class dict (cache) """
 
         if icon_name not in icon:
@@ -1326,8 +1405,8 @@ class ComboSpinBox (Field_With_Label, QComboBox):
         l_helper.setContentsMargins (QMargins(0, 0, 0, 0))
         l_helper.addWidget (self,stretch=2) 
 
-        self._wButton_prev = ToolButton (l_helper, icon=ToolButton.ICON_PREVIOUS,  set=self._on_pressed_prev, disable=self._prev_disabled)
-        self._wButton_next = ToolButton (l_helper, icon=ToolButton.ICON_NEXT, set=self._on_pressed_next, disable=self._next_disabled)
+        self._wButton_prev = ToolButton (l_helper, icon=icon.PREVIOUS,  set=self._on_pressed_prev, disable=self._prev_disabled)
+        self._wButton_next = ToolButton (l_helper, icon=icon.NEXT, set=self._on_pressed_next, disable=self._next_disabled)
         helper.setLayout (l_helper) 
 
         self._wButton_prev.setAutoRepeat(True)
@@ -1433,7 +1512,7 @@ class Test_Widgets (QMainWindow):
         super().__init__()
 
         self.setWindowTitle('Test all widgets')
-        self.setMinimumSize(QSize(600, 400))
+        self.setMinimumSize(QSize(700, 500))
 
         self.disabled = False
         l = QGridLayout()
@@ -1466,6 +1545,11 @@ class Test_Widgets (QMainWindow):
         FieldF (l,r,3,get=self.float_val, set=self.set_float, lim=(1,100), width=80, dec=4, step=1.0, disable=True, style=self.style)
         r += 1
         FieldF (l,r,0, lab="FieldF combi",get=-0.1234, set=self.set_float, width=80, lim=(-1,1), unit="m", step=0.1, dec=2, specialText="Automatic", style=style.GOOD)
+        r += 1
+        Label  (l,r,0,get="Slider")
+        Slider (l,r,1,get=-0.1234, set=self.set_float, width=80, lim=(-1,1))
+        Slider (l,r,2,get=self.float_val, set=self.set_float, lim=(1,100), disable=lambda: self.disabled, style=style.GOOD)
+        Slider (l,r,3,get=self.float_val()*100, set=self.set_float, lim=(100,1000), dec=0, width=80)
         r += 1
         Label  (l,r,0,get="ComboBox")
         ComboBox (l,r,1,options=["first","second"], set=self.set_str, width=80)
