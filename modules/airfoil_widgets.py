@@ -24,7 +24,7 @@ from base.panels            import Dialog
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
 from model.airfoil          import GEO_BASIC, usedAs
-from model.airfoil_examples import Root_Example
+from model.airfoil_examples import Example
 
 
 # ----- common methods -----------
@@ -35,8 +35,8 @@ def create_airfoil_from_path (pathFilename) -> Airfoil:
         Return None if the Airfoil couldn't be loaded  
     """
 
-    if pathFilename == "Root_Example":
-        airfoil = Root_Example()
+    if pathFilename == Example.fileName:
+        airfoil = Example()
     else:
         extension = os.path.splitext(pathFilename)[1]
         if extension == ".bez":
@@ -51,6 +51,7 @@ def create_airfoil_from_path (pathFilename) -> Airfoil:
     if airfoil.isLoaded:                      # could have been error in loading
         return airfoil
     else:
+        logger.error (f"Could not load '{pathFilename}'")
         return None 
 
 
@@ -93,7 +94,6 @@ class Airfoil_Open_Widget (Widget, QWidget):
     the new <Airfoil> as argument 
     """
 
-    _width  = 80
 
     def __init__(self, *args,
                  set = None,                # will set new airfoil
@@ -101,17 +101,28 @@ class Airfoil_Open_Widget (Widget, QWidget):
                  **kwargs):
         super().__init__(*args, set=set, **kwargs)
 
+        # build local HBox layout with the guest widget
+
+        l = QHBoxLayout(self)
+        l.setContentsMargins (QMargins(0, 0, 0, 0))
+        l.setSpacing (0)
+        l.setStretch (0,2)
+        if asIcon:
+            widget= ToolButton (l, icon=icon.OPEN, set=self._open, toolTip="Select airfoil")
+            self._width = widget._width             # self shall have the same fixed width
+        else: 
+            widget = Button    (l, text="&Open", width=self._width, set=self._open, toolTip="Select airfoil")
+        self.setLayout (l) 
+
+        # normal widget handling 
+
         self._get_properties ()
         self._set_Qwidget_static ()
-
-        if asIcon:
-            widget= ToolButton (None, icon=icon.OPEN, set=self._open, toolTip="Select airfoil")
-        else: 
-            widget = Button    (None, text="&Open", width=self._width, set=self._open, toolTip="Select airfoil")
+        self._set_Qwidget ()
 
         # assign widget to parent layout 
 
-        self._layout_add (widget)
+        self._layout_add ()
 
 
     def _open (self):
@@ -123,7 +134,10 @@ class Airfoil_Open_Widget (Widget, QWidget):
         if newPathFilename:                         # user pressed open
             airfoil = create_airfoil_from_path (newPathFilename)
             if airfoil is not None: 
-                self._set_value (airfoil)           # call parent with new airfoil 
+
+                #leave button callback and refresh in a few ms 
+                timer = QTimer()                                
+                timer.singleShot(10, lambda: self._set_value (airfoil))     # delayed emit 
 
 
 
@@ -157,16 +171,13 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._initial_dir = initialDir
         self._addEmpty = addEmpty is True 
 
-        self._get_properties ()
-        self._set_Qwidget_static ()
-
-        # build local HBox layout 
+        # build local HBox layout with the guest widget
 
         l = QHBoxLayout(self)
         l.setContentsMargins (QMargins(0, 0, 0, 0))
         l.setSpacing (1)
         l.setStretch (0,2)
-
+        l.setStretch (1,0)
         if asSpin: 
             self._combo = ComboSpinBox (l, get=self.airfoil_fileName, 
                                            set=self.set_airfoil_by_fileName, 
@@ -179,11 +190,17 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                                            signal=False)
         if withOpen:
             Airfoil_Open_Widget (l, asIcon=True, set=self.set_airfoil_from_open, signal=False)
-
         self.setLayout (l)
 
+        # normal widget handling 
+
+        self._get_properties ()
+        self._set_Qwidget_static ()
+
         # assign self to parent layout 
+
         self._layout_add ()
+
 
     def _get_properties (self): 
         """
@@ -199,7 +216,11 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     def airfoil (self) -> Airfoil:
         return self._val
     def set_airfoil (self, anAirfoil : Airfoil):
-        self._set_value (anAirfoil)           # call parent with new airfoil 
+
+        #leave button callback and refresh in a few ms 
+        timer = QTimer()                                
+        timer.singleShot(10, lambda: self._set_value (anAirfoil))    
+        # self._set_value (anAirfoil)           # call parent with new airfoil 
 
 
     def set_airfoil_from_open (self, anAirfoil : Airfoil):
@@ -227,7 +248,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         for aPathFileName in get_airfoil_files_sameDir (sameDir):
             if newFileName == os.path.basename(aPathFileName):
 
-                if os.path.isfile (aPathFileName) or newFileName == 'Root_Example':   # maybe it was deleted in meantime 
+                if os.path.isfile (aPathFileName) or newFileName == Example.fileName:   # maybe it was deleted in meantime 
                      
                     airfoil = create_airfoil_from_path (aPathFileName)
                     if airfoil is not None: 
@@ -249,6 +270,9 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
            
         for aFileName in get_airfoil_files_sameDir (sameDir):
             fileNames.append(os.path.basename(aFileName))
+
+        if self.airfoil is not None and self.airfoil.isExample:
+            fileNames.append(Example.fileName)
         return fileNames
 
 

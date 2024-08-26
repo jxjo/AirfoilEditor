@@ -14,26 +14,23 @@ All PlotItem, ViewBox settings are made 'outside' of an Artist
 see: https://pyqtgraph.readthedocs.io/en/latest/getting_started/plotting.html
 
 """
-from enum               import Enum, StrEnum
+from enum               import StrEnum
 
 import numpy as np
 
 import pyqtgraph as pg
-from pyqtgraph.Qt       import QtCore, QtWidgets
-from pyqtgraph.graphicsItems.ScatterPlotItem import Symbols
-from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
-from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
-# from pyqtgraph.graphicsItems.GraphicsItem import GraphicsItemChange
+from pyqtgraph.Qt       import QtCore
+from pyqtgraph.graphicsItems.ScatterPlotItem    import Symbols
+from pyqtgraph.graphicsItems.GraphicsObject     import GraphicsObject
+from pyqtgraph.GraphicsScene.mouseEvents        import MouseClickEvent
 
 
-
-from PyQt6.QtCore       import Qt, QTimer, QObject, QPoint
-from PyQt6.QtGui        import QColor, QFont, QPen
+from PyQt6.QtCore       import Qt, QTimer, QObject
+from PyQt6.QtGui        import QColor
 
 from base.common_utils  import *
 from base.math_util     import JPoint 
 from base.spline        import Bezier 
-
 
 
 class qcolors (StrEnum):
@@ -44,49 +41,6 @@ class qcolors (StrEnum):
 
 # -------- common methodes ------------------------
 
-# helper functions to position values and text 
-
-# def print_number (ax : plt.Axes, val, decimals, xy, xytext, color, alpha=0.8, asPercent=False):
-#     """ print a formatted numer at axes x,y with pixel offset xytext"""
-
-#     if asPercent: 
-#         text = f"{val:.{decimals}%}"  
-#     else: 
-#         text = f"{val:.{decimals}f}"  
-
-#     p = ax.annotate(text, xy=xy, xytext=xytext, va='top', ha='right',
-#                             xycoords='axes fraction', textcoords='offset points', fontsize='small',
-#                             color = color, alpha=alpha)
-#     return p
-
-
-# def print_text  (ax : plt.Axes , text, ha, xy, xytext, color, alpha=1.0, xycoords='data'):
-#     """ print a text at axes x,y with pixel offset xytext
-        
-#     xycoords: 'data' (default), 'axes fraction', ... 
-#         """
-#     p = ax.annotate(text, xy=xy, xytext=xytext, va='top', ha=ha,
-#                             xycoords=xycoords, textcoords='offset points', fontsize='small',
-#                             color = color, alpha=alpha)
-#     return p
-
-
-# def adjust_lightness(color, amount=1.0):
-#     """
-#     Lightens the given color by multiplying by the given amount.
-#     Input can be matplotlib color string, hex string, or RGB tuple.
-
-#     Examples:
-#     >> lighten_color('g', 0.3)
-#     >> lighten_color('#F034A3', 0.6)
-#     >> lighten_color((.3,.55,.1), 0.5)
-#     """    
-#     try:
-#         c = mc.cnames[color]
-#     except:
-#         c = color
-#     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-#     return colorsys.hls_to_rgb(c[0], max(0, min(1, amount * c[1])), c[2])
 
 
 def random_colors (nColors) -> list:
@@ -555,7 +509,6 @@ class Artist(QObject):
         data aware, semantic functionsto plot the data it is intended to do
 
         All ViewBox settings are made 'outside' of an Artist
-        The "Artists" to plot a wing object on a matplotlib axes
 
     """
 

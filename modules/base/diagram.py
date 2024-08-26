@@ -77,6 +77,7 @@ class Diagram (QWidget):
 
         self.setLayout (l_main)
 
+
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
         text = '' 
@@ -134,7 +135,7 @@ class Diagram (QWidget):
             item.refresh() 
 
         if self.section_panel:
-            self.section_panel.refresh()
+            self.section_panel.refresh_panels()
 
 
     def create_diagram_items ():
@@ -186,19 +187,28 @@ class Diagram (QWidget):
         nItems = len(self.diagram_items_visible)
 
         if nItems == 0: 
-            text = pg.TextItem("No diagram items selected ", anchor=(0.5,0))
-            self._message_vb.addItem (text)
-            self._message_vb.show()
-            text.setPos(0, 0)
+            self._message_show ("No diagram items selected ")
         # the GraphicsLayout gets confused, if all items were switched off
         #     and then switched on again - recalc layout
         if aBool: 
             if nItems == 1:
-                self._message_vb.clear()
-                self._message_vb.hide()
- 
-                self.adjustSize ()
+                self._message_clear()
 
+
+    def _message_show (self, aMessage):
+        """ shows aMessage in the midlle of the diagram """
+        text = pg.TextItem(aMessage, anchor=(0.5,0))
+        text.setPos(0, 0)
+        self._message_vb.addItem (text)
+        self._message_vb.show()
+
+
+    def _message_clear (self):
+        """ shows aMessage in the midlle of the diagram """
+        self._message_vb.clear()
+        self._message_vb.hide()
+
+        self.adjustSize ()
 
 
 
@@ -346,7 +356,7 @@ class Diagram_Item (pg.PlotItem):
             if self.section_panel.switched_on:
                 self.refresh_artists()          # first artist and then panel 
 
-            self.section_panel.refresh()
+            self.section_panel.refresh_panels()
 
         else: 
             self.refresh_artists() 

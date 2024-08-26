@@ -244,9 +244,6 @@ class Widget:
         else: 
             self._hidden_getter = None
 
-        # emit signal 
-
-        self._signal = signal if isinstance (signal, bool) else True  
 
         # style of widget 
 
@@ -256,6 +253,14 @@ class Widget:
         self._fontSize = fontSize
 
         self._toolTip = toolTip
+
+        # emit signal 
+
+        self._signal = signal if isinstance (signal, bool) else True  
+
+        # connect to parent refresh signal 
+
+
 
 
     def __repr__(self) -> str:
@@ -313,11 +318,11 @@ class Widget:
         """
 
         if self._while_setting:                           # avoid circular actions with refresh()
-            logger.debug (str(self) + " - refresh while set callback")
+            logger.warning (str(self) + " - refresh while set callback")
 
-            # leave callback and refresh in a few ms 
-            # timer = QTimer()                                
-            # timer.singleShot(10, self.refresh)     # delayed emit 
+            #leave callback and refresh in a few ms 
+            timer = QTimer()                                
+            timer.singleShot(10, self.refresh)     # delayed emit 
         
         else: 
             self._get_properties ()
@@ -444,14 +449,6 @@ class Widget:
         self._while_setting = True                  # avoid circular actions with refresh()
 
         # set value bei property and object 
-
-        if isinstance(self._setter, types.FunctionType):
-            qualname  = self._setter.__qualname__
-        elif callable(self._setter):        
-            qualname  = self._setter.__qualname__
-        else: 
-            qualname = ''
-        # logger.debug (f"{self} changed and set: {qualname} ({newVal})")
 
         if self._obj is not None and isinstance (self._setter, types.FunctionType):            
 
@@ -1179,22 +1176,10 @@ class ToolButton (Widget, QToolButton):
     _width  = 24
     _height = 24 
 
-    icon_cache = {                           # icon dict with an tuple of QIcons for light and dark mode 
-        icon.SETTINGS: None,
-        icon.COLLAPSE: None,
-        icon.OPEN    : None,
-        icon.EDIT    : None,            # https://icons8.com/icon/set/edit/family-windows--static
-        icon.DELETE  : None,            # https://icons8.com/icon/set/delete/family-windows--static
-        icon.ADD     : None,
-        icon.NEXT    : None,
-        icon.PREVIOUS: None,
-        icon.FIT     : None,
-        icon.RESETVIEW : None
-        }
+    cache = {}
 
-
-    @classmethod
-    def _get_icon(cls, icon_name, light_mode = True) -> QIcon:
+    @staticmethod
+    def _get_icon(icon_name : icon, light_mode = True) -> QIcon:
         """ load icon_name from file and store into class dict (cache) """
 
         if icon_name not in icon:
@@ -1202,24 +1187,35 @@ class ToolButton (Widget, QToolButton):
 
         # icon not loaded up to now  - load it 
 
-        if cls.icon_cache[icon_name] is None:
+        if ToolButton.cache.get (icon_name, None) is None:
+
+            # look both in ./icons and ./base/icons
             dirname = os.path.dirname(os.path.realpath(__file__))
+            if not os.path.isdir (os.path.join(dirname, 'icons')):
+                dirname = os.path.dirname(dirname)      # one dir up 
+
             image_path_light = os.path.join(dirname, 'icons', icon_name + '_light'+ '.png')
             image_path_dark  = os.path.join(dirname, 'icons', icon_name + '_dark'+ '.png')
 
             if not os.path.isfile (image_path_light):
-                raise ValueError (f"Icon '{image_path_light} not available")
+                logger.warning (f"Icon '{image_path_light} not available")
+                print (f"Icon '{image_path_light} not available")
             if not os.path.isfile (image_path_dark):
-                raise ValueError (f"Icon '{image_path_dark} not available")
+                logger.warning (f"Icon '{image_path_dark} not available")
 
-            icon_light = QIcon (image_path_light)
-            icon_dark  = QIcon (image_path_dark)
-            cls.icon_cache[icon_name] = (icon_light, icon_dark)
+            icon_light = QIcon (image_path_light) if os.path.isfile (image_path_light) else None
+            icon_dark  = QIcon (image_path_dark)  if os.path.isfile (image_path_dark)  else None
+            ToolButton.cache[icon_name] = (icon_light, icon_dark)
 
         if light_mode: 
-            return cls.icon_cache[icon_name][0]
+            ico = ToolButton.cache[icon_name][0]
         else: 
-            return cls.icon_cache[icon_name][1]
+            ico = ToolButton.cache[icon_name][1]
+
+        if ico is None: 
+            raise ValueError (f"Icon {icon_name} does not exist")
+        else: 
+            return ico 
 
 
     def __init__(self, *args, 
@@ -1238,14 +1234,14 @@ class ToolButton (Widget, QToolButton):
 
         self.clicked.connect(self._on_pressed)
 
-
+    @override
     def __repr__(self) -> str:
-        # overwritten to get a nice print string 
-
+        # get a nice print string 
         text = f" '{str(self._icon)}'" if self._icon is not None else ''
         return f"<{type(self).__name__}{text}>"
 
 
+    @override
     def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
@@ -1255,6 +1251,7 @@ class ToolButton (Widget, QToolButton):
             self.setDisabled(self._disabled)
 
 
+    @override
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
@@ -1264,12 +1261,16 @@ class ToolButton (Widget, QToolButton):
         if self._icon is not None: 
 
             icon_qt = self._get_icon (self._icon, self.light_mode)
-            self.setIcon (icon_qt)
-            self.setIconSize (QSize(16,16))
+            if icon_qt is not None: 
+                self.setIcon (icon_qt)
+                self.setIconSize (QSize(16,16))
+            else: 
+                pass
 
 
     def _on_pressed(self):
-      self._set_value (None)
+        """ slot: user pressed button"""
+        self._set_value (None)
 
 
 

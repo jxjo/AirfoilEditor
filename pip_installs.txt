@@ -3,7 +3,9 @@ rem activate virtual environment
 
 rem install packages 
 pip3 install pyqt6
-pip3 install numpy
+
+rem currently do not use numpy version > 1 
+pip3 install numpy==1.26.4
 pip3 install pyqtgraph 
 pip3 install termcolor
  

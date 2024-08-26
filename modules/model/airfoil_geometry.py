@@ -1705,6 +1705,8 @@ class Geometry ():
     def normalize (self) -> bool:
         """
         Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y
+
+        Returns True if normalization was made 
         """
 
         if self.isNormalized: return False
@@ -1717,6 +1719,9 @@ class Geometry ():
  
         except GeometryException:
             self._clear_xy()
+            return False 
+
+        return True 
     
 
     def _normalize (self) -> bool:
@@ -1838,8 +1843,8 @@ class Geometry ():
             upper2 = geo2.upper_new_x (geo1.upper.x)
             lower2 = geo2.lower_new_x (geo1.lower.x)
 
-            upper_x  = geo1.upper.x
-            lower_x  = geo1.lower.x
+            x_upper  = geo1.upper.x
+            x_lower  = geo1.lower.x
 
         else:
 

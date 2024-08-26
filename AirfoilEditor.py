@@ -86,9 +86,11 @@ class App_Main (QMainWindow):
 
     sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
     sig_airfoil_ref_changed     = pyqtSignal()          # reference airfoils changed 
-    sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
     sig_airfoil_target_changed  = pyqtSignal(bool)      # target airfoil changed 
     sig_bezier_changed          = pyqtSignal(linetype)  # new bezier during match bezier 
+
+    sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
+    sig_enter_bezier_match      = pyqtSignal()          # starting modify airfoil
 
 
     def __init__(self, airfoil_file, parentApp=None):
@@ -99,12 +101,21 @@ class App_Main (QMainWindow):
         #   self is not a subclass of ctk to support both modal and root window mode 
 
         if airfoil_file and (not os.path.isfile (airfoil_file)): 
-            QMessageBox.critical (self, self.name , f"\n'{airfoil_file}'\n\n... does not exist. Showing example airfoil.\n")
-            airfoil_file = "Root_Example"
+            QMessageBox.critical (self, self.name , f"\n'{airfoil_file}' does not exist.\nShowing example airfoil.\n")
+            airfoil_file = Example.fileName
+            self.move (200,150)                     # messagebox will move main window 
         elif airfoil_file is None : 
-            QMessageBox.information (self, self.name , f"\n'{airfoil_file}'\n\n... does not exist. Showing example airfoil.\n")
-            airfoil_file = "Root_Example"
+            airfoil_file = Example.fileName
 
+        # get icon either in modules or in icons 
+        file_dir = os.path.dirname(os.path.realpath(__file__))
+        ico_file = os.path.join (file_dir,'modules', 'AE_ico.ico')
+        if not os.path.isfile (ico_file): 
+            ico_file = os.path.join(file_dir,'icons', 'AE_ico.ico')
+        if not os.path.isfile (ico_file): 
+            logger.error (f"Icon file'{ico_file}' does not exist ")
+        else: 
+            self.setWindowIcon (QIcon(ico_file))
         self.setMinimumSize(QSize(1500, 700))
 
         self._airfoil = None                        # current airfoil 
@@ -163,8 +174,8 @@ class App_Main (QMainWindow):
 
         self._file_panel  = Panel (title="File panel")
         l_file = QHBoxLayout()
-        l_file.addWidget (Panel_View_Mode        (self, self.airfoil))
-        l_file.addWidget (Panel_Edit_Mode   (self, self.airfoil))
+        l_file.addWidget (Panel_File_View        (self, self.airfoil))
+        l_file.addWidget (Panel_File_Edit   (self, self.airfoil))
         l_file.setContentsMargins (QMargins(0, 0, 0, 0))
         self._file_panel.setLayout (l_file)
 
@@ -215,6 +226,8 @@ class App_Main (QMainWindow):
         self.set_airfoil (airfoil, silent=True)         # set without signal   
         self.set_edit_mode (True)       
 
+        self.sig_enter_edit_mode.emit()
+
 
     def modify_airfoil_finished (self, ok=False):
         """ modify airfoil finished - switch to view mode """
@@ -255,6 +268,8 @@ class App_Main (QMainWindow):
         self.set_airfoil (airfoil, silent=True)       # set_edit_mode will do refresh
         self.set_edit_mode (True)       
 
+        self.sig_enter_bezier_match.emit()
+
 
     def set_edit_mode (self, aBool : bool):
         """ switch edit / view mode """
@@ -262,14 +277,12 @@ class App_Main (QMainWindow):
         if self._edit_mode != aBool: 
             self._edit_mode = aBool
             signal_airfoil_changed ()               # signal new airfoil 
-            if aBool: 
-                self.sig_enter_edit_mode.emit()
         
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
-        self._data_panel.refresh()
-        self._file_panel.refresh()
+        self._data_panel.refresh_panels()
+        self._file_panel.refresh_panels()
 
 
     def airfoil (self) -> Airfoil:
@@ -386,7 +399,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     
 
 
-class Panel_View_Mode (Panel_Airfoil_Abstract):
+class Panel_File_View (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
     name = 'File'
@@ -400,7 +413,7 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
 
     @property
     def _isDisabled (self) -> bool:
-        """ overloaded: only enabled in edit mode of App """
+        """ override: always enabled """
         return False
     
 
@@ -409,13 +422,20 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
         # overloaded - do not react on self widget changes 
         pass
 
+    
+    def refresh (self):
+        super().refresh()
 
     def _init_layout (self): 
 
         l = QGridLayout()
         r,c = 0, 0 
-        Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False, signal=False,
-                                    get=self.airfoil, set=self.myApp.set_airfoil)
+        Airfoil_Select_Open_Widget (l,r,c, colSpan=2, withOpen=True, asSpin=False, signal=False,
+                                    get=self.airfoil, set=self.myApp.set_airfoil,
+                                    hide=lambda: self.airfoil().isExample)
+        r += 1
+        Airfoil_Open_Widget (l,r,c, colSpan=2, width=100, set=self.myApp.set_airfoil,
+                                    hide=lambda: not self.airfoil().isExample)
         r += 1
         SpaceR (l,r, height=5)
         r += 1
@@ -440,7 +460,7 @@ class Panel_View_Mode (Panel_Airfoil_Abstract):
  
 
 
-class Panel_Edit_Mode (Panel_Airfoil_Abstract):
+class Panel_File_Edit (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
     name = 'Edit Mode'
@@ -980,12 +1000,14 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def _on_enter_edit_mode (self):
         """ slot user started edit mode """
 
-        if self._edit_mode_first_time:
+        if self._edit_mode_first_time and not self.airfoils()[0].isBezierBased:
             # switch on show thickness/camber if it is the first time 
+            # - only for not bezier airfoils 
             self.line_artist.set_show (True)
             self.section_panel.refresh() 
+            self._edit_mode_first_time = False
 
-        self._edit_mode_first_time = False
+            logger.debug (f"{str(self)} on_enter_edit_mode")
 
 
     def setup_artists (self):
@@ -1156,6 +1178,8 @@ class Diagram_Airfoil (Diagram):
         self._airfoil_ref2 = None
         self._show_airfoils_ref = False 
 
+        self._bezier_match_first_time = True        # switch to show target airfoil 
+
         super().__init__(*args, **kwargs)
 
         self._viewPanel.setMinimumWidth(220)
@@ -1166,6 +1190,7 @@ class Diagram_Airfoil (Diagram):
         self.myApp.sig_airfoil_changed.connect (self._on_airfoil_changed)
         self.myApp.sig_airfoil_ref_changed.connect (self._on_airfoil_changed)
         self.myApp.sig_airfoil_target_changed.connect (self._on_target_changed)
+        self.myApp.sig_enter_bezier_match.connect (self._on_bezier_match)
 
     @property
     def myApp (self) -> App_Main:
@@ -1276,6 +1301,18 @@ class Diagram_Airfoil (Diagram):
         if refresh: 
             self.refresh()
 
+    def _on_bezier_match (self):
+        """ slot to handle bezier match changed signal -> show target airfoil"""
+
+        if self._bezier_match_first_time:
+                # swtich to show reference airfoils 
+                self._show_airfoils_ref = True
+                self.section_panel.set_switched_on (True, initial=True)
+                logger.debug (f"{str(self)} on_bezier_mtach")
+
+        self._bezier_match_first_time = False
+
+
 #--------------------------------
 
 if __name__ == "__main__":
@@ -1298,13 +1335,12 @@ if __name__ == "__main__":
     if args.airfoil: 
         airfoil_file = args.airfoil[0]
     else: 
-        if os.path.isdir(".\\test_airfoils"):
+        if os.path.isdir(".\\test_airfoilsaaaaa"):
             airfoil_dir   =".\\test_airfoils"
             airfoil_files = [os.path.join(airfoil_dir, f) for f in os.listdir(airfoil_dir) if os.path.isfile(os.path.join(airfoil_dir, f))]
             airfoil_files = [f for f in airfoil_files if (f.endswith('.dat') or f.endswith('.bez'))]       
             airfoil_files = sorted (airfoil_files, key=str.casefold)
             airfoil_file = airfoil_files[0]
-            NoteMsg ("No airfoil file as argument. Showing example airfoils in '%s'" %airfoil_dir)
         else:
             airfoil_file = None
 

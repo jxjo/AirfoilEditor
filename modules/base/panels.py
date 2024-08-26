@@ -90,9 +90,10 @@ class Panel (QWidget):
         """
         set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
 
-    def refresh (parent: QWidget):
+
+    def refresh_panels (parent: QWidget):
         """ refresh all child Panels self"""
-        p : Panel
+        p : Edit_Panel
         for p in parent.findChildren (Panel):
             p.refresh() 
 
@@ -163,7 +164,7 @@ class Edit_Panel (Panel):
         self.set_switched_on (self._switched_on, initial=True)
 
         # initial enabled/disabled state
-        self.set_disabeld_widgets (self._isDisabled) 
+        self.refresh_widgets (self._isDisabled) 
 
         # initial visibility 
         if not self._shouldBe_visible:         
@@ -243,10 +244,10 @@ class Edit_Panel (Panel):
 
         # refresh widgets of self only if visible 
         if self._shouldBe_visible:
-            self.set_disabeld_widgets (self._isDisabled)
+            self.refresh_widgets (self._isDisabled)
 
 
-    def set_disabeld_widgets (self, disable : bool):
+    def refresh_widgets (self, disable : bool):
         """ enable / disable all widgets of self - except Labels (color!) """
 
         w : Widget

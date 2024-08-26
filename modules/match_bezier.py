@@ -106,7 +106,7 @@ class Match_Bezier (Dialog):
 
         # init layout etc 
 
-        self._cancel_btn : QPushButton = None
+        self._stop_btn : QPushButton = None
         self._close_btn  : QPushButton = None 
         self._match_btn  : QPushButton = None 
 
@@ -122,11 +122,11 @@ class Match_Bezier (Dialog):
         self.move(pos_x, pos_y)
 
         # handle button (signals) 
-        self._cancel_btn.clicked.connect (self._cancel_thread)
+        self._stop_btn.clicked.connect (self._cancel_thread)
         self._close_btn.clicked.connect  (self.close)
         self._match_btn.clicked.connect  (self._start_matcher)
 
-        self._cancel_btn.setVisible (False) 
+        self._stop_btn.setVisible (False) 
         self._close_btn.setVisible (True) 
 
         # save curren background color for state dependand backgrounds
@@ -243,17 +243,19 @@ class Match_Bezier (Dialog):
     def _button_box (self):
         """ returns the QButtonBox with the buttons of self"""
 
-        buttons = QDialogButtonBox.StandardButton.Cancel | \
-                  QDialogButtonBox.StandardButton.Close
+        buttons = QDialogButtonBox.StandardButton.Close
         buttonBox = QDialogButtonBox(buttons)
 
-        self._cancel_btn = buttonBox.button(QDialogButtonBox.StandardButton.Cancel)
         self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
+
+        self._stop_btn = QPushButton ("Stop", parent=self)
+        self._stop_btn.setFixedWidth (100)
 
         self._match_btn = QPushButton ("Match Target", parent=self)
         self._match_btn.setFixedWidth (100)
 
         buttonBox.addButton (self._match_btn, QDialogButtonBox.ButtonRole.ActionRole)
+        buttonBox.addButton (self._stop_btn, QDialogButtonBox.ButtonRole.RejectRole)
 
         return buttonBox 
 
@@ -262,12 +264,12 @@ class Match_Bezier (Dialog):
         """ depending on matcher state, set button visibility """
 
         if self._matcher.isRunning():
-            self._cancel_btn.setVisible (True) 
+            self._stop_btn.setVisible (True) 
             self._match_btn.setVisible (False) 
             self._close_btn.setVisible (False) 
-            self._cancel_btn.setFocus ()
+            self._stop_btn.setFocus ()
         else: 
-            self._cancel_btn.setVisible (False) 
+            self._stop_btn.setVisible (False) 
             self._match_btn.setVisible (True) 
             self._close_btn.setVisible (True) 
             self._match_btn.setFocus ()

@@ -388,12 +388,13 @@ class Airfoil:
     @property
     def fileName (self):
         """ filename of airfoil like 'JX-GT-15.dat' """
-        if self.pathFileName is None: return 
+        if self.pathFileName is None: return '' 
         return os.path.basename(self.pathFileName) 
 
     def set_fileName (self, aFileName : str):
         """ set new fileName """
         if not aFileName: return 
+
         self.pathFileName = os.path.join (self.pathName, aFileName)
 
     def set_name_from_fileName (self):
@@ -413,7 +414,7 @@ class Airfoil:
         if not self.pathFileName is None: 
             return os.path.dirname(self.pathFileName) 
         else:
-            return None
+            return ''
 
 
     def load (self, fromPath = None):
@@ -512,13 +513,6 @@ class Airfoil:
         Returns: 
             newPathFileName from dir and destName 
         """        
-
-        # te gap name extension 
-        if te_gap is not None: 
-            teText = '_te=%.2f' % (te_gap * 100)                 # te thickness in percent
-        else: 
-            teText = ''
-        destName = destName + teText if destName else None 
 
         # determine (new) airfoils name  if not provided
         if not destName:
@@ -642,36 +636,6 @@ class Airfoil:
 
 
 
-    # def plot(self, x=None, y=None):
-    #     """
-    #     Plot the airfoil for testing 
-    #     Alternative coordinates can be supplied 
-    #     """
-    #     import matplotlib.pyplot as plt
-
-    #     if x is None: x = self.x
-    #     if y is None: y = self.y
-
-    #     if (x is None or len(x) == 0): 
-    #         ErrorMsg ("No coordinates to plot")
-    #         return 
-
-    #     fig = plt.figure()
-    #     plt.style.use('seaborn-v0_8-ticks')
-    #     fig.set_figwidth (fig.get_figwidth()  * 2 )     # enlarge window because of 4 plots
-    #     plt.subplots_adjust(left=0.10, bottom=0.10, right=0.95, top=0.90, wspace=None, hspace=None)
-
-    #     ax = fig.add_subplot(1, 1, 1)
-    #     ax.set_xlim([0.0, 1.0])
-    #     ax.set_xlabel('x')
-    #     ax.set_ylabel('y')
-    #     ax.axis('equal')
-    #     ax.set_title (self.name)
-    #     ax.grid()
-
-    #     ax.plot(x, y, '-', marker='o', lw=1, fillstyle='none', markersize=4)
-
-    #     plt.show()    
 
 
 #------------------------------------------------------
@@ -1131,35 +1095,6 @@ class Airfoil_Hicks_Henne(Airfoil):
 
 # ------------ test functions - to activate  -----------------------------------
 
-
-# def test_adapt_bezier (): 
-
-#     import matplotlib.pyplot as plt
-#     from airfoil_examples import Root_Example, Tip_Example
-
-#     fig, ax1 = plt.subplots(1, 1, figsize=(16,6))
-#     ax1.grid(True)
-#     ax1.axis("equal")
-
-#     air      = Airfoil_Bezier ()
-#     air_org  = Airfoil_Bezier ()
-#     air_seed = Root_Example()
-
-#     air.upper.adapt_bezier_to (air_seed.upper)
-#     air.lower.adapt_bezier_to (air_seed.lower)
-
-#     ax1.plot(air.x,      air.y,      label="Bezier optimized")
-#     ax1.plot(air_seed.x, air_seed.y, label=air_seed.name)
-#     ax1.plot(air_org.x,  air_org.y,  label="Bezier default")
-
-#     ax1.legend()
-#     plt.show()
-
-#     pass
-
-
-
 if __name__ == "__main__":
 
-    # test_adapt_bezier()
     pass  
