@@ -21,7 +21,7 @@ import pyqtgraph as pg                          # import PyQtGraph after PyQt6
 from pyqtgraph          import icons
 
 from base.panels        import Edit_Panel
-from base.widgets       import ToolButton, icon
+from base.widgets       import ToolButton, Icon
 
 
 class Diagram (QWidget):
@@ -243,7 +243,7 @@ class Diagram_Item (pg.PlotItem):
         ## Set up additional control button to reset range 
 
         self._vb_state_changed = False 
-        ico = ToolButton._get_icon (icon.RESETVIEW,light_mode = False)
+        ico = Icon (Icon.RESETVIEW,light_mode = False)
         self._resetBtn = pg.ButtonItem(pixmap=ico.pixmap(QSize(52,52)), width=16, parentItem=self)
         self._resetBtn.mode = 'auto'
         self._resetBtn.clicked.connect(self._resetBtn_clicked)

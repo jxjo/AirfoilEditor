@@ -27,10 +27,10 @@ from pathlib import Path
 import logging
 
 
-from PyQt6.QtCore           import QSize, QMargins
+from PyQt6.QtCore           import QSize, QMargins, QEvent
 from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QMessageBox, QStackedWidget 
 from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QStackedLayout
-from PyQt6.QtGui            import QShowEvent
+from PyQt6.QtGui            import QShowEvent, QCloseEvent
 
 # let python find the other modules in modules relativ to path of self  
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
@@ -107,16 +107,17 @@ class App_Main (QMainWindow):
         elif airfoil_file is None : 
             airfoil_file = Example.fileName
 
+
         # get icon either in modules or in icons 
-        file_dir = os.path.dirname(os.path.realpath(__file__))
-        ico_file = os.path.join (file_dir,'modules', 'AE_ico.ico')
-        if not os.path.isfile (ico_file): 
-            ico_file = os.path.join(file_dir,'icons', 'AE_ico.ico')
-        if not os.path.isfile (ico_file): 
-            logger.error (f"Icon file'{ico_file}' does not exist ")
-        else: 
-            self.setWindowIcon (QIcon(ico_file))
-        self.setMinimumSize(QSize(1500, 700))
+        
+        self.setWindowIcon (Icon ('AE_ico.ico'))
+
+        # init settings - get initial window size 
+
+        Settings.belongTo (__file__)
+        geometry = tuple (Settings().get('window_geometry', []))
+        Win_Util.set_initialWindowSize (self, size_frac= (0.7, 0.6), pos_frac=(0.1, 0.1),
+                                        geometry=geometry, maximize=False)
 
         self._airfoil = None                        # current airfoil 
         self._airfoil_sav = None                    # airfoil saved in edit_mode 
@@ -189,7 +190,7 @@ class App_Main (QMainWindow):
 
         # upper diagram area  
 
-        upper = Diagram_Airfoil (self, self.airfoils)
+        upper = Diagram_Airfoil (self, self.airfoils, welcome=self._welcome_message())
 
         # main layout with both 
 
@@ -350,6 +351,31 @@ class App_Main (QMainWindow):
         logger.debug (f"{str(self)} on airfoil changed")
 
         self.refresh()
+
+
+    def _welcome_message (self) -> str: 
+        """ returns a HTML welcome message which is shown on first start up """
+
+        # use Notepad++ or https://froala.com/online-html-editor/ to edit 
+
+        message = """<p><span style="font-size: 18pt; color: whiteSmoke">Welcome to the Airfoil</span> <span style="font-size: 18pt; color: deeppink">Editor</span></p>
+<p>
+This is an example airfoil as no airfoil was provided on startup. Try out the functionality with this example airfoil or <strong><span style="color: rgb(209, 213, 216);">Open&nbsp;</span></strong>an existing airfoil.
+</p>
+<p>
+You can view the properties of an airfoil like thickness distribution or camber, analyze the curvature of the surface or <strong><span style="color: rgb(209, 213, 216);">Modify</span></strong> the airfoils geometry.<br>
+<strong><span style="color: rgb(209, 213, 216);">New as Bezier</span></strong> allows to convert the airfoil into an airfoil which is based on two Bezier curves.<br>
+</p>    """
+        
+        return message
+
+
+    @override
+    def closeEvent  (self, event : QCloseEvent):
+        """ main window is closed """
+
+        Settings().set('window_geometry', tuple(self.geometry().getRect()))
+        event.accept()
 
 #-------------------------------------------------------------------------------
 # Single edit panels    
@@ -1010,6 +1036,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             logger.debug (f"{str(self)} on_enter_edit_mode")
 
 
+    @override
     def setup_artists (self):
         """ create and setup the artists of self"""
         
@@ -1023,6 +1050,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.bezier_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
 
 
+    @override
     def setup_viewRange (self):
         """ define view range of this plotItem"""
 
@@ -1038,6 +1066,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.showGrid(x=True, y=True)
 
 
+    @override
     def refresh_artists (self):
         self.airfoil_artist.refresh() 
         self.line_artist.refresh() 
@@ -1077,6 +1106,11 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         return self._section_panel 
 
+
+    def set_welcome (self, aText : str):
+        """ set a Welcome text into the first artist"""
+
+        self.airfoil_artist.set_welcome (aText)
 
 
 class Diagram_Item_Curvature (Diagram_Item):
@@ -1172,11 +1206,12 @@ class Diagram_Airfoil (Diagram):
     Diagram view to show/plot airfoil diagrams 
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, welcome=None, **kwargs):
 
         self._airfoil_ref1 = None
         self._airfoil_ref2 = None
         self._show_airfoils_ref = False 
+
 
         self._bezier_match_first_time = True        # switch to show target airfoil 
 
@@ -1184,6 +1219,10 @@ class Diagram_Airfoil (Diagram):
 
         self._viewPanel.setMinimumWidth(220)
         self._viewPanel.setMaximumWidth(220)
+
+        # set welcome message into the first diagram item 
+
+        self.diagram_items[0].set_welcome (welcome) 
 
         # connect to change signal 
 

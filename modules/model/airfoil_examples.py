@@ -56,8 +56,7 @@ class Example (Airfoil_Example_Abstract):
     """ An example airfoil - JX-GP-100"""
 
     name        = 'Example'
-    fileName    = 'Exmaple.Dat'                 # for ease of use as class variable
-
+    fileName    = 'Example.dat'
     def __init__(self, geometry  = GEO_BASIC ):
         super().__init__(geometry = geometry)
 

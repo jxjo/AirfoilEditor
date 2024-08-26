@@ -8,13 +8,15 @@ Common Utility functions for convinience
 import os
 from pathlib import Path
 import json
-import platform
-import logging
 from termcolor import colored
 
-# if platform.system() == 'Windows': 
-#     from colorama import just_fix_windows_console
-#     just_fix_windows_console()                          # colored terminal output for WIndows  
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+from PyQt6.QtWidgets    import QWidget
+from PyQt6.QtCore       import QSize 
+from PyQt6.QtGui        import QGuiApplication, QScreen
 
 
 #------------------------------------------------------------------------------
@@ -77,7 +79,7 @@ def NoteMsg(message):
 # Dictonary handling
 #------------------------------------------------------------------------------
 
-def fromDict(dict : dict, key, default='no default', msg=True):
+def fromDict(dict : dict, key, default='no default'):
     """
     returns a value from dict. If ky is not in the dict and there is no default value an error
     will be raised 
@@ -86,7 +88,6 @@ def fromDict(dict : dict, key, default='no default', msg=True):
         :dict: the dictonary to look in \n
         :key: the key to look for       \n
         :default: the value if key is missing
-        :msg: if True a log message will be printed when a value is missing 
     """
     preferedType = None
 
@@ -109,11 +110,11 @@ def fromDict(dict : dict, key, default='no default', msg=True):
     except:
         if default == 'no default':
             value = None
-            ErrorMsg('Mandatory parameter \'%s\' not specified'  % key)
+            logger.error ('Mandatory parameter \'%s\' not specified'  % key)
         else:
             value = default 
-            if value and msg:
-                NoteMsg('Parameter \'%s\' not specified, using default-value \'%s\'' % (key, str(value)))
+            if value:
+                logger.info ('Parameter \'%s\' not specified, using default-value \'%s\'' % (key, str(value)))
     return value
 
 
@@ -142,7 +143,7 @@ class Parameters ():
 
         self._paramFilePath = paramFilePath
 
-    def get_dataDict (self, msg=True):
+    def get_dataDict (self):
         """
         returns the complete dataDict of self
         """
@@ -154,12 +155,12 @@ class Parameters ():
                     dataDict = json.load(paramFile)
                     paramFile.close()
                 except ValueError as e:
-                    ErrorMsg("Invalid json expression '%s' in parameter file '%s'" % (e, self._paramFilePath))
+                    logger.error ("Invalid json expression '%s' in parameter file '%s'" % (e, self._paramFilePath))
                     paramFile.close()
                     dataDict = {}
             except:
-                if msg: 
-                    NoteMsg ("Paramter file %s not found" % self._paramFilePath)
+                logger.info (f"Paramter file {self._paramFilePath} not found")
+
         return dataDict
 
 
@@ -172,18 +173,18 @@ class Parameters ():
         try:
             paramFile = open(self._paramFilePath, 'w')
         except:
-            ErrorMsg("Failed to open file %s" % self._paramFilePath)
+            logger.error (f"Failed to open file {self._paramFilePath}")
             return False
 
         # save parameter dictionary to .json-file
         try:
             json.dump(aDict, paramFile, indent=2, separators=(',', ':'))
             paramFile.close()
-            InfoMsg ("%s saved to %s" % (dataName, self._paramFilePath))
+            logger.info (f"{dataName} saved to {self._paramFilePath}" )
             return True
 
         except ValueError as e:
-            ErrorMsg("Invalid json expression '%s'. Failed to save data to %s'" % (e, self._paramFilePath))
+            logger.error (f"Invalid json expression '{e}'. Failed to save data to '{self._paramFilePath}'")
             paramFile.close()
             return False
 
@@ -204,14 +205,13 @@ class Settings (Parameters):
 
 
     @classmethod
-    def belongTo (cls, belongsToPath, nameExtension='', fileExtension= '.json', msg=False):
+    def belongTo (cls, belongsToPath, nameExtension='', fileExtension= '.json'):
         """ static set of the file the settings will belong to 
         
         Args:
             :belongsToPath: file path of the python module self will belong to 
             :nameExtension: ... will be appended to appName - default '_settings'       \n
             :fileExtension: ... of the settings file - default 'json'       \n
-            :msg: True -an info message will be printed        \n
         """
 
         appName = os.path.splitext(os.path.basename(belongsToPath))[0]
@@ -226,24 +226,22 @@ class Settings (Parameters):
 
         cls.settingsFilePath = os.path.join(script_dir, paramFile)
 
-        if msg: 
-            InfoMsg ("Reading settings from %s" % cls.settingsFilePath)
+        logger.info (f"Reading settings from {cls.settingsFilePath}")
 
 
     @property
     def filePath (self): return self._paramFilePath
 
-    def get(self, key, default='no default', msg=False):
+    def get(self, key, default='no default'):
         """
         returns the value of 'key' from settings
 
         Args:
             :key: the key to look for       \n
             :default: the value if key is missing
-            :msg: if True a log message will be printed when a value is missing 
         """
-        dataDict = self.get_dataDict (msg=False)
-        return fromDict(dataDict, key, default=default, msg=msg)
+        dataDict = self.get_dataDict ()
+        return fromDict(dataDict, key, default=default)
 
     def set(self, key, value):
         """
@@ -353,3 +351,78 @@ class PathHandler():
                 else: 
                     aRelPath = newPath              # now we have a real real path 
             return os.path.normpath(os.path.join (self.workingDir, aRelPath))
+
+
+
+#------------------------------------------------------------------------------
+# Utils for QMainWindow and QDialog  
+#------------------------------------------------------------------------------
+
+class Win_Util: 
+    """ 
+    Utility functions for window handling 
+    """
+
+    @staticmethod
+    def set_initialWindowSize (qwindow : QWidget,
+                               size : tuple | None = None,
+                               size_frac : tuple | None = None,
+                               pos : tuple | None = None,
+                               pos_frac: tuple | None = None,
+                               geometry : tuple | None = None,
+                               maximize : bool = False):
+        """
+        Set size and position of Qt window in fraction of screensize or absolute
+        """
+
+        # geometry argument has priority 
+
+        if geometry: 
+            qwindow.setGeometry (*geometry)
+            return
+        else:  
+            x, y, width, height = None, None, None, None
+ 
+        # set size 
+
+        if size_frac: 
+
+            screen : QScreen = QGuiApplication.primaryScreen()
+            screenGeometry = screen.geometry()
+ 
+            width_frac, height_frac  = size_frac
+
+            if width_frac:   width  = screenGeometry.width()  * width_frac
+            if height_frac:  height = screenGeometry.height() * height_frac
+
+        if size:
+            width, height = size
+
+        width  = int (width)  if width  is not None else 1000
+        height = int (height) if height is not None else  700
+        
+        qwindow.setMinimumSize(QSize(width, height))
+
+        if maximize: 
+            qwindow.showMaximized()
+
+        # set position 
+
+        if pos: 
+            x, y = pos
+
+        if pos_frac: 
+
+            screen : QScreen = QGuiApplication.primaryScreen()
+            screenGeometry = screen.geometry()
+ 
+            x_frac = pos_frac[0]
+            y_frac = pos_frac[1]
+            if x_frac: x = screenGeometry.width()  * x_frac
+            if y_frac: y = screenGeometry.height() * y_frac
+
+        x = int (x) if x  is not None else 200
+        y = int (y) if y is not None else  200
+        
+        qwindow.move (x, y)
+

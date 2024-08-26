@@ -407,6 +407,8 @@ class Airfoil_Artist (Artist):
 
         self._show_panels = False                       # show ony panels 
         self._label_with_airfoil_type = False           # include airfoil type in label 
+        self._welcome_text = None                       # a HTML welcome text 
+        self._first_time  = True                        # to show welcome message 
 
         super().__init__ (*args, **kwargs)
 
@@ -438,6 +440,12 @@ class Airfoil_Artist (Artist):
             self._curLineLabel = aLineLabel
             if self.show:                       # view is switched on by user? 
                 self.plot ()
+
+
+    def set_welcome (self, aText):
+        """ set a welcome HTML text, which is schon the first time"""
+        self._welcome_text = aText 
+        self.plot()
 
 
     @property
@@ -482,7 +490,13 @@ class Airfoil_Artist (Artist):
                         subTitle = 'Based on 2 Bezier curves'
                     else: 
                         subTitle = None 
-                    self._plot_title (airfoil.name, subTitle=subTitle )
+
+                    if self._first_time and airfoil.isExample and self._welcome_text is not None:
+                        self._plot_text (self._welcome_text, color=QColor(self.COLOR_LEGEND), # fontSize=self.SIZE_NORMAL, 
+                                         parentPos=(0.05,0.), itemPos=(0.0,0), offset=(30,10))
+                        self._first_time = False
+                    else: 
+                        self._plot_title (airfoil.name, subTitle=subTitle )
 
                     label = None                                # suppress legend 
 
@@ -541,65 +555,6 @@ class Airfoil_Artist (Artist):
         """ returns the modifications made to the airfoil as long string"""
 
         return ', '.join(airfoil.geo.modifications)
-
-    # show Bezier or Hicks Henne shape function
-    # if self.show_shape_function:
-    #     if airfoil.isBezierBased: 
-    #         self.draw_bezier (airfoil, color)
-    #         if self.show_title: 
-    #             self._plot_title ('Bezier based', va='top', ha='left', wspace=0.05, hspace=0.05)
-
-    #     if airfoil.isHicksHenneBased: 
-    #         self.draw_hicksHenne (airfoil)
-    #         if self.show_title: 
-    #             self._plot_title ('Hicks Henne based', va='top', ha='left', wspace=0.05, hspace=0.05)
-
-
-    # def _print_name (self, iair, airfoil: Airfoil, color):
-    #     # print airfoil name in upper left corner , position relative in pixel 
-
-    #     xa = 0.96
-    #     ya = 0.96 
-    #     sc = get_font_size() / 10                    # scale pos depending on font size 
-
-    #     yoff = - iair * (12*sc) - 12
-    #     if self.label_with_airfoil_type:
-    #         name = f"{airfoil.usedAs}: {airfoil.name}" if airfoil.usedAs else f"{airfoil.name}" 
-    #     else:  
-    #         name = f"{airfoil.name}"
-
-    #     self._add (print_text   (self.ax, name, 'right', (xa,ya), (0, yoff), color, xycoords='axes fraction'))
-
-
-    # def _print_values (self, iair, airfoil: Airfoil, color):
-    #      # print thickness, camber in a little table in upper left corner , position relative in pixel 
- 
-    #     xa = 0.98
-    #     ya = 0.96 
-
-    #     sc = get_font_size() / 10                    # scale pos depending on font size 
-
-    #     # header 
-    #     if iair == 0: 
-    #         self._add (print_text (self.ax, 'Thickness', 'right', (xa,ya), (-85*sc, 0), cl_textHeader, xycoords='axes fraction'))
-    #         self._add (print_text (self.ax, 'Camber'   , 'right', (xa,ya), (-25*sc, 0), cl_textHeader, xycoords='axes fraction'))
-
-    #     # airfoil data 
-    #     if self.label_with_airfoil_type:  
-    #         name = f"{airfoil.usedAs}: {airfoil.name}" if airfoil.usedAs else f"{airfoil.name}" 
-    #     else:  
-    #         name = f"{airfoil.name}"
-
-    #     geo = airfoil.geo
-    #     xt, t = geo.maxThickX, geo.maxThick 
-    #     xc, c = geo.maxCambX,  geo.maxCamb
-
-    #     yoff = - iair * (12*sc) - (12*sc)
-    #     self._add (print_text   (self.ax, name, 'right', (xa,ya), (-135*sc, yoff), color, xycoords='axes fraction'))
-    #     self._add (print_number (self.ax,  t, 2, (xa,ya), (-100*sc, yoff), cl_text, asPercent=True))
-    #     self._add (print_number (self.ax, xt, 1, (xa,ya), ( -70*sc, yoff), cl_text, asPercent=True))
-    #     self._add (print_number (self.ax,  c, 2, (xa,ya), ( -30*sc, yoff), cl_text, asPercent=True))
-    #     self._add (print_number (self.ax, xc, 1, (xa,ya), (   0*sc, yoff), cl_text, asPercent=True))
 
 
 

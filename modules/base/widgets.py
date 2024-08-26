@@ -33,28 +33,6 @@ from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon
 # enums   
 #-------------------------------------------------------------------------------
 
-class icon (StrEnum):
-    """ available icons"""
-    
-    # --- icons ---- 
-
-    # <a target="_blank" href="https://icons8.com/icon/15813/pfeil%3A-einklappen">Pfeil: Einklappen</a> 
-    # Icon von https://icons8.com
-    # Windows 11 icon style 
-    # color dark theme #C5C5C5, light theme #303030
-    # size 96x96
-
-    SETTINGS   = "settings" 
-    COLLAPSE   = "collapse" 
-    OPEN       = "open"     
-    EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
-    DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
-    ADD        = "add"      
-    NEXT       = "next"     
-    PREVIOUS   = "previous" 
-    FIT        = "fit" 
-    RESETVIEW  = "resetView" 
-
 
 class button_style (Enum):
     """ button styles for Button widget"""
@@ -85,6 +63,91 @@ class size (Enum):
 
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
 ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
+
+
+
+
+#-------------------------------------------------------------------------------
+# Handle icons    
+#-------------------------------------------------------------------------------
+
+class Icon (QIcon):
+    """ 
+    Subclass of QIcon to handle named icons and provide an icon cache 
+
+    Handle icon for light and dark mode.
+
+    """
+    
+    # --- icons ---- 
+
+    # <a target="_blank" href="https://icons8.com/icon/15813/pfeil%3A-einklappen">Pfeil: Einklappen</a> 
+    # Icon von https://icons8.com
+    # Windows 11 icon style 
+    # color dark theme #C5C5C5, light theme #303030
+    # size 96x96
+
+    SETTINGS   = "settings" 
+    COLLAPSE   = "collapse" 
+    OPEN       = "open"     
+    EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
+    DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
+    ADD        = "add"      
+    NEXT       = "next"     
+    PREVIOUS   = "previous" 
+    FIT        = "fit" 
+    RESETVIEW  = "resetView" 
+
+    cache = {}
+
+    subdirs = ["icons", "..\\icons", ".."]
+
+    @staticmethod
+    def _get_icon(icon_name : str, light_mode = None) -> QIcon:
+        """ load icon_name from file and store into class dict (cache) """
+
+        ico = None
+
+        if light_mode == True:
+            icon_filename = icon_name + '_light' + '.png'
+        elif light_mode == False:
+            icon_filename = icon_name + '_dark' + '.png'
+        else: 
+            icon_filename = icon_name
+        
+        if Icon.cache.get (icon_filename, None) is not None:
+            # icon in cache 
+            ico =  Icon.cache.get (icon_filename)
+
+        else: 
+            # try to find in one of the subdirs relativ to __file__
+            file_dir = os.path.dirname(os.path.realpath(__file__))
+
+            for subdir in Icon.subdirs:
+                icon_dir = os.path.join(file_dir, subdir)
+                icon_path = os.path.join(icon_dir, icon_filename)
+
+                # found icon file 
+                if os.path.isfile (icon_path):
+                    ico = QIcon (icon_path)
+                    Icon.cache [icon_filename] = ico 
+                    break 
+
+        if ico is None:                 
+            # icon file doe not exist 
+            logger.error (f"Icon '{icon_filename} not found in {Icon.subdirs}")
+
+        return ico 
+
+
+
+    def __init__ (self, aName, light_mode=None):
+        """ override - allow an Icon name to create a QIcon"""
+
+        if isinstance (aName, str): 
+            super().__init__ (Icon._get_icon (aName, light_mode=light_mode))
+        else:
+            super().__init__(aName) 
 
 
 
@@ -1176,55 +1239,13 @@ class ToolButton (Widget, QToolButton):
     _width  = 24
     _height = 24 
 
-    cache = {}
-
-    @staticmethod
-    def _get_icon(icon_name : icon, light_mode = True) -> QIcon:
-        """ load icon_name from file and store into class dict (cache) """
-
-        if icon_name not in icon:
-            raise ValueError (f"Icon name '{icon_name} not available")
-
-        # icon not loaded up to now  - load it 
-
-        if ToolButton.cache.get (icon_name, None) is None:
-
-            # look both in ./icons and ./base/icons
-            dirname = os.path.dirname(os.path.realpath(__file__))
-            if not os.path.isdir (os.path.join(dirname, 'icons')):
-                dirname = os.path.dirname(dirname)      # one dir up 
-
-            image_path_light = os.path.join(dirname, 'icons', icon_name + '_light'+ '.png')
-            image_path_dark  = os.path.join(dirname, 'icons', icon_name + '_dark'+ '.png')
-
-            if not os.path.isfile (image_path_light):
-                logger.warning (f"Icon '{image_path_light} not available")
-                print (f"Icon '{image_path_light} not available")
-            if not os.path.isfile (image_path_dark):
-                logger.warning (f"Icon '{image_path_dark} not available")
-
-            icon_light = QIcon (image_path_light) if os.path.isfile (image_path_light) else None
-            icon_dark  = QIcon (image_path_dark)  if os.path.isfile (image_path_dark)  else None
-            ToolButton.cache[icon_name] = (icon_light, icon_dark)
-
-        if light_mode: 
-            ico = ToolButton.cache[icon_name][0]
-        else: 
-            ico = ToolButton.cache[icon_name][1]
-
-        if ico is None: 
-            raise ValueError (f"Icon {icon_name} does not exist")
-        else: 
-            return ico 
-
-
     def __init__(self, *args, 
                  icon : str =None, 
                  signal = False,            # default is not to signal change 
                  **kwargs):
         super().__init__(*args, signal=signal,**kwargs)
 
-        self._icon = icon                           # icon name 
+        self._icon_name = icon                           # icon name 
 
         self._get_properties ()
         self._set_Qwidget_static ()
@@ -1237,7 +1258,7 @@ class ToolButton (Widget, QToolButton):
     @override
     def __repr__(self) -> str:
         # get a nice print string 
-        text = f" '{str(self._icon)}'" if self._icon is not None else ''
+        text = f" '{str(self._icon_name)}'" if self._icon_name is not None else ''
         return f"<{type(self).__name__}{text}>"
 
 
@@ -1258,9 +1279,9 @@ class ToolButton (Widget, QToolButton):
 
         self.setAutoRaise (True)
 
-        if self._icon is not None: 
+        if self._icon_name is not None: 
 
-            icon_qt = self._get_icon (self._icon, self.light_mode)
+            icon_qt = Icon (self._icon_name, self.light_mode)
             if icon_qt is not None: 
                 self.setIcon (icon_qt)
                 self.setIconSize (QSize(16,16))
@@ -1406,8 +1427,8 @@ class ComboSpinBox (Field_With_Label, QComboBox):
         l_helper.setContentsMargins (QMargins(0, 0, 0, 0))
         l_helper.addWidget (self,stretch=2) 
 
-        self._wButton_prev = ToolButton (l_helper, icon=icon.PREVIOUS,  set=self._on_pressed_prev, disable=self._prev_disabled)
-        self._wButton_next = ToolButton (l_helper, icon=icon.NEXT, set=self._on_pressed_next, disable=self._next_disabled)
+        self._wButton_prev = ToolButton (l_helper, icon=Icon.PREVIOUS,  set=self._on_pressed_prev, disable=self._prev_disabled)
+        self._wButton_next = ToolButton (l_helper, icon=Icon.NEXT, set=self._on_pressed_next, disable=self._next_disabled)
         helper.setLayout (l_helper) 
 
         self._wButton_prev.setAutoRepeat(True)
@@ -1574,8 +1595,8 @@ class Test_Widgets (QMainWindow):
         Label  (l,r,0,get="ToolButtons")
         l_tools = QHBoxLayout()
         l_tools.setSpacing (1)
-        for icon_style in icon: 
-            ToolButton (l_tools, icon=icon_style, set=self.toggle_disabled)
+        ToolButton (l_tools, icon=Icon.OPEN, set=self.toggle_disabled)
+        ToolButton (l_tools, icon=Icon.SETTINGS, set=self.toggle_disabled)
         l_tools.addStretch(2)
         l.addLayout (l_tools,r,1, 1, 2)
 
