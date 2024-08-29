@@ -86,8 +86,8 @@ class Test_Airfoil:
 
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.2903509, 0.076502)
-        assert geo.camber._get_maximum()    == (0.4153706, 0.0170043)
+        assert geo.thickness._get_maximum() == (0.2903512, 0.076502)
+        assert geo.camber._get_maximum()    == (0.4152478, 0.0170127)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08

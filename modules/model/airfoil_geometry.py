@@ -213,10 +213,10 @@ class Panelling_Spline:
            
             # new distribution for upper and lower - points = +1 
             # ensuring LE is at uLe_target 
-            u_cos_upper = self._get_panel_distribution (nPan_upper+1)
+            u_cos_upper = self._get_panel_distribution (nPan_upper)
             u_new_upper = np.abs (np.flip(u_cos_upper) -1) * uLe_target
 
-            u_cos_lower = self._get_panel_distribution (nPan_lower+1)
+            u_cos_lower = self._get_panel_distribution (nPan_lower)
             u_new_lower = u_cos_lower * (1- uLe_target) + uLe_target
 
         else: 
@@ -2428,6 +2428,7 @@ class Geometry_Splined (Geometry):
             # repanel could lead to a slightly different le 
             super()._normalize()               # do not do iteration in self.normalize       
             # self._pop_xy ()
+            self._reset()
             self._changed (Geometry.Mod.REPANEL)
 
         except GeometryException: 
@@ -2444,7 +2445,10 @@ class Geometry_Splined (Geometry):
 
         # reset le of spline 
 
-        self._uLe = None 
+        # self._uLe = None 
+
+        if len(self.spline.u) != len(self.x):
+            pass
 
         # re(calculate) panel distribution of spline so LE will be at uLe and iLe  
         u_new = self.panelling.new_u (self.spline.u, self.iLe, self.uLe,
@@ -2455,6 +2459,8 @@ class Geometry_Splined (Geometry):
 
         self._x = np.round (x, 10)
         self._y = np.round (y, 10)
+
+        self._reset_spline()
 
         return True
 
