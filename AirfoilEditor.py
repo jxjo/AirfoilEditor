@@ -362,8 +362,7 @@ class App_Main (QMainWindow):
 
         message = """
 <p><span style="background-color: black">
-<span style="font-size: 18pt; color: whiteSmoke; ">Welcome to the Airfoil</span> <span style="font-size: 18pt; color: deeppink">Editor</span>
-</span></p>
+<span style="font-size: 18pt; color: lightgray; ">Welcome to the <strong>Airfoil<span style="color:deeppink">Editor</span></strong></span></p>
 <p><span style="background-color: black">
 This is an example airfoil as no airfoil was provided on startup. Try out the functionality with this example airfoil or <strong><span style="color: silver;">Open&nbsp;</span></strong>an existing airfoil.
 </span></p>
@@ -1463,7 +1462,7 @@ if __name__ == "__main__":
     if args.airfoil: 
         airfoil_file = args.airfoil[0]
     else: 
-        if os.path.isdir(".\\test_airfoils"):
+        if os.path.isdir(".\\test_airfoilsss"):
             airfoil_dir   =".\\test_airfoils"
             airfoil_files = [os.path.join(airfoil_dir, f) for f in os.listdir(airfoil_dir) if os.path.isfile(os.path.join(airfoil_dir, f))]
             airfoil_files = [f for f in airfoil_files if (f.endswith('.dat') or f.endswith('.bez'))]       
