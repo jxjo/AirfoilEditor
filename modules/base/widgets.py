@@ -273,11 +273,13 @@ class Widget:
             raise ValueError (f"{self}: arguments 'obj' and 'get' can't be mixed together")
 
         if isinstance (prop, property) and obj is not None: 
-            self._obj    = obj 
-            self._getter = prop                                     # property
-            self._setter = self._get_setter_of_property (obj, prop) # function
+            self._obj    = obj
+            self._getter = self._get_getter_of_property (obj, prop)  # function out of property                                    # property
+            self._setter = self._get_setter_of_property (obj, prop)  # function out of property 
+            self._prop   = prop if self._getter else None
         else:
             self._obj    = None 
+            self._prop   = None 
             self._getter = get                                      # bound method or None 
             self._setter = set 
 
@@ -381,13 +383,20 @@ class Widget:
         """
 
         if self._while_setting:                           # avoid circular actions with refresh()
-            logger.warning (str(self) + " - refresh while set callback")
+            logger.debug (str(self) + " - refresh while set callback")
 
             #leave callback and refresh in a few ms 
             timer = QTimer()                                
-            timer.singleShot(10, self.refresh)     # delayed emit 
+            timer.singleShot(2, lambda: self.refresh())     # delayed emit 
         
         else: 
+
+            # In case of using 'property' for get/set:
+            #   the object could have been changed (e.g. subclass like Geometry_Bezier)
+            if self._obj is not None and self._prop is not None:            
+                self._getter = self._get_getter_of_property (self._obj, self._prop)  
+                self._setter = self._get_setter_of_property (self._obj, self._prop)  
+
             self._get_properties ()
 
             # overwrite self disable state 
@@ -400,6 +409,9 @@ class Widget:
             # logger.debug (f"{self} - refresh (disable={disable} -> {self._disabled})")
 
             self._set_Qwidget (refresh=True)
+
+
+
 
 
     def set_enabled (self, aBool : bool):
@@ -479,19 +491,50 @@ class Widget:
 
 
 
-    def  _get_setter_of_property (self, obj , obj_property : property) : #  -> function | None:
-        """ build a setter function like 'set_thickness(...)' out of the (get) property"""
+    def  _get_getter_of_property (self, obj , obj_property : property | str) : 
+        """ 
+        build a property function like 'thickness' out of the (get) property
+        for the object 'obj.' (ensuring 'obj' has this property)
+        'obj_property' can either be a class property or a string representing the property
+        """
 
         o = obj() if callable (obj) else obj            # obj either bound methed or object
 
-        prop_name = obj_property.fget.__name__ 
-        set_name  = "set_" + prop_name  
-        setter = None         
+        if isinstance (obj_property, property):
+            prop_name = obj_property.fget.__name__ 
+        else: 
+            prop_name = obj_property
 
+        if hasattr (o.__class__, prop_name):
+            getter = getattr (o.__class__, prop_name)
+        else: 
+            getter = None   
+            logger.debug (f"{self} setter function '{prop_name} does not exist in {o.__class__}")
+
+        return getter 
+
+
+
+    def  _get_setter_of_property (self, obj , obj_property : property | str) : 
+        """ 
+        build a setter function like 'set_thickness(...)' out of the (get) property
+        for the object 'obj.'
+        'obj_property' can either be a class property or a string representing the property
+        """
+
+        o = obj() if callable (obj) else obj            # obj either bound methed or object
+
+        if isinstance (obj_property, property):
+            prop_name = obj_property.fget.__name__ 
+        else: 
+            prop_name = obj_property
+
+        set_name  = "set_" + prop_name  
+      
         if hasattr (o.__class__, set_name):
             setter = getattr (o.__class__, set_name)
-
-        if setter is None:  
+        else: 
+            setter = None   
             logger.debug (f"{self} setter function '{set_name} does not exist in {o.__class__}")
 
         return setter 
@@ -1099,6 +1142,16 @@ class Slider (Widget, QSlider):
 
         self._get_properties ()
 
+        # if value is an Integer (dec=0) take lim as sliders internal min, max
+        # to achieve a step size of "1"
+        if dec==0 and self._lim:
+            self._slider_min = self._lim[0] 
+            self._slider_max = self._lim[1]    
+        else:
+            self._slider_min = 0                    # will be translated fore and back 
+            self._slider_max = 100             
+
+
         self._set_Qwidget_static ()
         self._set_Qwidget ()
 
@@ -1153,8 +1206,13 @@ class Slider (Widget, QSlider):
 
         self._val = max (min_val, self._val)
         self._val = min (max_val, self._val)
+        rel_val   = (self._val - min_val) / (max_val - min_val)
 
-        return int (100 * (self._val - min_val) / (max_val - min_val))
+        min_slider = self._slider_min
+        max_slider = self._slider_max
+
+        slider_val = min_slider + rel_val * (max_slider - min_slider)
+        return int (slider_val)
 
 
     def _from_slider_to_val (self):
@@ -1508,14 +1566,14 @@ class ComboSpinBox (Field_With_Label, QComboBox):
 
 
 class SpaceC:
-    def __init__ (self, layout : QGridLayout, col, width=20, stretch=1): 
+    def __init__ (self, layout : QGridLayout, col, width : int =20, stretch=1): 
         """ sets properties of a space column in a grid layout  """
         if isinstance (layout, QGridLayout):
             layout.setColumnMinimumWidth (col,width)
             layout.setColumnStretch (col,stretch)
 
 class SpaceR:
-    def __init__ (self, layout : QGridLayout, row, height=10, stretch=1): 
+    def __init__ (self, layout : QGridLayout, row, height : int = 10, stretch=1): 
         """ sets properties of a space row in a grid layout  """
         if isinstance (layout, QGridLayout):
             layout.setRowMinimumHeight (row,height)

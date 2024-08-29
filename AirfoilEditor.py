@@ -37,7 +37,7 @@ sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 
 from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
-from model.airfoil_geometry import Geometry
+from model.airfoil_geometry import Geometry, Geometry_Bezier
 
 from base.common_utils      import * 
 from base.panels            import Panel, Edit_Panel
@@ -47,7 +47,7 @@ from base.diagram           import *
 from airfoil_widgets        import * 
 from airfoil_artists        import *
 
-from match_bezier           import Match_Bezier, Matcher
+from airfoil_dialogs        import Match_Bezier, Matcher, Repanel
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -87,37 +87,17 @@ class App_Main (QMainWindow):
     sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
     sig_airfoil_ref_changed     = pyqtSignal()          # reference airfoils changed 
     sig_airfoil_target_changed  = pyqtSignal(bool)      # target airfoil changed 
-    sig_bezier_changed          = pyqtSignal(linetype)  # new bezier during match bezier 
+
+    sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
+    sig_new_panelling           = pyqtSignal()          # new panelling
 
     sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
-    sig_enter_bezier_match      = pyqtSignal()          # starting modify airfoil
+    sig_enter_bezier_match      = pyqtSignal()          # starting bezier match dialog 
+    sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
 
 
     def __init__(self, airfoil_file, parentApp=None):
         super().__init__()
-
-        # called from another App? Switch to modal window
-        #
-        #   self is not a subclass of ctk to support both modal and root window mode 
-
-        if airfoil_file and (not os.path.isfile (airfoil_file)): 
-            QMessageBox.critical (self, self.name , f"\n'{airfoil_file}' does not exist.\nShowing example airfoil.\n")
-            airfoil_file = Example.fileName
-            self.move (200,150)                     # messagebox will move main window 
-        elif airfoil_file is None : 
-            airfoil_file = Example.fileName
-
-
-        # get icon either in modules or in icons 
-        
-        self.setWindowIcon (Icon ('AE_ico.ico'))
-
-        # init settings - get initial window size 
-
-        Settings.belongTo (__file__)
-        geometry = tuple (Settings().get('window_geometry', []))
-        Win_Util.set_initialWindowSize (self, size_frac= (0.7, 0.6), pos_frac=(0.1, 0.1),
-                                        geometry=geometry, maximize=False)
 
         self._airfoil = None                        # current airfoil 
         self._airfoil_sav = None                    # airfoil saved in edit_mode 
@@ -131,6 +111,27 @@ class App_Main (QMainWindow):
 
         self.parentApp = parentApp
         self.initial_geometry = None                # window geometry at the ebginning
+
+        # get icon either in modules or in icons 
+        
+        self.setWindowIcon (Icon ('AE_ico.ico'))
+
+        # init settings - get initial window size 
+
+        Settings.belongTo (__file__, nameExtension=None, fileExtension= '.settings')
+        geometry = Settings().get('window_geometry', [])
+        maximize = Settings().get('window_maximize', False)
+        Win_Util.set_initialWindowSize (self, size_frac= (0.75, 0.65), pos_frac=(0.1, 0.1),
+                                        geometry=geometry, maximize=maximize)
+
+        # init airfoil 
+
+        if airfoil_file and (not os.path.isfile (airfoil_file)): 
+            QMessageBox.critical (self, self.name , f"\n'{airfoil_file}' does not exist.\nShowing example airfoil.\n")
+            airfoil_file = Example.fileName
+            self.move (200,150)                     # messagebox will move main window 
+        elif airfoil_file is None : 
+            airfoil_file = Example.fileName
 
         self.set_airfoil (create_airfoil_from_path(airfoil_file), silent=True)
 
@@ -222,7 +223,7 @@ class App_Main (QMainWindow):
         except:                                         # bezier or hh does not allow new geometry
             airfoil  = self._airfoil.asCopy (nameExt=None)
         airfoil.useAsDesign()                           # will have another visualization 
-        airfoil.normalize()                     
+        airfoil.normalize(just_basic=True)              # just normalize coordinates - not spline         
 
         self.set_airfoil (airfoil, silent=True)         # set without signal   
         self.set_edit_mode (True)       
@@ -251,7 +252,9 @@ class App_Main (QMainWindow):
         airfoil.set_isModified (False)                  # just sanity
 
         self.set_airfoil (airfoil, silent=True) 
-        self.set_airfoil_target (None, refresh=False)   # set_edit_mode will do refresh
+
+        if self.airfoil_target is not None:             # modify Bezier could have target
+            self.set_airfoil_target (None, refresh=False)   
 
         self.set_edit_mode (False)       
 
@@ -263,10 +266,9 @@ class App_Main (QMainWindow):
         self._airfoil_sav = self._airfoil
         airfoil = Airfoil_Bezier.onAirfoil (self._airfoil)
         airfoil.useAsDesign()                           # will have another visualization 
-        airfoil.normalize()                     
 
         self.set_airfoil_target (self._airfoil_sav, refresh=False) # current will be reference for Bezier
-        self.set_airfoil (airfoil, silent=True)       # set_edit_mode will do refresh
+        self.set_airfoil (airfoil, silent=True)         # set_edit_mode will do refresh
         self.set_edit_mode (True)       
 
         self.sig_enter_bezier_match.emit()
@@ -277,7 +279,7 @@ class App_Main (QMainWindow):
 
         if self._edit_mode != aBool: 
             self._edit_mode = aBool
-            signal_airfoil_changed ()               # signal new airfoil 
+            signal_airfoil_changed ()                   # signal new airfoil 
         
 
     def refresh(self):
@@ -358,14 +360,21 @@ class App_Main (QMainWindow):
 
         # use Notepad++ or https://froala.com/online-html-editor/ to edit 
 
-        message = """<p><span style="font-size: 18pt; color: whiteSmoke">Welcome to the Airfoil</span> <span style="font-size: 18pt; color: deeppink">Editor</span></p>
-<p>
-This is an example airfoil as no airfoil was provided on startup. Try out the functionality with this example airfoil or <strong><span style="color: rgb(209, 213, 216);">Open&nbsp;</span></strong>an existing airfoil.
-</p>
-<p>
-You can view the properties of an airfoil like thickness distribution or camber, analyze the curvature of the surface or <strong><span style="color: rgb(209, 213, 216);">Modify</span></strong> the airfoils geometry.<br>
-<strong><span style="color: rgb(209, 213, 216);">New as Bezier</span></strong> allows to convert the airfoil into an airfoil which is based on two Bezier curves.<br>
-</p>    """
+        message = """
+<p><span style="background-color: black">
+<span style="font-size: 18pt; color: whiteSmoke; ">Welcome to the Airfoil</span> <span style="font-size: 18pt; color: deeppink">Editor</span>
+</span></p>
+<p><span style="background-color: black">
+This is an example airfoil as no airfoil was provided on startup. Try out the functionality with this example airfoil or <strong><span style="color: silver;">Open&nbsp;</span></strong>an existing airfoil.
+</span></p>
+<p><span style="background-color: black">
+You can view the properties of an airfoil like thickness distribution or camber, analyze the curvature of the surface or <strong><span style="color: silver;">Modify</span></strong> the airfoils geometry.<br>
+<strong><span style="color: silver;">New as Bezier</span></strong> allows to convert the airfoil into an airfoil which is based on two Bezier curves.
+</span></p>
+<p><span style="background-color: black">
+<span style="color: lightskyblue;">Tip: </span>In Windows/Linux assign the file extension '.dat' to the Airfoil Editor to open an airfoil with a double click.
+</span></p>
+    """
         
         return message
 
@@ -374,7 +383,8 @@ You can view the properties of an airfoil like thickness distribution or camber,
     def closeEvent  (self, event : QCloseEvent):
         """ main window is closed """
 
-        Settings().set('window_geometry', tuple(self.geometry().getRect()))
+        Settings().set('window_geometry',  self.normalGeometry ().getRect())
+        Settings().set('window_maximize', self.isMaximized())
         event.accept()
 
 #-------------------------------------------------------------------------------
@@ -407,6 +417,8 @@ class Panel_Airfoil_Abstract (Edit_Panel):
 
         super()._set_panel_layout (layout=layout)
         for w in self.widgets:
+            w.sig_changed.connect (self._on_airfoil_widget_changed)
+        for w in self.header_widgets:
             w.sig_changed.connect (self._on_airfoil_widget_changed)
 
 
@@ -477,8 +489,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         r += 1
         SpaceR (l,r, stretch=4)
         r += 1
-        Button (l,r,c, text="Exit", width=100, 
-                set=self.myApp.close)
+        Button (l,r,c, text="Exit", width=100, set=self.myApp.close)
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
@@ -504,7 +515,8 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Field (l,r,c, colSpan=3, obj=self.airfoil, prop=Airfoil.fileName, disable=True)
+        Field (l,r,c, colSpan=3, get=lambda: self.airfoil().fileName, 
+                                 set=self.airfoil().set_fileName, disable=True)
         r += 1
         SpaceR (l,r)
         l.setRowStretch (r,2)
@@ -516,7 +528,6 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
         r += 1
         Button (l,r,c,  text="Cancel",  width=100, 
                         set=lambda : self.myApp.modify_airfoil_finished(ok=False))
-        r += 1
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
@@ -534,32 +545,39 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Field  (l,r,c, lab="Name", obj=self.airfoil, prop=Airfoil.name, width=(100,None), colSpan=4)
+        Field  (l,r,c, lab="Name", width=(100,None), colSpan=4,
+                obj=self.airfoil, prop=Airfoil.name)
 
         r,c = 1, 0 
-        FieldF (l,r,c, lab="Thickness", obj=self.geo, prop=Geometry.max_thick, width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="Thickness", width=70, unit="%", step=0.1,
+                obj=self.geo, prop=Geometry.max_thick,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="Camber", obj=self.geo, prop=Geometry.max_camb, width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="Camber", width=70, unit="%", step=0.1,
+                obj=self.geo, prop=Geometry.max_camb,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="TE gap", obj=self.geo, prop=Geometry.te_gap, width=70, unit="%", step=0.1)
+        FieldF (l,r,c, lab="TE gap", width=70, unit="%", step=0.1,
+                obj=self.geo, prop=Geometry.te_gap)
 
         r,c = 1, 2 
         SpaceC (l,c)
         c += 1 
-        FieldF (l,r,c, lab="at", obj=self.geo, prop=Geometry.max_thick_x, width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="at", width=70, unit="%", step=0.1,
+                obj=self.geo, prop=Geometry.max_thick_x,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="at", obj=self.geo, prop=Geometry.max_camb_x, width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="at", width=70, unit="%", step=0.1,
+                obj=self.geo, prop=Geometry.max_camb_x,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="LE radius", obj=self.geo, prop=Geometry.le_radius, width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="LE radius", width=70, unit="%", step=0.1,
+                obj=self.geo, prop=Geometry.le_radius,
                 disable=self._disabled_for_airfoil)
         r += 1
         SpaceR (l,r)
         r += 1
-        Label  (l,r,0,colSpan=4, get=lambda : "Data " + self.geo().description, style=style.COMMENT)
+        Label  (l,r,0,colSpan=4, get=lambda : "Geometry " + self.geo().description, style=style.COMMENT)
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (3,60)
@@ -572,50 +590,82 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         return self.airfoil().isBezierBased
 
 
+
 class Panel_Panels (Panel_Airfoil_Abstract):
     """ Panelling information """
 
     name = 'Panels'
     _width  = None # (260, None)
 
+    def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
+        """ add Widgets to header layout"""
+
+        l_head.addStretch(1)
+
+        # repanel airfoil - currently Bezier is not supported
+        Button (l_head, text="&Repanel", width=80,
+                set=self._repanel, 
+                hide=lambda: not self.myApp.edit_mode or self.airfoil().isBezierBased)
+
+
     def _init_layout (self):
 
         l = QGridLayout()
 
         r,c = 0, 0 
-        FieldI (l,r,c, lab="No of panels", obj=self.geo, prop=Geometry.nPanels, disable=True, width=70, style=self._style_panel)
+        FieldI (l,r,c, lab="No of panels", disable=True, width=70, style=self._style_panel,
+                get=lambda: self.geo().nPanels, )
         r += 1
-        FieldF (l,r,c, lab="Angle at LE", obj=self.geo, prop=Geometry.panelAngle_le, width=70, dec=1, unit="°", style=self._style_angle)
+        FieldF (l,r,c, lab="Angle at LE", width=70, dec=1, unit="°", style=self._style_angle,
+                obj=self.geo, prop=Geometry.panelAngle_le)
         SpaceC (l,c+2, width=10, stretch=0)
         Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().iLe}")
-                        # hide=lambda: self.airfoil().isBezierBased)
         r += 1
-        FieldF (l,r,c, lab="Angle min", get=lambda: self.geo().panelAngle_min[0], width=70, dec=1, unit="°")
-        # Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo().panelAngle_min[1]}",
-        #                 hide=lambda: self.airfoil().isBezierBased)
+        FieldF (l,r,c, lab="Angle min", width=70, dec=1, unit="°",
+                get=lambda: self.geo().panelAngle_min[0], )
         r += 1
         SpaceR (l,r,height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT)
+        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
 
         l.setColumnMinimumWidth (0,80)
-        # l.setColumnStretch (0,1)
         l.setColumnStretch (c+4,1)
         l.setRowStretch    (r-1,2)
         
         return l
  
+    def _repanel (self): 
+        """ run repanel dialog""" 
+
+        self.myApp.sig_enter_panelling.emit()
+
+        dialog = Repanel (self.myApp, self.geo())    
+        dialog.sig_new_panelling.connect (self.myApp.sig_new_panelling.emit)
+        dialog.exec()     # delayed emit 
+
+        geo : Geometry_Bezier = self.geo()
+        geo.repanel (just_finalize=True)       # finalize modifications  
+
+        self.myApp.sig_airfoil_changed.emit()
+     
+    def refresh(self):
+        super().refresh()
+
+    def _on_panelling_finished (self, aSide : Side_Airfoil_Bezier):
+        """ slot for panelling (dialog) finished - reset airfoil"""
+
+
 
     def _style_panel (self):
         """ returns style.WARNING if panels not in range"""
-        if self.geo().nPanels < 160 or self.geo().nPanels > 260: 
+        if self.geo().nPanels < 120 or self.geo().nPanels > 260: 
             return style.WARNING
         else: 
             return style.NORMAL
 
     def _style_angle (self):
         """ returns style.WARNING if panel angle too blunt"""
-        if self.geo().panelAngle_le > 172.0: 
+        if self.geo().panelAngle_le > 175.0: 
             return style.WARNING
         else: 
             return style.NORMAL
@@ -625,14 +675,14 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         text = []
         minAngle, _ = self.geo().panelAngle_min
 
-        if self.geo().panelAngle_le > 172.0: 
+        if self.geo().panelAngle_le > 175.0: 
             text.append("- Panel angle at LE (%d°) is too blunt" %(self.geo().panelAngle_le))
         if minAngle < 150.0: 
             text.append("- Min. angle of two panels is < 150°")
         if self.geo().panelAngle_le == 180.0: 
             text.append("- Leading edge has 2 points")
-        if self.geo().nPanels < 140 or self.geo().nPanels > 260: 
-            text.append("- No of panels should be > 140 and < 260")
+        if self.geo().nPanels < 120 or self.geo().nPanels > 260: 
+            text.append("- No of panels should be > 120 and < 260")
         
         text = '\n'.join(text)
         return text 
@@ -690,7 +740,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         r += 1
         SpaceR (l,r, height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT)
+        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
 
         l.setColumnMinimumWidth (0,80)
         # l.setColumnStretch (0,1)
@@ -722,7 +772,9 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
 
         text = []
         if not self.geo().isNormalized:
-            if not self.geo().isLe_closeTo_le_real:
+            if self.geo().isSplined and not self.geo().isLe_closeTo_le_real:
+                text.append("- Leading edge of spline is not at 0,0")
+            else: 
                 text.append("- Leading edge is not at 0,0")
         if self.geo().te[0] != 1.0 or self.geo().te[2] != 1.0 : 
            text.append("- Trailing edge is not at 1")
@@ -845,7 +897,19 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     @property
     def target_lower (self) -> Line:
         if self.target_airfoil: return self.target_airfoil.geo.lower
-        
+
+    @property
+    def target_curv_le (self) -> float:
+        return self.target_airfoil.geo.curvature.best_around_le
+
+    @property
+    def max_curv_te_upper (self) -> Line:
+        if self.target_airfoil: return self.target_airfoil.geo.curvature.at_upper_te
+
+    @property
+    def max_curv_te_lower (self) -> Line:
+        if self.target_airfoil: return self.target_airfoil.geo.curvature.at_lower_te
+
 
     def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
         """ add Widgets to header layout"""
@@ -910,15 +974,17 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
             c += 1
             r += 1
             Button (l,r,c  , text="Match...", width=70,
-                            set=lambda: self._match_bezier (self.upper, self.target_upper))
+                            set=lambda: self._match_bezier (self.upper, self.target_upper, 
+                                                            self.target_curv_le, self.max_curv_te_upper))
             r += 1
             Button (l,r,c  , text="Match...", width=70,
-                            set=lambda: self._match_bezier (self.lower, self.target_lower))
+                            set=lambda: self._match_bezier (self.lower, self.target_lower, 
+                                                            self.target_curv_le, self.max_curv_te_lower))
             c = 0 
             r += 1
             SpaceR (l,r, height=5, stretch=2)
             r += 1
-            Label  (l,r,0, get=self._messageText, colSpan=5, height=(40, None), style=style.COMMENT)
+            Label  (l,r,0, get=self._messageText, colSpan=7, height=(40, None), style=style.COMMENT)
             l.setColumnMinimumWidth (0,70)
             l.setColumnStretch (c+6,2)
 
@@ -929,15 +995,21 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         return l
  
 
-    def _match_bezier (self, aSide : Side_Airfoil_Bezier, aTarget_line : Line ): 
+    def _match_bezier (self, aSide : Side_Airfoil_Bezier, aTarget_line : Line, 
+                            target_curv_le: float, max_curv_te : float  ): 
         """ run match bezier (dialog) """ 
 
         matcher = Match_Bezier (self.myApp, aSide, aTarget_line,
-                                target_curv_le = self.target_airfoil.geo.curvature.best_around_le)
+                                target_curv_le = target_curv_le,
+                                max_curv_te = max_curv_te)
 
         matcher.sig_new_bezier.connect     (self.myApp.sig_bezier_changed.emit)
         matcher.sig_match_finished.connect (self._on_match_finished)
-        matcher.exec ()
+
+        # leave button press callback 
+        timer = QTimer()                                
+        timer.singleShot(10, lambda: matcher.exec())     # delayed emit 
+       
 
 
     def _on_match_finished (self, aSide : Side_Airfoil_Bezier):
@@ -951,7 +1023,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
     def _on_airfoil_target_changed (self,*_):
         """ slot for changed target airfoil"""        
-        self.refresh()                              # refresh will also set new layout 
+        self.refresh(reinit_layout=True)              # refresh will also set new layout 
 
 
     def _norm2 (self, side: Side_Airfoil_Bezier): 
@@ -976,7 +1048,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         if s_upper_dev == style.WARNING or s_lower_dev == style.WARNING:
            text.append("- Deviation is quite high")
         if s_upper_le == style.WARNING or s_lower_le == style.WARNING:
-           text.append("- Curvature at LE differs too much from target")
+           text.append(f"- Curvature at LE differs too much from target ({int(self._target_curv_le)})")
         if s_upper_te == style.WARNING or s_lower_te == style.WARNING:
            text.append("- Curvature at TE is quite high")
 
@@ -1005,7 +1077,10 @@ class Diagram_Item_Airfoil (Diagram_Item):
         super().__init__(*args, **kwargs)
 
         self.myApp.sig_bezier_changed.connect  (self.bezier_artist.refresh_from_side)
+        self.myApp.sig_new_panelling.connect   (self.airfoil_artist.refresh)
+
         self.myApp.sig_enter_edit_mode.connect (self._on_enter_edit_mode)
+        self.myApp.sig_enter_panelling.connect (self._on_enter_panelling)
 
 
     @property
@@ -1034,6 +1109,17 @@ class Diagram_Item_Airfoil (Diagram_Item):
             self._edit_mode_first_time = False
 
             logger.debug (f"{str(self)} on_enter_edit_mode")
+
+
+    def _on_enter_panelling (self):
+        """ slot user started panelling dialog - show panels """
+
+        # switch on show panels , switch off thciknes, camber 
+        self.airfoil_artist.set_show_points (True)
+        self.line_artist.set_show (False)
+        self.section_panel.refresh() 
+
+        logger.debug (f"{str(self)} _on_enter_panelling")
 
 
     @override
@@ -1297,7 +1383,7 @@ class Diagram_Airfoil (Diagram):
         
             l = QGridLayout()
             r,c = 0, 0
-            Field (l,r,c, get=lambda: self.airfoil_target_name, disable=True,
+            Field (l,r,c, width=155, get=lambda: self.airfoil_target_name, disable=True,
                           hide=lambda: self.airfoil_target is None)
             r += 1
             Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False,
@@ -1339,12 +1425,15 @@ class Diagram_Airfoil (Diagram):
         
         if refresh: 
             self.refresh()
+        elif self.section_panel is not None:                    # refresh just section panel
+            self.section_panel.refresh()
+
 
     def _on_bezier_match (self):
         """ slot to handle bezier match changed signal -> show target airfoil"""
 
         if self._bezier_match_first_time:
-                # swtich to show reference airfoils 
+                # switch to show reference airfoils 
                 self._show_airfoils_ref = True
                 self.section_panel.set_switched_on (True, initial=True)
                 logger.debug (f"{str(self)} on_bezier_mtach")
@@ -1374,7 +1463,7 @@ if __name__ == "__main__":
     if args.airfoil: 
         airfoil_file = args.airfoil[0]
     else: 
-        if os.path.isdir(".\\test_airfoilsaaaaa"):
+        if os.path.isdir(".\\test_airfoils"):
             airfoil_dir   =".\\test_airfoils"
             airfoil_files = [os.path.join(airfoil_dir, f) for f in os.listdir(airfoil_dir) if os.path.isfile(os.path.join(airfoil_dir, f))]
             airfoil_files = [f for f in airfoil_files if (f.endswith('.dat') or f.endswith('.bez'))]       

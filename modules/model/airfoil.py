@@ -6,16 +6,16 @@
 
 """
 import os
-from typing             import Type
-from enum               import Enum, StrEnum
-from pathlib            import Path
+from typing                 import Type
+from enum                   import StrEnum
+from pathlib                import Path
 
 import numpy as np
 
-from base.math_util          import * 
-from base.common_utils       import * 
+from base.math_util         import * 
+from base.common_utils      import * 
 from model.airfoil_geometry import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
-from model.airfoil_geometry import Line, Side_Airfoil_Bezier, linetype
+from model.airfoil_geometry import Line, Side_Airfoil_Bezier
 
 import logging
 logger = logging.getLogger(__name__)
@@ -585,24 +585,14 @@ class Airfoil:
             file.close()
 
 
-    def repanel (self): 
-        """
-        Repanel self with the current values of nPointsNew, le_ and te_bunch."""
-
-        # new panel distribution for upper and lower 
-        if not self.geo.isBasic: 
-            self.geo.repanel (nPanels= self.nPanelsNew, 
-                              le_bunch= self.le_bunch, te_bunch = self.te_bunch)
-        else: 
-            raise ValueError (f"{self} may not be repaneled")
-
-
-    def normalize (self):
+    def normalize (self, just_basic=False):
         """
         Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y
-        Returns True/False if normalization was done  
+        Returns True/False if normalization was done 
+
+        'just_basic' will only normalize coordinates - not based on spline 
         """
-        return self.geo.normalize()  
+        return self.geo.normalize(just_basic=just_basic)  
 
 
     def do_strak (self, airfoil1 : 'Airfoil', airfoil2 : 'Airfoil', blendBy : float,
@@ -674,7 +664,7 @@ class Airfoil_Bezier(Airfoil):
     @staticmethod
     def onAirfoil (anAirfoil : Airfoil):
         """
-        Alternate constructor for new Airfoil based on dictionary 
+        Alternate constructor for new Airfoil based on another airfoil 
 
         The new Bezier airfoil will just have a rough estimation for the Bezier curves,
         which have to be optimized with 'match bezier'
@@ -801,14 +791,14 @@ class Airfoil_Bezier(Airfoil):
                     line = line.lower()
                     if "start" in line:
                         if "top" in line: 
-                            side = linetype.UPPER
+                            side = Line.Type.UPPER
                         else:
-                            side = linetype.LOWER 
+                            side = Line.Type.LOWER 
                         px, py = [], []
                     elif "end" in line:
                         if not px : raise ValueError("Start line missing")
-                        if "top"    in line and side == linetype.LOWER: raise ValueError ("Missing 'Bottom End'")  
-                        if "bottom" in line and side == linetype.UPPER: raise ValueError ("Missing 'Bottom Top'") 
+                        if "top"    in line and side == Line.Type.LOWER: raise ValueError ("Missing 'Bottom End'")  
+                        if "bottom" in line and side == Line.Type.UPPER: raise ValueError ("Missing 'Bottom Top'") 
                         self.set_newSide_for (side, px,py)
                     else:     
                         splitline = line.strip().split()
@@ -1060,18 +1050,18 @@ class Airfoil_Hicks_Henne(Airfoil):
                 elif "start" in line_low:
 
                     if "top" in line_low: 
-                        side = linetype.UPPER
+                        side = Line.Type.UPPER
                     else:
-                        side = linetype.LOWER 
+                        side = Line.Type.LOWER 
                     hhs = []
 
                 elif "end" in line_low:
 
                     if not side : raise ValueError("Start line missing")
-                    if "top"    in line_low and side == linetype.LOWER: raise ValueError ("Missing 'Bottom End'")  
-                    if "bottom" in line_low and side == linetype.UPPER: raise ValueError ("Missing 'Bottom Top'") 
+                    if "top"    in line_low and side == Line.Type.LOWER: raise ValueError ("Missing 'Bottom End'")  
+                    if "bottom" in line_low and side == Line.Type.UPPER: raise ValueError ("Missing 'Bottom Top'") 
 
-                    if side == linetype.LOWER:
+                    if side == Line.Type.LOWER:
                         bot_hhs = hhs
                     else: 
                         top_hhs = hhs 

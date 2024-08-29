@@ -1,4 +1,4 @@
-# Airfoil Editor
+# Airfoil Editor v2.0 beta
 
 
 > [!NOTE]
@@ -6,13 +6,15 @@
 
 ---
 
-The AirfoilEditor shows detailed information of an airfoil and allows to modify its main geometry parameters. 
+The AirfoilEditor is on the one hand a fast airfoil viewer tool and on the other hand a powerful editor to modify the geomtery of an airfoil.
 
-![PC2](images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
 
-Main features: 
+![AE](images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
 
-* View an airfoil and browse through the airfoils of its subdirectory
+Main features:  
+
+* View an air
+foil and browse through the airfoils of its subdirectory
 * View the curvature of the airfoil surface
 * Repanel and normalize the airfoil
 * Modify the geometry parameters thickness, camber and their high points 
@@ -36,11 +38,13 @@ The spline interpolation is used to find the position of the 'real' leading edge
 
 For thickness and camber geometry operations the airfoil (spline) is splitted into two new splines representing thickness and camber distribution. For moving the highpoint of either thickness or camber a mapping spline for the airfoil coordinates is used quite similar to the approach implemented in xfoil. After these operations the airfoil is rebuild out of thickness and camber. 
 
+![Modify](images/Modify.png "Screenshot of Modifying Airfoil")
+
 Repaneling is based on a modified cosinus distribution of the airfoil points on the arc of the spline. This differs from the xfoil approach but the repanel shows are 'nice' behaviour in aero calculation. 
 
 As an exmaple for the modification functionality of the app, the dialog for repaneling is shown:  
 
-![Repanel](images/AirfoilEditor_repanel.png "Screenshot of Repaneling within AirfoilEditor")
+![Repanel](images/Repanel.png "Screenshot of Repaneling within AirfoilEditor")
 <sup>Dialog for repaneling of an airfoil. Recommendations are given for 'healthy' panel angles.  </sup>
 </p>
 
@@ -50,6 +54,7 @@ On of the major views on an airfoil in the Airfoil Editor is the curvature of th
 
 As the curvature changes from very high values at the leading edge to very low values towards the trailing edge, a logarithmic scale can be applied in the diagram to improve overview.  
 
+![Curvature](images/Curvature.png "Screenshot of Curvature")
 
 ## Bezier based airfoils 
 
@@ -83,10 +88,10 @@ The 'Match' function performs a best match of the Bezier curve to an existing ai
 - align the curvature of the Bezier curve at leading and trailing to the targets curvature.  
 
 
-![PC2](images/AirfoilEditor_bezier.png "Screenshot of Bezier curve definition")
+![AE](images/Match_Bezier.png "Screenshot of Bezier curve definition")
 <sup>Dialog for Bezier curve approximation. In this example the upper Bezier curve having 6 control points was 'matched' to the target airfoil at 4 controil points (Leading andtrailing edge are fixed). </sup>
 
-
+<!---
 ## Hicks-Henne based airfoils 
 
 Hicks-Henne “bump” functions are applied to a base aerofoil and add a linear combination of single-signed sine functions to deform its upper and lower surfaces to create a new aerofoil shape.
@@ -96,6 +101,8 @@ The Airfoil Editor allows to visualize the Hicks-Henne functions which were appl
 
 ![PC2](images/AirfoilEditor_Hicks-Henne.png "Screenshot of Hicks-Henne based airfoil")
 <sup>Visualization of the Hicks-Henne bump functions, which were applied to the upper and lower side of the airfoil</sup>
+
+-->
 
 ##  Install
 
@@ -108,12 +115,11 @@ Download python sources from https://github.com/jxjo/AirfoilEditor/releases or C
 and Install 
 
 ```
+pip3 install pyqt6
 pip3 install numpy
-pip3 install matplotlib
-pip3 install customtkinter
+pip3 install pyqtgraph 
 pip3 install termcolor
-pip3 install colorama
-pip3 install ezdxf
+
 ```
 
 > [!TIP]

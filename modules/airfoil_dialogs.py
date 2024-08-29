@@ -3,7 +3,7 @@
 
 """  
 
-Match a Bezier curve to a Side of an airfoil 
+Extra functions (dialogs) to modify airfoil  
 
 """
 
@@ -22,20 +22,136 @@ from base.widgets           import *
 from base.panels            import Dialog 
 from base.spline            import Bezier 
 
-from model.airfoil_geometry import Side_Airfoil_Bezier, Line, linetype
+from model.airfoil          import Airfoil
+from model.airfoil_geometry import Side_Airfoil_Bezier, Line
+from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
 
 
-# ----- common methods -----------
+class Repanel (Dialog):
+    """ Dialog to repanel an airfoil"""
+
+    _width  = 460
+    _height = 240
+
+    name = "Repanel Airfoil"
+
+    sig_new_panelling    = pyqtSignal ()
+
+    # ---- static members for external use 
+
+
+    def __init__ (self, parent : QWidget, 
+                  geo : Geometry_Splined): 
+
+        self._geo = geo
+
+        # init layout etc 
+
+        super().__init__ (parent=parent)
+
+        # enable custom window hint, disable (but not hide) close button
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+
+        # move window a little to the side 
+        p_center = parent.rect().center()               # parent should be main window
+        pos_x = p_center.x() + 400
+        pos_y = p_center.y() + 250            
+        self.move(pos_x, pos_y)
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r = 0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        Label  (l,r,0, colSpan=5, get="Adjust No of Panels and the extra density at leading and trailing edge")
+        r += 1
+        SpaceR (l, r, stretch=0, height=10) 
+        r += 1 
+        Label  (l,r,1, get="Panels", align=Qt.AlignmentFlag.AlignRight)
+        FieldI (l,r,2, width=60, step=10, lim=(40, 400),
+                        obj=self._geo.panelling, prop=Panelling_Spline.nPanels,
+                        style=self._le_bunch_style)
+        r += 1 
+        Slider (l,r,1, colSpan=3, width=150, align=Qt.AlignmentFlag.AlignHCenter,
+                        lim=(40, 400), dec=0, # step=10,
+                        obj=self._geo.panelling, prop=Panelling_Spline.nPanels)
+        # r += 1
+        Label  (l,r,0, get="LE bunch")
+        Label  (l,r,4, get="TE bunch")
+
+        r += 1
+        FieldF (l,r,0, width=60, step=0.02, lim=(0, 1),
+                        obj=self._geo.panelling, prop=Panelling_Spline.le_bunch,
+                        style=self._le_bunch_style)
+        Slider (l,r,1, width=100, lim=(0, 1),
+                        obj=self._geo.panelling, prop=Panelling_Spline.le_bunch)
+
+        Slider (l,r,3, width=100, lim=(0, 1),
+                        obj=self._geo.panelling, prop=Panelling_Spline.te_bunch)
+        FieldF (l,r,4, width=60, step=0.02, lim=(0, 1),
+                        obj=self._geo.panelling, prop=Panelling_Spline.te_bunch)
+        r += 1
+        Label  (l,r,0, colSpan=4, get=self._le_bunch_message, style=style.COMMENT)        
+        SpaceC (l,5, width=5)
+        r += 1
+        SpaceR (l, r, height=5) 
+
+        return l
+
+    def _le_bunch_message (self): 
+        angle = self._geo.panelAngle_le
+        if angle > 175.0: 
+            text = "Panel angle at LE is too blunt. Decrease panels or LE bunch" 
+        elif angle < 150.0: 
+            text = "Panel angle at LE is too sharp. Increase panels or LE bunch"
+        else:
+            text = ""
+        return text 
+    
+
+    def _le_bunch_style (self): 
+        angle = self._geo.panelAngle_le
+        if angle > 175.0 or angle < 150.0: 
+            return style.WARNING
+        else: 
+            return style.NORMAL
+
+
+    @override
+    def _on_widget_changed (self):
+        """ slot a input field changed - repanel and refresh"""
+
+        self.refresh()
+        self._geo._repanel ()
+
+        self.sig_new_panelling.emit()               # inform parent -> diagram update
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
+
+
+
+# ----- Match a Bezier curve to a Side of an airfoil  -----------
 
 class Match_Bezier (Dialog):
     """ Main handler represented as little tool window"""
 
     _width  = 350
-    _height = 220
+    _height = 270
 
     name = "Match Bezier"
 
-    sig_new_bezier = pyqtSignal (linetype)
+    sig_new_bezier = pyqtSignal (Line.Type)
     sig_match_finished = pyqtSignal (Side_Airfoil_Bezier)
 
     # ---- static members for external use 
@@ -84,7 +200,8 @@ class Match_Bezier (Dialog):
 
     def __init__ (self, parent : QWidget, 
                   side_bezier : Side_Airfoil_Bezier, target_line: Line,
-                  target_curv_le : float = None): 
+                  target_curv_le : float,
+                  max_curv_te : float): 
 
         self._side_bezier = side_bezier
         self._target_line = target_line
@@ -93,7 +210,7 @@ class Match_Bezier (Dialog):
 
         self._target_curv_le = target_curv_le
         self._target_curv_le_weighting = 1
-        self._max_curv_te = target_line.te[1]
+        self._max_curv_te = max_curv_te
 
         self._norm2 = Matcher.norm2_deviation_to (side_bezier.bezier, target_line) 
         self._nevals = 0
@@ -114,6 +231,7 @@ class Match_Bezier (Dialog):
 
         # enable custom window hint, disable (but not hide) close button
         self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        self.setWindowTitle (self._titletext())
 
         # move window a little to the side 
         p_center = parent.rect().center()               # parent should be main window
@@ -129,11 +247,8 @@ class Match_Bezier (Dialog):
         self._stop_btn.setVisible (False) 
         self._close_btn.setVisible (True) 
 
-        # save curren background color for state dependand backgrounds
+        # save current background color for state dependand backgrounds
         self._palette_normal = self._panel.palette()
-
-        # auto start matcher 
-        # self._start_matcher () 
 
 
     def _start_matcher (self): 
@@ -151,6 +266,7 @@ class Match_Bezier (Dialog):
         self._matcher.start()
 
         self._set_button_visibility ()              # after to get running state 
+        self.setWindowTitle (self._titletext())
 
 
     def _on_results (self, nevals, norm2, curv_le, curv_te):
@@ -161,6 +277,8 @@ class Match_Bezier (Dialog):
         self._curv_le = curv_le     # abs(self._side_bezier.curvature.max_xy[1]) 
         self._curv_te = curv_te     # self._side_bezier.curvature.te[1] 
         self.refresh ()
+        self.setWindowTitle (self._titletext())
+
         self.sig_new_bezier.emit (self._side_bezier.type)
 
 
@@ -173,6 +291,7 @@ class Match_Bezier (Dialog):
         self._panel.setPalette(self._palette_normal)
         self.set_background_color (color=None)    
         self._panel.setDisabled (False)
+        self.setWindowTitle (self._titletext())
 
         self.refresh ()
 
@@ -182,16 +301,20 @@ class Match_Bezier (Dialog):
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
-        r,c = 0,0 
-        Label (l,r,c, colSpan=6, fontSize=size.HEADER, get=self._headertext)
+        r = 0
+        # SpaceR (l, r, stretch=0, height=5) 
+        # r += 1 
+        # Label (l,r,c, colSpan=6, fontSize=size.HEADER, get=self._headertext)
+        # r += 1
+        Label  (l,r,0, colSpan=5, height=40, get="Run an optimization for a best fit of the Bezier curve."+
+                                      "\nUse 'Weight' to balance deviation and LE curvature.")
         r += 1
         SpaceR (l, r, stretch=0, height=5) 
-
         r += 1
         Label  (l,r,1, get="Deviation")
         SpaceC (l,2, width=15)
         Label  (l,r,3, get="LE   curvature   TE", colSpan=2)
-        SpaceC (l,5, width=5)
+        SpaceC (l,5, width=5, stretch=2)
 
         r += 1
         Label  (l,r,0, get="Target side")
@@ -213,7 +336,6 @@ class Match_Bezier (Dialog):
                        style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self._curv_le))
         FieldF (l,r,4, width=50, dec=1, get=lambda: self._curv_te,
                        style=lambda: Match_Bezier.style_curv_te(self._curv_te))
-
         r += 1
         SpaceR (l, r) 
 
@@ -230,7 +352,7 @@ class Match_Bezier (Dialog):
         self._max_curv_te = aVal
 
 
-    def _headertext (self) -> str: 
+    def _titletext (self) -> str: 
         """ headertext dpending on state """
         if self._matcher.isRunning():
             return f"Match running ... Iterations: {self._nevals}"
@@ -559,8 +681,8 @@ class Matcher (QThread):
         diff = 0 
         if self._target_curv_le:
             target  = abs(self._target_curv_le)
-            diff = abs(target - curv_le)                        # 1% is like 1 
-        obj_le += (diff  / 40) * self._target_curv_le_weighting  # apply optional weighting      
+            diff = abs(target - curv_le)                         # 1% is like 1 
+        obj_le += (diff / 80) * self._target_curv_le_weighting  # #40 apply optional weighting      
 
         # --- TE curvature 
         # limit max te curvature 
@@ -621,7 +743,8 @@ class Matcher (QThread):
         # objective function is sum of single objectives 
 
         # take norm2 of deviation and le curvature to get balanced result 
-        obj = np.linalg.norm ([obj_norm2, obj_le]) + obj_le_hp + obj_te + obj_revers + obj_te_deriv
+        # obj = np.linalg.norm ([obj_norm2, obj_le]) + obj_le_hp + obj_te + obj_revers + obj_te_deriv
+        obj = obj_norm2 + obj_le + obj_le_hp + obj_te + obj_revers + obj_te_deriv
 
         # counter of objective evaluations (for entertainment)
         self._nevals += 1

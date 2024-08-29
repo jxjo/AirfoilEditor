@@ -205,7 +205,7 @@ class Settings (Parameters):
 
 
     @classmethod
-    def belongTo (cls, belongsToPath, nameExtension='', fileExtension= '.json'):
+    def belongTo (cls, belongsToPath, nameExtension='_settings', fileExtension= '.json'):
         """ static set of the file the settings will belong to 
         
         Args:
@@ -219,7 +219,7 @@ class Settings (Parameters):
         if nameExtension:
             paramFile = appName + nameExtension + fileExtension
         else:
-            paramFile = appName + '_settings' + fileExtension
+            paramFile = appName  + fileExtension
 
         # get directory where 'belongTo' is located
         script_dir  = os.path.dirname(os.path.realpath(belongsToPath))
@@ -379,6 +379,8 @@ class Win_Util:
 
         if geometry: 
             qwindow.setGeometry (*geometry)
+            if maximize:
+                qwindow.showMaximized()
             return
         else:  
             x, y, width, height = None, None, None, None
@@ -401,7 +403,7 @@ class Win_Util:
         width  = int (width)  if width  is not None else 1000
         height = int (height) if height is not None else  700
         
-        qwindow.setMinimumSize(QSize(width, height))
+        qwindow.resize (QSize(width, height))
 
         if maximize: 
             qwindow.showMaximized()

@@ -11,11 +11,11 @@ import numpy as np
 from base.artist                  import *
 from base.common_utils               import *
 
-from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Geometry_Bezier
-from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
+from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry
+from model.airfoil_geometry     import Line, Side_Airfoil_Bezier
 
-from model.airfoil_geometry     import Curvature_Abstract, linetype
-from base.spline                import HicksHenne, Bezier
+from model.airfoil_geometry     import Curvature_Abstract
+from base.spline                import Bezier
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
 from PyQt6.QtCore               import pyqtSignal, QObject
@@ -58,16 +58,16 @@ def _color_airfoil_of (airfoil_type : usedAs) -> QColor:
     return qcolor
 
 
-def _linestyle_of (aType : linetype) -> QColor:
+def _linestyle_of (aType : Line.Type) -> QColor:
     """ returns PenStyle for line depending on its type """
 
-    if aType == linetype.CAMBER:
+    if aType == Line.Type.CAMBER:
         style = style=Qt.PenStyle.DashDotLine
-    elif aType == linetype.THICKNESS:
+    elif aType == Line.Type.THICKNESS:
         style = style=Qt.PenStyle.DashLine
-    elif aType == linetype.UPPER:
+    elif aType == Line.Type.UPPER:
         style = style=Qt.PenStyle.DotLine
-    elif aType == linetype.LOWER:
+    elif aType == Line.Type.LOWER:
         style = style=Qt.PenStyle.DotLine
     else:
         style = style=Qt.PenStyle.SolidLine
@@ -90,7 +90,7 @@ class Movable_Highpoint (Movable_Point):
                   **kwargs):
 
         # symmetrical and camber? 
-        if line.type == linetype.CAMBER and geo.isSymmetrical: 
+        if line.type == Line.Type.CAMBER and geo.isSymmetrical: 
             movable = False 
         # Bezier is changed via control points ? 
         elif geo.isBezier:
@@ -111,14 +111,14 @@ class Movable_Highpoint (Movable_Point):
 
     def label_static (self):
 
-        if self._line.type == linetype.CAMBER and self._geo.isSymmetrical: 
+        if self._line.type == Line.Type.CAMBER and self._geo.isSymmetrical: 
             return  "No camber - symmetrical" 
         else:  
             return super().label_static()
 
     def label_moving (self):
 
-        if self._line.type == linetype.CAMBER and self._geo.isSymmetrical: 
+        if self._line.type == Line.Type.CAMBER and self._geo.isSymmetrical: 
             return  "No camber - symmetrical" 
         else:  
             return f"{self.y:.2%} @ {self.x:.2%}"
@@ -524,16 +524,17 @@ class Airfoil_Artist (Artist):
                 s = 'o' if self.show_points else None 
 
                 # plot contour and fill airfoil if it's only one 
+                #   use geometry.xy to refelect changes in diesign airfoil
 
                 if len(self.airfoils) == 1: 
 
                     # if there is only one airfoil, fill the airfoil contour with a soft color tone  
                     brush = pg.mkBrush (color.darker (600))
-                    p = self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
+                    self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush, 
                                           fillLevel=0.0, fillBrush=brush, antialias = antialias)
                 else: 
-                    p = self._plot_dataItem  (airfoil.x, airfoil.y, name=label, pen = pen, 
+                    self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                           antialias = antialias)
 
@@ -541,7 +542,7 @@ class Airfoil_Artist (Artist):
 
                 if self.show_points and airfoil.geo.isSplined:
                     if airfoil.isNormalized:
-                        brushcolor = color
+                        brushcolor = "limegreen"
                         text = None
                     else: 
                         brushcolor = "yellow"
@@ -699,7 +700,7 @@ class Curvature_Artist (Artist):
                 for side in sides:
                     x = side.x
                     y = side.y      
-                    if side.type == linetype.UPPER:
+                    if side.type == Line.Type.UPPER:
                         pen = pg.mkPen(color, width=1, style=Qt.PenStyle.SolidLine)
                     else: 
                         pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)

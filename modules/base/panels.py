@@ -227,11 +227,11 @@ class Edit_Panel (Panel):
         return self._head.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
  
 
-    def refresh(self):
+    def refresh(self, reinit_layout=False):
         """ refreshes all Widgets on self """
 
-        # reinit layout if visbility changed 
-        reinit_layout = self._shouldBe_visible != self.isVisible()
+        # reinit layout if visbility changed or if requested
+        reinit_layout = (self._shouldBe_visible != self.isVisible()) or reinit_layout
 
         # logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout}")
 
@@ -407,7 +407,6 @@ class Dialog (QDialog):
         buttonBox.accepted.connect(self.accept)
         buttonBox.rejected.connect(self.reject)
         return buttonBox 
-        buttonBox.clicked.connect(self.button_clicked)
 
     def _QButtons (self):
         """return QButtons enum for button box at footer """
@@ -442,8 +441,7 @@ class Dialog (QDialog):
 
 
     def button_clicked (self, aButton): 
-        """ slot for button of buttonbox clicked. Can be overloaded"""
-        print ("Button clicked ", aButton)
+        """ slot for button of buttonbox clicked. Can be overriden"""
         pass
 
 

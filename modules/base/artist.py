@@ -701,14 +701,15 @@ class Artist(QObject):
 
         p = pg.ScatterPlotItem  ([x], [y], symbol=symbol, size=size, pxMode=pxMode, 
                                  pen=pen, brush=brush)
-        
+        p.setZValue(3)                                      # move to foreground 
+
         # plot label as TextItem 
 
         if text is not None: 
             color = QColor(textColor) if textColor else QColor(self.COLOR_NORMAL)
             anchor = anchor if anchor else (0, 1)
             t = pg.TextItem(text, color, anchor=anchor)
-
+            t.setZValue(3)                                      # move to foreground 
             # ? attach to parent doesn't work (because of PlotDataItem? )
             textPos = textPos if textPos is not None else (x,y)
             t.setPos (*textPos)
@@ -737,6 +738,7 @@ class Artist(QObject):
         # addItem to PlotItem doesn't work (would be added to viewbox and scaled)     
         label.setParentItem(self._pi)
         label.anchor(itemPos=itemPos, parentPos=parentPos, offset=offset)
+        label.setZValue(5)
 
         # manuel add to self items 
         self._plots.append(label)
