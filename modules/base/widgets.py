@@ -18,7 +18,7 @@ from enum               import Enum, StrEnum
 
 from PyQt6.QtCore       import QEvent, QSize, Qt, QMargins, pyqtSignal, QTimer
 
-from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout
+from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
 from PyQt6.QtWidgets    import (
                             QApplication, QWidget, QPushButton, 
                             QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
@@ -355,8 +355,11 @@ class Widget:
         else:
             min_height = height
             max_height = height
-        if min_height: widget.setMinimumHeight(min_height)
-        if max_height: widget.setMaximumHeight(max_height)        
+
+        min_height = min_height if min_height else QWIDGETSIZE_MAX
+        max_height = max_height if max_height else QWIDGETSIZE_MAX
+        widget.setMinimumHeight(min_height)
+        widget.setMaximumHeight(max_height)        
 
 
     @staticmethod
@@ -370,8 +373,10 @@ class Widget:
         else:
             min_width = width
             max_width = width
-        if min_width: widget.setMinimumWidth(min_width)
-        if max_width: widget.setMaximumWidth(max_width)
+        min_width = min_width if min_width else QWIDGETSIZE_MAX
+        max_width = max_width if max_width else QWIDGETSIZE_MAX
+        widget.setMinimumWidth(min_width)
+        widget.setMaximumWidth(max_width)
 
 
     #---  public methods 

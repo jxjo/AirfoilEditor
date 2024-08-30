@@ -472,8 +472,9 @@ class Airfoil_Artist (Artist):
         airfoil: Airfoil
         airfoils_with_design = False 
         for airfoil in self.airfoils:
-            if len(self.airfoils) > 1 and (airfoil.usedAsDesign or airfoil.usedAs == usedAs.NORMAL):
+            if airfoil.usedAsDesign:
                 airfoils_with_design = True 
+                break
 
         for iair, airfoil in enumerate (self.airfoils):
             if (airfoil.isLoaded):
@@ -507,17 +508,27 @@ class Airfoil_Artist (Artist):
                     else: 
                         label = f"{airfoil.name}"
 
-                # set color and symbol style 
+                # set color, width, ZValue, symbol style depending on airfoil usage and no of airfoils  
 
-                width = 2
-                antialias = True
                 color = _color_airfoil_of (airfoil.usedAs)
-                if color is not None: 
-                    if airfoils_with_design and not (airfoil.usedAsDesign or airfoil.usedAs == usedAs.NORMAL):
-                        width = 1
-                        antialias = False
-                else: 
+                if color is None:  
                     color = color_palette [iair]
+
+                # default 
+                width = 1
+                antialias = False
+                zValue = 1
+
+                if airfoils_with_design:
+                    if airfoil.usedAsDesign:
+                        width = 2
+                        antialias = True
+                        zValue = 3
+                elif airfoil.usedAs == usedAs.NORMAL:
+                        width = 2
+                        antialias = True
+                        zValue = 2
+
                 pen = pg.mkPen(color, width=width)
 
                 sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
@@ -532,11 +543,13 @@ class Airfoil_Artist (Artist):
                     brush = pg.mkBrush (color.darker (600))
                     self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush, 
-                                          fillLevel=0.0, fillBrush=brush, antialias = antialias)
+                                          fillLevel=0.0, fillBrush=brush, antialias = antialias,
+                                          zValue=zValue)
                 else: 
                     self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                          antialias = antialias)
+                                          antialias = antialias,
+                                          zValue=zValue)
 
                 # optional plot of real LE defined by spline 
 
@@ -990,8 +1003,13 @@ class Airfoil_Line_Artist (Artist, QObject):
                 for line in airfoil.geo.lines_dict.values():
                   
                     style = _linestyle_of (line._type)
+                    if airfoil.usedAsDesign:
+                        zValue = 3                                  # plot design on top 
+                    else:
+                        zValue = 1 
+
                     pen = pg.mkPen(color, width=1, style=style)
-                    p = self._plot_dataItem (line.x, line.y, pen = pen, name = line.name)
+                    p = self._plot_dataItem (line.x, line.y, pen = pen, name = line.name, zValue=zValue)
 
                     # plot its highpoint 
 

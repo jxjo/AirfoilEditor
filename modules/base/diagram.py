@@ -177,7 +177,7 @@ class Diagram (QWidget):
 
         # add section panel of self (master) 
 
-        if self.section_panel is not None: layout.addWidget (self.section_panel,stretch=1)
+        if self.section_panel is not None: layout.addWidget (self.section_panel,stretch=0)
         
         layout.addStretch (1)
 

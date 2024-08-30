@@ -161,7 +161,10 @@ class Movable_Point (pg.TargetItem):
             self.setParentItem (parent)
 
         # points are above other things
-        self.setZValue (10)                     # only within same parent item
+        if movable:
+            self.setZValue (10)                     # only within same parent item
+        else: 
+            self.setZValue (2)
 
         # default callback setup 
         self.sigPositionChanged.connect (self._moving)
@@ -666,10 +669,16 @@ class Artist(QObject):
         pass
 
 
-    def _plot_dataItem (self, *args, name=None, **kwargs) -> pg.PlotDataItem:
+    def _plot_dataItem (self, *args, 
+                        name=None, 
+                        zValue=1,
+                        **kwargs) -> pg.PlotDataItem:
         """ plot DataItem and add it to self._plots etc """
 
         p = pg.PlotDataItem  (*args, **kwargs)
+
+        p.setZValue (zValue)
+
         self._add (p, name=name)
 
         return p 

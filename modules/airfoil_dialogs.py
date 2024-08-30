@@ -25,6 +25,101 @@ from base.spline            import Bezier
 from model.airfoil          import Airfoil
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
+from airfoil_widgets        import Airfoil_Select_Open_Widget
+
+
+
+# ----- Blend two airfoils   -----------
+
+class Blend (Dialog):
+    """ Dialog to two airfoils into a new one"""
+
+    _width  = 550
+    _height = 240
+
+    name = "Repanel Airfoil"
+
+    sig_airfoil_changed    = pyqtSignal ()
+    sig_airfoil2_changed   = pyqtSignal (Airfoil)
+
+    # ---- static members for external use 
+
+
+    def __init__ (self, parent : QWidget, 
+                  airfoil1 : Airfoil,
+                  airfoil2 : Airfoil = None): 
+
+        self._airfoil1 = airfoil1
+        self._airfoil2 = airfoil2
+        self._blendby  = 0.5                            # initial blend value 
+
+        # init layout etc 
+
+        super().__init__ (parent=parent)
+
+        # enable custom window hint, disable (but not hide) close button
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+
+        # move window a little to the side 
+        p_center = parent.rect().center()               # parent should be main window
+        pos_x = p_center.x() + 200
+        pos_y = p_center.y() + 250            
+        self.move(pos_x, pos_y)
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r = 0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        Label  (l,r,0, colSpan=5, get="Select airfoil to blend with and adjust blending value")
+        r += 1
+        SpaceR (l, r, stretch=0, height=10) 
+        r += 1 
+        Field  (l,r,1, get=self._airfoil1.name, width = 120)
+        SpaceC (l,2,stretch=0)
+        Slider (l,r,3, width=120, lim=(0,1), get=lambda: self._blendby,
+                       set=self._set_blendBy)
+        FieldF (l,r,4, width=60,  lim=(0, 1),get=lambda: self._blendby, step=0.1,
+                       set=self._set_blendBy)
+        SpaceC (l,5, stretch=0)
+        Airfoil_Select_Open_Widget (l,r,6, withOpen=True, asSpin=False, signal=True, width=140, 
+                                    get=lambda: self._airfoil2, set=self._set_airfoil2)
+
+        SpaceC (l,7, width=5)
+        r += 1
+        SpaceR (l, r, height=5) 
+
+        return l
+
+    def _set_blendBy (self, aVal : float):
+        """ set new value - do strak - signal change"""
+        self._blendby = aVal
+        self.refresh()
+
+
+    def _set_airfoil2 (self, aAirfoil : Airfoil):
+        """ set new 2nd airfoil - do strak - signal change"""
+        self._airfoil2 = aAirfoil
+        self.refresh()
+
+        self.sig_airfoil2_changed.emit (aAirfoil)
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
+
+
+# ----- repanel dialog helper window  -----------
 
 
 class Repanel (Dialog):
@@ -137,8 +232,6 @@ class Repanel (Dialog):
         buttonBox.rejected.connect(self.close)
 
         return buttonBox 
-
-
 
 
 # ----- Match a Bezier curve to a Side of an airfoil  -----------

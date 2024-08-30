@@ -164,7 +164,8 @@ class Edit_Panel (Panel):
         self.set_switched_on (self._switched_on, initial=True)
 
         # initial enabled/disabled state
-        self.refresh_widgets (self._isDisabled) 
+        if self._isDisabled: 
+            self.refresh_widgets (self._isDisabled) 
 
         # initial visibility 
         if not self._shouldBe_visible:         

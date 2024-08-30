@@ -196,6 +196,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
         self._get_properties ()
         self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # assign self to parent layout 
 
@@ -217,10 +218,12 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         return self._val
     def set_airfoil (self, anAirfoil : Airfoil):
 
+
         #leave button callback and refresh in a few ms 
-        timer = QTimer()                                
-        timer.singleShot(10, lambda: self._set_value (anAirfoil))    
-        # self._set_value (anAirfoil)           # call parent with new airfoil 
+        # problem: self set._val will be dalyed for internal refresh ...
+        # timer = QTimer()                                
+        # timer.singleShot(10, lambda: self._set_value (anAirfoil))    
+        self._set_value (anAirfoil)           # call parent with new airfoil 
 
 
     def set_airfoil_from_open (self, anAirfoil : Airfoil):
@@ -274,20 +277,6 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         if self.airfoil is not None and self.airfoil.isExample:
             fileNames.append(Example.fileName)
         return fileNames
-
-
-    def _open (self):
-        """ open a new airfoil and load it"""
-
-        filters  = "Airfoil files (*.dat);;Bezier files (*.bez);;Hicks Henne files (*.hicks)"
-        newPathFilename, _ = QFileDialog.getOpenFileName(self, filter=filters)
-
-        if newPathFilename:                         # user pressed open
-            airfoil = create_airfoil_from_path (newPathFilename)
-            if airfoil is not None: 
-                self._set_value (airfoil)           # call parent with new airfoil 
-
-
 
 
 

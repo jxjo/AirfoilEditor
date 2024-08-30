@@ -47,8 +47,7 @@ from base.diagram           import *
 from airfoil_widgets        import * 
 from airfoil_artists        import *
 
-from airfoil_dialogs        import Match_Bezier, Matcher, Repanel
-
+from airfoil_dialogs        import Match_Bezier, Matcher, Repanel, Blend
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -94,13 +93,14 @@ class App_Main (QMainWindow):
     sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
     sig_enter_bezier_match      = pyqtSignal()          # starting bezier match dialog 
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
+    sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
 
 
     def __init__(self, airfoil_file, parentApp=None):
         super().__init__()
 
         self._airfoil = None                        # current airfoil 
-        self._airfoil_sav = None                    # airfoil saved in edit_mode 
+        self._airfoil_org = None                    # airfoil saved in edit_mode 
         self._airfoil_ref1 = None                   # reference airfoils 
         self._airfoil_ref2 = None  
         self._airfoil_target = None                 # target for match Bezier     
@@ -164,19 +164,18 @@ class App_Main (QMainWindow):
 
         self._data_panel  = Panel (title="Data panel")
         l_edit = QHBoxLayout()
-        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 2)
-        l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 1)
-        l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 1)
-        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 1)
-        l_edit.addWidget (Panel_Bezier_Match(self, self.airfoil), stretch= 2)
+        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 0)
+        l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 0)
+        l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 0)
+        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 0)
+        l_edit.addWidget (Panel_Bezier_Match(self, self.airfoil), stretch= 0)
         
-        l_edit.addStretch (3)
         l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
         self._data_panel.setLayout (l_edit)
 
         self._file_panel  = Panel (title="File panel")
         l_file = QHBoxLayout()
-        l_file.addWidget (Panel_File_View        (self, self.airfoil))
+        l_file.addWidget (Panel_File_View   (self, self.airfoil))
         l_file.addWidget (Panel_File_Edit   (self, self.airfoil))
         l_file.setContentsMargins (QMargins(0, 0, 0, 0))
         self._file_panel.setLayout (l_file)
@@ -184,7 +183,8 @@ class App_Main (QMainWindow):
 
         l_lower = QHBoxLayout()
         l_lower.addWidget (self._file_panel)
-        l_lower.addWidget (self._data_panel, stretch=2)
+        l_lower.addWidget (self._data_panel)
+        l_lower.addStretch (1)
         l_lower.setContentsMargins (QMargins(0, 0, 0, 0))
         lower = QWidget ()
         lower.setLayout (l_lower)
@@ -216,8 +216,7 @@ class App_Main (QMainWindow):
         """ modify airfoil - switch to edit mode """
         if self.edit_mode: return 
 
-        # enter edit_mode - save original, create working copy as splined airfoil 
-        self._airfoil_sav = self._airfoil
+        # enter edit_mode - create working copy as splined airfoil 
         try:                                            # normal airfoil - allows new geometry
             airfoil  = self._airfoil.asCopy (nameExt=None, geometry=GEO_SPLINE)
         except:                                         # bezier or hh does not allow new geometry
@@ -225,10 +224,7 @@ class App_Main (QMainWindow):
         airfoil.useAsDesign()                           # will have another visualization 
         airfoil.normalize(just_basic=True)              # just normalize coordinates - not spline         
 
-        self.set_airfoil (airfoil, silent=True)         # set without signal   
-        self.set_edit_mode (True)       
-
-        self.sig_enter_edit_mode.emit()
+        self.set_edit_mode (True, airfoil)       
 
 
     def modify_airfoil_finished (self, ok=False):
@@ -243,49 +239,51 @@ class App_Main (QMainWindow):
 
         # leave edit_mode - restore original airfoil 
         if not ok:
-            airfoil = self._airfoil_sav                 # restore old airfoil 
+            airfoil = self._airfoil_org                 # restore old airfoil 
         else: 
-            airfoil = self.airfoil()
-        self._airfoil_sav = None 
+            airfoil = self._airfoil
 
         airfoil.useAsDesign (False)                     # will have another visualization 
         airfoil.set_isModified (False)                  # just sanity
 
-        self.set_airfoil (airfoil, silent=True) 
-
-        if self.airfoil_target is not None:             # modify Bezier could have target
-            self.set_airfoil_target (None, refresh=False)   
-
-        self.set_edit_mode (False)       
+        self.set_edit_mode (False, airfoil)       
 
 
     def new_as_Bezier (self):
         """ create new Bezier airfoil based on current airfoil and switch to edit mode """
 
-        # enter edit_mode - save original, create working copy as splined airfoil 
-        self._airfoil_sav = self._airfoil
-        airfoil = Airfoil_Bezier.onAirfoil (self._airfoil)
-        airfoil.useAsDesign()                           # will have another visualization 
+        # enter edit_mode - create working copy as splined airfoil 
+        airfoil_bez = Airfoil_Bezier.onAirfoil (self._airfoil)
+        airfoil_bez.useAsDesign()                           # will have another visualization 
 
-        self.set_airfoil_target (self._airfoil_sav, refresh=False) # current will be reference for Bezier
-        self.set_airfoil (airfoil, silent=True)         # set_edit_mode will do refresh
-        self.set_edit_mode (True)       
+        self.set_airfoil_target (self._airfoil, refresh=False) # current will be reference for Bezier
 
-        self.sig_enter_bezier_match.emit()
+        self.set_edit_mode (True, airfoil_bez)       
 
 
-    def set_edit_mode (self, aBool : bool):
+    def set_edit_mode (self, aBool : bool, for_airfoil):
         """ switch edit / view mode """
 
         if self._edit_mode != aBool: 
             self._edit_mode = aBool
-            signal_airfoil_changed ()                   # signal new airfoil 
+            
+            if self._edit_mode:
+                self._airfoil_org = self._airfoil       # enter edit_mode - save original 
+            else: 
+                self._airfoil_org = None                # leave edit_mode - remove original 
+                self._airfoil_target = None            
+
+            self.set_airfoil (for_airfoil, silent=True)
+
+            self.sig_enter_edit_mode.emit()
+            self.sig_airfoil_changed.emit()             # signal new airfoil 
         
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
         self._data_panel.refresh_panels()
         self._file_panel.refresh_panels()
+        self._data_panel.adjustSize()
 
 
     def airfoil (self) -> Airfoil:
@@ -300,6 +298,11 @@ class App_Main (QMainWindow):
         if self.airfoil_ref1:       airfoils.append (self.airfoil_ref1)
         if self.airfoil_ref2:       airfoils.append (self.airfoil_ref2)
         if self.airfoil_target:     airfoils.append (self.airfoil_target)
+        if self.airfoil_org:        airfoils.append (self.airfoil_org)
+
+        # remove duplicates 
+        airfoils = list(dict.fromkeys(airfoils))
+
         return airfoils
 
 
@@ -313,33 +316,46 @@ class App_Main (QMainWindow):
         if not silent: 
             self.sig_airfoil_changed.emit ()
 
+
     @property
     def airfoil_ref1 (self) -> Airfoil:
+        """ airfoil for reference 1"""
         return self._airfoil_ref1
     def set_airfoil_ref1 (self, airfoil: Airfoil | None = None, silent=False): 
         self._airfoil_ref1 = airfoil 
         if airfoil: airfoil.set_usedAs (usedAs.REF1)
         if not silent: self.sig_airfoil_ref_changed.emit()
 
+
     @property
     def airfoil_ref2 (self) -> Airfoil:
+        """ airfoil for reference 2"""
         return self._airfoil_ref2
     def set_airfoil_ref2 (self, airfoil: Airfoil | None = None, silent=False): 
         self._airfoil_ref2 = airfoil 
         if airfoil: airfoil.set_usedAs (usedAs.REF2)
         if not silent: self.sig_airfoil_ref_changed.emit()
 
+
     @property
     def airfoil_target (self) -> Airfoil:
+        """ target airfoil for match Bezier or 2nd airfoil doing Blend"""
         return self._airfoil_target
     def set_airfoil_target (self, airfoil: Airfoil | None = None, refresh=True): 
-        if airfoil: 
+
+        if airfoil is not None: 
             airfoil.set_usedAs (usedAs.TARGET)
         elif self._airfoil_target:
             self._airfoil_target.set_usedAs (usedAs.NORMAL) 
         self._airfoil_target = airfoil 
         
         self.sig_airfoil_target_changed.emit(refresh)
+
+
+    @property
+    def airfoil_org (self) -> Airfoil:
+        """ the original airfoil during edit mode"""
+        return self._airfoil_org
 
 
     def _on_leaving_edit_mode (self) -> bool: 
@@ -540,6 +556,18 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
     name = 'Airfoil'
     _width  = (350, None)
 
+    @override
+    def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
+        """ add Widgets to header layout"""
+
+        l_head.addStretch(1)
+
+        # blend with airfoil - currently Bezier is not supported
+        Button (l_head, text="&Blend", width=80,
+                set=self._blend_with, 
+                hide=lambda: not self.myApp.edit_mode or self.airfoil().isBezierBased)
+
+
     def _init_layout (self): 
 
         l = QGridLayout()
@@ -589,12 +617,27 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         return self.airfoil().isBezierBased
 
 
+    def _blend_with (self): 
+        """ run blend airfoil with dialog""" 
+
+        self.myApp.sig_enter_blend.emit()
+
+        dialog = Blend (self.myApp, self.myApp.airfoil_org)    
+        dialog.sig_airfoil_changed.connect (self.myApp.sig_airfoil_changed.emit)
+        dialog.sig_airfoil2_changed.connect (self.myApp.set_airfoil_target)
+        dialog.exec()     
+
+        # geo : Geometry_Bezier = self.geo()
+        # geo.repanel (just_finalize=True)       # finalize modifications  
+
+        self.myApp.sig_airfoil_changed.emit()
+
 
 class Panel_Panels (Panel_Airfoil_Abstract):
     """ Panelling information """
 
     name = 'Panels'
-    _width  = None # (260, None)
+    _width  =  (280, None)
 
     def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
         """ add Widgets to header layout"""
@@ -1314,7 +1357,10 @@ class Diagram_Airfoil (Diagram):
         self.myApp.sig_airfoil_changed.connect (self._on_airfoil_changed)
         self.myApp.sig_airfoil_ref_changed.connect (self._on_airfoil_changed)
         self.myApp.sig_airfoil_target_changed.connect (self._on_target_changed)
-        self.myApp.sig_enter_bezier_match.connect (self._on_bezier_match)
+
+        self.myApp.sig_enter_edit_mode.connect (self._on_edit_mode)
+        self.myApp.sig_enter_blend.connect (self._on_blend_airfoil)
+
 
 
     @property
@@ -1336,18 +1382,15 @@ class Diagram_Airfoil (Diagram):
         self.myApp.set_airfoil_ref2 (airfoil) 
         self.refresh ()
 
-    @property
-    def airfoil_target (self) -> Airfoil | None:
-        return self.myApp.airfoil_target
-    def set_airfoil_target (self, airfoil: Airfoil | None = None): 
-        self.myApp.set_airfoil_target (airfoil) 
-        self.refresh ()
+
     @property
     def airfoil_target_name (self) -> str:
-        if self.myApp.airfoil_target:
-            return self.myApp.airfoil_target.name
-        else:
-            return '' 
+        return self.myApp.airfoil_target.name if self.myApp.airfoil_target else ''
+
+    @property
+    def airfoil_org_name (self) -> str:
+        return self.myApp.airfoil_org.name if self.myApp.airfoil_org else ''
+
 
     @property
     def show_airfoils_ref (self) -> bool: 
@@ -1383,24 +1426,35 @@ class Diagram_Airfoil (Diagram):
         
             l = QGridLayout()
             r,c = 0, 0
+            Field (l,r,c, width=155, get=lambda: self.airfoil_org_name, disable=True,
+                            hide=self._hide_airfoil_org,
+                            toolTip="Original airfoil")
+            r += 1
             Field (l,r,c, width=155, get=lambda: self.airfoil_target_name, disable=True,
-                          hide=lambda: self.airfoil_target is None)
+                            hide=lambda: not self.airfoil_target_name,
+                            toolTip="Target airfoil")
             r += 1
             Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False,
-                                get=lambda: self.airfoil_ref1, set=self.set_airfoil_ref1,
-                                initialDir=self.airfoils()[0], addEmpty=True)
+                            get=lambda: self.airfoil_ref1, set=self.set_airfoil_ref1,
+                            initialDir=self.airfoils()[0], addEmpty=True,
+                            toolTip="Reference 1 airfoil")
             r += 1
             Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False,
-                                get=lambda: self.airfoil_ref2, set=self.set_airfoil_ref2,
-                                initialDir=self.airfoils()[0], addEmpty=True)
+                            get=lambda: self.airfoil_ref2, set=self.set_airfoil_ref2,
+                            initialDir=self.airfoils()[0], addEmpty=True,
+                            toolTip="Reference 2 airfoil")
             r += 1
+            SpaceR (l,r)
             l.setColumnStretch (0,2)
-            l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title="Reference Airfoils", layout=l, height=130,
+            self._section_panel = Edit_Panel (title="Reference Airfoils", layout=l, height=(80,None),
                                               switchable=True, switched=False, on_switched=self.set_show_airfoils_ref)
 
         return self._section_panel 
+
+    def _hide_airfoil_org (self) -> bool:
+        """ hide original airfoil if it is the same like target"""
+        return (not self.airfoil_org_name) or (self.airfoil_org_name == self.airfoil_target_name)
 
 
     def _on_airfoil_changed (self):
@@ -1429,16 +1483,27 @@ class Diagram_Airfoil (Diagram):
             self.section_panel.refresh()
 
 
-    def _on_bezier_match (self):
-        """ slot to handle bezier match changed signal -> show target airfoil"""
+    def _on_blend_airfoil (self):
+        """ slot to handle blend airfoil entered signal -> show org airfoil"""
 
-        if self._bezier_match_first_time:
-                # switch to show reference airfoils 
-                self._show_airfoils_ref = True
-                self.section_panel.set_switched_on (True, initial=True)
-                logger.debug (f"{str(self)} on_bezier_mtach")
+        # switch to show reference airfoils 
+        self._show_airfoils_ref = True
+        self.section_panel.set_switched_on (True, initial=True)
+        self.section_panel.refresh()
 
-        self._bezier_match_first_time = False
+        logger.debug (f"{str(self)} _on_blend_airfoil")
+
+
+    def _on_edit_mode (self):
+        """ slot to handle edit mode entered signal -> show ref airfoil"""
+
+        # switch to show reference airfoils 
+        self._show_airfoils_ref = True
+        # self.section_panel.set_switched_on (True, initial=True)
+        self.section_panel.refresh()
+
+        logger.debug (f"{str(self)} _on_edit_mode")
+
 
 
 #--------------------------------
