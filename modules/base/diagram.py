@@ -11,6 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
+from typing             import override
 
 from PyQt6.QtCore       import QSize, QMargins, pyqtSignal, QTimer
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
@@ -48,6 +49,11 @@ class Diagram (QWidget):
 
         self._graph_widget = pg.GraphicsLayoutWidget (parent=self, show=True, size=None, title=None)
         self._graph_layout.setContentsMargins (20,20,20,10)  # default margins
+
+        # remove default context menu of scene
+
+        self._graph_widget.ci.scene().contextMenu = []
+
 
         # create all plot items and setup layout with them  
 
@@ -262,6 +268,10 @@ class Diagram_Item (pg.PlotItem):
         
         self.setup_axis()
 
+        # allow only view box context menu  (not plot item) 
+
+        self.setMenuEnabled(enableMenu=False, enableViewBoxMenu=True)
+
         # initial show or hide - use super() - avoid refresh
  
         super().setVisible (show) 
@@ -274,6 +284,7 @@ class Diagram_Item (pg.PlotItem):
         return f"<{type(self).__name__}{text}>"
     
 
+    @override
     def setVisible (self, aBool):
         """ Qt overloaded to signal parent """
         super().setVisible (aBool)
@@ -281,15 +292,18 @@ class Diagram_Item (pg.PlotItem):
         self.refresh_artists()                      # data could have been changed in the meantime
         self.sig_visible.emit (self, aBool)
 
+
+    @override
     def close (self):
-        # PlotItem overload to remove button
+        # PlotItem override to remove button
         self._resetBtn.setParent (None) 
         self._resetBtn = None
         super().close()
 
 
+    @override
     def resizeEvent(self, ev):
-        # PlotItem overload to remove button
+        # PlotItem override to remove button
         if self._resetBtn is None:  ## already closed down
             return
         btnRect = self.mapRectFromItem(self._resetBtn, self._resetBtn.boundingRect())
@@ -298,8 +312,9 @@ class Diagram_Item (pg.PlotItem):
         super().resizeEvent (ev)
 
 
+    @override
     def updateButtons(self):
-        # PlotItem overload to show/hide reset button
+        # PlotItem override to show/hide reset button
         super().updateButtons ()
         try:
             if self.mouseHovering and not self.buttonsHidden and self._vb_state_changed: #  and not all(self.vb.autoRangeEnabled()):

@@ -42,7 +42,7 @@ The same approach is applied to move the highpoint of the upper and lower side o
 
 Repaneling is based on a modified cosinus distribution of the airfoil points on the arc of the spline. This differs from the xfoil approach but the repanel shows 'nice' behaviour in aero calculation. 
 
-As an exmaple for the modification functionality of the app, the dialog for repaneling is shown:  
+As an example for the modification functionality of the app, the dialog for repaneling is shown:  
 
 ![Repanel](images/Repanel.png "Screenshot of Repaneling within AirfoilEditor")
 <sup>Dialog for repaneling of an airfoil. Recommendations are given for 'healthy' panel angles.  </sup>

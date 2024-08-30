@@ -1316,6 +1316,7 @@ class Diagram_Airfoil (Diagram):
         self.myApp.sig_airfoil_target_changed.connect (self._on_target_changed)
         self.myApp.sig_enter_bezier_match.connect (self._on_bezier_match)
 
+
     @property
     def myApp (self) -> App_Main:
         return super().myApp  
