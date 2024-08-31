@@ -499,9 +499,10 @@ class Airfoil_Artist (Artist):
                     else: 
                         self._plot_title (airfoil.name, subTitle=subTitle )
 
-                    label = None                                # suppress legend 
+                # no legend if it is only one airfoil 
 
-                # ... the others in the legand 
+                if len(self.airfoils) == 1:
+                    label = None                            # suppress legend 
                 else: 
                     if self.label_with_airfoil_type:
                         label = f"{airfoil.usedAs}: {airfoil.name}"
@@ -524,10 +525,11 @@ class Airfoil_Artist (Artist):
                         width = 2
                         antialias = True
                         zValue = 3
+                    else:
+                        color = QColor (color).darker (150)
                 elif airfoil.usedAs == usedAs.NORMAL:
                         width = 2
                         antialias = True
-                        zValue = 2
 
                 pen = pg.mkPen(color, width=width)
 
@@ -992,49 +994,60 @@ class Airfoil_Line_Artist (Artist, QObject):
 
         airfoil: Airfoil
 
-        for airfoil in self.airfoils:
-            if (airfoil.isLoaded ):
+        for iair, airfoil in enumerate (self.airfoils):
 
-                color = _color_airfoil_of (airfoil.usedAs)
-                color.setAlphaF (0.8)
+            color = _color_airfoil_of (airfoil.usedAs)
+            color.setAlphaF (0.8)
 
-                # plot all 'lines' of airfoil 
+            # plot all 'lines' of airfoil 
 
-                for line in airfoil.geo.lines_dict.values():
-                  
-                    style = _linestyle_of (line._type)
-                    if airfoil.usedAsDesign:
-                        zValue = 3                                  # plot design on top 
-                    else:
-                        zValue = 1 
-
-                    pen = pg.mkPen(color, width=1, style=style)
-                    p = self._plot_dataItem (line.x, line.y, pen = pen, name = line.name, zValue=zValue)
-
-                    # plot its highpoint 
-
-                    ph = Movable_Highpoint (airfoil.geo, line, p, 
-                                             movable=airfoil.usedAsDesign, color=color,
-                                             on_changed=self.sig_airfoil_changed.emit )
-                    self._add (ph) 
-
-                # te gap point for DESIGN 
-
+            for line in airfoil.geo.lines_dict.values():
+                
+                style = _linestyle_of (line._type)
                 if airfoil.usedAsDesign:
-                    upper_item = self._get_plot_item (airfoil.geo.upper.name)
-                    lower_item = self._get_plot_item (airfoil.geo.lower.name)
-                    pt = Movable_TE_Point (airfoil.geo, upper_item, lower_item, 
+                    zValue = 3                                  # plot design on top 
+                else:
+                    zValue = 1 
+
+                is_upper_lower = (line.type == Line.Type.UPPER or line.type == Line.Type.LOWER)
+
+                if iair == 0 and not is_upper_lower:                                   # line legend only for the first airfoil 
+                    name = line.name
+                else: 
+                    name = None 
+
+                # plot upper and lower onyl for design (to visualize move highpoint)
+
+                if not is_upper_lower or airfoil.usedAsDesign:
+                    pen = pg.mkPen(color, width=1, style=style)
+                    p = self._plot_dataItem (line.x, line.y, pen = pen, name = name, zValue=zValue)
+                else: 
+                    p = None
+
+                # plot its highpoint 
+
+                ph = Movable_Highpoint (airfoil.geo, line, p, 
                                             movable=airfoil.usedAsDesign, color=color,
                                             on_changed=self.sig_airfoil_changed.emit )
-                    self._add (pt) 
+                self._add (ph) 
 
+            # te gap point for DESIGN 
 
-                # plot le circle 
-
-                radius = airfoil.geo.le_radius
-                circle_item = self._plot_point (radius, 0, color=color, size=2*radius, pxMode=False, 
-                                                style=Qt.PenStyle.DotLine, brushAlpha=0.3, brushColor='black')
-                pl = Movable_LE_Point (airfoil.geo, circle_item, 
+            if airfoil.usedAsDesign:
+                upper_item = self._get_plot_item (airfoil.geo.upper.name)
+                lower_item = self._get_plot_item (airfoil.geo.lower.name)
+                pt = Movable_TE_Point (airfoil.geo, upper_item, lower_item, 
                                         movable=airfoil.usedAsDesign, color=color,
                                         on_changed=self.sig_airfoil_changed.emit )
-                self._add(pl) 
+                self._add (pt) 
+
+
+            # plot le circle 
+
+            radius = airfoil.geo.le_radius
+            circle_item = self._plot_point (radius, 0, color=color, size=2*radius, pxMode=False, 
+                                            style=Qt.PenStyle.DotLine, brushAlpha=0.3, brushColor='black')
+            pl = Movable_LE_Point (airfoil.geo, circle_item, 
+                                    movable=airfoil.usedAsDesign, color=color,
+                                    on_changed=self.sig_airfoil_changed.emit )
+            self._add(pl) 

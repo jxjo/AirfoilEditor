@@ -639,7 +639,7 @@ class Artist(QObject):
 
             if self.show_legend:
                 # must be before .plot 
-                self._pi.addLegend(offset=(-50,10), verSpacing=-8)  
+                self._pi.addLegend(offset=(-50,10),  verSpacing=0 )  
                 self._pi.legend.setLabelTextColor (self.COLOR_LEGEND)
 
                 # print ("rows:", self._pi.legend.layout.rowCount(), self._pi.legend)

@@ -159,34 +159,35 @@ class App_Main (QMainWindow):
         """ init main layout with the different panels """
 
         #  ||               lower                         >||
-        #  || file panel ||        edit panel             >||
+        #  || file panel ||        data panel             >||
         #                 | Geometry  | Coordinates | ... >| 
 
         self._data_panel  = Panel (title="Data panel")
-        l_edit = QHBoxLayout()
-        l_edit.addWidget (Panel_Geometry    (self, self.airfoil), stretch= 0)
-        l_edit.addWidget (Panel_Panels      (self, self.airfoil), stretch= 0)
-        l_edit.addWidget (Panel_LE_TE       (self, self.airfoil), stretch= 0)
-        l_edit.addWidget (Panel_Bezier      (self, self.airfoil), stretch= 0)
-        l_edit.addWidget (Panel_Bezier_Match(self, self.airfoil), stretch= 0)
-        
-        l_edit.setContentsMargins (QMargins(0, 0, 0, 0))
-        self._data_panel.setLayout (l_edit)
+        l_data = QHBoxLayout()
+        l_data.addWidget (Panel_Geometry    (self, self.airfoil))
+        l_data.addWidget (Panel_Panels      (self, self.airfoil))
+        l_data.addWidget (Panel_LE_TE       (self, self.airfoil))
+        l_data.addWidget (Panel_Bezier      (self, self.airfoil))
+        l_data.addWidget (Panel_Bezier_Match(self, self.airfoil))
+        l_data.addStretch (1)        
+        l_data.setContentsMargins (QMargins(0, 0, 0, 0))
+        self._data_panel.setLayout (l_data)
 
-        self._file_panel  = Panel (title="File panel")
+        self._file_panel  = Panel (title="File panel", width=220)
         l_file = QHBoxLayout()
-        l_file.addWidget (Panel_File_View   (self, self.airfoil))
         l_file.addWidget (Panel_File_Edit   (self, self.airfoil))
+        l_file.addWidget (Panel_File_View   (self, self.airfoil))
         l_file.setContentsMargins (QMargins(0, 0, 0, 0))
         self._file_panel.setLayout (l_file)
 
-
         l_lower = QHBoxLayout()
         l_lower.addWidget (self._file_panel)
-        l_lower.addWidget (self._data_panel)
-        l_lower.addStretch (1)
+        l_lower.addWidget (self._data_panel, stretch=1)
+        # l_lower.addStretch (1)
         l_lower.setContentsMargins (QMargins(0, 0, 0, 0))
         lower = QWidget ()
+        lower.setMinimumHeight(180)
+        lower.setMaximumHeight(180)
         lower.setLayout (l_lower)
 
         # upper diagram area  
@@ -194,9 +195,6 @@ class App_Main (QMainWindow):
         upper = Diagram_Airfoil (self, self.airfoils, welcome=self._welcome_message())
 
         # main layout with both 
-
-        lower.setMinimumHeight(180)
-        lower.setMaximumHeight(180)
 
         l_main = QVBoxLayout () 
         l_main.addWidget (upper, stretch=2)
@@ -283,7 +281,6 @@ class App_Main (QMainWindow):
         """ refreshes all child panels of edit_panel """
         self._data_panel.refresh_panels()
         self._file_panel.refresh_panels()
-        self._data_panel.adjustSize()
 
 
     def airfoil (self) -> Airfoil:
@@ -443,8 +440,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         signal_airfoil_changed ()
 
 
-    # ---- overloaded 
-
+    @override
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: only enabled in edit mode of App """
@@ -456,7 +452,6 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
     name = 'File'
-    _width  = 220                   # fixed width 
 
 
     @property
@@ -516,7 +511,6 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
     name = 'Edit Mode'
-    _width  = 220                   # fixed width 
 
     @property
     def _shouldBe_visible (self) -> bool:
@@ -736,7 +730,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
 
     name = 'Leading, Trailing Edge'
 
-    _width  = (320, None)
+    _width  = 320
 
     @property
     def _shouldBe_visible (self) -> bool:
@@ -1126,11 +1120,11 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
 
     @property
-    def myApp (self):
+    def myApp (self) -> App_Main:
         return self._parent.myApp
 
     def airfoils (self) -> list[Airfoil]: 
-        return self.data_list()
+        return self._getter()
     
     def _one_is_bezier_based (self) -> bool: 
         """ is one of airfoils Bezier based? """
@@ -1403,9 +1397,10 @@ class Diagram_Airfoil (Diagram):
     def airfoils (self) -> list[Airfoil]: 
         """ the airfoil(s) currently to show as list"""
         if not self.show_airfoils_ref:
-            return [self.data_list()[0]]
+            airfoils = [self.data_list()[0]]
         else: 
-            return self.data_list()
+            airfoils = self.data_list()
+        return airfoils
 
 
     def create_diagram_items (self):
@@ -1498,9 +1493,9 @@ class Diagram_Airfoil (Diagram):
         """ slot to handle edit mode entered signal -> show ref airfoil"""
 
         # switch to show reference airfoils 
-        self._show_airfoils_ref = True
+        # self._show_airfoils_ref = True
         # self.section_panel.set_switched_on (True, initial=True)
-        self.section_panel.refresh()
+        self.section_panel.refresh()                        # to show additional airfoils in edit 
 
         logger.debug (f"{str(self)} _on_edit_mode")
 

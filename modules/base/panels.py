@@ -94,8 +94,14 @@ class Panel (QWidget):
     def refresh_panels (parent: QWidget):
         """ refresh all child Panels self"""
         p : Edit_Panel
+
+        # first hide the now not visible panels so layout won't be stretched
         for p in parent.findChildren (Panel):
-            p.refresh() 
+            if not p._shouldBe_visible: p.refresh() 
+
+        # now show the now visible panels
+        for p in parent.findChildren (Panel):
+            if p._shouldBe_visible: p.refresh() 
 
 
 #-------------------------------------------
@@ -231,21 +237,23 @@ class Edit_Panel (Panel):
     def refresh(self, reinit_layout=False):
         """ refreshes all Widgets on self """
 
-        # reinit layout if visbility changed or if requested
-        reinit_layout = (self._shouldBe_visible != self.isVisible()) or reinit_layout
+        hide = not self._shouldBe_visible and (self._shouldBe_visible != self.isVisible())
+        show =     self._shouldBe_visible and (self._shouldBe_visible != self.isVisible())
 
-        # logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout}")
-
-        if reinit_layout:
-
+        # reinit layout 
+        if (hide or show) or reinit_layout:
             self._set_panel_layout () 
-            # hide / show self 
+            logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
+
+        # hide / show self 
+        if (hide or show) or reinit_layout: 
             self.setVisible (self._shouldBe_visible)
-            logger.debug (f"{self} - setVisible({self._shouldBe_visible})")
+            logger.debug (f"{self} - setVisible ({self._shouldBe_visible})")
 
         # refresh widgets of self only if visible 
-        if self._shouldBe_visible:
+        if self.isVisible():
             self.refresh_widgets (self._isDisabled)
+            logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
 
 
     def refresh_widgets (self, disable : bool):
@@ -295,8 +303,11 @@ class Edit_Panel (Panel):
                 if childWidget:
                     childWidget.setParent(None)
                     childWidget.deleteLater()
+            logger.debug (f"{self} - clear layout ")
+
         # finally remove self 
         sip.delete (self._panel.layout())
+
 
 
     def _init_layout(self) -> QLayout:
