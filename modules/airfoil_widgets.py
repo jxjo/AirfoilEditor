@@ -174,6 +174,9 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._initial_dir = initialDir
         self._addEmpty = addEmpty is True 
 
+        # get initial properties  (cur airfoil) 
+        self._get_properties ()
+
         # build local HBox layout with the guest widget
 
         l = QHBoxLayout(self)
@@ -219,15 +222,22 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
         self._layout_add ()
 
+    def refresh (self, disable=None):
+        super().refresh(disable) 
 
     def no_files_here (self) -> bool:
         """ True if no files to select in combo """
 
         if self._no_files_here is None: 
             n = len (self.airfoil_fileNames_sameDir())
-            # there can be a blank entry as the first item 
-            self._no_files_here =  n == 0 or (n==1 and (not self.airfoil_fileNames_sameDir()[0]))
-
+            # there can be a blank or exmaple entry as the first item 
+            if n== 1:
+                no = not os.path.isfile(self.airfoil_fileNames_sameDir()[0])
+            elif n == 0: 
+                no =  True
+            else: 
+                no = False
+            self._no_files_here = no 
         return self._no_files_here
 
 
