@@ -141,7 +141,7 @@ class Diagram (QWidget):
             item.refresh() 
 
         if self.section_panel:
-            self.section_panel.refresh_panels()
+            self.section_panel.refresh()
 
 
     def create_diagram_items ():

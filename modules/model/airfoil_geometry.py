@@ -1302,7 +1302,7 @@ class Geometry ():
         BEZIER_UPPER    = ("Bezier upper","mod")
         TE_GAP          = ("te_gap","te")
         LE_RADIUS       = ("le_radius","r")
-        STRAK           = ("blend","blend")
+        BLEND           = ("blended","blend")
 
 
 
@@ -1994,21 +1994,21 @@ class Geometry ():
             to be overloaded
         """
         pass
-    
 
-    def strak (self, geo1_in : 'Geometry', geo2_in : 'Geometry', blendBy):
-        """ straks (blends) self out of two geometries depending on the blendBy factor"""
 
-        # create copies which have the same geomtery class as self
-        #   so result has the same accuracy like self (--> upper_new_x!)
-        if geo1_in.__class__ != self.__class__:
-            geo1 = self.__class__ (np.copy(geo1_in.x), np.copy(geo1_in.y))
-        else: 
-            geo1 = geo1_in
-        if geo2_in.__class__ != self.__class__:
-            geo2 = self.__class__ (np.copy(geo2_in.x), np.copy(geo2_in.y))
-        else: 
-            geo2 = geo2_in
+
+    def _blend (self, geo1_in : 'Geometry', geo2_in : 'Geometry', blendBy, ensure_fast=False):
+        """ blends (blends) self out of two geometries depending on the blendBy factor"""
+
+        geo1 = geo1_in
+        geo2 = geo2_in
+
+        # with ensure_fast use just Geometry basic 
+        if ensure_fast:
+            if geo1_in.__class__ != Geometry:
+                geo1 = Geometry (np.copy(geo1_in.x), np.copy(geo1_in.y))
+            if geo2_in.__class__ != Geometry:
+                geo2 = Geometry (np.copy(geo2_in.x), np.copy(geo2_in.y))
 
         if not geo1._isNormalized(): geo1.normalize()
         if not geo2._isNormalized(): geo2.normalize()
@@ -2019,12 +2019,12 @@ class Geometry ():
         # optimze edge cases 
 
         if blendBy == 0:
-            self._x = geo1.x
-            self._y = geo1.y
+            self._x = np.copy(geo1.x)
+            self._y = np.copy(geo1.y)
             return
         elif blendBy == 1.0:
-            self._x = geo2.x
-            self._y = geo2.y
+            self._x = np.copy(geo2.x)
+            self._y = np.copy(geo2.y)
             return
       
         # the leading airfoil is the one with higher share
@@ -2055,8 +2055,17 @@ class Geometry ():
         
         # rebuild x,y coordinates 
         self._rebuild_from (x_upper, y_upper, x_lower, y_lower)
-        self._reset()
-        self._changed (Geometry.Mod.STRAK)
+
+
+
+    def blend (self, geo1 : 'Geometry', geo2 : 'Geometry', blendBy : float):
+        """ blends  self out of two geometries depending on the blendBy factor"""
+
+        if geo1 and geo2: 
+            self._blend (geo1, geo2, blendBy, ensure_fast=False)        
+            self._reset()
+            
+            self._changed (Geometry.Mod.BLEND, blendBy)
 
 
     # ------------------ private ---------------------------

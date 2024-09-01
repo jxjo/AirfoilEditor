@@ -47,8 +47,8 @@ def _color_airfoil_of (airfoil_type : usedAs) -> QColor:
         color = 'orange'
         alpha = 0.9
     elif airfoil_type == usedAs.TARGET:
-        color = 'springgreen'
-        alpha = 0.7
+        color = 'cornflowerblue'
+        alpha = 1.0
     else:
         color = 'gray'
     qcolor =  QColor (color) 

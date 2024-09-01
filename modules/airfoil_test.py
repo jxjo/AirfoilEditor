@@ -163,9 +163,9 @@ class Test_Airfoil:
         geo.set_max_camb_x (40.0 / 100)
         assert round(geo.max_camb_x,2) == 40.00 / 100
 
-        # strak  - splined
+        # blend  - splined
 
-        airfoil  = Airfoil (name="<strak>", geometry = GEO_SPLINE)
+        airfoil  = Airfoil (name="<blend>", geometry = GEO_SPLINE)
         airfoil.set_fileName (airfoil.name + '.dat')
         airfoil1 = Root_Example(geometry = GEO_SPLINE)
         airfoil2 = Tip_Example (geometry = GEO_SPLINE)
@@ -174,32 +174,32 @@ class Test_Airfoil:
         airfoil1.normalize()
         airfoil2.normalize()
 
-        airfoil.do_strak (airfoil1, airfoil2, blendBy=0.0)
+        airfoil.do_blend (airfoil1, airfoil2, blendBy=0.0)
         assert airfoil1.geo.max_thick == airfoil.geo.max_thick
 
-        airfoil.do_strak (airfoil1, airfoil2, blendBy=0.5)
+        airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5)
         assert airfoil.geo.max_thick == 7.3015 / 100
         y30_splined = airfoil.y[30]
 
-        # airfoil.do_strak (airfoil1, airfoil2, blendBy=1.0)
+        # airfoil.do_blend (airfoil1, airfoil2, blendBy=1.0)
         # assert airfoil.geo.max_camb == airfoil2.geo.max_camb
 
-        # # strak  - basic 
+        # # blend  - basic 
 
-        # airfoil  = Airfoil (name="<strak>", geometry = GEO_BASIC)
+        # airfoil  = Airfoil (name="<blend>", geometry = GEO_BASIC)
         # airfoil1 = Root_Example(geometry = GEO_BASIC)
         # airfoil2 = Tip_Example (geometry = GEO_BASIC)
 
-        # airfoil.do_strak (airfoil1, airfoil2, blendBy=0.0)
+        # airfoil.do_blend (airfoil1, airfoil2, blendBy=0.0)
         # assert airfoil.geo.max_thick == airfoil1.geo.max_thick
 
-        # airfoil.do_strak (airfoil1, airfoil2, blendBy=1.0)
+        # airfoil.do_blend (airfoil1, airfoil2, blendBy=1.0)
         # assert airfoil.geo.max_camb == airfoil2.geo.max_camb
 
-        # airfoil.do_strak (airfoil1, airfoil2, blendBy=0.5)
+        # airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5)
         # assert airfoil.geo.max_thick == 7.30088 / 100
 
-        # airfoil.do_strak (airfoil1, airfoil2, blendBy=0.5, geometry=GEO_SPLINE)
+        # airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5, geometry=GEO_SPLINE)
         # assert airfoil.y[30] == y30_splined 
 
 

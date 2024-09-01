@@ -546,7 +546,7 @@ class Widget:
 
 
 
-    def _set_value(self, newVal):
+    def _set_value (self, newVal):
         """write the current value of the widget to model via setter path
         """
 
@@ -557,45 +557,63 @@ class Widget:
         else:                                        
             self._val = newVal                      # keep value for change detection
 
-        self._while_setting = True                  # avoid circular actions with refresh()
+         # avoid circular actions with refresh()
+        self._while_setting = True                 
+
+        have_called = self._set_value_callback ()
+
+        if have_called: 
+            self._emit_change () 
+
+        self._while_setting = False                
+
+
+    def _set_value_callback (self):
+        """ 
+        Do the set callback into the parent with new value 
+            - return True if call was done 
+        """
+
+        have_called = False 
 
         # set value bei property and object 
 
         if self._obj is not None and isinstance (self._setter, types.FunctionType):            
 
             obj = self._obj() if callable (self._obj) else self._obj
-            if newVal is None:                      # typically a button method which has no arg
+            if self._val is None:                   # typically a button method which has no arg
                 if self._id is None:                # an object Id was set to identify object
                     self._setter(obj)               # normal callback
                 else:            
                     self._setter(obj, id=self._id) 
             else:                                   # a method like: def myMth(self, newVal)
                 if self._id is None:                # an id was set to identify object?
-                    self._setter(obj, newVal)       # normal callback
+                    self._setter(obj, self._val)       # normal callback
                 else:            
-                    self._setter(obj, newVal, id=self._id) 
+                    self._setter(obj, self._val, id=self._id) 
 
-            self._emit_change (newVal) 
+            have_called = True
 
         # set value bei bound method or function (lambda)
 
         elif callable(self._setter):                # setter is a method ?
-            if newVal is None:                      # typically a button method which has no arg
+            if self._val is None:                      # typically a button method which has no arg
                 if self._id is None:                # an object Id was set to identify object
                     self._setter()                  # normal callback
                 else:            
                     self._setter(id=self._id) 
             else:                                   # a method like: def myMth(self, newVal)
                 if self._id is None:                # an id was set to identify object?
-                    self._setter(newVal)            # normal callback
+                    self._setter(self._val)            # normal callback
                 else:            
-                    self._setter(newVal, id=self._id) 
-            self._emit_change (newVal) 
+                    self._setter(self._val, id=self._id) 
 
-        self._while_setting = False                
+            have_called = True
+
+        return have_called
 
 
-    def _emit_change (self, newVal):
+    def _emit_change (self):
         """ emit change signal""" 
 
         if not self._signal: return 
@@ -607,7 +625,7 @@ class Widget:
         else: 
             qualname = ''
 
-        logger.debug (f"{self} emit sig_changed: {qualname} ({newVal})")
+        logger.debug (f"{self} emit sig_changed: {qualname} ({self._val})")
         self.sig_changed.emit (self)
         # emit signal delayed so we leave the scope of Widget 
         # timer = QTimer()                                

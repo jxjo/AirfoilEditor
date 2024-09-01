@@ -53,7 +53,7 @@ class Airfoil:
     Airfoil object to handle a airfoil direct related things  
 
     """
-    isStrakAirfoil      = False
+    isBlendAirfoil      = False
     isEdited            = False
     isExample           = False                      # vs. Example_Airfoil 
     isBezierBased       = False
@@ -91,7 +91,7 @@ class Airfoil:
 
         self._isModified     = False
         self._isEdited       = False 
-        self._isStrakAirfoil = False             # is self blended from two other airfoils 
+        self._isBlendAirfoil = False             # is self blended from two other airfoils 
 
         if geometry is None: 
             self._geometryClass  = GEO_SPLINE          # geometry startegy 
@@ -178,7 +178,7 @@ class Airfoil:
     def _save (self, airfoilDict):
         """ stores the variables into the dataDict - returns the filled dict"""
         
-        if self.isStrakAirfoil:
+        if self.isBlendAirfoil:
             toDict (airfoilDict, "name", self.name) 
         else:
             toDict (airfoilDict, "file", self.pathFileName) 
@@ -318,11 +318,11 @@ class Airfoil:
         return self.geo.isNormalized
     
     @property
-    def isStrakAirfoil (self):
+    def isBlendAirfoil (self):
         """ is self blended out of two other airfoils"""
-        return self._isStrakAirfoil
-    def set_isStrakAirfoil (self, aBool): 
-        self._isStrakAirfoil = aBool
+        return self._isBlendAirfoil
+    def set_isBlendAirfoil (self, aBool): 
+        self._isBlendAirfoil = aBool
     
     @property
     def nPanels (self): 
@@ -516,8 +516,8 @@ class Airfoil:
 
         # determine (new) airfoils name  if not provided
         if not destName:
-            if self.isStrakAirfoil:
-                destName = self.sourceName                     # strak: take the long name of the two airfoils
+            if self.isBlendAirfoil:
+                destName = self.sourceName                     # Blend: take the long name of the two airfoils
             else:
                 if self.name: 
                     destName = self.name    
@@ -595,20 +595,20 @@ class Airfoil:
         return self.geo.normalize(just_basic=just_basic)  
 
 
-    def do_strak (self, airfoil1 : 'Airfoil', airfoil2 : 'Airfoil', blendBy : float,
+    def do_blend (self, airfoil1 : 'Airfoil', airfoil2 : 'Airfoil', blendBy : float,
                   geometry = None ):
-        """ straks (blends) self out of two airfoils to the left and right
+        """ blends self out of two airfoils to the left and right
         depending on the blendBy factor
         
         Args: 
-            geometry: optional - geo strategy for strak - either GEO_BASIC or GEO_SPLINE
+            geometry: optional - geo strategy for blend - either GEO_BASIC or GEO_SPLINE
         """
     
         # sanity - both airfoils must be loaded 
         if not airfoil1.isLoaded:
-            raise ValueError ("Airfoil '" + airfoil1.name + "' isn't loaded. Cannot strak.")
+            raise ValueError ("Airfoil '" + airfoil1.name + "' isn't loaded. Cannot blend.")
         if not airfoil2.isLoaded:
-            raise ValueError ("Airfoil '" + airfoil2.name + "' isn't loaded. Cannot strak.")
+            raise ValueError ("Airfoil '" + airfoil2.name + "' isn't loaded. Cannot blend.")
 
         if blendBy < 0.0: raise ValueError ("blendyBy must be >= 0.0")
         if blendBy > 1.0: raise ValueError ("blendyBy must be <= 1.0")
@@ -619,10 +619,9 @@ class Airfoil:
         else:
             geo = self.geo 
 
-        geo.strak (airfoil1.geo, airfoil2.geo, blendBy)
+        geo.blend (airfoil1.geo, airfoil2.geo, blendBy)
 
-        self.sourceName = airfoil1.name + ("_blended_%.2f_" % blendBy) + airfoil2.name
-        self.set_isStrakAirfoil (True)
+        self.set_isBlendAirfoil (True)
 
 
 

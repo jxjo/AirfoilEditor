@@ -478,28 +478,26 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Airfoil_Select_Open_Widget (l,r,c, colSpan=2, withOpen=True, asSpin=False, signal=False,
-                                    get=self.airfoil, set=self.myApp.set_airfoil,
-                                    hide=lambda: self.airfoil().isExample)
-        r += 1
-        Airfoil_Open_Widget (l,r,c, colSpan=2, width=100, set=self.myApp.set_airfoil,
-                                    hide=lambda: not self.airfoil().isExample)
+        Airfoil_Select_Open_Widget (l,r,c, colSpan=2, signal=False, textOpen="&Open",
+                                    get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
         SpaceR (l,r, height=5)
         r += 1
-        Button (l,r,c, text="Modify Airfoil", width=100, 
+        Button (l,r,c, text="&Modify Airfoil", width=100, 
                 set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel",
                 button_style=button_style.PRIMARY)
         r += 1
-        SpaceR (l,r, height=5, stretch=0)
+        SpaceR (l,r, height=2, stretch=0)
         r += 1
-        Button (l,r,c, text="New as Bezier", width=100, 
+        Button (l,r,c, text="&New as Bezier", width=100, 
                 set=self.myApp.new_as_Bezier, disable=lambda: self.airfoil().isBezierBased,
                 toolTip="Create new Bezier airfoil based on current airfoil")
         r += 1
         SpaceR (l,r, stretch=4)
         r += 1
-        Button (l,r,c, text="Exit", width=100, set=self.myApp.close)
+        Button (l,r,c, text="&Exit", width=100, set=self.myApp.close)
+        r += 1
+        SpaceR (l,r, height=5, stretch=0)        
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
@@ -530,13 +528,15 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
         SpaceR (l,r)
         l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c,  text="Finish ...", width=100, 
+        Button (l,r,c,  text="&Finish ...", width=100, 
                         set=lambda : self.myApp.modify_airfoil_finished(ok=True))
         r += 1
         SpaceR (l,r, height=5, stretch=0)
         r += 1
-        Button (l,r,c,  text="Cancel",  width=100, 
+        Button (l,r,c,  text="&Cancel",  width=100, 
                         set=lambda : self.myApp.modify_airfoil_finished(ok=False))
+        r += 1
+        SpaceR (l,r, height=5, stretch=0)
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
@@ -547,7 +547,7 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
 class Panel_Geometry (Panel_Airfoil_Abstract):
     """ Main geometry data of airfoil"""
 
-    name = 'Airfoil'
+    name = 'Geometry'
     _width  = (350, None)
 
     @override
@@ -566,10 +566,9 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Field  (l,r,c, lab="Name", width=(100,None), colSpan=4,
-                obj=self.airfoil, prop=Airfoil.name)
-
-        r,c = 1, 0 
+        # Field  (l,r,c, lab="Name", width=(100,None), colSpan=5,
+        #         obj=self.airfoil, prop=Airfoil.name)
+        # r += 1
         FieldF (l,r,c, lab="Thickness", width=70, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.max_thick,
                 disable=self._disabled_for_airfoil)
@@ -581,8 +580,8 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         FieldF (l,r,c, lab="TE gap", width=70, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.te_gap)
 
-        r,c = 1, 2 
-        SpaceC (l,c)
+        r,c = 0, 2 
+        SpaceC (l,c, stretch=0)
         c += 1 
         FieldF (l,r,c, lab="at", width=70, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.max_thick_x,
@@ -602,8 +601,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (3,60)
-        l.setColumnStretch (1,2)
-        l.setColumnStretch (2,1)
+        l.setColumnStretch (5,2)
         return l 
 
     def _disabled_for_airfoil (self):
@@ -616,13 +614,16 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         self.myApp.sig_enter_blend.emit()
 
-        dialog = Blend (self.myApp, self.myApp.airfoil_org)    
+        dialog = Blend (self.myApp, self.airfoil(), self.myApp.airfoil_org)    
         dialog.sig_airfoil_changed.connect (self.myApp.sig_airfoil_changed.emit)
         dialog.sig_airfoil2_changed.connect (self.myApp.set_airfoil_target)
         dialog.exec()     
 
-        # geo : Geometry_Bezier = self.geo()
-        # geo.repanel (just_finalize=True)       # finalize modifications  
+        if dialog.airfoil2 is not None: 
+            # do final blend with high quality (splined) 
+            self.airfoil().geo.blend (self.myApp.airfoil_org.geo, 
+                                      dialog.airfoil2.geo, 
+                                      dialog.blendBy) 
 
         self.myApp.sig_airfoil_changed.emit()
 
@@ -631,7 +632,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
     """ Panelling information """
 
     name = 'Panels'
-    _width  =  (280, None)
+    _width  =  (290, None)
 
     def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
         """ add Widgets to header layout"""
@@ -728,7 +729,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 class Panel_LE_TE  (Panel_Airfoil_Abstract):
     """ info about LE and TE coordinates"""
 
-    name = 'Leading, Trailing Edge'
+    name = 'LE, TE'
 
     _width  = 320
 
@@ -952,7 +953,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
         l_head.addSpacing (20)
   
-        Airfoil_Select_Open_Widget (l_head, withOpen=True, asSpin=False,  width=(100,None),
+        Airfoil_Select_Open_Widget (l_head, width=(100,None),
                     get=lambda: self.myApp.airfoil_target, set=self.myApp.set_airfoil_target,
                     initialDir=self.myApp.airfoils()[0], addEmpty=True)
 
@@ -1117,7 +1118,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         self.myApp.sig_enter_edit_mode.connect (self._on_enter_edit_mode)
         self.myApp.sig_enter_panelling.connect (self._on_enter_panelling)
-
+        self.myApp.sig_enter_blend.connect     (self._on_blend_airfoil)
 
     @property
     def myApp (self) -> App_Main:
@@ -1156,6 +1157,16 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.section_panel.refresh() 
 
         logger.debug (f"{str(self)} _on_enter_panelling")
+
+
+    def _on_blend_airfoil (self):
+        """ slot to handle blend airfoil entered signal -> show org airfoil"""
+
+        # switch to show reference airfoils 
+        self.line_artist.set_show (False)
+        self.section_panel.refresh()
+
+        logger.debug (f"{str(self)} _on_blend_airfoil")
 
 
     @override
@@ -1429,14 +1440,15 @@ class Diagram_Airfoil (Diagram):
                             hide=lambda: not self.airfoil_target_name,
                             toolTip="Target airfoil")
             r += 1
-            Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False,
+            Airfoil_Select_Open_Widget (l,r,c, widthOpen=60,
                             get=lambda: self.airfoil_ref1, set=self.set_airfoil_ref1,
                             initialDir=self.airfoils()[0], addEmpty=True,
                             toolTip="Reference 1 airfoil")
             r += 1
-            Airfoil_Select_Open_Widget (l,r,c, withOpen=True, asSpin=False,
+            Airfoil_Select_Open_Widget (l,r,c, widthOpen=60,
                             get=lambda: self.airfoil_ref2, set=self.set_airfoil_ref2,
                             initialDir=self.airfoils()[0], addEmpty=True,
+                            hide=lambda: not self.airfoil_ref1 and not self.airfoil_ref2,
                             toolTip="Reference 2 airfoil")
             r += 1
             SpaceR (l,r)

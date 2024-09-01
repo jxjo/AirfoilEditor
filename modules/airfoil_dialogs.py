@@ -34,10 +34,10 @@ from airfoil_widgets        import Airfoil_Select_Open_Widget
 class Blend (Dialog):
     """ Dialog to two airfoils into a new one"""
 
-    _width  = 550
-    _height = 240
+    _width  = 560
+    _height = 180
 
-    name = "Repanel Airfoil"
+    name = "Blend Airfoil with ..."
 
     sig_airfoil_changed    = pyqtSignal ()
     sig_airfoil2_changed   = pyqtSignal (Airfoil)
@@ -46,12 +46,13 @@ class Blend (Dialog):
 
 
     def __init__ (self, parent : QWidget, 
-                  airfoil1 : Airfoil,
-                  airfoil2 : Airfoil = None): 
+                  airfoil  : Airfoil, 
+                  airfoil1 : Airfoil): 
 
+        self._airfoil  = airfoil 
         self._airfoil1 = airfoil1
-        self._airfoil2 = airfoil2
-        self._blendby  = 0.5                            # initial blend value 
+        self._airfoil2 = None
+        self._blendBy  = 0.5                            # initial blend value 
 
         # init layout etc 
 
@@ -71,40 +72,65 @@ class Blend (Dialog):
 
         l = QGridLayout()
         r = 0 
+        # SpaceR (l, r, stretch=0, height=5) 
+        # r += 1
+        Label  (l,r,1, colSpan=5, get="Select airfoil to blend with and adjust blending value")
+        r += 1
         SpaceR (l, r, stretch=0, height=5) 
-        r += 1
-        Label  (l,r,0, colSpan=5, get="Select airfoil to blend with and adjust blending value")
-        r += 1
-        SpaceR (l, r, stretch=0, height=10) 
         r += 1 
-        Field  (l,r,1, get=self._airfoil1.name, width = 120)
-        SpaceC (l,2,stretch=0)
-        Slider (l,r,3, width=120, lim=(0,1), get=lambda: self._blendby,
-                       set=self._set_blendBy)
-        FieldF (l,r,4, width=60,  lim=(0, 1),get=lambda: self._blendby, step=0.1,
-                       set=self._set_blendBy)
-        SpaceC (l,5, stretch=0)
-        Airfoil_Select_Open_Widget (l,r,6, withOpen=True, asSpin=False, signal=True, width=140, 
-                                    get=lambda: self._airfoil2, set=self._set_airfoil2)
+        Label  (l,r,1, get="Airfoil")
+        Label  (l,r,3, get="Blended")
+        Label  (l,r,6, get="Airfoil 2")
+        r += 1 
+        Field  (l,r,1, get=self._airfoil1.name, width = 130)
+        SpaceC (l,2, width=10, stretch=0)
+        Slider (l,r,3, width=110, lim=(0,1), get=lambda: self.blendBy,
+                       set=self._set_blendBy, disable=lambda: self._airfoil2 is None)
+        FieldF (l,r,4, width=60,  lim=(0, 1),get=lambda: self.blendBy, step=0.1,
+                       set=self._set_blendBy, disable=lambda: self.airfoil2 is None)
+        SpaceC (l,5, width=10, stretch=0)
+        Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
+                                    get=lambda: self.airfoil2, set=self._set_airfoil2)
 
         SpaceC (l,7, width=5)
         r += 1
-        SpaceR (l, r, height=5) 
+        SpaceR (l, r) 
 
         return l
 
+    @property
+    def blendBy (self) -> float:
+        """ blend value"""
+        return self._blendBy
+    
     def _set_blendBy (self, aVal : float):
-        """ set new value - do strak - signal change"""
-        self._blendby = aVal
+        """ set new value - do Blend - signal change"""
+        self._blendBy = aVal
         self.refresh()
 
+        # Blend with new blend value  
+        if self._airfoil2 is not None: 
+            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2.geo, 
+                                     self._blendBy, ensure_fast=True)
+            self.sig_airfoil_changed.emit()
 
+
+    @property
+    def airfoil2 (self) -> Airfoil:
+        """ airfoil to blend with """
+        return self._airfoil2
+    
     def _set_airfoil2 (self, aAirfoil : Airfoil):
-        """ set new 2nd airfoil - do strak - signal change"""
+        """ set new 2nd airfoil - do blend - signal change"""
         self._airfoil2 = aAirfoil
         self.refresh()
-
         self.sig_airfoil2_changed.emit (aAirfoil)
+
+        # first blend with new airfoil 
+        if aAirfoil is not None: 
+            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2.geo, 
+                                     self._blendBy, ensure_fast=True)
+            self.sig_airfoil_changed.emit()
 
 
     @override

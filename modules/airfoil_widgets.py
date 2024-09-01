@@ -97,6 +97,7 @@ class Airfoil_Open_Widget (Widget, QWidget):
 
     def __init__(self, *args,
                  set = None,                # will set new airfoil
+                 text = "Open", 
                  asIcon = False,            # Button as icon 
                  **kwargs):
         super().__init__(*args, set=set, **kwargs)
@@ -111,7 +112,7 @@ class Airfoil_Open_Widget (Widget, QWidget):
             widget= ToolButton (l, icon=Icon.OPEN, set=self._open, toolTip="Select airfoil")
             self._width = widget._width             # self shall have the same fixed width
         else: 
-            widget = Button    (l, text="&Open", width=self._width, set=self._open, toolTip="Select airfoil")
+            widget = Button    (l, text=text, width=self._width, set=self._open, toolTip="Select airfoil")
         self.setLayout (l) 
 
         # normal widget handling 
@@ -161,13 +162,15 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                  get = None,                # get current / initial airfoil 
                  set = None,                # will set new airfoil
                  addEmpty = False,          # add empty entry to fie list 
-                 asSpin = True,             # ComboBox with spin buttons 
-                 withOpen = False,          # include open button 
+                 asSpin = False,            # ComboBox with spin buttons 
+                 withOpen = True,           # include open button 
+                 textOpen = "Open",         # text for Open button 
+                 widthOpen = 100,           # width of open text button 
                  initialDir : Airfoil | str | None = None, # either an airfoil or a pathString 
                  **kwargs):
         super().__init__(*args, get=get, set=set, **kwargs)
 
-        self._combo = None 
+        self._no_files_here = None
         self._initial_dir = initialDir
         self._addEmpty = addEmpty is True 
 
@@ -175,21 +178,35 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
         l = QHBoxLayout(self)
         l.setContentsMargins (QMargins(0, 0, 0, 0))
-        l.setSpacing (1)
-        l.setStretch (0,2)
-        l.setStretch (1,0)
         if asSpin: 
-            self._combo = ComboSpinBox (l, get=self.airfoil_fileName, 
-                                           set=self.set_airfoil_by_fileName, 
-                                           options=self.airfoil_fileNames_sameDir,
-                                           signal=False)
+            ComboSpinBox (l, get=self.airfoil_fileName, 
+                                set=self.set_airfoil_by_fileName, 
+                                options=self.airfoil_fileNames_sameDir,
+                                hide=self.no_files_here,
+                                signal=False)
         else:             
-            self._combo = ComboBox     (l, get=self.airfoil_fileName, 
-                                           set=self.set_airfoil_by_fileName, 
-                                           options=self.airfoil_fileNames_sameDir,
-                                           signal=False)
+            ComboBox      (l, get=self.airfoil_fileName, 
+                                set=self.set_airfoil_by_fileName, 
+                                options=self.airfoil_fileNames_sameDir,
+                                hide=self.no_files_here,
+                                signal=False)
         if withOpen:
-            Airfoil_Open_Widget (l, asIcon=True, set=self.set_airfoil_from_open, signal=False)
+            Airfoil_Open_Widget (l, text=textOpen, set=self.set_airfoil, signal=False,
+                                 width = widthOpen,
+                                 hide=lambda: not self.no_files_here())
+            Airfoil_Open_Widget (l, asIcon=True, set=self.set_airfoil, signal=False,
+                                 hide=self.no_files_here)
+            l.insertStretch (-1, stretch = 2)
+
+        l.setContentsMargins (QMargins(0, 0, 0, 0))
+
+        if self.no_files_here(): 
+            l.setSpacing (0)
+        else: 
+            l.setSpacing (1)
+            l.setStretch (0,4)
+            l.setStretch (1,0)
+
         self.setLayout (l)
 
         # normal widget handling 
@@ -203,32 +220,37 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._layout_add ()
 
 
-    def _get_properties (self): 
-        """
-        Read all the properties like disablee, style as they can be 
-            - bound methods
-            - fixed values 
-            - property (only for self._val)
-        """
-        super()._get_properties()
-        # access value' either via property approach or via getter (bound method) 
+    def no_files_here (self) -> bool:
+        """ True if no files to select in combo """
+
+        if self._no_files_here is None: 
+            n = len (self.airfoil_fileNames_sameDir())
+            # there can be a blank entry as the first item 
+            self._no_files_here =  n == 0 or (n==1 and (not self.airfoil_fileNames_sameDir()[0]))
+
+        return self._no_files_here
+
 
     @property
     def airfoil (self) -> Airfoil:
         return self._val
     def set_airfoil (self, anAirfoil : Airfoil):
 
+        # do manual set value and callback to avoid refresh ping-pong
+        self._val = anAirfoil 
+        self._no_files_here = None                      # reset cached value 
 
-        #leave button callback and refresh in a few ms 
-        # problem: self set._val will be dalyed for internal refresh ...
-        # timer = QTimer()                                
-        # timer.singleShot(10, lambda: self._set_value (anAirfoil))    
-        self._set_value (anAirfoil)           # call parent with new airfoil 
+        # refresh the sub widgets -> hide / show 
+        w : Widget
+        for w in self.findChildren (Widget):
+            w.refresh()
 
+        # leave self for callback in a few ms 
+        timer = QTimer()                                
+        timer.singleShot(10, lambda: self._set_value_callback ())  
 
-    def set_airfoil_from_open (self, anAirfoil : Airfoil):
-        self.set_airfoil (anAirfoil)  
-        self._combo.refresh()         
+        # no emit_change   
+        pass
 
 
     def airfoil_fileName (self) -> str | None:
