@@ -29,7 +29,7 @@ import logging
 
 from PyQt6.QtCore           import QSize, QMargins, QEvent
 from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QMessageBox, QStackedWidget 
-from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QStackedLayout
+from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QDialog
 from PyQt6.QtGui            import QShowEvent, QCloseEvent
 
 # let python find the other modules in modules relativ to path of self  
@@ -37,7 +37,7 @@ sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 
 from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
-from model.airfoil_geometry import Geometry, Geometry_Bezier
+from model.airfoil_geometry import Geometry, Geometry_Bezier, Panelling_Spline
 
 from base.common_utils      import * 
 from base.panels            import Panel, Edit_Panel
@@ -58,7 +58,7 @@ logger.setLevel(logging.DEBUG)
 # ------ globals -----
 
 AppName    = "Airfoil Editor"
-AppVersion = "2.0 beta 1"
+AppVersion = "2.0 beta 2"
 
 Main : 'App_Main' = None 
 
@@ -110,19 +110,21 @@ class App_Main (QMainWindow):
         self._file_panel = None
 
         self.parentApp = parentApp
-        self.initial_geometry = None                # window geometry at the ebginning
+        self.initial_geometry = None                # window geometry at the beginning
 
         # get icon either in modules or in icons 
         
         self.setWindowIcon (Icon ('AE_ico.ico'))
 
-        # init settings - get initial window size 
+        # get initial window size from settings
 
         Settings.belongTo (__file__, nameExtension=None, fileExtension= '.settings')
         geometry = Settings().get('window_geometry', [])
         maximize = Settings().get('window_maximize', False)
         Win_Util.set_initialWindowSize (self, size_frac= (0.75, 0.65), pos_frac=(0.1, 0.1),
                                         geometry=geometry, maximize=maximize)
+        
+        self._load_panelling_settings ()
 
         # init airfoil 
 
@@ -391,13 +393,40 @@ You can view the properties of an airfoil like thickness distribution or camber,
         return message
 
 
+    def _save_settings (self):
+        """ save settings to file """
+
+        # save Window size and position 
+        Settings().set('window_geometry', self.normalGeometry ().getRect())
+        Settings().set('window_maximize', self.isMaximized())
+
+        # save panelling values 
+        Settings().set('panelling_nPanels',  Panelling_Spline().nPanels)
+        Settings().set('panelling_le_bunch', Panelling_Spline().le_bunch)
+        Settings().set('panelling_te_bunch', Panelling_Spline().te_bunch)
+
+
+    def _load_panelling_settings (self):
+        """ load default panelling settings from file """
+
+        nPanels  = Settings().get('panelling_nPanels', None)
+        le_bunch = Settings().get('panelling_le_bunch', None)
+        te_bunch = Settings().get('panelling_te_bunch', None)
+
+        if nPanels:     Panelling_Spline._nPanels = nPanels
+        if le_bunch:    Panelling_Spline._le_bunch = le_bunch
+        if te_bunch:    Panelling_Spline._te_bunch = te_bunch
+
+
     @override
     def closeEvent  (self, event : QCloseEvent):
         """ main window is closed """
 
-        Settings().set('window_geometry',  self.normalGeometry ().getRect())
-        Settings().set('window_maximize', self.isMaximized())
+        self._save_settings ()
+
         event.accept()
+
+
 
 #-------------------------------------------------------------------------------
 # Single edit panels    
@@ -681,9 +710,12 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         dialog.exec()     # delayed emit 
 
         geo : Geometry_Bezier = self.geo()
-        geo.repanel (just_finalize=True)       # finalize modifications  
+
+        if dialog.has_been_repaneled:
+            geo.repanel (just_finalize=True)       # finalize modifications          
 
         self.myApp.sig_airfoil_changed.emit()
+
      
     def refresh(self):
         super().refresh()

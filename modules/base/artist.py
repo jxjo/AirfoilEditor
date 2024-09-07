@@ -359,6 +359,8 @@ class Movable_Bezier (pg.PlotCurveItem):
 
         # Control jpoints  
         self._jpoints : list[JPoint] = jpoints 
+        # ... as movable Bezier points 
+        self._movable_points = []
  
 
         # init polyline of control points as PlotCurveItem
@@ -383,6 +385,7 @@ class Movable_Bezier (pg.PlotCurveItem):
             p.sigPositionChanged.connect        (self._moving_point)
             p.sigPositionChangeFinished.connect (self._finished_point)
             p.sigShiftClick.connect             (self._delete_point)
+            self._movable_points.append(p)
 
 
         # init temp PlotCurve to represent Bezier during move 
@@ -426,15 +429,7 @@ class Movable_Bezier (pg.PlotCurveItem):
             self._u = np.linspace (0.0, 1.0, 50)                # only 50 points for speed
         return self._u
 
-
-    def _movable_points (self) -> list [Movable_Bezier_Point]:
-        """ list of movable points of self """
-        movable_points = [] 
-        for item in self.childItems ():
-            if isinstance(item, Movable_Bezier_Point):
-                movable_points.append (item)
-        return movable_points
-    
+  
 
     def jpoints_xy (self) -> tuple[list]:
         """returns coordinates of self_jpoints as x, y lists """
@@ -447,7 +442,7 @@ class Movable_Bezier (pg.PlotCurveItem):
     def points_xy (self) -> tuple[list]:
         """returns coordinates of self_movable_points as x, y lists """
         x, y = [], []
-        for p in self._movable_points():
+        for p in self._movable_points:
             x.append(p.x)
             y.append(p.y)
         return x, y

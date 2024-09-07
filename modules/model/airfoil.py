@@ -416,6 +416,16 @@ class Airfoil:
         else:
             return ''
 
+    @property
+    def pathName_abs (self):
+        """
+        absolute directory pathname of airfoil like '\\root\\myAirfoils\\'
+        """
+        if not self.pathFileName is None: 
+            return os.path.dirname(os.path.abspath(self.pathFileName))
+        else:
+            return os.path.dirname(os.getcwd())
+
 
     def load (self, fromPath = None):
         """

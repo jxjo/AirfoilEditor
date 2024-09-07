@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
 from copy               import copy
+from typing             import override
 
 from PyQt6.QtCore       import Qt
 from PyQt6.QtCore       import QSize, QMargins, pyqtSignal 
@@ -361,6 +362,9 @@ class Dialog (QDialog):
 
         self.setWindowTitle (self.name)
 
+        # enable custom window hint, disable (but not hide) close button
+        # self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+
         # inital content panel content - layout in >init  
 
         self._panel = QWidget () 
@@ -465,6 +469,11 @@ class Dialog (QDialog):
         logger.debug (f"{self} - refresh")
 
 
+    @override
+    def reject (self): 
+        """ handle rject (close) actions"""
+        # to override 
+        super().reject()
 
 # ------------------------------------------------------------------------------
 # ------------ test functions - to activate  -----------------------------------

@@ -328,10 +328,9 @@ class Movable_Side_Bezier (Movable_Bezier):
         """ refresh control points from side control points """
 
         # update all my movable points at once 
-        movable_points = self._movable_points()
         movable_point : Movable_Bezier_Point
         for i, point_xy in enumerate(self._side.controlPoints): 
-            movable_point = movable_points[i]
+            movable_point = self._movable_points[i]
             movable_point.setPos_silent (point_xy)              # silent - no change signal 
 
         self.setData(*self.points_xy())                         # update self (polyline) 

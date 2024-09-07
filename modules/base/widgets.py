@@ -903,6 +903,7 @@ class Field (Field_With_Label, QLineEdit):
         # connect signals 
         self.editingFinished.connect(self._on_finished)
         self.returnPressed.connect(self._on_finished)
+        self.textEdited.connect(self._on_finished)              # also set with every edit 
 
 
     def _set_Qwidget (self, **kwargs):
@@ -913,6 +914,7 @@ class Field (Field_With_Label, QLineEdit):
 
 
     def _on_finished(self):
+
       self._set_value (self.text())
 
 
@@ -1074,6 +1076,12 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         if self._unit == '%':
             self.setValue (self._val * 100.0)
         else: 
+            # test dynamic decimals 
+            # if round (self._val,1) == round (self._val, self._dec):
+            #     self.setDecimals (1) 
+            # else: 
+            #     self.setDecimals (self._dec)
+
             self.setValue (self._val)
 
 

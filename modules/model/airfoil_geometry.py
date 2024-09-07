@@ -101,6 +101,12 @@ class Panelling_Spline:
         self._te_bunch = te_bunch if te_bunch is not None else self._te_bunch
  
 
+    @override
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        return f"<{type(self).__name__}>"
+    
+
     @property 
     def nPanels (self) -> int: 
         return self._nPanels
@@ -111,11 +117,6 @@ class Panelling_Spline:
         newVal = min (500, newVal) 
         self._nPanels = int (newVal)
 
-    @override
-    def __repr__(self) -> str:
-        # overwritten to get a nice print string 
-        return f"<{type(self).__name__}>"
-    
 
     @property 
     def le_bunch (self) -> float:
@@ -134,6 +135,13 @@ class Panelling_Spline:
         """ set target trailing edge bunch of panels"""
         self._te_bunch = newVal
  
+
+    def save (self):
+        """ save current parms to class variables"""
+
+        Panelling_Spline._nPanels  = self.nPanels
+        Panelling_Spline._le_bunch = self.le_bunch
+        Panelling_Spline._te_bunch = self.te_bunch
 
 
     def _get_panel_distribution (self, nPanels) -> np.ndarray:
@@ -2235,7 +2243,7 @@ class Geometry_Splined (Geometry):
     def panelling (self) -> Panelling_Spline:
         """ returns the target panel distribution / helper """
         if self._panelling is None:
-            self._panelling = Panelling_Spline(self.nPanels)
+            self._panelling = Panelling_Spline()   # (self.nPanels)
         return self._panelling
 
     @override
@@ -2429,14 +2437,16 @@ class Geometry_Splined (Geometry):
         """
 
         try: 
-            # self._push_xy ()
 
             if not just_finalize:
                 self._repanel (nPanels = nPanels)
             
             # repanel could lead to a slightly different le 
             super()._normalize()               # do not do iteration in self.normalize       
-            # self._pop_xy ()
+
+            # save the actual panelling options as class variables
+            self._panelling.save() 
+
             self._reset()
             self._changed (Geometry.Mod.REPANEL)
 
@@ -2453,11 +2463,11 @@ class Geometry_Splined (Geometry):
         """
 
         # reset le of spline 
-
         # self._uLe = None 
 
+        # sanity
         if len(self.spline.u) != len(self.x):
-            pass
+            raise ValueError (f"{self} - repanel: u and x don't fit")
 
         # re(calculate) panel distribution of spline so LE will be at uLe and iLe  
         u_new = self.panelling.new_u (self.spline.u, self.iLe, self.uLe,

@@ -334,6 +334,8 @@ class Airfoil_Save_Dialog (Dialog):
 
         l = QGridLayout()
         r = 0 
+        Label  (l,r,0, colSpan=4, get="Change airfoil name and/or filename before saving the airfoil" )
+        r += 1
         SpaceR (l, r) 
         r += 1
         Field  (l,r,0, lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None),
@@ -349,16 +351,16 @@ class Airfoil_Save_Dialog (Dialog):
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use airfoil name as filename")
         r += 1
-        Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName, width=(150,None),
+        Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName_abs, width=(150,None),
                        disable=True)
         ToolButton (l,r,2, icon=Icon.OPEN, set=self._open_dir, signal=True,
                     toolTip = 'Select directory of airfoil') 
         r += 1
-        SpaceR (l, r, stretch=1) 
+        SpaceR (l, r, height=5, stretch=1) 
         r += 1
         Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=(30,None))
         r += 1
-        SpaceR (l, r, height=1, stretch=4) 
+        SpaceR (l, r, height=5, stretch=1) 
         l.setColumnStretch (1,5)
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (2,35)
@@ -392,7 +394,7 @@ class Airfoil_Save_Dialog (Dialog):
         text = []
         if not self._names_are_equal():
              text.append("Name of airfoil and its filename are different.")
-             text.append("You maybe want to 'sync' either the name or the filename.")
+             text.append("You can 'sync' either the name or the filename.")
         text = '\n'.join(text)
         return text 
 
@@ -401,7 +403,7 @@ class Airfoil_Save_Dialog (Dialog):
     def _open_dir (self):
         """ open directory and set to airfoil """
 
-        select_dir = os.path.dirname(self.airfoil.pathName)     # take parent of current
+        select_dir = self.airfoil.pathName_abs     
         pathName_new = QFileDialog.getExistingDirectory(self, caption="Select directory",
                                                            directory=select_dir)
         if pathName_new:                         # user pressed open

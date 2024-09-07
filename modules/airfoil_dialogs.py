@@ -58,9 +58,6 @@ class Blend (Dialog):
 
         super().__init__ (parent=parent)
 
-        # enable custom window hint, disable (but not hide) close button
-        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
-
         # move window a little to the side 
         p_center = parent.rect().center()               # parent should be main window
         pos_x = p_center.x() + 200
@@ -165,19 +162,22 @@ class Repanel (Dialog):
                   geo : Geometry_Splined): 
 
         self._geo = geo
+        self.has_been_repaneled = False
 
         # init layout etc 
 
         super().__init__ (parent=parent)
-
-        # enable custom window hint, disable (but not hide) close button
-        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
 
         # move window a little to the side 
         p_center = parent.rect().center()               # parent should be main window
         pos_x = p_center.x() + 400
         pos_y = p_center.y() + 250            
         self.move(pos_x, pos_y)
+
+        # do a first repanel with the actual parameters 
+        #       delayed as parent has to be connected to signal 
+        timer = QTimer()                                
+        timer.singleShot(20, self._on_widget_changed)     # delayed emit 
 
 
     def _init_layout(self) -> QLayout:
@@ -247,7 +247,9 @@ class Repanel (Dialog):
         self.refresh()
         self._geo._repanel ()
 
+        self.has_been_repaneled = True              # for change detection 
         self.sig_new_panelling.emit()               # inform parent -> diagram update
+
 
     @override
     def _button_box (self):
@@ -348,8 +350,6 @@ class Match_Bezier (Dialog):
 
         super().__init__ (parent=parent)
 
-        # enable custom window hint, disable (but not hide) close button
-        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
         self.setWindowTitle (self._titletext())
 
         # move window a little to the side 
@@ -519,6 +519,18 @@ class Match_Bezier (Dialog):
         """ request thread termination"""
     
         self._matcher.requestInterruption()
+
+
+    @override
+    def reject(self): 
+        """ close or x-Button pressed"""
+
+        # stop running matcher if x-Button pressed
+        if self._matcher.isRunning():
+            self._matcher.requestInterruption()
+        
+        # normal close 
+        super().reject()
 
 
     
