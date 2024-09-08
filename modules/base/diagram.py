@@ -187,8 +187,8 @@ class Diagram (QWidget):
         self._viewPanel.setLayout (layout)
 
 
-    def _on_item_visible (self, anItem, aBool):
-        """ slot to handle switch on/off of diagram items"""
+    def _on_item_visible (self, aBool):
+        """ slot to handle actions when switch on/off of diagram items"""
 
         nItems = len(self.diagram_items_visible)
 
@@ -197,12 +197,16 @@ class Diagram (QWidget):
         # the GraphicsLayout gets confused, if all items were switched off
         #     and then switched on again - recalc layout
         if aBool: 
-            if nItems == 1:
+            if nItems > 0:
                 self._message_clear()
+
+                # also remove a welcome message
+                self.diagram_items[0].set_welcome (None) 
+
 
 
     def _message_show (self, aMessage):
-        """ shows aMessage in the midlle of the diagram """
+        """ shows aMessage in the middle of the diagram """
         text = pg.TextItem(aMessage, anchor=(0.5,0))
         text.setPos(0, 0)
         self._message_vb.addItem (text)
@@ -210,7 +214,7 @@ class Diagram (QWidget):
 
 
     def _message_clear (self):
-        """ shows aMessage in the midlle of the diagram """
+        """ shows aMessage in the middle of the diagram """
         self._message_vb.clear()
         self._message_vb.hide()
 
@@ -230,7 +234,7 @@ class Diagram_Item (pg.PlotItem):
     name = "Abstract Diagram_Item"              # used for link and section header
 
     # Signals 
-    sig_visible = pyqtSignal(object, bool)      # when self is set to show/hide 
+    sig_visible = pyqtSignal(bool)              # when self is set to show/hide 
 
 
     def __init__(self, parent, 
@@ -258,7 +262,7 @@ class Diagram_Item (pg.PlotItem):
 
         # setup artists - must be override
 
-        self.setup_artists ()
+        self.setup_artists (initial_show=show)
 
         # setup view range - must be override
         
@@ -289,8 +293,15 @@ class Diagram_Item (pg.PlotItem):
         """ Qt overloaded to signal parent """
         super().setVisible (aBool)
 
-        self.refresh_artists()                      # data could have been changed in the meantime
-        self.sig_visible.emit (self, aBool)
+        self.set_show (aBool)
+
+        self.sig_visible.emit (aBool)
+
+
+    def set_show (self, aBool):
+        """ switch on/off artists of self"""
+        # to override
+        self._show = aBool
 
 
     @override
@@ -377,7 +388,7 @@ class Diagram_Item (pg.PlotItem):
             self.refresh_artists() 
 
 
-    def setup_artists (self):
+    def setup_artists (self, initial_show=True):
         """ create and setup the artists of self"""
         # must be implemented by subclass
         

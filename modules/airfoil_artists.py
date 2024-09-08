@@ -6,15 +6,18 @@
 The "Artists" to plot a airfoil object on a pg.PlotItem 
 
 """
-import numpy as np
 
-from base.artist                  import *
-from base.common_utils               import *
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+from base.math_util             import derivative1
+from base.artist                import *
+from base.common_utils          import *
 
 from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry
 from model.airfoil_geometry     import Line, Side_Airfoil_Bezier
 
-from model.airfoil_geometry     import Curvature_Abstract
 from base.spline                import Bezier
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
@@ -443,8 +446,9 @@ class Airfoil_Artist (Artist):
 
     def set_welcome (self, aText):
         """ set a welcome HTML text, which is schon the first time"""
-        self._welcome_text = aText 
-        self.plot()
+        if aText != self._welcome_text:
+            self._welcome_text = aText 
+            self.plot()
 
 
     @property
@@ -695,46 +699,43 @@ class Curvature_Artist (Artist):
 
     def _plot (self): 
 
-        from base.math_util    import derivative1
-
         nairfoils = len(self.airfoils)
         
         airfoil: Airfoil
 
         for airfoil in self.airfoils:
-            if (airfoil.isLoaded):
 
-                color = _color_airfoil_of (airfoil.usedAs)
+            color = _color_airfoil_of (airfoil.usedAs)
 
-                sides = []
-                if self.show_upper: sides.append (airfoil.geo.curvature.upper)
-                if self.show_lower: sides.append (airfoil.geo.curvature.lower)
+            sides = []
+            if self.show_upper: sides.append (airfoil.geo.curvature.upper)
+            if self.show_lower: sides.append (airfoil.geo.curvature.lower)
 
-                side : Line
-                for side in sides:
-                    x = side.x
-                    y = side.y      
-                    if side.type == Line.Type.UPPER:
-                        pen = pg.mkPen(color, width=1, style=Qt.PenStyle.SolidLine)
-                    else: 
-                        pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+            side : Line
+            for side in sides:
+                x = side.x
+                y = side.y      
+                if side.type == Line.Type.UPPER:
+                    pen = pg.mkPen(color, width=1, style=Qt.PenStyle.SolidLine)
+                else: 
+                    pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
 
-                    label = f"{side.name} - {airfoil.name}"
-                    self._plot_dataItem (x, y, name=label, pen=pen)
+                label = f"{side.name} - {airfoil.name}"
+                self._plot_dataItem (x, y, name=label, pen=pen)
 
-                    # self._plot_reversals (side, color)
+                # self._plot_reversals (side, color)
 
-                    # plot derivative1 of curvature ('spikes') 
+                # plot derivative1 of curvature ('spikes') 
 
-                    if self.show_derivative and (nairfoils == 1 or airfoil.usedAsDesign):
-                        pen = QPen (pen)
-                        pen.setColor (QColor('red'))
-                        name = f"{side.name} - Derivative"
-                        self._plot_dataItem (x, -derivative1(x,y), name=name, pen=pen)
+                if self.show_derivative and (nairfoils == 1 or airfoil.usedAsDesign):
+                    pen = QPen (pen)
+                    pen.setColor (QColor('red'))
+                    name = f"{side.name} - Derivative"
+                    self._plot_dataItem (x, -derivative1(x,y), name=name, pen=pen)
 
-                    # plot max points at le and te 
+                # plot max points at le and te 
 
-                    self._plot_le_te_max_point (side, color )
+                self._plot_le_te_max_point (side, color )
 
 
     def _plot_le_te_max_point (self, aSide : Line, color ):

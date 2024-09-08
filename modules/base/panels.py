@@ -123,7 +123,7 @@ class Edit_Panel (Panel):
     def __init__(self, *args, 
                  layout : QLayout | None = None,
                  switchable : bool = False,
-                 switched : bool = True, 
+                 switched_on : bool = True, 
                  on_switched = None, 
                  hide_switched : bool = True,
                  **kwargs):
@@ -131,7 +131,7 @@ class Edit_Panel (Panel):
 
         self._switchable = switchable
         self._hide_switched = hide_switched
-        self._switched_on = switched
+        self._switched_on = switched_on
 
         # set background color  
 

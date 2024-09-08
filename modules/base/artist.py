@@ -14,6 +14,8 @@ All PlotItem, ViewBox settings are made 'outside' of an Artist
 see: https://pyqtgraph.readthedocs.io/en/latest/getting_started/plotting.html
 
 """
+
+from typing             import override
 from enum               import StrEnum
 
 import numpy as np
@@ -31,6 +33,11 @@ from PyQt6.QtGui        import QColor
 from base.common_utils  import *
 from base.math_util     import JPoint 
 from base.spline        import Bezier 
+
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 
 
 class qcolors (StrEnum):
@@ -271,6 +278,7 @@ class Movable_Point (pg.TargetItem):
             GraphicsObject.setPos(self, self._pos)            # call grand pa to avoid signal 
 
 
+    @override
     def mouseClickEvent(self, ev : MouseClickEvent):
         """ pg overloaded - ghandle shift_click """
         if self.movable :
@@ -278,6 +286,8 @@ class Movable_Point (pg.TargetItem):
                 self.sigShiftClick.emit(self) 
         return super().mouseClickEvent(ev)
 
+
+    @override
     def mouseDragEvent(self, ev):
 
         super().mouseDragEvent (ev) 
@@ -292,16 +302,18 @@ class Movable_Point (pg.TargetItem):
             self.setPath (Symbols[self._symbol_movable])
 
 
+    @override
     def hoverEvent(self, ev):
-        # overwritten to allow mouse hover also for points which are not mavalble
+        # overridden to allow mouse hover also for points which are not mavalble
         if (not ev.isExit()) and ev.acceptDrags(QtCore.Qt.MouseButton.LeftButton):
             self.setMouseHover(True)
         else:
             self.setMouseHover(False)
 
 
+    @override
     def setMouseHover (self, hover: bool):
-        # overloaded from TargetItem to get hover event for new label 
+        # overridden from TargetItem to get hover event for new label 
 
         if not self.mouseHovering is hover:
             if hover:
@@ -312,6 +324,7 @@ class Movable_Point (pg.TargetItem):
         super().setMouseHover(hover)
 
 
+    @override
     def setMovingBrush(self):
         """Set the brush that fills the symbol when moving.
         """
@@ -492,8 +505,9 @@ class Movable_Bezier (pg.PlotCurveItem):
 
 
 
-
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+
 
 
 class Artist(QObject):
@@ -549,8 +563,9 @@ class Artist(QObject):
         self.plot ()
 
 
+    @override
     def __repr__(self) -> str:
-        # overwritten to get a nice print string 
+        # get a nice print string 
         text = '' 
         return f"<{type(self).__name__}{text}>"
 
@@ -637,10 +652,13 @@ class Artist(QObject):
                 self._pi.addLegend(offset=(-50,10),  verSpacing=0 )  
                 self._pi.legend.setLabelTextColor (self.COLOR_LEGEND)
 
-                # print ("rows:", self._pi.legend.layout.rowCount(), self._pi.legend)
 
             if len(self.data_list) > 0:
+
                 self._plot()                        # plot data list 
+
+                if self._plots:
+                    logger.debug  (f"{self} - plot {len(self._plots)} items")
 
 
     def refresh(self):

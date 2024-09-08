@@ -880,11 +880,11 @@ class Matcher (QThread):
         # counter of objective evaluations (for entertainment)
         self._nevals += 1
 
-        if self._nevals%100 == 0:           
-            print (f"{self._nevals:4} " +
-                           f" obj:{obj:5.2f}   norm2:{obj_norm2:5.2f}" +
-                           f"  le:{obj_le:5.2f}   le_hp:{obj_le_hp:4.1f}   te:{obj_te:4.1f}" +
-                           f"  rev:{obj_revers:4.1f}  te_der:{obj_te_deriv:4.1f}")
+        # if self._nevals%100 == 0:           
+        #     print (f"{self._nevals:4} " +
+        #                    f" obj:{obj:5.2f}   norm2:{obj_norm2:5.2f}" +
+        #                    f"  le:{obj_le:5.2f}   le_hp:{obj_le_hp:4.1f}   te:{obj_te:4.1f}" +
+        #                    f"  rev:{obj_revers:4.1f}  te_der:{obj_te_deriv:4.1f}")
 
         # signal parent with new results 
         if self._nevals%10 == 0:  

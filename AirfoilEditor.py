@@ -37,7 +37,7 @@ sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 
 from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
-from model.airfoil_geometry import Geometry, Geometry_Bezier, Panelling_Spline
+from model.airfoil_geometry import Geometry, Geometry_Bezier, Panelling_Spline, Curvature_Abstract
 
 from base.common_utils      import * 
 from base.panels            import Panel, Edit_Panel
@@ -1202,16 +1202,16 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
 
     @override
-    def setup_artists (self):
+    def setup_artists (self, initial_show=True):
         """ create and setup the artists of self"""
         
-        self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show=True, show_legend=True)
+        self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show=initial_show, show_legend=True)
         self.airfoil_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
 
         self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
         self.line_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
 
-        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= True)
+        self.bezier_artist = Bezier_Artist (self, self.airfoils, show= initial_show)
         self.bezier_artist.sig_airfoil_changed.connect (signal_airfoil_changed)
 
 
@@ -1278,6 +1278,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.airfoil_artist.set_welcome (aText)
 
 
+
 class Diagram_Item_Curvature (Diagram_Item):
     """ 
     Diagram (Plot) Item for airfoils curvature 
@@ -1296,6 +1297,15 @@ class Diagram_Item_Curvature (Diagram_Item):
         return self.data_list()
     
 
+    @override
+    def set_show (self, aBool):
+        """ switch on/off artists of self when diagram_item is switched on/off"""
+        super().set_show (aBool)
+
+        self.curvature_artist.set_show (aBool)
+
+
+
     @property
     def link_x (self) -> bool:
         """ is x axes linked with View Airfoil"""
@@ -1308,11 +1318,11 @@ class Diagram_Item_Curvature (Diagram_Item):
         else: 
             self.setXLink(None)
 
-    def setup_artists (self):
+    def setup_artists (self, initial_show=True):
         """ create and setup the artists of self"""
         
-        self.curvature_artist = Curvature_Artist (self, self.airfoils, 
-                                                show=True, show_derivative=False, show_legend=True)
+        self.curvature_artist = Curvature_Artist (self, self.airfoils, show=initial_show, 
+                                                  show_derivative=False, show_legend=True)
 
 
     def setup_viewRange (self):
@@ -1359,7 +1369,7 @@ class Diagram_Item_Curvature (Diagram_Item):
             l.setRowStretch    (r,2)
 
             self._section_panel = Edit_Panel (title=self.name, layout=l, 
-                                              height=160, switchable=True, switched=False, on_switched=self.setVisible)
+                                              height=160, switchable=True, switched_on=False, on_switched=self.setVisible)
 
         return self._section_panel 
 
@@ -1487,7 +1497,7 @@ class Diagram_Airfoil (Diagram):
             l.setColumnStretch (0,2)
 
             self._section_panel = Edit_Panel (title="Reference Airfoils", layout=l, height=(80,None),
-                                              switchable=True, switched=False, on_switched=self.set_show_airfoils_ref)
+                                              switchable=True, switched_on=False, on_switched=self.set_show_airfoils_ref)
 
         return self._section_panel 
 
