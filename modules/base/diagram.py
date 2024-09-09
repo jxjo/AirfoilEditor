@@ -8,8 +8,6 @@ All abstract diagram items to build a complete diagram view
 """
 
 import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
 
 from typing             import override
 
@@ -23,6 +21,10 @@ from pyqtgraph          import icons
 
 from base.panels        import Edit_Panel
 from base.widgets       import ToolButton, Icon
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 
 
 class Diagram (QWidget):
@@ -297,6 +299,8 @@ class Diagram_Item (pg.PlotItem):
 
         self.sig_visible.emit (aBool)
 
+        logger.debug  (f"{self} - setVisible {aBool}")
+
 
     def set_show (self, aBool):
         """ switch on/off artists of self"""
@@ -382,7 +386,7 @@ class Diagram_Item (pg.PlotItem):
             if self.section_panel.switched_on:
                 self.refresh_artists()          # first artist and then panel 
 
-            self.section_panel.refresh_panels()
+            self.section_panel.refresh()
 
         else: 
             self.refresh_artists() 

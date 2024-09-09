@@ -78,12 +78,10 @@ class GeometryException(Exception):
 #  Panel Distribution  
 # -----------------------------------------------------------------------------
 
-class Panelling_Spline:
-    """
-    Helper class which represents the target panel distribution of an airfoil 
 
-    Calculates new panel distribution u for an airfoil spline (repanel) to 
-    achieve the leading edge of the spline (uLe) being leading edge of coordinates (iLe)
+class Panelling_Abstract:
+    """
+    Abstract helper class which represents the target panel distribution of an airfoil 
 
     The class variables are the default values used for repaneling 
     """ 
@@ -146,11 +144,32 @@ class Panelling_Spline:
 
     def _get_panel_distribution (self, nPanels) -> np.ndarray:
         """ 
-        returns numpy array of u having cosinus similar distribution for one side 
+        returns numpy array of u for one side 
             - running from 0..1
             - having nPanels+1 points 
         """
 
+        # to be overridden 
+        pass
+
+
+
+
+class Panelling_Spline (Panelling_Abstract):
+    """
+    Helper class which represents the target panel distribution of an airfoil 
+
+    Calculates new panel distribution u for an airfoil spline (repanel) to 
+    achieve the leading edge of the spline (uLe) being leading edge of coordinates (iLe)
+    """ 
+
+    @override
+    def _get_panel_distribution (self, nPanels) -> np.ndarray:
+        """ 
+        returns numpy array of u having cosinus similar distribution for one side 
+            - running from 0..1
+            - having nPanels+1 points 
+        """
         # first leading edge - take a cosinus distribution
 
         nPoints = nPanels + 1
@@ -252,6 +271,93 @@ class Panelling_Spline:
 
         return u_new
 
+
+
+
+
+class Panelling_Bezier (Panelling_Abstract):
+    """
+    Helper class which represents the target panel distribution of a Bdzier based airfoil 
+
+    Calculates new panel distribution u for an airfoil side (Bezier curve)  
+    """ 
+
+    @override
+    def _get_panel_distribution (self, nPanels) -> np.ndarray:
+        """ 
+        returns numpy array of u having an adapted panel distribution for one Bezier based side  
+            - running from 0..1
+            - having nPanels+1 points        
+        """
+
+        nPoints = nPanels + 1
+        le_bunch = self.le_bunch                    # bunch 0..1 
+        te_bunch = self.te_bunch
+
+        # a special distribution for Bezier curve to achieve a similar bunching to splined airfoils
+
+        # for a constant du the resulting arc length of a curve section (panel) is proportional the 
+        # reverse of the curvature, so it fits naturally the need of airfoil paneling especially
+        # at LE. For LE and TE a little extra bunching is done ...
+
+        te_du_end = 1.0 - 0.8 * te_bunch            # size of last du compared to linear du
+        te_du_growth = 1.2                          # how fast panel size will grow 
+
+        # le_bunch 0..1  
+        le_du_start = 1.0 - 0.4 * te_bunch          # size of first du compared to linear du 
+        le_du_growth = 1.1                          # how fast panel size will grow 
+
+        nPanels = nPoints - 1
+        u  = np.zeros(nPoints)
+        du = np.ones(nPanels)
+
+        # start from LE backward - increasing du 
+        du_ip = le_du_start 
+        ip = 0
+        while du_ip < 1.0:
+            du[ip] = du_ip
+            ip += 1
+            du_ip *= le_du_growth
+
+        # run from TE forward - increasing du 
+        du_ip = te_du_end
+        ip = len(du) - 1
+        while du_ip < 1.0:
+            du[ip] = du_ip
+            ip -= 1
+            du_ip *= te_du_growth
+
+        # build u array and normalized to 0..1
+        for ip, du_ip in enumerate(du):
+            u[ip+1] = u[ip] + du_ip 
+        u = u / u[-1]
+
+        return u 
+
+
+    def new_u (self, u_current : np.ndarray|None, nPanels : int|None = None ):
+        """ 
+        Returns new panel distribution u of a Bezier airfoil upper and lower side  
+            - 'nPanels' will overwrite the default self.nPanels    
+            - running from 0..1
+        """
+
+        nPanels = nPanels if nPanels is not None else self._nPanels
+
+        # in case of odd number of panels, upper side will have +1 panels 
+        if nPanels % 2 == 0:
+            nPan_upper = int (nPanels / 2)
+            nPan_lower = nPan_upper
+        else: 
+            nPan_lower = int(nPanels / 2)
+            nPan_upper = nPan_lower + 1 
+        
+        u_new_upper = self._get_panel_distribution (nPan_upper)
+        u_new_lower = self._get_panel_distribution (nPan_lower)
+
+        logger.debug (f"{self} _repanel {nPan_upper} {nPan_lower}")
+
+        return u_new_upper, u_new_lower
 
 
 
@@ -869,7 +975,7 @@ class Side_Airfoil_Bezier (Line):
 
     isBezier        = True
 
-    def __init__ (self, px, py, nPoints = 101, **kwargs):
+    def __init__ (self, px, py, **kwargs):
         """
         1D line of an airfoil like upper, lower side based on a Bezier curve with x 0..1
 
@@ -889,7 +995,7 @@ class Side_Airfoil_Bezier (Line):
         # Bezier needs a special u cosinus distribution as the points are bunched
         # by bezier if there is high curvature ... 
         self._u = None
-        self.set_panel_distribution(nPoints)
+        self.set_panel_distribution(101)
 
         # eval Bezier for u - x,y - values will be cached in 'Bezier'
         self.bezier.eval(self._u)
@@ -980,9 +1086,16 @@ class Side_Airfoil_Bezier (Line):
         # reverse of the curvature, so it fits naturally the need of airfoil paneling especially
         # at LE. For LE and TE a little extra bunching is done ...
 
+        # te_bunch 0..1  
+        te_bunch = 0.5 
+        du_te_end = 1.0 - 0.8 * te_bunch 
+
         te_du_end = 0.5                             # size of last du compared to linear du
         te_du_growth = 1.4                          # how fast panel size will grow 
 
+        # le_bunch 0..1  
+        le_bunch = 0.5 
+        du_le_start = 1.0 - 0.4 * te_bunch 
         le_du_start = 0.8                           # size of first du compared to linear du                       
         le_du_growth = 1.1                          # how fast panel size will grow 
 
