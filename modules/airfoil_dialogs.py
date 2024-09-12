@@ -14,8 +14,10 @@ logger.setLevel(logging.DEBUG)
 import numpy as np
 import time 
 
-from PyQt6.QtCore           import QThread, QDeadlineTimer, Qt
+from PyQt6.QtCore           import QThread, Qt
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
+from PyQt6.QtWidgets        import QFileDialog, QWidget
+
 
 from base.math_util         import nelder_mead, find_closest_index, derivative1
 from base.widgets           import * 
@@ -28,6 +30,118 @@ from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
 from airfoil_widgets        import Airfoil_Select_Open_Widget
 
 
+
+
+class Airfoil_Save_Dialog (Dialog):
+    """ 
+    Button - either Text or Icon to open Airfoil with file select 
+
+    When user successfully selected an airfoil file, 'set' is called with 
+    the new <Airfoil> as argument 
+    """
+
+    _width  = (500, None)
+    _height = 250
+
+    name = "Save Airfoil ..."
+
+    @property
+    def airfoil (self) -> Airfoil:
+        return self.dataObject_copy
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r = 0 
+        Label  (l,r,0, colSpan=4, get="Change airfoil name and/or filename before saving the airfoil" )
+        r += 1
+        SpaceR (l, r) 
+        r += 1
+        Field  (l,r,0, lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None),
+                       style=self._style_names)
+        Button (l,r,2, text="Use Filename", set=self.airfoil.set_name_from_fileName, width=90,
+                       hide=self._names_are_equal, signal=True,
+                       toolTip="Use filename as airfoil name")
+        r += 1
+        SpaceR (l, r, stretch=0) 
+        r += 1
+        Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None))
+        Button (l,r,2, text="Use Name", set=self.airfoil.set_fileName_from_name, width=90,
+                       hide=self._names_are_equal, signal=True,
+                       toolTip="Use airfoil name as filename")
+        r += 1
+        Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName_abs, width=(150,None),
+                       disable=True)
+        ToolButton (l,r,2, icon=Icon.OPEN, set=self._open_dir, signal=True,
+                    toolTip = 'Select directory of airfoil') 
+        r += 1
+        SpaceR (l, r, height=5, stretch=1) 
+        r += 1
+        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=(30,None))
+        l.setColumnStretch (1,5)
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,35)
+        return l
+
+
+    def _on_widget_changed (self, *_):
+        """ slot for change of widgets"""
+
+        # delayed refresh as pressed button hides itsself 
+        timer = QTimer()                                
+        timer.singleShot(50, self.refresh)     # delayed emit 
+
+
+    def _names_are_equal (self) -> bool: 
+        """ is airfoil name different from filename?"""
+        fileName_without = os.path.splitext(self.airfoil.fileName)[0]
+        return fileName_without == self.airfoil.name
+
+
+    def _style_names (self):
+        """ returns style.WARNING if names are different"""
+        if not self._names_are_equal(): 
+            return style.WARNING
+        else: 
+            return style.NORMAL
+
+
+    def _messageText (self): 
+        """ info / wanrning text"""
+        text = []
+        if not self._names_are_equal():
+             text.append("Name of airfoil and its filename are different.")
+             text.append("You can 'sync' either the name or the filename.")
+        text = '\n'.join(text)
+        return text 
+
+
+
+    def _open_dir (self):
+        """ open directory and set to airfoil """
+
+        select_dir = self.airfoil.pathName_abs     
+        pathName_new = QFileDialog.getExistingDirectory(self, caption="Select directory",
+                                                           directory=select_dir)
+        if pathName_new:                         # user pressed open
+            self.airfoil.set_pathName (pathName_new)
+
+
+
+    def accept(self):
+        """ Qt overloaded - ok - save airfoil"""
+
+        # set original airfoil with data 
+        airfoil : Airfoil = self.dataObject 
+        airfoil_copy : Airfoil = self.dataObject_copy
+
+        airfoil.set_name (airfoil_copy.name)
+        airfoil.set_pathFileName (airfoil_copy.pathFileName, noCheck=True)
+
+        airfoil.save ()
+
+        super().accept() 
 
 # ----- Blend two airfoils   -----------
 

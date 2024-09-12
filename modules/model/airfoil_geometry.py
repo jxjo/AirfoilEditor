@@ -107,6 +107,7 @@ class Panelling_Abstract:
 
     @property 
     def nPanels (self) -> int: 
+        """ number of panels of the airfoil"""
         return self._nPanels
 
     def set_nPanels (self, newVal): 
@@ -114,6 +115,34 @@ class Panelling_Abstract:
         newVal = max (40,  newVal)
         newVal = min (500, newVal) 
         self._nPanels = int (newVal)
+
+
+    def nPanels_upper (self, nPanels) -> int: 
+        """ number of panels upper side"""
+        if nPanels % 2 == 0:
+            nPan_upper = int (nPanels / 2)
+        else: 
+            nPan_lower = int(nPanels / 2)
+            nPan_upper = nPan_lower + 1 
+        return nPan_upper
+
+
+    def nPanels_lower (self, nPanels) -> int: 
+        """ number of panels lower side"""
+        if nPanels % 2 == 0:
+            nPan_upper = int (nPanels / 2)
+            nPan_lower = nPan_upper
+        else: 
+            nPan_lower = int(nPanels / 2)
+        return nPan_lower
+
+
+    def nPanels_default_of (self, linetype) -> int: 
+        """ number of panels for UPPER/LOWER"""
+        if linetype == Line.Type.UPPER:
+            return self.nPanels_upper (self.nPanels)
+        else:
+            return self.nPanels_lower (self.nPanels)
 
 
     @property 
@@ -137,12 +166,12 @@ class Panelling_Abstract:
     def save (self):
         """ save current parms to class variables"""
 
-        Panelling_Spline._nPanels  = self.nPanels
-        Panelling_Spline._le_bunch = self.le_bunch
-        Panelling_Spline._te_bunch = self.te_bunch
+        self.__class__._nPanels  = self.nPanels
+        self.__class__._le_bunch = self.le_bunch
+        self.__class__._te_bunch = self.te_bunch
 
 
-    def _get_panel_distribution (self, nPanels) -> np.ndarray:
+    def _get_panels_of_side (self, nPanels_per_side) -> np.ndarray:
         """ 
         returns numpy array of u for one side 
             - running from 0..1
@@ -164,7 +193,7 @@ class Panelling_Spline (Panelling_Abstract):
     """ 
 
     @override
-    def _get_panel_distribution (self, nPanels) -> np.ndarray:
+    def _get_panels_of_side (self, nPanels_per_side) -> np.ndarray:
         """ 
         returns numpy array of u having cosinus similar distribution for one side 
             - running from 0..1
@@ -172,7 +201,7 @@ class Panelling_Spline (Panelling_Abstract):
         """
         # first leading edge - take a cosinus distribution
 
-        nPoints = nPanels + 1
+        nPoints = nPanels_per_side + 1
         le_bunch = self.le_bunch
         te_bunch = self.te_bunch
         
@@ -230,20 +259,15 @@ class Panelling_Spline (Panelling_Abstract):
             nPanels = nPanels if nPanels is not None else self._nPanels
             # overwrite number of panels of self 
  
-            # in case of odd number of panels, upper side will have +1 panels 
-            if nPanels % 2 == 0:
-                nPan_upper = int (nPanels / 2)
-                nPan_lower = nPan_upper
-            else: 
-                nPan_lower = int(nPanels / 2)
-                nPan_upper = nPan_lower + 1 
+            nPan_upper = self.nPanels_upper (nPanels)
+            nPan_lower = self.nPanels_lower (nPanels)
            
             # new distribution for upper and lower - points = +1 
             # ensuring LE is at uLe_target 
-            u_cos_upper = self._get_panel_distribution (nPan_upper)
+            u_cos_upper = self._get_panels_of_side (nPan_upper)
             u_new_upper = np.abs (np.flip(u_cos_upper) -1) * uLe_target
 
-            u_cos_lower = self._get_panel_distribution (nPan_lower)
+            u_cos_lower = self._get_panels_of_side (nPan_lower)
             u_new_lower = u_cos_lower * (1- uLe_target) + uLe_target
 
         else: 
@@ -283,14 +307,14 @@ class Panelling_Bezier (Panelling_Abstract):
     """ 
 
     @override
-    def _get_panel_distribution (self, nPanels) -> np.ndarray:
+    def _get_panels_of_side (self, nPanels_per_side) -> np.ndarray:
         """ 
         returns numpy array of u having an adapted panel distribution for one Bezier based side  
             - running from 0..1
             - having nPanels+1 points        
         """
 
-        nPoints = nPanels + 1
+        nPoints = nPanels_per_side + 1
         le_bunch = self.le_bunch                    # bunch 0..1 
         te_bunch = self.te_bunch
 
@@ -304,12 +328,11 @@ class Panelling_Bezier (Panelling_Abstract):
         te_du_growth = 1.2                          # how fast panel size will grow 
 
         # le_bunch 0..1  
-        le_du_start = 1.0 - 0.4 * te_bunch          # size of first du compared to linear du 
-        le_du_growth = 1.1                          # how fast panel size will grow 
+        le_du_start = 1.0 - 0.6 * le_bunch          # size of first du compared to linear du 
+        le_du_growth = 1.2                          # how fast panel size will grow 
 
-        nPanels = nPoints - 1
         u  = np.zeros(nPoints)
-        du = np.ones(nPanels)
+        du = np.ones(nPoints - 1)
 
         # start from LE backward - increasing du 
         du_ip = le_du_start 
@@ -345,15 +368,11 @@ class Panelling_Bezier (Panelling_Abstract):
         nPanels = nPanels if nPanels is not None else self._nPanels
 
         # in case of odd number of panels, upper side will have +1 panels 
-        if nPanels % 2 == 0:
-            nPan_upper = int (nPanels / 2)
-            nPan_lower = nPan_upper
-        else: 
-            nPan_lower = int(nPanels / 2)
-            nPan_upper = nPan_lower + 1 
+        nPan_upper = self.nPanels_upper (nPanels)
+        nPan_lower = self.nPanels_lower (nPanels)
         
-        u_new_upper = self._get_panel_distribution (nPan_upper)
-        u_new_lower = self._get_panel_distribution (nPan_lower)
+        u_new_upper = self._get_panels_of_side (nPan_upper)
+        u_new_lower = self._get_panels_of_side (nPan_lower)
 
         logger.debug (f"{self} _repanel {nPan_upper} {nPan_lower}")
 
@@ -992,10 +1011,9 @@ class Side_Airfoil_Bezier (Line):
         else:
             self._bezier    = Bezier(px,py)             # the bezier curve 
 
-        # Bezier needs a special u cosinus distribution as the points are bunched
-        # by bezier if there is high curvature ... 
-        self._u = None
-        self.set_panel_distribution(101)
+        # initial panel distribution for this side based on nPanels default of airfoil 
+        nPanels = Panelling_Bezier().nPanels_default_of (self.type)
+        self._u = Panelling_Bezier()._get_panels_of_side (nPanels)
 
         # eval Bezier for u - x,y - values will be cached in 'Bezier'
         self.bezier.eval(self._u)
@@ -1076,8 +1094,12 @@ class Side_Airfoil_Bezier (Line):
         return list(zip(cp_x, cp_y)) 
 
 
+    def set_panel_distribution  (self, u_new : int ):
+        """ set new Bezier panel distribution"""
+        self._u = u_new
 
-    def set_panel_distribution (self, nPoints):
+
+    def set_panel_distribution_sav  (self, nPoints):
         """ set a new panel (=u) - distribution with nPoints for self """
 
         # a special distribution for Bezier curve to achieve a similar bunching to splined airfoils
@@ -1460,6 +1482,8 @@ class Geometry ():
         self._max_lower_initial = None
 
         self._curvature : Curvature_of_Spline = None  # curvature object
+
+        self._panelling = None                  # "paneller"  for spline or Bezier 
 
         self._modification_dict = {}            # dict of modifications made to self 
 
@@ -2340,7 +2364,6 @@ class Geometry_Splined (Geometry):
 
         self._spline : Spline2D          = None   # 2 D cubic spline representation of self
         self._uLe = None                          # leading edge  - u value 
-        self._panelling = None 
 
 
     @property 
@@ -2359,7 +2382,7 @@ class Geometry_Splined (Geometry):
             self._panelling = Panelling_Spline()   # (self.nPanels)
         return self._panelling
 
-    @override
+
     @property
     def isNormalized (self):
         """ true if coordinates AND spline is normalized"""
@@ -2442,14 +2465,15 @@ class Geometry_Splined (Geometry):
         Using spline interpolation  
         """
         # evaluate the corresponding y-values on lower side 
-        lower_y = np.zeros (len(new_x))
+        n = len(new_x)
+        lower_y = np.zeros (n)
  
         for i, x in enumerate (new_x):
 
             # first and last point from current lower to avoid numerical issues 
             if i == 0: 
                 lower_y[i] = self.lower.y[0]
-            elif i == (len(new_x) -1):
+            elif i == (n - 1):
                 lower_y[i] = self.lower.y[-1]
             else:
  
@@ -2461,21 +2485,21 @@ class Geometry_Splined (Geometry):
                 umin = max (uStart, uGuess - 0.1 )
                 umax = min (uEnd, uGuess + 0.1 )
 
-                # find min using Secant - fast but not for LE 
-                if i > 6: 
-                    n = 4
+                # find min using Secant - fast but not for LE with high curvature 
+                if i > n/10: 
+                    max_iter = 4 
                     u, niter  = secant_fn (lambda u: self.spline.evalx(u) - x,
-                                            umin, umax, n)
+                                            umin, umax, max_iter)
                 else: 
-                    # find u value for x using Nelder Mead 
-                    u = findMin (lambda xlow: abs(self.spline.evalx(xlow) - x), uGuess, 
-                                bounds=(uStart, uEnd), no_improve_thr=1e-8) 
+                # find u value for x using Nelder Mead 
+                    u = findMin (lambda u: abs(self.spline.evalx(u) - x), uGuess, 
+                                bounds=(uStart, uEnd), no_improve_thr=1e-10) 
 
                 # with the new u-value we get the y value on lower side 
                 # print (i, u, uGuess)
                 lower_y[i] = self.spline.evaly (u)
 
-        lower_y = np.round(lower_y, 10)
+        lower_y = np.round(lower_y, 12)
 
         return self.sideDefaultClass (new_x, lower_y, linetype=Line.Type.LOWER)
 
@@ -2542,11 +2566,10 @@ class Geometry_Splined (Geometry):
 
 
     def repanel (self,  nPanels : int = None, just_finalize = False):
-        """repanel self with a new cosinus distribution.
+        """
+        Repanel self with a new cosinus distribution.
 
-        If no new panel numbers are defined, the current numbers for upper and lower side 
-        remain intact. 
-
+        If no new panel numbers are defined, the current numbers for upper and lower side remain. 
         """
 
         try: 
@@ -2874,35 +2897,46 @@ class Geometry_Bezier (Geometry):
         return self._curvature 
 
 
+    @property 
+    def panelling (self) -> Panelling_Bezier:
+        """ returns the target panel distribution / helper """
+        if self._panelling is None:
+            self._panelling = Panelling_Bezier()  
+        return self._panelling
 
-    def repanel (self,  nPanels : int = 200, 
-                        nPan_upper : int = None, nPan_lower : int = None):
-        """repanel self with a new cosinus distribution 
 
-        Args:
-            nPanels  (int, optional): new number of panels. Defaults to 200.
-            le_bunch (float, optional): leading edge bunch. Defaults to 0.84.
-            te_bunch (float, optional): trailing edge bunch. Defaults to 0.7.
+    def repanel (self,  nPanels : int = None, just_finalize = False):
+        """
+        Repanel self with a new cosinus distribution.
+
+        If no new panel numbers are defined, the current numbers for upper and lower side remain. 
         """
 
-        # explicit panels for upper and lower have precedence 
-        if not (nPan_upper and nPan_lower):
+        if not just_finalize:
+            self._repanel (nPanels)
 
-            # in case of odd number of panels, upper side will have +1 panels 
-            if nPanels % 2 == 0:
-                nPan_upper = int (nPanels / 2)
-                nPan_lower = nPan_upper
-            else: 
-                nPan_lower = int(nPanels / 2)
-                nPan_upper = nPan_lower + 1 
+        else: 
+            # save the actual panelling options as class variables
+            self._panelling.save() 
 
-        # that's it with bezier  
-        self.upper.set_panel_distribution(nPan_upper + 1)
-        self.lower.set_panel_distribution(nPan_lower + 1)
-  
         # reset chached values
         self._reset_lines()
         self._changed (Geometry.Mod.REPANEL)
+
+
+
+    def _repanel (self, nPanels : int = None):
+        """ 
+        Inner repanel without change handling
+        """
+
+        u_upper, u_lower = self.panelling.new_u (nPanels)
+        self.upper.set_panel_distribution(u_upper)
+        self.lower.set_panel_distribution(u_lower)
+
+        return True
+
+
 
     # ------------------ private ---------------------------
 

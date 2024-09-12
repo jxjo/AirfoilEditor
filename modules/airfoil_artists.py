@@ -7,22 +7,20 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 
 """
 
-import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
 from base.math_util             import derivative1
 from base.artist                import *
 from base.common_utils          import *
+from base.spline                import Bezier
 
 from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry
 from model.airfoil_geometry     import Line, Side_Airfoil_Bezier
 
-from base.spline                import Bezier
-
 from PyQt6.QtGui                import QColor, QBrush, QPen
 from PyQt6.QtCore               import pyqtSignal, QObject
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 # -------- helper functions ------------------------
@@ -367,14 +365,13 @@ class Movable_Side_Bezier (Movable_Bezier):
 
 
     def _add_point (self, pos_x, pos_y):
-       """ slot -""" 
+       """ add controlpoint to Bezier curve""" 
 
        index, point = self._side.check_new_controlPoint_at (pos_x, pos_y)
        
        if index is not None: 
 
             self._side.add_controlPoint (index, point)
-
             # _finished will do the rest - and init complete refresh
             self._finished_point()
  
@@ -431,7 +428,7 @@ class Airfoil_Artist (Artist):
     def set_show_points (self, aBool):
         """ user switch to show point (marker ) """
 
-        # overloaded to show leading edge of spline 
+        # overridden to show leading edge of spline 
         super().set_show_points (aBool)
         self.plot()             # do refresh will show leading edge of spline 
 
@@ -453,17 +450,6 @@ class Airfoil_Artist (Artist):
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
-
-
-    def _refresh_plots (self):
-        # overloaded for high speed refresh 
-
-        #todo optimization doesn't work if new airfoils are in refresh 
-        super()._refresh_plots ()
-        # for iair, airfoil in enumerate (self.airfoils):
-
-        #     plot : pg.PlotDataItem = self._plots[iair]
-        #     plot.setData (airfoil.x, airfoil.y, name=airfoil.name)
 
 
     def _plot (self): 
@@ -567,7 +553,6 @@ class Airfoil_Artist (Artist):
                         text="LE spline"
                     self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
                                       text=text,anchor=(0.5,1) )
-
 
 
     def _get_modifications (self, airfoil : Airfoil) -> str: 
@@ -723,8 +708,6 @@ class Curvature_Artist (Artist):
                 label = f"{side.name} - {airfoil.name}"
                 self._plot_dataItem (x, y, name=label, pen=pen)
 
-                # self._plot_reversals (side, color)
-
                 # plot derivative1 of curvature ('spikes') 
 
                 if self.show_derivative and (nairfoils == 1 or airfoil.usedAsDesign):
@@ -733,9 +716,11 @@ class Curvature_Artist (Artist):
                     name = f"{side.name} - Derivative"
                     self._plot_dataItem (x, -derivative1(x,y), name=name, pen=pen)
 
-                # plot max points at le and te 
+                # plot max points at le and te and reversals
 
                 self._plot_le_te_max_point (side, color )
+                self._plot_reversals (side, color)
+
 
 
     def _plot_le_te_max_point (self, aSide : Line, color ):
@@ -744,7 +729,6 @@ class Curvature_Artist (Artist):
         point_color = QColor (color).darker (150)
 
         # le 
-
         if aSide.isUpper:
             anchor = (0,1)
         else: 
@@ -754,7 +738,6 @@ class Curvature_Artist (Artist):
                           textColor=Artist.COLOR_LEGEND)
 
         # te 
-
         if aSide.isUpper:
             anchor = (1,1)
         else: 
@@ -764,59 +747,21 @@ class Curvature_Artist (Artist):
                           textColor=Artist.COLOR_LEGEND)
 
 
-    # def _plot_reversals (self, line : Side_Airfoil, color):
-    #     # annotate reversals of curvature  - return number of reversals 
+    def _plot_reversals (self, side : Line, color):
+        """ annotate reversals of curvature """
 
-    #     reversals = line.reversals()
-    #     if reversals:
-    #         for i, point in enumerate(reversals): 
-    #             text = "R"
-    #             marker_x = point[0]
-    #             if point[1] < 0.0:
-    #                 marker_y = point[1] - 0.5
-    #                 va = 'bottom'
-    #             else: 
-    #                 marker_y = point[1] + 0.5
-    #                 va = 'top'
+        point_color = QColor (color).darker (150)
 
-    #             p = self.ax.text (marker_x, marker_y, text, va=va, ha='center', color = color )
-    #             self._add (p) 
+        reversals = side.reversals()
+        if reversals:
+            for reversal_xy in reversals: 
+                if side.isUpper:
+                    anchor = (1,1.2)
+                else: 
+                    anchor = (1,-0.2)
+                self._plot_point (reversal_xy, color=point_color, size=2, text="R", anchor=anchor,
+                                  textColor=Artist.COLOR_LEGEND)
 
-
-    # def _print_values (self, iair, nair, name, curvature: Side_Airfoil, upper: bool, color):
-    #     # print curvature values 
-
-    #     # print in upper left corner , position relative in pixel 
-    #     xa = 0.87
-    #     if upper: 
-    #         ya = 0.96 
-    #         ypos = 0
-    #     else: 
-    #         ya = 0.04 
-    #         ypos = 12 * nair + 6
-
-    #     sc = get_font_size() / 10                    # scale pos depending on font size 
-
-    #     # header 
-    #     if iair == 0: 
-    #         self._add (print_text (self.ax, 'LE'    , 'right', (xa,ya), (  2*sc, ypos), cl_textHeader, xycoords='axes fraction'))
-    #         self._add (print_text (self.ax, 'TE'    , 'right', (xa,ya), ( 38*sc, ypos), cl_textHeader, xycoords='axes fraction'))
-    #         self._add (print_text (self.ax, 'Revers', 'right', (xa,ya), ( 80*sc, ypos), cl_textHeader, xycoords='axes fraction'))
-
-    #     # airfoil data + name 
-    #     le_curv = curvature.y[0]
-    #     te_curv = curvature.y[-1]
-    #     nr     = len(curvature.reversals())
-    #     yoff = ypos - iair * 12 - 12
-
-    #     if nair > 1:                                # airfoil name only if there are several
-    #         self._add (print_text   (self.ax, name, 'right', (xa,ya), (-35*sc, yoff), color, alpha=0.8, xycoords='axes fraction'))
-    #     self._add (print_number (self.ax, le_curv, 0, (xa,ya), (  5*sc, yoff), cl_text))
-    #     self._add (print_number (self.ax, te_curv, 1, (xa,ya), ( 40*sc, yoff), cl_text))
-    #     self._add (print_number (self.ax,      nr, 0, (xa,ya), ( 68*sc, yoff), cl_text))
-
-
-                
 
 # class Difference_Artist (Airfoil_Line_Artist):
 #     """Plot the y-difference of two airfoils 
@@ -866,118 +811,6 @@ class Curvature_Artist (Artist):
 
 
 
-# class Le_Artist (Artist):
-#     """Plot the airfoils leading edge areacontour  """
-
-#     def __init__ (self, axes, modelFn, show=False, showMarker=True):
-#         super().__init__ (axes, modelFn, show=show, showMarker=showMarker)
-
-#         self._points = True                     # show point marker 
-#         self.set_showLegend (False)             # no legend 
-
-
-#     @property
-#     def points(self): return self._points
-#     def set_points (self, aBool): self._points = aBool 
-
-#     @property
-#     def _marker_style (self):
-#         """ the marker style to show points"""
-#         if self._points: return ms_points
-#         else:            return dict()
-
-#     @property
-#     def airfoils (self): 
-#         return self.model
-    
-#     def _plot (self): 
-#         """ do plot of airfoils in the prepared axes   
-#         """
-
-#         # create cycled colors 
-#         self._set_colorcycle (10, colormap="Paired")          # no of cycle colors - extra color for each airfoil
-
-#         airfoil : Airfoil
-
-#         for airfoil in self.airfoils:
-#             if (airfoil.isLoaded):
-
-#                 color = _color_airfoil_of (airfoil.usedAs)
-
-#                 linewidth = 0.5
-                
-#                 self._plot_le_angle (airfoil)
-#                 self._plot_le_coordinates (airfoil)
-
-#                 p = self.ax.plot (airfoil.x, airfoil.y, '-', color = color, 
-#                                   linewidth= linewidth, **self._marker_style)
-#                 self._add(p)
-
-#                 self._plot_le (airfoil.geo.le, color)
-
-
-#     def _plot_le (self, le, color):
-
-#         # highlight leading edge based on coordinates
-#         if self.points:
-#             p = self.ax.plot (le[0], le[1], color=color, **ms_le)
-#             self._add(p)
-
-
-#     def _plot_le_angle (self, airfoil: Airfoil):
-
-#         yLim1, yLim2 = self.ax.get_ylim()
-
-#         xLe, yLe = airfoil.geo.le
-#         iLe = airfoil.geo.iLe
- 
-#         # plot two lines from LE to upper and lower neighbour points 
-#         xLe_before = airfoil.x [iLe-1]
-#         yLe_before = airfoil.y [iLe-1]
-
-#         # length of lines about 3/4 of axes height
-#         dy_line = (yLim2 - yLim1)/ 3 
-
-#         dx = xLe_before - xLe
-#         dy = yLe_before - yLe
-#         x = [xLe, xLe_before + dy_line * dx/dy]
-#         y = [yLe, yLe_before + dy_line]
-#         p = self.ax.plot (x,y, color = cl_helperLine, lw=0.7)
-#         self._add(p)
-
-#         # plot angle text 
-#         text = "%.1f °" % (airfoil.geo.panelAngle_le)
-
-#         p = self.ax.annotate(text, (x[1], y[1]), fontsize = 'small',
-#                              xytext=(-15, 5), textcoords='offset points', color = cl_helperLine)
-#         self._add (p)   
-
-#         # lower line
-#         xLe_after = airfoil.x [iLe+1]
-#         yLe_after = airfoil.y [iLe+1]
-#         dx = xLe_after - xLe
-#         dy = yLe_after - yLe
-#         x = [xLe, xLe_after - dy_line * dx/dy]
-#         y = [yLe, yLe_after - dy_line]
-#         p = self.ax.plot (x,y, color = cl_helperLine, lw=0.7)
-#         self._add(p)
-
-
-
-#     def _plot_le_coordinates (self, airfoil: Airfoil):
-
-#         xLe, yLe = airfoil.geo.le
-#         if airfoil.isEdited:
-#             text = "New "
-#         else:
-#             text = ""
-
-#         text = text + "LE at %.7f, %.7f" % (xLe, yLe)
-#         p = self.ax.annotate(text, (xLe, yLe), fontsize = 'small',
-#                              xytext=(20, -4), textcoords='offset points', color = cl_helperLine)
-#         self._add (p)   
-
-
 
 class Airfoil_Line_Artist (Artist, QObject):
     """
@@ -1005,9 +838,9 @@ class Airfoil_Line_Artist (Artist, QObject):
                 
                 style = _linestyle_of (line._type)
                 if airfoil.usedAsDesign:
-                    zValue = 3                                  # plot design on top 
+                    zValue = 5                                  # plot design on top 
                 else:
-                    zValue = 1 
+                    zValue = 4 
 
                 is_upper_lower = (line.type == Line.Type.UPPER or line.type == Line.Type.LOWER)
 

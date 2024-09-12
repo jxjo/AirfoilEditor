@@ -6,7 +6,7 @@
 
 """
 import os
-from typing                 import Type
+from typing                 import Type, override
 from enum                   import StrEnum
 from pathlib                import Path
 
@@ -119,7 +119,7 @@ class Airfoil:
                 checkPath = os.path.join (self.workingDir, pathFileName)
             if not os.path.isfile(checkPath):
 
-                ErrorMsg ("Airfoil file '%s' does not exist. Couldn't create Airfoil" % checkPath)
+                logging.error ("Airfoil file '%s' does not exist. Couldn't create Airfoil" % checkPath)
                 self._name = "-- Error --"
             else:
                 self.pathFileName = pathFileName
@@ -466,7 +466,7 @@ class Airfoil:
                     xval = float(splitline[0].strip())
                     yval = float(splitline[1].strip())
                     if xval == xvalPrev and yval == yvalPrev:   # avoid duplicate, dirty coordinates
-                        WarningMsg ("Airfoil '%s' has duplicate coordinates - skipped." % self._name)
+                        logging.warning ("Airfoil '%s' has duplicate coordinates - skipped." % self._name)
                     else: 
                         x.append (xval)
                         y.append (yval) 
@@ -482,7 +482,7 @@ class Airfoil:
         """basic save of self to its pathFileName
         """
         if self.isLoaded: 
-            self._write_to_file ()
+            self._write_dat_to_file ()
             self.set_isModified (False)
 
 
@@ -585,10 +585,13 @@ class Airfoil:
         return airfoil 
 
 
-    def _write_to_file (self):
+    def _write_dat_to_file (self):
         """ writes .dat file of to self.pathFileName"""
 
-        with open(self.pathFileName, 'w+') as file:
+        # ensure extension .dat (in case of Bezier) 
+        pathFileName =  os.path.splitext(self.pathFileName)[0] + ".dat"
+
+        with open(pathFileName, 'w+') as file:
             file.write("%s\n" % self.name)
             for i in range (len(self.x)):
                 file.write("%.7f %.7f\n" %(self.x[i], self.y[i]))
@@ -817,7 +820,7 @@ class Airfoil_Bezier(Airfoil):
                             px.append (float(splitline[0].strip()))
                             py.append (float(splitline[1].strip()))
         except ValueError as e:
-            ErrorMsg ("While reading Bezier file '%s': %s " %(fromPath,e )) 
+            logging.error ("While reading Bezier file '%s': %s " %(fromPath,e )) 
             return 0 
          
         self._name = new_name
@@ -827,14 +830,21 @@ class Airfoil_Bezier(Airfoil):
 
         return True  
 
-        
+    @override
+    def save (self):
+        """
+        Basic save of self to its pathFileName
+            - .bez file 
+            - .dat file 
+        """
+        if self.isLoaded: 
+            self._write_dat_to_file ()
+            self._write_bez_to_file ()
+            self.set_isModified (False)
 
-    def _write_to_file (self):
-        # writes x,y to file in 
 
-        #  .dat-format (normal airfoil write 
-        super()._write_to_file ()
-
+    def _write_bez_to_file (self):
+        """ write Bezier data to bez file """
         #  .bez-format for CAD etc and 
 
         # filename - remove .dat - add .bez 
@@ -1002,7 +1012,7 @@ class Airfoil_Hicks_Henne(Airfoil):
                 self._isLoaded = True 
                 logging.debug (f"Hicks Henne definition for {self.name} loaded")
             else: 
-                ErrorMsg (f"Hicks Henne seed airfoil {seed_name} couldn't be loaded ")
+                logging.error (f"Hicks Henne seed airfoil {seed_name} couldn't be loaded ")
         else: 
             raise ValueError (f"Hicks Henne seed airfoil data missing for {name}")
 
@@ -1085,7 +1095,7 @@ class Airfoil_Hicks_Henne(Airfoil):
                         width    = float(splitline[2].strip())
                         hhs.append (HicksHenne (strength, location, width ))
         except ValueError as e:
-            ErrorMsg ("While reading Hicks Henne file '%s': %s " %(fromPath,e ))   
+            logging.error ("While reading Hicks Henne file '%s': %s " %(fromPath,e ))   
          
         return name, seed_name, x, y, top_hhs, bot_hhs   
 

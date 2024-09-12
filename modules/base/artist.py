@@ -386,6 +386,11 @@ class Movable_Bezier (pg.PlotCurveItem):
 
         super().__init__(*self.jpoints_xy(), pen=pen)
 
+        if movable:
+            self.setZValue (10)                     # movable dotted line above other objects 
+        else: 
+            self.setZValue (5)
+
         # init control points as Movable_Points 
 
         symbol = 's'

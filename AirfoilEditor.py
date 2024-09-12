@@ -24,9 +24,6 @@ import sys
 import argparse
 from pathlib import Path
 
-import logging
-
-
 from PyQt6.QtCore           import QSize, QMargins, QEvent
 from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QMessageBox, QStackedWidget 
 from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout, QDialog
@@ -35,9 +32,9 @@ from PyQt6.QtGui            import QShowEvent, QCloseEvent
 # let python find the other modules in modules relativ to path of self  
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
-
 from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
-from model.airfoil_geometry import Geometry, Geometry_Bezier, Panelling_Spline, Curvature_Abstract
+from model.airfoil_geometry import Geometry, Geometry_Bezier, Curvature_Abstract
+from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier
 
 from base.common_utils      import * 
 from base.panels            import Panel, Edit_Panel
@@ -47,9 +44,13 @@ from base.diagram           import *
 from airfoil_widgets        import * 
 from airfoil_artists        import *
 
-from airfoil_dialogs        import Match_Bezier, Matcher, Repanel, Blend
+from airfoil_dialogs        import Match_Bezier, Matcher, Repanel, Blend, Airfoil_Save_Dialog
+
+import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
 
 #-------------------------------------------------------------------------------
 # The App   
@@ -121,7 +122,7 @@ class App_Main (QMainWindow):
         Settings.belongTo (__file__, nameExtension=None, fileExtension= '.settings')
         geometry = Settings().get('window_geometry', [])
         maximize = Settings().get('window_maximize', False)
-        Win_Util.set_initialWindowSize (self, size_frac= (0.75, 0.65), pos_frac=(0.1, 0.1),
+        Win_Util.set_initialWindowSize (self, size_frac= (0.80, 0.70), pos_frac=(0.1, 0.1),
                                         geometry=geometry, maximize=maximize)
         
         self._load_panelling_settings ()
@@ -386,7 +387,7 @@ You can view the properties of an airfoil like thickness distribution or camber,
 <strong><span style="color: silver;">New as Bezier</span></strong> allows to convert the airfoil into an airfoil which is based on two Bezier curves.
 </span></p>
 <p><span style="background-color: black">
-<span style="color: lightskyblue;">Tip: </span>In Windows/Linux assign the file extension '.dat' to the Airfoil Editor to open an airfoil with a double click.
+<span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the Airfoil Editor to open an airfoil with a double click.
 </span></p>
     """
         
@@ -401,21 +402,33 @@ You can view the properties of an airfoil like thickness distribution or camber,
         Settings().set('window_maximize', self.isMaximized())
 
         # save panelling values 
-        Settings().set('panelling_nPanels',  Panelling_Spline().nPanels)
-        Settings().set('panelling_le_bunch', Panelling_Spline().le_bunch)
-        Settings().set('panelling_te_bunch', Panelling_Spline().te_bunch)
+        Settings().set('spline_nPanels',  Panelling_Spline().nPanels)
+        Settings().set('spline_le_bunch', Panelling_Spline().le_bunch)
+        Settings().set('spline_te_bunch', Panelling_Spline().te_bunch)
+
+        Settings().set('bezier_nPanels',  Panelling_Bezier().nPanels)
+        Settings().set('bezier_le_bunch', Panelling_Bezier().le_bunch)
+        Settings().set('bezier_te_bunch', Panelling_Bezier().te_bunch)
 
 
     def _load_panelling_settings (self):
         """ load default panelling settings from file """
 
-        nPanels  = Settings().get('panelling_nPanels', None)
-        le_bunch = Settings().get('panelling_le_bunch', None)
-        te_bunch = Settings().get('panelling_te_bunch', None)
+        nPanels  = Settings().get('spline_nPanels', None)
+        le_bunch = Settings().get('spline_le_bunch', None)
+        te_bunch = Settings().get('spline_te_bunch', None)
 
         if nPanels:     Panelling_Spline._nPanels = nPanels
-        if le_bunch:    Panelling_Spline._le_bunch = le_bunch
-        if te_bunch:    Panelling_Spline._te_bunch = te_bunch
+        if le_bunch is not None:    Panelling_Spline._le_bunch = le_bunch
+        if te_bunch is not None:    Panelling_Spline._te_bunch = te_bunch
+
+        nPanels  = Settings().get('bezier_nPanels', None)
+        le_bunch = Settings().get('bezier_le_bunch', None)
+        te_bunch = Settings().get('bezier_te_bunch', None)
+
+        if nPanels:     Panelling_Bezier._nPanels = nPanels
+        if le_bunch is not None:    Panelling_Bezier._le_bunch = le_bunch
+        if te_bunch is not None:    Panelling_Bezier._te_bunch = te_bunch
 
 
     @override
@@ -558,12 +571,14 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
         l.setRowStretch (r,2)
         r += 1
         Button (l,r,c,  text="&Finish ...", width=100, 
-                        set=lambda : self.myApp.modify_airfoil_finished(ok=True))
+                        set=lambda : self.myApp.modify_airfoil_finished(ok=True), 
+                        toolTip="Save current airfoil, optionally modifiy name and leave edit mode")
         r += 1
         SpaceR (l,r, height=5, stretch=0)
         r += 1
         Button (l,r,c,  text="&Cancel",  width=100, 
-                        set=lambda : self.myApp.modify_airfoil_finished(ok=False))
+                        set=lambda : self.myApp.modify_airfoil_finished(ok=False),
+                        toolTip="Cancel modifications of airfoil and leave edit mode")
         r += 1
         SpaceR (l,r, height=5, stretch=0)
         l.setColumnStretch (1,2)
@@ -588,7 +603,8 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         # blend with airfoil - currently Bezier is not supported
         Button (l_head, text="&Blend", width=80,
                 set=self._blend_with, 
-                hide=lambda: not self.myApp.edit_mode or self.airfoil().isBezierBased)
+                hide=lambda: not self.myApp.edit_mode or self.airfoil().isBezierBased,
+                toolTip="Blend original airfoil with another airfoil")
 
 
     def _init_layout (self): 
@@ -598,29 +614,29 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         # Field  (l,r,c, lab="Name", width=(100,None), colSpan=5,
         #         obj=self.airfoil, prop=Airfoil.name)
         # r += 1
-        FieldF (l,r,c, lab="Thickness", width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.max_thick,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="Camber", width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.max_camb,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="TE gap", width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.te_gap)
 
         r,c = 0, 2 
         SpaceC (l,c, stretch=0)
         c += 1 
-        FieldF (l,r,c, lab="at", width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.max_thick_x,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="at", width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.max_camb_x,
                 disable=self._disabled_for_airfoil)
         r += 1
-        FieldF (l,r,c, lab="LE radius", width=70, unit="%", step=0.1,
+        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.le_radius,
                 disable=self._disabled_for_airfoil)
         r += 1
@@ -670,8 +686,8 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=80,
-                set=self._repanel, 
-                hide=lambda: not self.myApp.edit_mode or self.airfoil().isBezierBased)
+                set=self._repanel, hide=lambda: not self.myApp.edit_mode,
+                toolTip="Repanel airfoil with a new number of panels" ) 
 
 
     def _init_layout (self):
@@ -777,7 +793,8 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         l_head.addStretch(1)
         Button (l_head, text="&Normalize", width=80,
                 set=lambda : self.airfoil().normalize(), signal=True, 
-                hide=lambda: not self.myApp.edit_mode)
+                hide=lambda: not self.myApp.edit_mode,
+                toolTip="Normalize airfoil to get leading edge at 0,0")
 
 
     def _init_layout (self): 
@@ -1146,7 +1163,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         super().__init__(*args, **kwargs)
 
         self.myApp.sig_bezier_changed.connect  (self.bezier_artist.refresh_from_side)
-        self.myApp.sig_new_panelling.connect   (self.airfoil_artist.refresh)
+        self.myApp.sig_new_panelling.connect   (self.refresh_artists)
 
         self.myApp.sig_enter_edit_mode.connect (self._on_enter_edit_mode)
         self.myApp.sig_enter_panelling.connect (self._on_enter_panelling)

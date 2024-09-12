@@ -27,11 +27,9 @@ def init_logging (level= logging.WARNING):
     """ initialize logging with level"""
 
     ch = logging.StreamHandler()
-#     ch.setLevel(logging.DEBUG)
 
     ch.setFormatter(CustomFormatter())
 
-    # logger.addHandler(ch)
     logging.basicConfig(format='%(levelname)-8s- %(message)s', 
                         handlers=[ch], 
                         level=level)  # DEBUG or WARNING
@@ -58,22 +56,6 @@ class CustomFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
     
-
-#---- convinience colored logging messages  -------------------------------------------
-
-def InfoMsg(message):
-    logging.info (message)
-
-def ErrorMsg(message):
-    logging.error (message)
-
-def WarningMsg(message):
-    logging.warning (message)
-
-def NoteMsg(message):
-    print (colored('NOTE - ', 'cyan') + message)
-
-
 
 #------------------------------------------------------------------------------
 # Dictonary handling
