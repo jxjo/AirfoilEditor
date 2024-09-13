@@ -13,7 +13,7 @@ Main features:
 * Repanel and normalize the airfoil
 * Modify the geometry parameters thickness, camber, its high points, trailing edge gap  
 * Create a Bezier curve based 'copy' of an airfoil 
-* (not in 2.0 beta) Merge an airfoil with another airfoil 
+* Blend an airfoil with another airfoil 
 
 The driver for this app was to overcome some of the artefacts using xfoils geometry routines (for example used in Xflr5) when creating geometric 'high quality' airfoils. The focus of the app is on pure geometry work with airfoils - aerodynamic aspects are out of scope. 
 
@@ -88,6 +88,9 @@ The 'Match' function performs a best match of the Bezier curve to an existing ai
 
 
 ![AE](images/Match_Bezier.png "Screenshot of Bezier curve definition")
+
+> [!TIP]
+Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) with more information about an airfoils geometry.  
 
 
 <!---
