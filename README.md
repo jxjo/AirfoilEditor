@@ -55,6 +55,10 @@ On of the major views on an airfoil in the Airfoil Editor is the curvature of th
 
 ![Curvature](images/Curvature.png "Screenshot of Curvature")
 
+> [!TIP]
+Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) with more information about an airfoils geometry.  
+
+
 ## Bezier based airfoils 
 
 Beside '.dat'-files the Airfoil Editor seamlessly displays '.bez'-Files defining an Bezier based airfoil. 
@@ -89,8 +93,6 @@ The 'Match' function performs a best match of the Bezier curve to an existing ai
 
 ![AE](images/Match_Bezier.png "Screenshot of Bezier curve definition")
 
-> [!TIP]
-Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) with more information about an airfoils geometry.  
 
 
 <!---
