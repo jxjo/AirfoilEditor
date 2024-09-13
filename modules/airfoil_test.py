@@ -87,7 +87,7 @@ class Test_Airfoil:
         # thickness, camber 
 
         assert geo.thickness._get_maximum() == (0.2903512, 0.076502)
-        assert geo.camber._get_maximum()    == (0.4152478, 0.0170127)
+        assert geo.camber._get_maximum()    == (0.4152475, 0.0170127)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -257,16 +257,16 @@ class Test_Airfoil_Bezier:
 
         # base data 
 
-        assert airfoil.nPoints == 201
-        assert airfoil.nPanels == 200
+        assert airfoil.nPoints == 161
+        assert airfoil.nPanels == 160
         assert airfoil.isNormalized       
         assert airfoil.geo.te_gap == 0.0
         assert geo.le_real == (0.0, 0.0)
 
         # u default distribution  
 
-        assert len(geo.upper._u) == 101
-        assert round(sum(geo.upper._u),6) == 50.732829
+        assert len(geo.upper._u) == 81
+        assert round(sum(geo.upper._u),6) == 40.688019
 
         # eval y on u
 
@@ -291,8 +291,8 @@ class Test_Airfoil_Bezier:
         
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.3140345, 0.111065)
-        assert geo.camber._get_maximum()    == (0.3973174, 0.014023)
+        assert geo.thickness._get_maximum() == (0.3140431, 0.1110653)
+        assert geo.camber._get_maximum()    == (0.3974017, 0.0140231)
 
         with pytest.raises(NotImplementedError):
             geo.set_maxThick  (0.08)

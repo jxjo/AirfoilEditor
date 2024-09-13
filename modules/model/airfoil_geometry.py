@@ -358,7 +358,7 @@ class Panelling_Bezier (Panelling_Abstract):
         return u 
 
 
-    def new_u (self, u_current : np.ndarray|None, nPanels : int|None = None ):
+    def new_u (self, nPanels : int|None = None ):
         """ 
         Returns new panel distribution u of a Bezier airfoil upper and lower side  
             - 'nPanels' will overwrite the default self.nPanels    
@@ -3040,8 +3040,6 @@ class Geometry_HicksHenne (Geometry):
         """ number of coordinate points"""
         return len (self.upper.x) + len (self.lower.x) - 1
 
-
-    # ------------------ private ---------------------------
 
 
 
