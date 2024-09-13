@@ -927,7 +927,7 @@ class Matcher (QThread):
         if self._target_curv_le:
             target  = abs(self._target_curv_le)
             diff = abs(target - curv_le)                         # 1% is like 1 
-        obj_le += (diff / 80) * self._target_curv_le_weighting  # #40 apply optional weighting      
+        obj_le += (diff / 40) * self._target_curv_le_weighting  # #80 apply optional weighting      
 
         # --- TE curvature 
         # limit max te curvature 
@@ -988,8 +988,8 @@ class Matcher (QThread):
         # objective function is sum of single objectives 
 
         # take norm2 of deviation and le curvature to get balanced result 
-        # obj = np.linalg.norm ([obj_norm2, obj_le]) + obj_le_hp + obj_te + obj_revers + obj_te_deriv
-        obj = obj_norm2 + obj_le + obj_le_hp + obj_te + obj_revers + obj_te_deriv
+        obj = np.linalg.norm ([obj_norm2, obj_le]) + obj_le_hp + obj_te + obj_revers + obj_te_deriv
+        # obj = obj_norm2 + obj_le + obj_le_hp + obj_te + obj_revers + obj_te_deriv
 
         # counter of objective evaluations (for entertainment)
         self._nevals += 1
