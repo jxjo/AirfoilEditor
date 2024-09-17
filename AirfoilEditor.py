@@ -35,6 +35,7 @@ sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
 from model.airfoil_geometry import Geometry, Geometry_Bezier, Curvature_Abstract
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier
+from model.airfoil_examples import Example
 
 from base.common_utils      import * 
 from base.panels            import Panel, Edit_Panel
@@ -59,7 +60,7 @@ logger.setLevel(logging.DEBUG)
 # ------ globals -----
 
 AppName    = "Airfoil Editor"
-AppVersion = "2.0 beta 4"
+AppVersion = "2.0 beta 5"
 
 Main : 'App_Main' = None 
 
@@ -91,8 +92,8 @@ class App_Main (QMainWindow):
     sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
     sig_new_panelling           = pyqtSignal()          # new panelling
 
-    sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
-    sig_enter_bezier_match      = pyqtSignal()          # starting bezier match dialog 
+    sig_enter_edit_mode         = pyqtSignal(bool)      # starting modify airfoil
+    sig_enter_bezier_mode       = pyqtSignal(bool)      # starting bezier match dialog 
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
     sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
 
@@ -131,12 +132,14 @@ class App_Main (QMainWindow):
 
         if airfoil_file and (not os.path.isfile (airfoil_file)): 
             QMessageBox.critical (self, self.name , f"\n'{airfoil_file}' does not exist.\nShowing example airfoil.\n")
-            airfoil_file = Example.fileName
+            airfoil = Example()
             self.move (200,150)                     # messagebox will move main window 
         elif airfoil_file is None : 
-            airfoil_file = Example.fileName
+            airfoil = Example()
+        else:
+            airfoil = create_airfoil_from_path(airfoil_file)
 
-        self.set_airfoil (create_airfoil_from_path(airfoil_file), silent=True)
+        self.set_airfoil (airfoil, silent=True)
 
         # init main layout of app
 
@@ -257,9 +260,10 @@ class App_Main (QMainWindow):
         airfoil_bez = Airfoil_Bezier.onAirfoil (self._airfoil)
         airfoil_bez.useAsDesign()                           # will have another visualization 
 
-        self.set_airfoil_target (self._airfoil, refresh=False) # current will be reference for Bezier
-
         self.set_edit_mode (True, airfoil_bez)       
+
+        self.set_airfoil_target (None, refresh=False)       # current will be reference for Bezier
+        self.sig_enter_bezier_mode.emit(True)
 
 
     def set_edit_mode (self, aBool : bool, for_airfoil):
@@ -270,13 +274,16 @@ class App_Main (QMainWindow):
             
             if self._edit_mode:
                 self._airfoil_org = self._airfoil       # enter edit_mode - save original 
+
+                # save possible example to file to ease consistent further handling in widgets
+                if self._airfoil.isExample: self._airfoil.save()
             else: 
                 self._airfoil_org = None                # leave edit_mode - remove original 
                 self._airfoil_target = None            
 
             self.set_airfoil (for_airfoil, silent=True)
 
-            self.sig_enter_edit_mode.emit()
+            self.sig_enter_edit_mode.emit(aBool)
             self.sig_airfoil_changed.emit()             # signal new airfoil 
         
 
@@ -340,12 +347,17 @@ class App_Main (QMainWindow):
     @property
     def airfoil_target (self) -> Airfoil:
         """ target airfoil for match Bezier or 2nd airfoil doing Blend"""
-        return self._airfoil_target
+        if self._airfoil_target is None: 
+            return self._airfoil_org
+        else: 
+            return self._airfoil_target
+    
+
     def set_airfoil_target (self, airfoil: Airfoil | None = None, refresh=True): 
 
         if airfoil is not None: 
             airfoil.set_usedAs (usedAs.TARGET)
-        elif self._airfoil_target:
+        elif self._airfoil_target:                                  # reset the current/old target 
             self._airfoil_target.set_usedAs (usedAs.NORMAL) 
         self._airfoil_target = airfoil 
         
@@ -1002,9 +1014,10 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
         l_head.addSpacing (20)
   
-        Airfoil_Select_Open_Widget (l_head, width=(100,None),
+        Airfoil_Select_Open_Widget (l_head, width=(100,200),
                     get=lambda: self.myApp.airfoil_target, set=self.myApp.set_airfoil_target,
                     initialDir=self.myApp.airfoils()[0], addEmpty=True)
+
 
     def __init__ (self,*args, **kwargs):
         super().__init__(*args,**kwargs)
@@ -1016,7 +1029,6 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
         self._target_curv_le = None 
         self._target_curv_le_weighting = None
-        self._max_te_curv = None 
 
         l = QGridLayout()
 
@@ -1047,13 +1059,13 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
             FieldF (l,r,c  , get=lambda: self.curv_upper.max_xy[1], width=40, dec=0, 
                     style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self.curv_upper))
             FieldF (l,r,c+1, get=lambda: self.curv_upper.te[1],     width=40, dec=1, 
-                    style=lambda: Match_Bezier.style_curv_te(self.curv_upper))
+                    style=lambda: Match_Bezier.style_curv_te(self.max_curv_te_upper, self.curv_upper))
 
             r += 1
             FieldF (l,r,c  , get=lambda: self.curv_lower.max_xy[1], width=40, dec=0, 
                     style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self.curv_lower))
             FieldF (l,r,c+1, get=lambda: self.curv_lower.te[1],     width=40, dec=1, 
-                    style=lambda: Match_Bezier.style_curv_te(self.curv_lower))
+                    style=lambda: Match_Bezier.style_curv_te(self.max_curv_te_lower, self.curv_lower))
 
             r,c = 0, 5 
             SpaceC (l,  c, width=10)
@@ -1123,19 +1135,20 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     def _messageText (self): 
         """ user warnings"""
         text = []
-        s_upper_dev = Match_Bezier.style_deviation (self._norm2 (self.upper))
-        s_lower_dev = Match_Bezier.style_deviation (self._norm2 (self.lower))
+        r_upper_dev = Matcher.result_deviation (self._norm2 (self.upper))
+        r_lower_dev = Matcher.result_deviation (self._norm2 (self.lower))
 
-        s_upper_le = Match_Bezier.style_curv_le (self._target_curv_le, self.curv_upper)
-        s_lower_le = Match_Bezier.style_curv_le (self._target_curv_le, self.curv_lower)
-        s_upper_te = Match_Bezier.style_curv_te (self.curv_upper)
-        s_lower_te = Match_Bezier.style_curv_te (self.curv_lower)
+        r_upper_le = Matcher.result_curv_le (self._target_curv_le, self.curv_upper)
+        r_lower_le = Matcher.result_curv_le (self._target_curv_le, self.curv_lower)
+        r_upper_te = Matcher.result_curv_te (self.max_curv_te_upper,self.curv_upper)
+        r_lower_te = Matcher.result_curv_te (self.max_curv_te_lower, self.curv_lower)
 
-        if s_upper_dev == style.WARNING or s_lower_dev == style.WARNING:
+        is_bad = Matcher.result_quality.BAD
+        if r_upper_dev == is_bad or r_lower_dev == is_bad:
            text.append("- Deviation is quite high")
-        if s_upper_le == style.WARNING or s_lower_le == style.WARNING:
+        if r_upper_le == is_bad or r_lower_le == is_bad:
            text.append(f"- Curvature at LE differs too much from target ({int(self._target_curv_le)})")
-        if s_upper_te == style.WARNING or s_lower_te == style.WARNING:
+        if r_upper_te == is_bad or r_lower_te == is_bad:
            text.append("- Curvature at TE is quite high")
 
         text = '\n'.join(text)
@@ -1184,17 +1197,17 @@ class Diagram_Item_Airfoil (Diagram_Item):
         return False 
 
 
-    def _on_enter_edit_mode (self):
+    def _on_enter_edit_mode (self, is_enter : bool):
         """ slot user started edit mode """
 
-        if self._edit_mode_first_time and not self.airfoils()[0].isBezierBased:
+        if is_enter and self._edit_mode_first_time and not self.airfoils()[0].isBezierBased:
             # switch on show thickness/camber if it is the first time 
             # - only for not bezier airfoils 
             self.line_artist.set_show (True)
             self.section_panel.refresh() 
             self._edit_mode_first_time = False
 
-            logger.debug (f"{str(self)} on_enter_edit_mode")
+            logger.debug (f"{str(self)} on_enter_edit_mode {is_enter}")
 
 
     def _on_enter_panelling (self):
@@ -1402,8 +1415,6 @@ class Diagram_Airfoil (Diagram):
 
         self._airfoil_ref1 = None
         self._airfoil_ref2 = None
-        self._show_airfoils_ref = False 
-
 
         self._bezier_match_first_time = True        # switch to show target airfoil 
 
@@ -1423,6 +1434,7 @@ class Diagram_Airfoil (Diagram):
         self.myApp.sig_airfoil_target_changed.connect (self._on_target_changed)
 
         self.myApp.sig_enter_edit_mode.connect (self._on_edit_mode)
+        self.myApp.sig_enter_bezier_mode.connect (self._on_bezier_mode)
         self.myApp.sig_enter_blend.connect (self._on_blend_airfoil)
 
 
@@ -1448,20 +1460,26 @@ class Diagram_Airfoil (Diagram):
 
 
     @property
-    def airfoil_target_name (self) -> str:
-        return self.myApp.airfoil_target.name if self.myApp.airfoil_target else ''
+    def airfoil_target_fileName (self) -> str:
+        return self.myApp.airfoil_target.fileName if self.myApp.airfoil_target else ''
+
 
     @property
-    def airfoil_org_name (self) -> str:
-        return self.myApp.airfoil_org.name if self.myApp.airfoil_org else ''
+    def airfoil_org_fileName (self) -> str:
+        return self.myApp.airfoil_org.fileName if self.myApp.airfoil_org else ''
 
 
     @property
     def show_airfoils_ref (self) -> bool: 
-        return self._show_airfoils_ref
+        """ is switch show_reference_airfoils on """
+        if self._section_panel is not None: 
+            return self.section_panel.switched_on
+        else: 
+            return False
+        
     def set_show_airfoils_ref (self, aBool : bool): 
-        self._show_airfoils_ref = aBool is True 
-        self.refresh ()
+        self.section_panel.set_switched_on (aBool, silent=True)
+        self.section_panel.refresh ()
    
 
     def airfoils (self) -> list[Airfoil]: 
@@ -1491,12 +1509,12 @@ class Diagram_Airfoil (Diagram):
         
             l = QGridLayout()
             r,c = 0, 0
-            Field (l,r,c, width=155, get=lambda: self.airfoil_org_name, disable=True,
+            Field (l,r,c, width=155, get=lambda: self.airfoil_org_fileName, disable=True,
                             hide=self._hide_airfoil_org,
                             toolTip="Original airfoil")
             r += 1
-            Field (l,r,c, width=155, get=lambda: self.airfoil_target_name, disable=True,
-                            hide=lambda: not self.airfoil_target_name,
+            Field (l,r,c, width=155, get=lambda: self.airfoil_target_fileName, disable=True,
+                            hide=lambda: not self.airfoil_target_fileName,
                             toolTip="Target airfoil")
             r += 1
             Airfoil_Select_Open_Widget (l,r,c, widthOpen=60,
@@ -1514,13 +1532,13 @@ class Diagram_Airfoil (Diagram):
             l.setColumnStretch (0,2)
 
             self._section_panel = Edit_Panel (title="Reference Airfoils", layout=l, height=(80,None),
-                                              switchable=True, switched_on=False, on_switched=self.set_show_airfoils_ref)
+                                              switchable=True, switched_on=False, on_switched=self.refresh)
 
         return self._section_panel 
 
     def _hide_airfoil_org (self) -> bool:
         """ hide original airfoil if it is the same like target"""
-        return (not self.airfoil_org_name) or (self.airfoil_org_name == self.airfoil_target_name)
+        return (not self.airfoil_org_fileName) or (self.airfoil_org_fileName == self.airfoil_target_fileName)
 
 
     def _on_airfoil_changed (self):
@@ -1539,8 +1557,7 @@ class Diagram_Airfoil (Diagram):
         airfoil : Airfoil
         for airfoil in self.data_list():            # ... self.airfoils() is filtered
             if airfoil.usedAs == usedAs.TARGET: 
-                self._show_airfoils_ref = True
-                self.section_panel.set_switched_on (True, initial=True)
+                self.set_show_airfoils_ref (True)
                 break
         
         if refresh: 
@@ -1552,24 +1569,26 @@ class Diagram_Airfoil (Diagram):
     def _on_blend_airfoil (self):
         """ slot to handle blend airfoil entered signal -> show org airfoil"""
 
-        # switch to show reference airfoils 
-        self._show_airfoils_ref = True
-        self.section_panel.set_switched_on (True, initial=True)
-        self.section_panel.refresh()
-
+        self.set_show_airfoils_ref (True)
+        self.refresh()                          # plot ref airfoils 
         logger.debug (f"{str(self)} _on_blend_airfoil")
 
 
-    def _on_edit_mode (self):
-        """ slot to handle edit mode entered signal -> show ref airfoil"""
+    def _on_edit_mode (self, is_enter):
+        """ slot to handle edit mode entered signal"""
 
-        # switch to show reference airfoils 
-        # self._show_airfoils_ref = True
-        # self.section_panel.set_switched_on (True, initial=True)
         self.section_panel.refresh()                        # to show additional airfoils in edit 
+        logger.debug (f"{str(self)} _on_edit_mode {is_enter}")
 
-        logger.debug (f"{str(self)} _on_edit_mode")
 
+    def _on_bezier_mode (self, is_enter):
+        """ slot to handle bezier mode entered signal -> show ref airfoil"""
+
+        # ensure to show target airfoil in bezier 
+        if is_enter:
+            self.set_show_airfoils_ref (True)
+            self.refresh()                          # plot ref airfoils 
+            logger.debug (f"{str(self)} _on_edit_mode {is_enter}")
 
 
 #--------------------------------

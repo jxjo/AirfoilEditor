@@ -1061,15 +1061,14 @@ class Side_Airfoil_Bezier (Line):
             else: 
                 cp_y[1] = max (aLine.y) * 1.8
         else:
-            xhelp = cp_x[2] * 0.6                       #   take y-coord near LE depending
+            xhelp = cp_x[2] * 0.6                       # take y-coord near LE depending
             i = find_closest_index (aLine.x, xhelp) 
             if aLine.isLower:             
-                cp_y[1] = aLine.y[i] * 1.4
+                cp_y[1] = aLine.y[i]  
+                cp_y[1] = min (cp_y[1], -0.03)          # avoid too sharp 
             else:     
-                cp_y[1] = aLine.y[i]    
-
-        if aLine.isLower:
-            cp_y[1] = min (cp_y[1], -0.03)              # otherwise lower le too sharp 
+                cp_y[1] = aLine.y[i]  
+                cp_y[1] = max (cp_y[1], 0.03)  
 
         # adjust y values between le and te for best fit 
 

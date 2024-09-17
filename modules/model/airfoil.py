@@ -105,7 +105,7 @@ class Airfoil:
 
         self._polarSet       = None              # polarSet which is defined from outside 
 
-        self._usedAs         = None              # usage type of airfoil used by app <- AIRFOIL_TYPES
+        self._usedAs         = usedAs.NORMAL     # usage type of airfoil used by app <- AIRFOIL_TYPES
         self._propertyDict   = {}                # multi purpose extra properties for an AIirfoil
 
 

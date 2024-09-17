@@ -168,7 +168,7 @@ class Edit_Panel (Panel):
         self.setLayout (l_main)
 
         # initial switch state 
-        self.set_switched_on (self._switched_on, initial=True)
+        self.set_switched_on (self._switched_on, silent=True)
 
         # initial enabled/disabled state
         if self._isDisabled: 
@@ -203,7 +203,7 @@ class Edit_Panel (Panel):
         """ True if self is switched on"""
         return self._switched_on
     
-    def set_switched_on (self, aBool : bool, initial=False):
+    def set_switched_on (self, aBool : bool, silent=False):
         """ switch on/off 
             - optional hide main panel 
             - emit sig_switched
@@ -218,8 +218,7 @@ class Edit_Panel (Panel):
             else: 
                 Widget._set_height (self, 40)
 
-        # signal to Diagram_Item - but not during init 
-        if not initial: 
+        if not silent:                                          # set by checkbox - signal to Diagram_Item 
             self.sig_switched.emit (self._switched_on)
 
 

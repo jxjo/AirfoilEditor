@@ -22,7 +22,6 @@ from base.widgets           import *
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
 from model.airfoil          import GEO_BASIC, usedAs
-from model.airfoil_examples import Example
 
 
 # ----- common methods -----------
@@ -33,17 +32,14 @@ def create_airfoil_from_path (pathFilename) -> Airfoil:
         Return None if the Airfoil couldn't be loaded  
     """
 
-    if pathFilename == Example.fileName:
-        airfoil = Example()
-    else:
-        extension = os.path.splitext(pathFilename)[1]
-        if extension == ".bez":
-            airfoil = Airfoil_Bezier (pathFileName=pathFilename)
-        elif extension == ".hicks":
-            airfoil = Airfoil_Hicks_Henne (pathFileName=pathFilename)
-        else: 
-            airfoil = Airfoil(pathFileName=pathFilename, geometry=GEO_BASIC)
-    airfoil.set_usedAs (usedAs.NORMAL)
+    extension = os.path.splitext(pathFilename)[1]
+    if extension == ".bez":
+        airfoil = Airfoil_Bezier (pathFileName=pathFilename)
+    elif extension == ".hicks":
+        airfoil = Airfoil_Hicks_Henne (pathFileName=pathFilename)
+    else: 
+        airfoil = Airfoil(pathFileName=pathFilename, geometry=GEO_BASIC)
+
     airfoil.load()
 
     if airfoil.isLoaded:                      # could have been error in loading
@@ -192,21 +188,25 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                                 hide=self.no_files_here,
                                 signal=False)
         if withOpen:
+            # either text button if nothing is there
             Airfoil_Open_Widget (l, text=textOpen, set=self.set_airfoil, signal=False,
                                  width = widthOpen,
                                  hide=lambda: not self.no_files_here())
+            # ... or icon button together with combo box 
             Airfoil_Open_Widget (l, asIcon=True, set=self.set_airfoil, signal=False,
                                  hide=self.no_files_here)
-            l.insertStretch (-1, stretch = 2)
+            l.insertStretch (-1)
 
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
-        if self.no_files_here(): 
+        if self.no_files_here():                                # show only open button
             l.setSpacing (0)
-        else: 
+            l.setStretch (0,0)
+            l.setStretch (2,2)
+        else:                                                   # combobox with open 
             l.setSpacing (1)
-            l.setStretch (0,4)
-            l.setStretch (1,0)
+            l.setStretch (0,2)
+            l.setStretch (2,0)
 
         self.setLayout (l)
 
@@ -220,17 +220,32 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
         self._layout_add ()
 
+    @override
     def refresh (self, disable=None):
+
+        self._no_files_here = None                      # reset cached vlaue 
         super().refresh(disable) 
+
+        l : QHBoxLayout = self.layout()
+        if self.no_files_here():                                # show only open button
+            l.setSpacing (0)
+            l.setStretch (0,0)
+            l.setStretch (2,2)
+        else:                                                   # combobox with open 
+            l.setSpacing (1)
+            l.setStretch (0,2)
+            l.setStretch (2,0)
+
 
     def no_files_here (self) -> bool:
         """ True if no files to select in combo """
 
         if self._no_files_here is None: 
             n = len (self.airfoil_fileNames_sameDir())
-            # there can be a blank or exmaple entry as the first item 
             if n== 1:
-                no = not os.path.isfile(self.airfoil_fileNames_sameDir()[0])
+                # there can be a blank or exmaple entry as the first item 
+                fileName_first = self.airfoil_fileNames_sameDir()[0]
+                no =  fileName_first == ""
             elif n == 0: 
                 no =  True
             else: 
@@ -281,7 +296,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         for aPathFileName in get_airfoil_files_sameDir (sameDir):
             if newFileName == os.path.basename(aPathFileName):
 
-                if os.path.isfile (aPathFileName) or newFileName == Example.fileName:   # maybe it was deleted in meantime 
+                if os.path.isfile (aPathFileName):   # maybe it was deleted in meantime 
                      
                     airfoil = create_airfoil_from_path (aPathFileName)
                     if airfoil is not None: 
@@ -304,7 +319,4 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         for aFileName in get_airfoil_files_sameDir (sameDir):
             fileNames.append(os.path.basename(aFileName))
 
-        if self.airfoil is not None and self.airfoil.isExample:
-            fileNames.append(Example.fileName)
         return fileNames
-

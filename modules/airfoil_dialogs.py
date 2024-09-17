@@ -382,54 +382,56 @@ class Match_Bezier (Dialog):
     """ Main handler represented as little tool window"""
 
     _width  = 350
-    _height = 270
+    _height = 240
 
     name = "Match Bezier"
 
     sig_new_bezier = pyqtSignal (Line.Type)
     sig_match_finished = pyqtSignal (Side_Airfoil_Bezier)
 
+    MAX_PASS = 4                                            # max passes for match Bezier with increased weighting
+    INITIAL_WEIGHTING = 0.25                                # initial weighting of le curvature 
+
+
     # ---- static members for external use 
 
     @staticmethod
     def style_deviation (norm2 : float) -> style:
         """ returns color style depending of deviation"""
-        if norm2 < 0.001:
+        result = Matcher.result_deviation (norm2)
+        if result == Matcher.result_quality.GOOD:
             st = style.GOOD
-        elif norm2 < 0.005:
+        elif result == Matcher.result_quality.OK:
             st = style.NORMAL
         else:
             st = style.WARNING
         return st 
 
+
     @staticmethod
     def style_curv_le (target_curv_le: float, aCurv: Line | float) -> style:
         """ returns color style depending if curvature at LE is too different from target"""
-        if isinstance (aCurv, float):
-            delta = abs(target_curv_le - abs(aCurv))
-        else: 
-            delta = abs(target_curv_le - abs(aCurv.y[0]))
-        if delta > 10: 
-            return style.WARNING
-        elif delta > 2: 
-            return style.NORMAL
-        else: 
-            return style.GOOD
+        result = Matcher.result_curv_le (target_curv_le, aCurv)
+        if result == Matcher.result_quality.GOOD:
+            st = style.GOOD
+        elif result == Matcher.result_quality.OK:
+            st = style.NORMAL
+        else:
+            st = style.WARNING
+        return st 
+
 
     @staticmethod
-    def style_curv_te (aCurv: Line | float)  -> style:
+    def style_curv_te (max_curv_te : float, aCurv: Line | float)  -> style:
         """ returns color style depending if curvature at TE is to high"""
-        if isinstance (aCurv, float):
-            curv_te = abs(aCurv)
-        else: 
-            curv_te = abs(aCurv.y[-1])
-        if curv_te > 10: 
-            return style.WARNING
-        elif curv_te > 0.5: 
-            return style.NORMAL
-        else: 
-            return style.GOOD
-
+        result = Matcher.result_curv_te (max_curv_te, aCurv)
+        if result == Matcher.result_quality.GOOD:
+            st = style.GOOD
+        elif result == Matcher.result_quality.OK:
+            st = style.NORMAL
+        else:
+            st = style.WARNING
+        return st 
 
 
 
@@ -444,11 +446,13 @@ class Match_Bezier (Dialog):
         self._curv_te = side_bezier.curvature.te[1] 
 
         self._target_curv_le = target_curv_le
-        self._target_curv_le_weighting = 1
         self._max_curv_te = max_curv_te
 
         self._norm2 = Matcher.norm2_deviation_to (side_bezier.bezier, target_line) 
         self._nevals = 0
+
+        self._target_curv_le_weighting = self.INITIAL_WEIGHTING
+        self._ipass = 0
 
         # init matcher thread 
 
@@ -488,10 +492,12 @@ class Match_Bezier (Dialog):
         """ start matcher thread"""
 
         self._nevals = 0
-        self._norm2 = 0 
+        self._norm2  = 0 
+        self._ipass +=1                                         # increase pass counter 
+        self._target_curv_le_weighting *= 2                     # double wighting in next pass 
 
         self._panel.setDisabled (True)
-        self.set_background_color (color='lightskyblue', alpha=0.3)        
+        self.set_background_color (color='steelblue', alpha=0.3)        
 
         self._matcher.set_match (self._side_bezier, self._target_line,
                                 self._target_curv_le, self._target_curv_le_weighting,
@@ -506,29 +512,60 @@ class Match_Bezier (Dialog):
         """ slot to receice new results from running thread"""
 
         self._nevals = nevals
-        self._norm2 = norm2         # self._side_bezier.norm2_deviation_to (self._target_line)  
-        self._curv_le = curv_le     # abs(self._side_bezier.curvature.max_xy[1]) 
-        self._curv_te = curv_te     # self._side_bezier.curvature.te[1] 
+        self._norm2 = norm2         
+        self._curv_le = curv_le     
+        self._curv_te = curv_te     
         self.refresh ()
         self.setWindowTitle (self._titletext())
 
         self.sig_new_bezier.emit (self._side_bezier.type)
 
 
+    def _result_is_good_enough (self) -> bool:
+        """ return True if match reslt is good enough to end """ 
+
+        good = Matcher.result_quality.GOOD
+ 
+        result1 = Matcher.result_curv_le (self._target_curv_le, self._curv_le)
+        result2 = Matcher.result_curv_te (self._max_curv_te,    self._curv_te)
+        result3 = Matcher.result_deviation (self._norm2)
+
+        if result1 == good and result2 == good and result3 == good:
+            return True 
+        else: 
+            return False 
+
+
     def _on_finished(self):
         """ slot for thread finished """
 
-        self._set_button_visibility ()
+        if self._ipass < self.MAX_PASS: 
+            # further passes to go?
 
-        # restore old background color 
-        self._panel.setPalette(self._palette_normal)
-        self.set_background_color (color=None)    
-        self._panel.setDisabled (False)
-        self.setWindowTitle (self._titletext())
+            finished = self._result_is_good_enough ()
+            if not finished:
+                # start next pass after this thread has really finished 
+                timer = QTimer()                                
+                timer.singleShot(10, self._start_matcher)
+        else: 
+            finished = True 
 
-        self.refresh ()
+        if finished:      
+            # we really finished
+            self._ipass = 0                                             # reset pass counter 
+            self._target_curv_le_weighting = self.INITIAL_WEIGHTING     # reset weighing 
 
-        self.sig_match_finished.emit(self._side_bezier)
+            self._set_button_visibility ()                              # reset UI state 
+
+            # restore old background color 
+            self._panel.setPalette(self._palette_normal)
+            self.set_background_color (color=None)    
+            self._panel.setDisabled (False)
+            self.setWindowTitle (self._titletext())
+
+            self.refresh ()
+
+            self.sig_match_finished.emit(self._side_bezier)
 
 
     def _init_layout(self) -> QLayout:
@@ -540,7 +577,7 @@ class Match_Bezier (Dialog):
         # Label (l,r,c, colSpan=6, fontSize=size.HEADER, get=self._headertext)
         # r += 1
         Label  (l,r,0, colSpan=5, height=40, get="Run an optimization for a best fit of the Bezier curve."+
-                                      "\nUse 'Weight' to balance deviation and LE curvature.")
+                                      "\nYou may adapt LE and/or TE curvature.")
         r += 1
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
@@ -556,10 +593,10 @@ class Match_Bezier (Dialog):
         FieldF (l,r,4, width=50,  dec=1, step=0.1, lim=(-9.9, 9.9),
                         get=lambda: self._max_curv_te, set=self.set_max_curv_te )
 
-        r += 1
-        Label  (l,r,0, get="Weight")
-        FieldF (l,r,3, width=50,  dec=1, step=0.5, lim=(0.1,10),
-                        get=lambda: self._target_curv_le_weighting, set=self.set_target_curv_le_weighting )
+        # r += 1
+        # Label  (l,r,0, get="Weight")
+        # FieldF (l,r,3, width=50,  dec=1, step=0.5, lim=(0.1,10),
+        #                 get=lambda: self._target_curv_le_weighting, set=self.set_target_curv_le_weighting )
 
         r += 1
         Label  (l,r,0, get=f"{self._side_bezier.name} side", width=80)
@@ -568,7 +605,7 @@ class Match_Bezier (Dialog):
         FieldF (l,r,3, width=50, dec=0, get=lambda: self._curv_le,
                        style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self._curv_le))
         FieldF (l,r,4, width=50, dec=1, get=lambda: self._curv_te,
-                       style=lambda: Match_Bezier.style_curv_te(self._curv_te))
+                       style=lambda: Match_Bezier.style_curv_te(self._max_curv_te, self._curv_te))
         r += 1
         SpaceR (l, r) 
 
@@ -588,7 +625,7 @@ class Match_Bezier (Dialog):
     def _titletext (self) -> str: 
         """ headertext dpending on state """
         if self._matcher.isRunning():
-            return f"Match running ... Iterations: {self._nevals}"
+            return f"Match running ... Pass: {self._ipass}  Iterations: {self._nevals}"
         elif self._matcher.isFinished():
             return f"Match {self._side_bezier.name} side finished"
         else: 
@@ -664,8 +701,60 @@ class Matcher (QThread):
 
     sig_new_results = pyqtSignal (int, float, float, float)
 
+    class result_quality (Enum): 
+        """ enums for assessment of result quality """
+        VERY_GOOD     = 1
+        GOOD          = 2
+        OK            = 3
+        BAD           = 4
+        ERROR         = 5
+
 
     # ------ static methods also for external use 
+
+    @classmethod
+    def result_curv_le (cls, target_curv_le: float, aCurv: Line | float) -> result_quality:
+        """ returns enum result_quality depending on deviation of curvature at LE"""
+        if isinstance (aCurv, float):
+            delta = abs(target_curv_le - abs(aCurv))
+        else: 
+            delta = abs(target_curv_le - abs(aCurv.y[0]))
+        if delta > 10: 
+            return cls.result_quality.BAD 
+        elif delta > 2: 
+            return cls.result_quality.OK
+        else: 
+            return cls.result_quality.GOOD
+
+
+
+
+    @classmethod
+    def result_deviation (cls, norm2 : float) -> result_quality:
+        """ returns enum result_quality depending of deviation"""
+        if norm2 < 0.001:
+            return cls.result_quality.GOOD
+        elif norm2 < 0.005:
+            return cls.result_quality.OK
+        else:
+            return cls.result_quality.BAD
+
+
+    @classmethod
+    def result_curv_te (cls, max_curv_te: float, aCurv: Line | float)  -> result_quality:
+        """ returns enum result_quality depending if curvature at TE is to high"""
+        if isinstance (aCurv, float):
+            curv_te = abs(aCurv)
+        else: 
+            curv_te = abs(aCurv.y[-1])
+        if curv_te > (abs(max_curv_te) + 2): 
+            return cls.result_quality.BAD
+        elif curv_te > (abs(max_curv_te) + 0.1):            # allow a lttle tolerance 
+            return cls.result_quality.OK
+        else: 
+            return cls.result_quality.GOOD
+
+
 
     @staticmethod
     def _reduce_target_points (target_line: Line) -> Line:
@@ -806,7 +895,9 @@ class Matcher (QThread):
 
         res, niter = nelder_mead (f, variables_start,
                     step=step, no_improve_thr=1e-5,             
-                    no_improv_break=50, max_iter=self._max_iter,
+                    no_improv_break_beginning=60, 
+                    no_improv_break=20, 
+                    max_iter=self._max_iter,         
                     bounds = bounds,
                     stop_callback=self.isInterruptionRequested)     # Qthread method 
 
@@ -926,8 +1017,8 @@ class Matcher (QThread):
         diff = 0 
         if self._target_curv_le:
             target  = abs(self._target_curv_le)
-            diff = abs(target - curv_le)                         # 1% is like 1 
-        obj_le += (diff / 40) * self._target_curv_le_weighting  # #80 apply optional weighting      
+            diff = abs(target - curv_le)                        # 1% is like 1 
+        obj_le += (diff / 30) * self._target_curv_le_weighting  # #40 #80 apply optional weighting      
 
         # --- TE curvature 
         # limit max te curvature 

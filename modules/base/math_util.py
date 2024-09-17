@@ -679,12 +679,16 @@ def nelder_mead_1D (f, x_start,
 
 
 
-def nelder_mead (f, x_start,
-                step=0.1, no_improve_thr=10e-10,                # for scalar product
-                no_improv_break=12, max_iter=50,
-                bounds = None,                                  # extension 
+def nelder_mead (f, 
+                x_start,
+                step : float = 0.1, 
+                no_improve_thr : float = 10e-10,                          # for scalar product
+                no_improv_break : int = 12, 
+                no_improv_break_beginning : int|None = None, 
+                max_iter : int =50,
+                bounds = None,                                   
                 alpha=1., gamma=2., rho=-0.5, sigma=0.5,
-                stop_callback=False):
+                stop_callback : bool =False):
     '''
         Nelder-Mead optimization algorithm to determine the minimum of a fuction
 
@@ -694,12 +698,13 @@ def nelder_mead (f, x_start,
         Arguments:
 
         f       : function to optimize, must return a scalar score
-        x_start : np array - initial position
-        step    : float - look-around radius in initial step
-        no_improv_thr: float - an improvement lower than no_improv_thr
-        no_improv_break : int -break after no_improv_break iterations 
+        x_start : initial position
+        step    : look-around radius in initial step
+        no_improv_thr: an improvement lower than no_improv_thr
+        no_improv_break : break after no_improv_break iterations 
+        no_improv_break_beginning : break after no_improv_break iterations at the beginning (default=no_improv_break) 
         bounds  : list of tuple(float) - (min, max) pair for boundary of x. None - no boundary. 
-        max_iter: int - always break after this number of iterations.
+        max_iter: always break after this number of iterations.
         alpha, gamma, rho, sigma (floats): parameters of the algorithm (see Wikipedia page for reference)
         stop_callback : optional method for stop condition
              
@@ -741,6 +746,11 @@ def nelder_mead (f, x_start,
 
     prev_best = f(x_start)
     no_improv = 0
+
+    if no_improv_break_beginning is None: 
+        no_improv_break_beginning = no_improv_break
+
+
     res = [[np.copy(x_start), prev_best]]
 
     for i in range(dim):
@@ -770,21 +780,24 @@ def nelder_mead (f, x_start,
             return res[0], iters
         iters += 1
 
-        # break after no_improv_break iterations with no improvement
-        # print ('...best so far:', best)
-
-        # if iters % 20 == 0: 
-        #     print("  NelderMead-d%d %3d(%d):  Score %.5f  no_improv: %2d(%d)" 
-        #           %(dim, iters, max_iter, best, no_improv, no_improv_break))
-
+         # break after no_improv_break iterations with no improvement
+ 
         if abs(best - prev_best) < no_improve_thr:
             no_improv += 1
         else:
             no_improv = 0
             prev_best = best
 
-        if no_improv >= no_improv_break:
-            return res[0], iters
+        # allow a different (higher) no_improv_break at the beginning (results are still highly volatile) 
+        if iters < max_iter / 5:
+            if no_improv >= no_improv_break_beginning:
+                # print(f"  nelder_mead iters: {iters} best: {best} prev_best {prev_best} no_improv: {no_improv}") 
+                return res[0], iters
+        else: 
+            if no_improv >= no_improv_break:
+                # print(f"  nelder_mead iters: {iters} best: {best} prev_best {prev_best} no_improv: {no_improv}") 
+                return res[0], iters
+
 
         # centroid
         x0 = [0.0] * dim 
