@@ -152,7 +152,7 @@ class Movable_Highpoint (Movable_Point):
 class Movable_TE_Point (Movable_Point):
     """ 
     Represents the upper TE point. 
-    When moved the upper and lower plot item will be updated
+    When moved the upper plot item will be updated
     When finished final TE gap will be set 
     """
 
@@ -161,7 +161,6 @@ class Movable_TE_Point (Movable_Point):
     def __init__ (self, 
                   geo : Geometry, 
                   upper_plot_item : pg.PlotDataItem, 
-                  lower_plot_item : pg.PlotDataItem, 
                   movable = False, 
                   **kwargs):
 
@@ -171,7 +170,6 @@ class Movable_TE_Point (Movable_Point):
 
         self._geo = geo
         self._upper_plot_item = upper_plot_item
-        self._lower_plot_item = lower_plot_item
 
         xy = self._te_point_xy()
 
@@ -193,12 +191,10 @@ class Movable_TE_Point (Movable_Point):
 
         # update line plot item 
         self._upper_plot_item.setData (self._geo.upper.x, self._geo.upper.y)
-        self._lower_plot_item.setData (self._geo.lower.x, self._geo.lower.y)
 
 
     def _finished (self, _):
         """ slot - point moving is finished"""
-
         # final highpoint coordinates
         self._geo.set_te_gap (self.y * 2, moving=False)
         self._changed()
@@ -842,16 +838,18 @@ class Airfoil_Line_Artist (Artist, QObject):
                 else:
                     zValue = 4 
 
-                is_upper_lower = (line.type == Line.Type.UPPER or line.type == Line.Type.LOWER)
+                is_upper = line.type == Line.Type.UPPER
+                is_lower = line.type == Line.Type.LOWER
+                is_upper_lower = is_upper or is_lower
 
-                if iair == 0 and not is_upper_lower:                                   # line legend only for the first airfoil 
+                if iair == 0 and not is_upper_lower:            # line legend only for the first airfoil 
                     name = line.name
                 else: 
                     name = None 
 
-                # plot upper and lower onyl for design (to visualize move highpoint)
+                # plot upper and lower only for design (to visualize move highpoint)
 
-                if not is_upper_lower or airfoil.usedAsDesign:
+                if airfoil.usedAsDesign or not is_upper_lower:
                     pen = pg.mkPen(color, width=1, style=style)
                     p = self._plot_dataItem (line.x, line.y, pen = pen, name = name, zValue=zValue)
                 else: 
@@ -864,15 +862,14 @@ class Airfoil_Line_Artist (Artist, QObject):
                                             on_changed=self.sig_airfoil_changed.emit )
                 self._add (ph) 
 
-            # te gap point for DESIGN 
 
-            if airfoil.usedAsDesign:
-                upper_item = self._get_plot_item (airfoil.geo.upper.name)
-                lower_item = self._get_plot_item (airfoil.geo.lower.name)
-                pt = Movable_TE_Point (airfoil.geo, upper_item, lower_item, 
-                                        movable=airfoil.usedAsDesign, color=color,
-                                        on_changed=self.sig_airfoil_changed.emit )
-                self._add (pt) 
+                # te gap point for DESIGN 
+
+                if airfoil.usedAsDesign and is_upper:
+                    pt = Movable_TE_Point (airfoil.geo, p, 
+                                            movable=airfoil.usedAsDesign, color=color,
+                                            on_changed=self.sig_airfoil_changed.emit )
+                    self._add (pt) 
 
 
             # plot le circle 
