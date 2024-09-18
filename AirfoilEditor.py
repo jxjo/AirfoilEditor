@@ -179,7 +179,7 @@ class App_Main (QMainWindow):
         l_data.setContentsMargins (QMargins(0, 0, 0, 0))
         self._data_panel.setLayout (l_data)
 
-        self._file_panel  = Panel (title="File panel", width=220)
+        self._file_panel  = Panel (title="File panel", width=240)
         l_file = QHBoxLayout()
         l_file.addWidget (Panel_File_Edit   (self, self.airfoil))
         l_file.addWidget (Panel_File_View   (self, self.airfoil))
@@ -1434,8 +1434,8 @@ class Diagram_Airfoil (Diagram):
 
         super().__init__(*args, **kwargs)
 
-        self._viewPanel.setMinimumWidth(220)
-        self._viewPanel.setMaximumWidth(220)
+        self._viewPanel.setMinimumWidth(240)
+        self._viewPanel.setMaximumWidth(240)
 
         # set welcome message into the first diagram item 
 
@@ -1523,11 +1523,11 @@ class Diagram_Airfoil (Diagram):
         
             l = QGridLayout()
             r,c = 0, 0
-            Field (l,r,c, width=155, get=lambda: self.airfoil_org_fileName, disable=True,
+            Field (l,r,c, width=175, get=lambda: self.airfoil_org_fileName, disable=True,
                             hide=self._hide_airfoil_org,
                             toolTip="Original airfoil")
             r += 1
-            Field (l,r,c, width=155, get=lambda: self.airfoil_target_fileName, disable=True,
+            Field (l,r,c, width=175, get=lambda: self.airfoil_target_fileName, disable=True,
                             hide=lambda: not self.airfoil_target_fileName,
                             toolTip="Target airfoil")
             r += 1

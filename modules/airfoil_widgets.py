@@ -164,6 +164,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                  **kwargs):
         super().__init__(*args, get=get, set=set, **kwargs)
 
+        self._combo_widget = None 
         self._no_files_here = None
         self._initial_dir = initialDir
         self._addEmpty = addEmpty is True 
@@ -176,17 +177,15 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         l = QHBoxLayout(self)
         l.setContentsMargins (QMargins(0, 0, 0, 0))
         if asSpin: 
-            ComboSpinBox (l, get=self.airfoil_fileName, 
-                                set=self.set_airfoil_by_fileName, 
-                                options=self.airfoil_fileNames_sameDir,
-                                hide=self.no_files_here,
-                                signal=False)
+            self._combo_widget = ComboSpinBox (l, get=self.airfoil_fileName, 
+                                                set=self.set_airfoil_by_fileName, 
+                                                options=self.airfoil_fileNames_sameDir,
+                                                hide=self.no_files_here, signal=False)
         else:             
-            ComboBox      (l, get=self.airfoil_fileName, 
-                                set=self.set_airfoil_by_fileName, 
-                                options=self.airfoil_fileNames_sameDir,
-                                hide=self.no_files_here,
-                                signal=False)
+            self._combo_widget = ComboBox      (l, get=self.airfoil_fileName, 
+                                                set=self.set_airfoil_by_fileName, 
+                                                options=self.airfoil_fileNames_sameDir,
+                                                hide=self.no_files_here, signal=False)
         if withOpen:
             # either text button if nothing is there
             Airfoil_Open_Widget (l, text=textOpen, set=self.set_airfoil, signal=False,
@@ -215,6 +214,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._get_properties ()
         self._set_Qwidget_static ()
         self._set_Qwidget ()
+        self._combo_widget.setToolTip (self.airfoil_fileName())  
 
         # assign self to parent layout 
 
@@ -223,7 +223,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     @override
     def refresh (self, disable=None):
 
-        self._no_files_here = None                      # reset cached vlaue 
+        self._no_files_here = None                              # reset cached vlaue 
         super().refresh(disable) 
 
         l : QHBoxLayout = self.layout()
@@ -267,6 +267,9 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         w : Widget
         for w in self.findChildren (Widget):
             w.refresh()
+
+        # set tooltip of combobox to show full filename
+        self._combo_widget.setToolTip (self.airfoil_fileName())
 
         # leave self for callback in a few ms 
         timer = QTimer()                                

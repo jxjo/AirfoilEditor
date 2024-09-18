@@ -3,7 +3,7 @@
 # v2.0 beta
 
 
-The AirfoilEditor is on one hand a fast airfoil viewer and on the other hand a powerful editor to modify the geomtery of an airfoil. Forcusing on an airfoils geometry the principle of this app is: Don't do too much but do it really well.
+The AirfoilEditor is on one hand a fast airfoil viewer and on the other hand a powerful editor to modify the geometry of an airfoil. Focusing on an airfoils geometry the principle of this app is: Don't do too much but do it really well.
 
 
 Main features:  
@@ -28,7 +28,7 @@ An attempt was made to create a self-explanatory app that invites to play and tr
 The `AirfoilEditor` implements different "strategies" to represent an airfoils geometry:
 
 - 'Linear interpolation' -  Based on the point coordinates of the airfoils '.dat' file, intermediate points are evaluated with a simple linear interpolation. This is used for fast preview and basic operations.
-- 'Cubic spline interpolation' - A cubic spline is built based on the airfoils point coordinates. The spline allows to evlauate intermediate points with high precision.
+- 'Cubic spline interpolation' - A cubic spline is built based on the airfoils point coordinates. The spline allows to evaluate intermediate points with high precision.
 - 'Bezier curve' - An airfoil is represented by two Bezier curves for upper and lower side of the airfoil. A nelder mead optimization allows to approximate the Bezier curves to an existing airfoil.
 - (not in 2.0 beta) 'Hicks Henne' - Hicks Henne bump functions are applied to a "seed airfoil" to achieve a new shape (in development for Xoptfoil2)  
 
@@ -40,7 +40,7 @@ The same approach is applied to move the highpoint of the upper and lower side o
 
 ![Modify](images/Modify.png "Screenshot of Modifying Airfoil")
 
-Repaneling is based on a modified cosinus distribution of the airfoil points on the arc of the spline. This differs from the xfoil approach but the repanel shows 'nice' behaviour in aero calculation. 
+Repaneling is based on a modified cosine distribution of the airfoil points on the arc of the spline. This differs from the xfoil approach but the repanel shows 'nice' behavior in aero calculation. 
 
 As an example for the modification functionality of the app, the dialog for repaneling is shown:  
 
@@ -98,7 +98,7 @@ The 'Match' function performs a best match of the Bezier curve to an existing ai
 <!---
 ## Hicks-Henne based airfoils 
 
-Hicks-Henne “bump” functions are applied to a base aerofoil and add a linear combination of single-signed sine functions to deform its upper and lower surfaces to create a new aerofoil shape.
+Hicks-Henne “bump” functions are applied to a base airfoil and add a linear combination of single-signed sine functions to deform its upper and lower surfaces to create a new airfoil shape.
 They are used in the airfoil optimizer Xoptfoil2 as an alternative to Bezier curves to create new airfoil designs. 
 
 The Airfoil Editor allows to visualize the Hicks-Henne functions which were applied to an airfoil. For this a special file format '.hicks' is used to interchange with Xoptfoil2.
@@ -115,7 +115,7 @@ The `AirfoilEditor` is developed in  [Python](https://www.python.org/) using [Py
 The main building blocks of the App are
 * Model - containing all geometry and math helper routines of an airfoil. The model is independent of the UI. The different modules are kept in [modules/model](modules/model).
 
-* UI-Framework - base classes and a little framework to ease the implementation of forms bassed on widgets and diagrams based on artists for the plot tasks. The base classes are in [modules/base](modules/base) 
+* UI-Framework - base classes and a little framework to ease the implementation of forms based on widgets and diagrams based on artists for the plot tasks. The base classes are in [modules/base](modules/base) 
 
 * Application - controller and view classes to handle presentation and user interaction - [modules/](modules/) 
 
