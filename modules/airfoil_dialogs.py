@@ -552,6 +552,8 @@ class Match_Bezier (Dialog):
 
         if finished:      
             # we really finished
+            self._norm2 = Matcher.norm2_deviation_to (self._side_bezier.bezier, self._target_line)
+
             self._ipass = 0                                             # reset pass counter 
             self._target_curv_le_weighting = self.INITIAL_WEIGHTING     # reset weighing 
 
@@ -805,7 +807,7 @@ class Matcher (QThread):
         # evaluate the new y values on Bezier for the target x-coordinate   
         y_new = np.zeros (len(reduced_target.y))
         for i, x in enumerate(reduced_target.x) :
-            y_new[i] = bezier.eval_y_on_x (x, fast=True, epsilon=1e-7)
+            y_new[i] = bezier.eval_y_on_x (x, fast=False, epsilon=1e-7)
 
         # calculate abs difference between bezier y and target y
         devi = np.abs((y_new - reduced_target.y))

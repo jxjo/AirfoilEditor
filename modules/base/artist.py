@@ -817,15 +817,6 @@ class Artist(QObject):
         self._plot_symbols = []
 
 
-    def _get_plot_item (self, aName : str ):
-        """ returns the plot item having 'name' """
-        for p in self._plots:
-            if isinstance (p, pg.PlotDataItem) :
-                if aName == p.name():
-                    return p
-        return None 
-
-
     def _add_legend_items (self):
         """ add legend items of self """
         if self._pi.legend is not None:
