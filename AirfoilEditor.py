@@ -60,7 +60,7 @@ logger.setLevel(logging.DEBUG)
 # ------ globals -----
 
 AppName    = "Airfoil Editor"
-AppVersion = "2.0 beta 5"
+AppVersion = "2.0 beta 6"
 
 Main : 'App_Main' = None 
 
@@ -1008,6 +1008,19 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     def max_curv_te_lower (self) -> Line:
         if self.target_airfoil: return self.target_airfoil.geo.curvature.at_lower_te
 
+    def norm2_upper (self): 
+        """ norm2 deviation of airfoil to target - upper side """
+        if self._norm2_upper is None: 
+            self._norm2_upper = Matcher.norm2_deviation_to (self.upper.bezier, self.target_upper) 
+        return  self._norm2_upper    
+
+
+    def norm2_lower (self): 
+        """ norm2 deviation of airfoil to target  - upper side """
+        if self._norm2_lower is None: 
+            self._norm2_lower = Matcher.norm2_deviation_to (self.lower.bezier, self.target_lower)  
+        return self._norm2_lower
+
 
     def _add_to_header_layout(self, l_head: QHBoxLayout) -> QLayout:
         """ add Widgets to header layout"""
@@ -1027,6 +1040,8 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
     def _init_layout (self):
 
+        self._norm2_upper = None                                # cached value of norm2 deviation 
+        self._norm2_lower = None                                # cached value of norm2 deviation 
         self._target_curv_le = None 
         self._target_curv_le_weighting = None
 
@@ -1041,14 +1056,12 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
             r += 1
             Label  (l,r,c,   get="Upper Side")
-            FieldF (l,r,c+1, width=60, dec=3, unit="%",
-                             get=lambda: self._norm2 (self.upper),
-                             style=lambda: Match_Bezier.style_deviation (self._norm2 (self.upper)))
+            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_upper,
+                             style=lambda: Match_Bezier.style_deviation (self.norm2_upper()))
             r += 1
             Label  (l,r,c,   get="Lower Side")
-            FieldF (l,r,c+1, width=60, dec=3, unit="%",
-                             get=lambda: self._norm2 (self.lower),
-                             style=lambda: Match_Bezier.style_deviation (self._norm2 (self.lower)))
+            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_lower,
+                             style=lambda: Match_Bezier.style_deviation (self.norm2_lower()))
 
             r,c = 0, 2 
             SpaceC(l,  c, width=5)
@@ -1119,24 +1132,25 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         self.myApp.sig_airfoil_changed.emit()
 
 
-    def _on_airfoil_target_changed (self,*_):
-        """ slot for changed target airfoil"""        
-        self.refresh(reinit_layout=True)              # refresh will also set new layout 
+    def _on_airfoil_target_changed (self,refresh):
+        """ slot for changed target airfoil"""  
+        if refresh:      
+            self.refresh(reinit_layout=True)              # refresh will also set new layout 
 
+    @override
+    def refresh (self, reinit_layout=False):
 
-    def _norm2 (self, side: Side_Airfoil_Bezier): 
-        """ norm2 deviation of airfoil to target """
-        if side.isUpper:
-            return Matcher.norm2_deviation_to (self.upper.bezier, self.target_upper)  
-        else:          
-            return Matcher.norm2_deviation_to (self.lower.bezier, self.target_lower)  
-
+        # reset cached deviations
+        self._norm2_lower = None
+        self._norm2_upper = None 
+        super().refresh(reinit_layout)
+        
 
     def _messageText (self): 
         """ user warnings"""
         text = []
-        r_upper_dev = Matcher.result_deviation (self._norm2 (self.upper))
-        r_lower_dev = Matcher.result_deviation (self._norm2 (self.lower))
+        r_upper_dev = Matcher.result_deviation (self.norm2_upper())
+        r_lower_dev = Matcher.result_deviation (self.norm2_lower())
 
         r_upper_le = Matcher.result_curv_le (self._target_curv_le, self.curv_upper)
         r_lower_le = Matcher.result_curv_le (self._target_curv_le, self.curv_lower)
