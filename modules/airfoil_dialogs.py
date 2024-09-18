@@ -59,14 +59,15 @@ class Airfoil_Save_Dialog (Dialog):
         SpaceR (l, r) 
         r += 1
         Field  (l,r,0, lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None),
-                       style=self._style_names)
+                       style=self._style_names, signal=True)
         Button (l,r,2, text="Use Filename", set=self.airfoil.set_name_from_fileName, width=90,
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use filename as airfoil name")
         r += 1
         SpaceR (l, r, stretch=0) 
         r += 1
-        Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None))
+        Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None),
+                signal=True)
         Button (l,r,2, text="Use Name", set=self.airfoil.set_fileName_from_name, width=90,
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use airfoil name as filename")
@@ -90,7 +91,7 @@ class Airfoil_Save_Dialog (Dialog):
 
         # delayed refresh as pressed button hides itsself 
         timer = QTimer()                                
-        timer.singleShot(50, self.refresh)     # delayed emit 
+        timer.singleShot(20, self.refresh)     # delayed emit 
 
 
     def _names_are_equal (self) -> bool: 

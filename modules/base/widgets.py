@@ -906,11 +906,18 @@ class Field (Field_With_Label, QLineEdit):
         self.textEdited.connect(self._on_finished)              # also set with every edit 
 
 
-    def _set_Qwidget (self, **kwargs):
+    def _set_Qwidget (self, refresh=False, **kwargs):
         """ set value and properties of self Qwidget"""
         super()._set_Qwidget (**kwargs)
         val = self._val if self._val is not None else ''
-        self.setText (val)
+
+        if refresh:
+            # setText reset cursor Position - so dave and restore in case of refresh 
+            cursor_pos = self.cursorPosition() 
+            self.setText (val)
+            self.setCursorPosition (cursor_pos)
+        else: 
+            self.setText (val)
 
 
     def _on_finished(self):
