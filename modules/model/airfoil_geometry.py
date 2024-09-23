@@ -1570,10 +1570,6 @@ class Geometry ():
         self._x = np.copy (self._x_org)
         self._y = np.copy (self._y_org)
 
-    def _pop_xy (self): 
-        """ get xy from _x,_y"""
-        if self._x is not None and self._y is not None: 
-            self._set_xy (self._x, self._y)
  
     def _clear_xy (self): 
         """ clear working _x,_y"""
@@ -1589,8 +1585,11 @@ class Geometry ():
         - will remove lines, splines, """
 
         # ensure copy of x,y and being numpy 
-        self._x_org     = np.asarray (x)
-        self._y_org     = np.asarray (y)  
+
+        if x is not None and y is not None: 
+            self._x_org     = np.asarray (x)
+            self._y_org     = np.asarray (y)  
+
         self._x         = None
         self._y         = None 
         self._reset()
@@ -1832,7 +1831,7 @@ class Geometry ():
             if not moving:
                 self._reset () 
                 self._changed (Geometry.Mod.TE_GAP, round(self.te_gap * 100, 7))   # finalize (parent) airfoil 
- 
+                self._set_xy (self._x, self._y)
         except GeometryException:
             self._clear_xy()
     
@@ -1888,6 +1887,7 @@ class Geometry ():
             self._rebuild_from_camb_thick ()
             self._reset () 
             self._changed (Geometry.Mod.LE_RADIUS, round(new_radius*100,2))
+            self._set_xy (self._x, self._y)
  
         except GeometryException:
             self._clear_xy()
@@ -1982,7 +1982,7 @@ class Geometry ():
         self._reset()
         self._normalize()
         self._changed (amod, lab, remove_empty=True)
-
+        self._set_xy (self._x, self._y)
 
 
     def _set_max_thick_upper_lower (self, thick_cur : float, thick_new : float):
@@ -2051,9 +2051,9 @@ class Geometry ():
         try: 
             self._push_xy ()                    # ensure a copy of x,y 
             self._normalize() 
-            self._pop_xy ()                     # make copy to xy
             self._changed (Geometry.Mod.NORMALIZE)       # finalize (parent) airfoil 
- 
+            self._set_xy (self._x, self._y)
+
         except GeometryException:
             self._clear_xy()
             return False 
@@ -2584,8 +2584,10 @@ class Geometry_Splined (Geometry):
 
             self._reset()
             self._changed (Geometry.Mod.REPANEL)
+            self._set_xy (self._x, self._y)
 
         except GeometryException: 
+            logger.error ("Error during repanel")
             self._clear_xy()       
 
 

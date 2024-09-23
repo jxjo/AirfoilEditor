@@ -220,8 +220,6 @@ class Diagram (QWidget):
         self._message_vb.clear()
         self._message_vb.hide()
 
-        self.adjustSize ()
-
 
 
 

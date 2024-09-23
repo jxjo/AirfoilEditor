@@ -29,7 +29,7 @@ echo.
 echo - Building AirfoilEditor.exe  in dist\AirfoilEditor
 echo.
 rem suppress console  	--noconsole    ^
-pyinstaller --noconfirm --log-level=INFO  --onedir --noconsole    ^
+pyinstaller --noconfirm --log-level=INFO  --onedir    ^
 	--icon=./modules/AE_ico.ico ^
 	--paths modules ^
     --add-data="./modules/base/icons;./icons" ^

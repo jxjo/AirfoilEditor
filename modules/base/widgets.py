@@ -576,7 +576,7 @@ class Widget:
 
         have_called = False 
 
-        # set value bei property and object 
+        # set value if setter is property and object 
 
         if self._obj is not None and isinstance (self._setter, types.FunctionType):            
 
@@ -588,16 +588,16 @@ class Widget:
                     self._setter(obj, id=self._id) 
             else:                                   # a method like: def myMth(self, newVal)
                 if self._id is None:                # an id was set to identify object?
-                    self._setter(obj, self._val)       # normal callback
+                    self._setter(obj, self._val)    # normal callback
                 else:            
                     self._setter(obj, self._val, id=self._id) 
 
             have_called = True
 
-        # set value bei bound method or function (lambda)
+        # set value is setter is bound method or function (lambda)
 
         elif callable(self._setter):                # setter is a method ?
-            if self._val is None:                      # typically a button method which has no arg
+            if self._val is None:                   # typically a button method which has no arg
                 if self._id is None:                # an object Id was set to identify object
                     self._setter()                  # normal callback
                 else:            
@@ -746,8 +746,6 @@ class Widget:
                 color.setAlphaF (0.15)
  
             # palette.setColor(self.backgroundRole(), color)
-            palette.setColor(color_role, color)
-
             palette.setColor(color_role, color)
 
             self._update_palette (palette)                      # Qt strange : on init 'setPalette' is needed
@@ -912,7 +910,7 @@ class Field (Field_With_Label, QLineEdit):
         val = self._val if self._val is not None else ''
 
         if refresh:
-            # setText reset cursor Position - so dave and restore in case of refresh 
+            # setText resets cursor position - save and restore in case of refresh 
             cursor_pos = self.cursorPosition() 
             self.setText (val)
             self.setCursorPosition (cursor_pos)
