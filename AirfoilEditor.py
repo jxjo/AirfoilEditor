@@ -60,7 +60,7 @@ logger.setLevel(logging.DEBUG)
 # ------ globals -----
 
 AppName    = "Airfoil Editor"
-AppVersion = "2.0 beta 6"
+AppVersion = "2.0"
 
 Main : 'App_Main' = None 
 

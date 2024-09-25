@@ -1,6 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-# v2.0 beta
+# v2.0
 
 
 The AirfoilEditor is on one hand a fast airfoil viewer and on the other hand a powerful editor to modify the geometry of an airfoil. Focusing on an airfoils geometry the principle of this app is: Don't do too much but do it really well.
