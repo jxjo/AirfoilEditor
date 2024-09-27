@@ -5,13 +5,6 @@ echo.
 echo ! Dont't forget to increase version number in source file ! 
 echo.
 
-rem activate virtual environment 
-
-if not defined VIRTUAL_ENV (
-	echo Not runnung in .venv!
-	exit /b
-)
-
 echo - Running Pytest  for *-test.py
 echo.
 Pytest
@@ -29,7 +22,7 @@ echo.
 echo - Building AirfoilEditor.exe  in dist\AirfoilEditor
 echo.
 rem suppress console  	--noconsole    ^
-pyinstaller --noconfirm --log-level=INFO  --onedir    ^
+pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
 	--icon=./modules/AE_ico.ico ^
 	--paths modules ^
     --add-data="./modules/base/icons;./icons" ^

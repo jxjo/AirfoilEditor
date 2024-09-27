@@ -108,6 +108,14 @@ The Airfoil Editor allows to visualize the Hicks-Henne functions which were appl
 
 -->
 
+## Short Introduction 
+
+Have a look at this little video showing the main functionality of the AirfoilEditor:
+
+[![Watch the video](https://img.youtube.com/vi/gkgPbVkOAcU/maxresdefault.jpg)](https://youtu.be/gkgPbVkOAcU)
+
+
+
 ## Software Aspects
 
 The `AirfoilEditor` is developed in  [Python](https://www.python.org/) using [PyQt6](https://pypi.org/project/PyQt6/) which wraps and extends the [Qt UI framework](https://www.qt.io/product/framework) and [PyQtGraph](https://www.pyqtgraph.org/) which wraps the QT Graphics framework. 
