@@ -1439,7 +1439,7 @@ class Geometry ():
         MAX_THICK       = ("thickness","t")
         MAX_CAMB        = ("camber","c")
         MAX_UPPER       = ("upper","u")
-        MAX_LOWER       = ("lower","u")
+        MAX_LOWER       = ("lower","l")
         BEZIER_LOWER    = ("Bezier lower","mod")
         BEZIER_UPPER    = ("Bezier upper","mod")
         TE_GAP          = ("te_gap","te")
@@ -1967,14 +1967,14 @@ class Geometry ():
         elif aLine.type == Line.Type.UPPER:
             self._rebuild_from_upper_lower ()
 
-            amod = Geometry.Mod.MAX_CAMB
-            lab = ''
+            amod = Geometry.Mod.MAX_UPPER
+            lab = ' '
 
         elif aLine.type == Line.Type.LOWER:
             self._rebuild_from_upper_lower ()
 
             amod = Geometry.Mod.MAX_LOWER
-            lab = ''
+            lab = ' '
 
         else:
             raise ValueError (f"{aLine.type} not supprted for set_highpoint") 

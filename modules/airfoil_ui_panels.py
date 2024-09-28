@@ -308,7 +308,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         self.myApp.sig_enter_panelling.emit()
 
         dialog = Repanel (self.myApp, self.geo())    
-        dialog.sig_new_panelling.connect (self.myApp.sig_new_panelling.emit)
+        dialog.sig_new_panelling.connect (self.myApp.sig_panelling_changed.emit)
         dialog.exec()     # delayed emit 
 
         geo : Geometry_Bezier = self.geo()

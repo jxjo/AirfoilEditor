@@ -35,22 +35,9 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
     name = "View Airfoil"           # used for link and section header 
 
-    def __init__(self, *args, **kwargs):
 
-        self._edit_mode_first_time = True           # switch to edit first time 
+    sig_geometry_changed         = pyqtSignal()          # airfoil data changed in a diagram 
 
-        super().__init__(*args, **kwargs)
-
-        self.myApp.sig_bezier_changed.connect  (self.bezier_artist.refresh_from_side)
-        self.myApp.sig_new_panelling.connect   (self.refresh_artists)
-
-        self.myApp.sig_enter_edit_mode.connect (self._on_enter_edit_mode)
-        self.myApp.sig_enter_panelling.connect (self._on_enter_panelling)
-        self.myApp.sig_enter_blend.connect     (self._on_blend_airfoil)
-
-    @property
-    def myApp (self):
-        return self._parent.myApp
 
     def airfoils (self) -> list[Airfoil]: 
         return self._getter()
@@ -61,19 +48,6 @@ class Diagram_Item_Airfoil (Diagram_Item):
         for a in self.airfoils():
             if a.isBezierBased: return True
         return False 
-
-
-    def _on_enter_edit_mode (self, is_enter : bool):
-        """ slot user started edit mode """
-
-        if is_enter and self._edit_mode_first_time and not self.airfoils()[0].isBezierBased:
-            # switch on show thickness/camber if it is the first time 
-            # - only for not bezier airfoils 
-            self.line_artist.set_show (True)
-            self.section_panel.refresh() 
-            self._edit_mode_first_time = False
-
-            logger.debug (f"{str(self)} on_enter_edit_mode {is_enter}")
 
 
     def _on_enter_panelling (self):
@@ -88,10 +62,9 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
 
     def _on_blend_airfoil (self):
-        """ slot to handle blend airfoil entered signal -> show org airfoil"""
+        """ slot to handle blend airfoil entered"""
 
-        # switch to show reference airfoils 
-        self.line_artist.set_show (False)
+        self.line_artist.set_show (False)           # switch off thickness & camber 
         self.section_panel.refresh()
 
         logger.debug (f"{str(self)} _on_blend_airfoil")
@@ -102,13 +75,12 @@ class Diagram_Item_Airfoil (Diagram_Item):
         """ create and setup the artists of self"""
         
         self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show=initial_show, show_legend=True)
-        self.airfoil_artist.sig_airfoil_changed.connect (self.myApp.sig_airfoil_changed.emit)
 
         self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
-        self.line_artist.sig_airfoil_changed.connect (self.myApp.sig_airfoil_changed.emit)
+        self.line_artist.sig_geometry_changed.connect (self.sig_geometry_changed.emit)
 
         self.bezier_artist = Bezier_Artist (self, self.airfoils, show= initial_show)
-        self.bezier_artist.sig_airfoil_changed.connect (self.myApp.sig_airfoil_changed.emit)
+        self.bezier_artist.sig_bezier_changed.connect (self.sig_geometry_changed.emit)
 
 
     @override
@@ -172,6 +144,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         """ set a Welcome text into the first artist"""
 
         self.airfoil_artist.set_welcome (aText)
+
 
 
 
@@ -274,13 +247,19 @@ class Diagram_Item_Curvature (Diagram_Item):
 
 class Diagram_Airfoil (Diagram):
     """    
-    Diagram view to show/plot airfoil diagrams 
+    Diagram view to show/plot airfoil diagrams - Container for diagram items 
     """
+
+
+    sig_airfoil_changed         = pyqtSignal()          # airfoil data changed in a diagram 
+    sig_new_airfoil_ref1        = pyqtSignal(object)    # new ref1 airfoil  
+    sig_new_airfoil_ref2        = pyqtSignal(object)    # new ref2 airfoil  
+
 
     def __init__(self, *args, welcome=None, **kwargs):
 
-        self._airfoil_ref1 = None
-        self._airfoil_ref2 = None
+        self._item_airfoil = None                   # the diagram items of self 
+        self._item_curvature = None
 
         self._bezier_match_first_time = True        # switch to show target airfoil 
 
@@ -292,41 +271,45 @@ class Diagram_Airfoil (Diagram):
         # set welcome message into the first diagram item 
 
         self.diagram_items[0].set_welcome (welcome) 
-
-        # connect to change signal 
-
-        self.myApp.sig_airfoil_changed.connect (self._on_airfoil_changed)
-        self.myApp.sig_airfoil_ref_changed.connect (self._on_airfoil_changed)
-        self.myApp.sig_airfoil_target_changed.connect (self._on_target_changed)
-
-        self.myApp.sig_enter_edit_mode.connect (self._on_edit_mode)
-        self.myApp.sig_enter_bezier_mode.connect (self._on_bezier_mode)
-        self.myApp.sig_enter_blend.connect (self._on_blend_airfoil)
  
 
     @property
     def airfoil_ref1 (self) -> Airfoil | None:
-        return self.myApp.airfoil_ref1
+        """ ref1 airfoil"""
+        for airfoil in self.airfoils():
+            if airfoil.usedAs == usedAs.REF1: return airfoil
+        
     def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
-        self.myApp.set_airfoil_ref1 (airfoil) 
+        self.sig_new_airfoil_ref1.emit (airfoil)
         self.refresh ()
 
     @property
-    def airfoil_ref2 (self) -> Airfoil:
-        return self.myApp.airfoil_ref2
+    def airfoil_ref2 (self) -> Airfoil | None:
+        """ ref2 airfoil"""
+        for airfoil in self.airfoils():
+            if airfoil.usedAs == usedAs.REF2: return airfoil
+
     def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
-        self.myApp.set_airfoil_ref2 (airfoil) 
+        self.sig_new_airfoil_ref2.emit (airfoil)
         self.refresh ()
 
 
     @property
-    def airfoil_target_fileName (self) -> str:
-        return self.myApp.airfoil_target.fileName if self.myApp.airfoil_target else ''
+    def airfoil_target (self) -> Airfoil | None:
+        """ target airfoil"""
+        for airfoil in self.airfoils():
+            if airfoil.usedAs == usedAs.TARGET: return airfoil
 
 
     @property
-    def airfoil_org_fileName (self) -> str:
-        return self.myApp.airfoil_org.fileName if self.myApp.airfoil_org else ''
+    def airfoil_org (self) -> Airfoil | None:
+        """ original airfoil only if there is a design airfoil"""
+        for airfoil in self.airfoils():
+            if airfoil.usedAs == usedAs.DESIGN:
+                for airfoil in self.airfoils():                
+                    if airfoil.usedAs == usedAs.NORMAL: 
+                        return airfoil
+                return
 
 
     @property
@@ -354,11 +337,13 @@ class Diagram_Airfoil (Diagram):
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
 
-        item = Diagram_Item_Airfoil (self, getter=self.airfoils, show=True)
-        self._add_item (item, 0, 0)
+        self._item_airfoil = Diagram_Item_Airfoil (self, getter=self.airfoils, show=True)
+        self._add_item (self._item_airfoil, 0, 0)
 
-        item = Diagram_Item_Curvature (self, getter=self.airfoils, show=False)
-        self._add_item (item, 1, 0)
+        self._item_airfoil.sig_geometry_changed.connect (self._on_geometry_changed)
+
+        self._item_curvature = Diagram_Item_Curvature (self, getter=self.airfoils, show=False)
+        self._add_item (self._item_curvature, 1, 0)
 
 
     @property
@@ -369,12 +354,14 @@ class Diagram_Airfoil (Diagram):
         
             l = QGridLayout()
             r,c = 0, 0
-            Field (l,r,c, width=175, get=lambda: self.airfoil_org_fileName, disable=True,
-                            hide=self._hide_airfoil_org,
+            Field (l,r,c, width=175, get=lambda: self.airfoil_org.fileName if self.airfoil_org else '', 
+                            disable=True,
+                            hide=lambda: (self.airfoil_org is None) or (self.airfoil_org == self.airfoil_target),
                             toolTip="Original airfoil")
             r += 1
-            Field (l,r,c, width=175, get=lambda: self.airfoil_target_fileName, disable=True,
-                            hide=lambda: not self.airfoil_target_fileName,
+            Field (l,r,c, width=175, get=lambda: self.airfoil_target.fileName if self.airfoil_target else '', 
+                            disable=True,
+                            hide=lambda: self.airfoil_target is None,
                             toolTip="Target airfoil")
             r += 1
             Airfoil_Select_Open_Widget (l,r,c, widthOpen=60,
@@ -396,57 +383,81 @@ class Diagram_Airfoil (Diagram):
 
         return self._section_panel 
 
-    def _hide_airfoil_org (self) -> bool:
-        """ hide original airfoil if it is the same like target"""
-        return (not self.airfoil_org_fileName) or (self.airfoil_org_fileName == self.airfoil_target_fileName)
+
+    # --- public slots ---------------------------------------------------
 
 
-    def _on_airfoil_changed (self):
+    def on_airfoil_changed (self):
         """ slot to handle airfoil changed signal """
 
         logger.debug (f"{str(self)} on airfoil changed")
         self.refresh()
 
 
-    def _on_target_changed (self, refresh=True):
-        """ slot to handle airfoil target changed signal """
-
-        logger.debug (f"{str(self)} on airfoil target changed")
-
-        # is there a target airfoil (match Bezier)? switch ref panel on
-        airfoil : Airfoil
-        for airfoil in self.data_list():            # ... self.airfoils() is filtered
-            if airfoil.usedAs == usedAs.TARGET: 
-                self.set_show_airfoils_ref (True)
-                break
-        
-        if refresh: 
-            self.refresh()
-        elif self.section_panel is not None:                    # refresh just section panel
-            self.section_panel.refresh()
-
-
-    def _on_blend_airfoil (self):
-        """ slot to handle blend airfoil entered signal -> show org airfoil"""
-
-        self.set_show_airfoils_ref (True)
-        self.refresh()                          # plot ref airfoils 
-        logger.debug (f"{str(self)} _on_blend_airfoil")
-
-
-    def _on_edit_mode (self, is_enter):
-        """ slot to handle edit mode entered signal"""
-
-        self.section_panel.refresh()                        # to show additional airfoils in edit 
-        logger.debug (f"{str(self)} _on_edit_mode {is_enter}")
-
-
-    def _on_bezier_mode (self, is_enter):
+    def on_bezier_mode (self, is_enter):
         """ slot to handle bezier mode entered signal -> show ref airfoil"""
 
         # ensure to show target airfoil in bezier 
         if is_enter:
             self.set_show_airfoils_ref (True)
             self.refresh()                          # plot ref airfoils 
-            logger.debug (f"{str(self)} _on_edit_mode {is_enter}")
+            logger.debug (f"{str(self)} on_bezier_mode {is_enter}")
 
+
+    def on_bezier_changed (self, aSide_type: Line.Type):
+        """ slot to handle bezier changes (dureing match bezier"""
+
+        # high speed - make direct call to artist
+        self._item_airfoil.bezier_artist.refresh_from_side (aSide_type)
+
+
+    def on_blend_airfoil (self):
+        """ slot to handle blend airfoil entered signal -> show org airfoil"""
+
+        self.set_show_airfoils_ref (True)
+
+        self._item_airfoil._on_blend_airfoil ()
+
+
+        self.refresh()                          # plot ref airfoils 
+        logger.debug (f"{str(self)} on_blend_airfoil")
+
+
+    def on_edit_mode (self):
+        """ slot to handle edit mode entered signal"""
+
+        self.section_panel.refresh()                        # to show additional airfoils in edit 
+        logger.debug (f"{str(self)} on_edit_mode")
+
+
+    def on_target_changed (self, refresh=True):
+        """ slot to handle airfoil target changed signal """
+
+        logger.debug (f"{str(self)} on airfoil target changed")
+
+        # is there a target airfoil (match Bezier)? switch ref panel on
+        if self.airfoil_target:
+            self.set_show_airfoils_ref (True)
+        
+        if refresh: 
+            self.refresh()
+        elif self.section_panel is not None:                    # refresh just section panel
+            self.section_panel.refresh()
+
+    def on_enter_panelling (self):
+        """ slot user started panelling dialog - show panels """
+
+        self._item_airfoil._on_enter_panelling ()
+
+
+
+    # --- private slots ---------------------------------------------------
+
+
+    def _on_geometry_changed (self):
+        """ slot to handle geometry change made in diagram """
+
+        logger.debug (f"{str(self)} on geometry changed in diagram")
+    
+        self.refresh()                          # refresh other diagram items 
+        self.sig_airfoil_changed.emit()         # refresh app

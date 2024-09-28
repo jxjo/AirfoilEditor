@@ -28,10 +28,9 @@ from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, Sp
 
 #-------------------------------------------
 
-class Panel (QWidget):
+class Panel_Abstract (QWidget):
     """ 
-    Just a plain Panel - as container for other Edit_Panels
-    Superclass for other types of panels like Edit
+    Superclass for other types of panels like Edit or Container
         - handle size of widget  
         - having title / header name 
         - has dataObject via getter (callable) 
@@ -92,23 +91,32 @@ class Panel (QWidget):
         set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
 
 
-    def refresh_panels (parent: QWidget):
+#-------------------------------------------
+
+class Container_Panel (Panel_Abstract):
+    """ 
+    Panel as container for other (Edit) panels  
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+    def refresh (parent: QWidget):
         """ refresh all child Panels self"""
         p : Edit_Panel
 
         # first hide the now not visible panels so layout won't be stretched
-        for p in parent.findChildren (Panel):
+        for p in parent.findChildren (Panel_Abstract):
             if not p._shouldBe_visible: p.refresh() 
 
         # now show the now visible panels
-        for p in parent.findChildren (Panel):
+        for p in parent.findChildren (Panel_Abstract):
             if p._shouldBe_visible: p.refresh() 
 
 
-#-------------------------------------------
 
-
-class Edit_Panel (Panel):
+class Edit_Panel (Panel_Abstract):
     """ 
     Panel with a title and an optional on/off switch 
     having a layout area for content  

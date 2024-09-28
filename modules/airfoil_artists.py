@@ -395,8 +395,6 @@ class Movable_Side_Bezier (Movable_Bezier):
 class Airfoil_Artist (Artist):
     """Plot the airfoils contour  """
 
-    sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
-
 
     def __init__ (self, *args, **kwargs):
 
@@ -561,7 +559,7 @@ class Airfoil_Artist (Artist):
 class Bezier_Artist (Artist):
     """Plot and edit airfoils Bezier control points """
 
-    sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
+    sig_bezier_changed     = pyqtSignal()           # bezier curve changed 
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -587,7 +585,7 @@ class Bezier_Artist (Artist):
                 for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
 
                     p = Movable_Side_Bezier (airfoil, side, color=color, movable=movable,
-                                              on_changed=self.sig_airfoil_changed.emit) 
+                                              on_changed=self.sig_bezier_changed.emit) 
                     self._add(p)
  
                     # connect to mouse click in scene to add a new Bezier control point 
@@ -813,7 +811,7 @@ class Airfoil_Line_Artist (Artist, QObject):
     Plot thickness, camber line of an airfoil, print max values 
     """
 
-    sig_airfoil_changed     = pyqtSignal()          # airfoil data changed 
+    sig_geometry_changed     = pyqtSignal()          # airfoil data changed 
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -859,7 +857,7 @@ class Airfoil_Line_Artist (Artist, QObject):
 
                 ph = Movable_Highpoint (airfoil.geo, line, p, 
                                             movable=airfoil.usedAsDesign, color=color,
-                                            on_changed=self.sig_airfoil_changed.emit )
+                                            on_changed=self.sig_geometry_changed.emit )
                 self._add (ph) 
 
 
@@ -868,7 +866,7 @@ class Airfoil_Line_Artist (Artist, QObject):
                 if airfoil.usedAsDesign and is_upper:
                     pt = Movable_TE_Point (airfoil.geo, p, 
                                             movable=airfoil.usedAsDesign, color=color,
-                                            on_changed=self.sig_airfoil_changed.emit )
+                                            on_changed=self.sig_geometry_changed.emit )
                     self._add (pt) 
 
 
@@ -879,5 +877,5 @@ class Airfoil_Line_Artist (Artist, QObject):
                                             style=Qt.PenStyle.DotLine, brushAlpha=0.3, brushColor='black')
             pl = Movable_LE_Point (airfoil.geo, circle_item, 
                                     movable=airfoil.usedAsDesign, color=color,
-                                    on_changed=self.sig_airfoil_changed.emit )
+                                    on_changed=self.sig_geometry_changed.emit )
             self._add(pl) 

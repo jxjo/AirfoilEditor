@@ -37,7 +37,7 @@ from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier
 from model.airfoil_examples import Example
 
 from base.common_utils      import * 
-from base.panels            import Panel
+from base.panels            import Container_Panel
 from base.widgets           import *
 
 from airfoil_widgets        import * 
@@ -76,13 +76,12 @@ class App_Main (QMainWindow):
     # Signals 
 
     sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
-    sig_airfoil_ref_changed     = pyqtSignal()          # reference airfoils changed 
+
     sig_airfoil_target_changed  = pyqtSignal(bool)      # target airfoil changed 
-
     sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
-    sig_new_panelling           = pyqtSignal()          # new panelling
+    sig_panelling_changed       = pyqtSignal()          # new panelling
 
-    sig_enter_edit_mode         = pyqtSignal(bool)      # starting modify airfoil
+    sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
     sig_enter_bezier_mode       = pyqtSignal(bool)      # starting bezier match dialog 
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
     sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
@@ -98,8 +97,10 @@ class App_Main (QMainWindow):
         self._airfoil_target = None                 # target for match Bezier     
 
         self._edit_mode = False                     # edit/view mode of app 
+
         self._data_panel = None 
         self._file_panel = None
+        self._diagram_panel = None
 
         self.parentApp = parentApp
         self.initial_geometry = None                # window geometry at the beginning
@@ -133,16 +134,39 @@ class App_Main (QMainWindow):
 
         # init main layout of app
 
+        self._data_panel    = Container_Panel (title="Data panel")
+        self._file_panel    = Container_Panel (title="File panel", width=240)
+        self._diagram_panel = Diagram_Airfoil (self, self.airfoils, welcome=self._welcome_message())
+
         l_main = self._init_layout() 
 
         container = QWidget()
         container.setLayout (l_main) 
         self.setCentralWidget(container)
 
-        # connect to signals 
+        # connect to signals from diagram
 
-        self.sig_airfoil_changed.connect (self._on_airfoil_changed)
-        self.sig_airfoil_ref_changed.connect (self._on_airfoil_changed)
+        self._diagram_panel.sig_airfoil_changed.connect  (self.refresh)
+        self._diagram_panel.sig_new_airfoil_ref1.connect (self.set_airfoil_ref1)
+        self._diagram_panel.sig_new_airfoil_ref2.connect (self.set_airfoil_ref2)
+
+        # connect to signals of self
+
+        self.sig_airfoil_changed.connect (self.refresh)
+
+        # connect signals to slots of diagram
+
+        self.sig_airfoil_changed.connect        (self._diagram_panel.on_airfoil_changed)
+        self.sig_airfoil_target_changed.connect (self._diagram_panel.on_target_changed)
+        self.sig_bezier_changed.connect         (self._diagram_panel.on_bezier_changed)
+        self.sig_panelling_changed.connect      (self._diagram_panel.on_airfoil_changed)
+
+        self.sig_enter_bezier_mode.connect      (self._diagram_panel.on_bezier_mode)
+        self.sig_enter_blend.connect            (self._diagram_panel.on_blend_airfoil)
+        self.sig_enter_edit_mode.connect        (self._diagram_panel.on_edit_mode)
+        self.sig_enter_panelling.connect        (self._diagram_panel.on_enter_panelling)
+
+
 
 
     def __repr__(self) -> str:
@@ -158,7 +182,6 @@ class App_Main (QMainWindow):
         #  || file panel ||        data panel             >||
         #                 | Geometry  | Coordinates | ... >| 
 
-        self._data_panel  = Panel (title="Data panel")
         l_data = QHBoxLayout()
         l_data.addWidget (Panel_Geometry    (self, self.airfoil))
         l_data.addWidget (Panel_Panels      (self, self.airfoil))
@@ -169,7 +192,6 @@ class App_Main (QMainWindow):
         l_data.setContentsMargins (QMargins(0, 0, 0, 0))
         self._data_panel.setLayout (l_data)
 
-        self._file_panel  = Panel (title="File panel", width=240)
         l_file = QHBoxLayout()
         l_file.addWidget (Panel_File_Edit   (self, self.airfoil))
         l_file.addWidget (Panel_File_View   (self, self.airfoil))
@@ -186,14 +208,10 @@ class App_Main (QMainWindow):
         lower.setMaximumHeight(180)
         lower.setLayout (l_lower)
 
-        # upper diagram area  
-
-        upper = Diagram_Airfoil (self, self.airfoils, welcome=self._welcome_message())
-
-        # main layout with both 
+        # main layout with diagram panel and lower 
 
         l_main = QVBoxLayout () 
-        l_main.addWidget (upper, stretch=2)
+        l_main.addWidget (self._diagram_panel, stretch=2)
         l_main.addWidget (lower)
         l_main.setContentsMargins (QMargins(5, 5, 5, 5))
 
@@ -273,14 +291,14 @@ class App_Main (QMainWindow):
 
             self.set_airfoil (for_airfoil, silent=True)
 
-            self.sig_enter_edit_mode.emit(aBool)
+            self.sig_enter_edit_mode.emit()
             self.sig_airfoil_changed.emit()             # signal new airfoil 
         
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
-        self._data_panel.refresh_panels()
-        self._file_panel.refresh_panels()
+        self._data_panel.refresh()
+        self._file_panel.refresh()
 
 
     def airfoil (self) -> Airfoil:
@@ -318,20 +336,18 @@ class App_Main (QMainWindow):
     def airfoil_ref1 (self) -> Airfoil:
         """ airfoil for reference 1"""
         return self._airfoil_ref1
-    def set_airfoil_ref1 (self, airfoil: Airfoil | None = None, silent=False): 
+    def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
         self._airfoil_ref1 = airfoil 
         if airfoil: airfoil.set_usedAs (usedAs.REF1)
-        if not silent: self.sig_airfoil_ref_changed.emit()
 
 
     @property
     def airfoil_ref2 (self) -> Airfoil:
         """ airfoil for reference 2"""
         return self._airfoil_ref2
-    def set_airfoil_ref2 (self, airfoil: Airfoil | None = None, silent=False): 
+    def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
         self._airfoil_ref2 = airfoil 
         if airfoil: airfoil.set_usedAs (usedAs.REF2)
-        if not silent: self.sig_airfoil_ref_changed.emit()
 
 
     @property
@@ -364,13 +380,6 @@ class App_Main (QMainWindow):
         """ handle user wants to leave edit_mode"""
         #todo 
         return True 
-
-    def _on_airfoil_changed (self):
-        """ slot to handle airfoil changed signal """
-
-        logger.debug (f"{str(self)} on airfoil changed")
-
-        self.refresh()
 
 
     def _welcome_message (self) -> str: 
