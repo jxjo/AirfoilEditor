@@ -376,7 +376,13 @@ class Movable_Side_Bezier (Movable_Bezier):
         """ slot - point is should be deleted """
         # overloaded - don't delete point 1 
         if aPoint.id == 1: return
-        super()._delete_point (aPoint)        
+        super()._delete_point (aPoint)    
+
+        px, py = self.jpoints_xy()
+        self._side.set_controlPoints (px, py)   
+
+        # _finished will do the rest - and init complete refresh
+        self._finished_point()
 
 
     def _finished_point (self, aPoint = None):

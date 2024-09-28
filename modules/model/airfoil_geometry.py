@@ -1248,13 +1248,14 @@ class Side_Airfoil_Bezier (Line):
         else: 
             new_xy = point 
 
-        points = self.bezier.points 
-        points.insert (index, new_xy)
-        self.bezier.set_points (points) 
+        if self.bezier.npoints < 10:
+            points = self.bezier.points 
+            points.insert (index, new_xy)
+            self.bezier.set_points (points) 
 
 
 
-    def check_new_controlPoint_at (self, x, y): 
+    def check_new_controlPoint_at (self, x, y) -> tuple [int, JPoint]: 
         """ 
         Checks a new Bezier control point at x,y - taking care of order of points. 
         Returns index, where it would be inserted or None if not successful
@@ -1264,7 +1265,7 @@ class Side_Airfoil_Bezier (Line):
         px = self.bezier.points_x
 
         # never go beyond p0 and p-1
-        if x <= px[0] or x >= px[-1]: return None, None, None
+        if x <= px[0] or x >= px[-1]: return None, None
 
         # find index to insert - never before point 1
         for i_insert, pxi in enumerate (px):
@@ -1280,7 +1281,7 @@ class Side_Airfoil_Bezier (Line):
         dx_right = abs (x - px_new[i_insert+1])
         dx_left  = abs (x - px_new[i_insert-1])
         if (dx_right < 0.01) or (dx_left < 0.01): 
-           return None, None, None
+           return None, None
 
         return i_insert, JPoint (x,y) 
     

@@ -488,7 +488,8 @@ class Movable_Bezier (pg.PlotCurveItem):
         # remove from list
         i = aPoint.id
         del self._jpoints[i]                                # update self point list 
-        self.setData(*self.points_xy())                     # update self (polyline) 
+        px, py = self.jpoints_xy()
+        self.setData(px, py)                                # update self (polyline) 
 
         if self._bezier_item: 
             x,y = self.bezier.eval(self.u)                  # update of bezier
