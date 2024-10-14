@@ -497,7 +497,8 @@ class Movable_Bezier (pg.PlotCurveItem):
             self._bezier_item.show()
 
         self._finished_point (aPoint)
-        aPoint.scene().removeItem(aPoint)                   # final delete from scene 
+        if aPoint.scene():                                  # sometimes scene get lost ... (?) 
+            aPoint.scene().removeItem(aPoint)               # final delete from scene 
 
 
     def _finished_point (self, aPoint):
