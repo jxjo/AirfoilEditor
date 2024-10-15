@@ -1,0 +1,15 @@
+{
+  "window_geometry":[
+    192,
+    139,
+    1536,
+    756
+  ],
+  "window_maximize":false,
+  "spline_nPanels":171,
+  "spline_le_bunch":0.84,
+  "spline_te_bunch":0.7,
+  "bezier_nPanels":160,
+  "bezier_le_bunch":0.84,
+  "bezier_te_bunch":0.7
+}

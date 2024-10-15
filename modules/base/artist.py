@@ -61,6 +61,7 @@ def random_colors (nColors) -> list:
         h = golden_ratio * i/nColors 
         h = h % 1.0
         colors.append(QColor.fromHsvF (h, 0.5, 0.95, 1.0) )
+    return colors
 
 
 # -------- pg defaults ------------------------
