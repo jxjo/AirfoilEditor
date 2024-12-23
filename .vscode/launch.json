@@ -2,12 +2,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: File",
+            "name": "Python Debugger: ",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
-            "justMyCode": false,
-            "cwd": "${fileDirname}"
+            "justMyCode": true,
+            "cwd": "${fileDirname}",
+            "env": { "PYTHONPATH": "${fileDirname}/.." }  // to start modules and find 'base' subDir
         }
     ]
 }
