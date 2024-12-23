@@ -98,6 +98,7 @@ class Icon (QIcon):
     PREVIOUS   = "previous" 
     FIT        = "fit" 
     RESETVIEW  = "resetView" 
+    AE         = "AE"               # Airfoil Editor
 
     # for messageBox 
     SUCCESS    = "success.png" 
@@ -1737,7 +1738,7 @@ class Test_Widgets (QMainWindow):
         ComboSpinBox (l,r,2,options=["first","second"], set=self.set_str, disable=lambda: self.disabled)
         r += 1
         Label  (l,r,0,get="CheckBox")
-        CheckBox (l,r,1,text="Check to disable", width=(90, 120), get=self.bool_val, set=self.set_disabled)
+        CheckBox (l,r,1,text="Check to disable", width=(90, 120), get=lambda: self.disabled, set=self.set_disabled)
         CheckBox (l,r,2,text="Slave check", get=self.bool_val, disable=lambda: self.disabled)
         r += 1
         Label  (l,r,0,get="SpaceR height=10")
@@ -1752,6 +1753,7 @@ class Test_Widgets (QMainWindow):
         l_tools.setSpacing (1)
         ToolButton (l_tools, icon=Icon.OPEN, set=self.toggle_disabled)
         ToolButton (l_tools, icon=Icon.SETTINGS, set=self.toggle_disabled)
+        ToolButton (l_tools, icon=Icon.AE, set=self.toggle_disabled)
         l_tools.addStretch(2)
         l.addLayout (l_tools,r,1, 1, 2)
 
