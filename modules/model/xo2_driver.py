@@ -582,7 +582,7 @@ class Worker (X_Program):
                 return polar_pathFileName
             
         else: 
-            raise Exception ("generatePolar: airfoil file %s doesn't exist" % airfoilPathFileName )
+            raise Exception ("generatePolar - airfoil file %s doesn't exist" % airfoilPathFileName )
 
 
 

@@ -380,15 +380,14 @@ class Polar_Set:
     def airfoil_ensure_being_saved (self):
         """ check and ensure that airfoil is saved to file (Worker needs it)"""
 
-        if self.airfoil.isModified:
-            if os.path.isfile (self.airfoil_abs_pathFileName):
-                self.airfoil.set_isModified (False) 
+        if os.path.isfile (self.airfoil_abs_pathFileName) and not self.airfoil.isModified:
+            pass 
+        else: 
+            if self.airfoil.isBezierBased:                      # for Bezier write only .bez - no dat
+                self.airfoil.save(onlyShapeFile=True)
             else: 
-                if self.airfoil.isBezierBased:                      # for Bezier write only .bez - no dat
-                    self.airfoil.save(onlyShapeFile=True)
-                else: 
-                    self.airfoil.save()
-                logging.debug (f'Airfoil {self.airfoil} saved for polar generation') 
+                self.airfoil.save()
+            logging.debug (f'Airfoil {self.airfoil} saved for polar generation') 
 
 
     @property

@@ -29,12 +29,18 @@ from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QMessageB
 from PyQt6.QtWidgets        import QGridLayout, QVBoxLayout, QHBoxLayout
 from PyQt6.QtGui            import QCloseEvent
 
+# let python find the other modules in modules relativ to path of self - ! before python system modules
+# common modules hosted by AirfoilEditor 
+sys.path.insert (1,os.path.join(Path(__file__).parent , 'AirfoilEditor_subtree/modules'))
+
 # let python find the other modules in modules relativ to path of self  
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier
 from model.airfoil_examples import Example
+from model.polar_set        import Polar_Definition, Polar_Set
+from model.xo2_driver       import Worker
 
 from base.common_utils      import * 
 from base.panels            import Container_Panel, MessageBox
@@ -43,7 +49,7 @@ from base.widgets           import *
 from airfoil_widgets        import * 
 from airfoil_diagrams       import * 
 
-from airfoil_dialogs        import *
+from airfoil_dialogs        import Airfoil_Save_Dialog, Blend_Airfoil, Repanel_Airfoil
 from airfoil_ui_panels      import * 
 
 
@@ -59,30 +65,30 @@ logger.setLevel(logging.DEBUG)
 
 # ------ globals -----
 
-AppName    = "Airfoil Editor"
-AppVersion = "2.0.2"
+AppName         = "Airfoil Editor"
+AppVersion      = "3.0"
 
 
 class App_Main (QMainWindow):
     '''
-        The AirfoilEditor App
+        The Airfoil Editor App
 
-        If parentApp is passed, the AirfoilEditor is called from eg PlanformEditor,
-        so it will be modal with a reduced File Menu 
     '''
 
     name = AppName  
+
+    WORKER_MIN_VERSION          = '1.0.3'
 
     # Signals 
 
     sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
 
-    sig_airfoil_target_changed  = pyqtSignal(bool)      # target airfoil changed 
+    sig_airfoil_target_changed  = pyqtSignal()          # target airfoil changed 
+    sig_airfoils_ref_changed    = pyqtSignal()          # list of reference airfoils changed
     sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
     sig_panelling_changed       = pyqtSignal()          # new panelling
+    sig_polar_set_changed       = pyqtSignal()          # new polar sets attached to airfoil
 
-    sig_enter_edit_mode         = pyqtSignal()          # starting modify airfoil
-    sig_enter_bezier_mode       = pyqtSignal(bool)      # starting bezier match dialog 
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
     sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
 
@@ -94,9 +100,10 @@ class App_Main (QMainWindow):
 
         self._airfoil = None                        # current airfoil 
         self._airfoil_org = None                    # airfoil saved in edit_mode 
-        self._airfoil_ref1 = None                   # reference airfoils 
-        self._airfoil_ref2 = None  
-        self._airfoil_target = None                 # target for match Bezier     
+        self._airfoils_ref = []                     # reference airfoils 
+        self._airfoil_target = None                 # target for match Bezier    
+
+        self._polar_definitions = None              # current polar definitions  
 
         self._edit_mode = False                     # edit/view mode of app 
 
@@ -121,29 +128,44 @@ class App_Main (QMainWindow):
         Settings.belongTo (__file__, nameExtension=None, fileExtension= '.settings')
         geometry = Settings().get('window_geometry', [])
         maximize = Settings().get('window_maximize', False)
-        Win_Util.set_initialWindowSize (self, size_frac= (0.80, 0.70), pos_frac=(0.1, 0.1),
+        Win_Util.set_initialWindowSize (self, size_frac= (0.60, 0.70), pos_frac=(0.1, 0.1),
                                         geometry=geometry, maximize=maximize)
         
-        self._load_panelling_settings ()
+        # load settings
 
-        # init airfoil 
+        self._load_settings ()
+
+        # if no initial airfoil file, try to get last openend airfoil file 
+
+        if not airfoil_file: 
+            airfoil_file = Settings().get('last_opened', default=None) 
 
         if airfoil_file and (not os.path.isfile (airfoil_file)): 
+            Settings().set('last_opened', None) 
             MessageBox.error   (self,self.name, f"{airfoil_file} does not exist.\nShowing example airfoil.", min_height= 60)
-            airfoil = Example()
             self.move (200,150)                     # messagebox will move main window 
-        elif airfoil_file is None : 
+            airfoil_file = None
+
+        if airfoil_file is None : 
             airfoil = Example()
         else:
             airfoil = create_airfoil_from_path(airfoil_file)
 
         self.set_airfoil (airfoil, silent=True)
 
+        # Worker for polar generation ready? 
+
+        Worker().isReady(min_version=self.WORKER_MIN_VERSION)
+        if Worker.ready:
+            Worker().clean_workingDir (self.airfoil().pathName)
+
         # init main layout of app
 
         self._data_panel    = Container_Panel (title="Data panel")
         self._file_panel    = Container_Panel (title="File panel", width=240)
-        self._diagram_panel = Diagram_Airfoil (self, self.airfoils)
+        self._diagram_panel = Diagram_Airfoil_Polar (self, self.airfoils, 
+                                                     polar_defs_fn = self.polar_definitions,
+                                                     diagram_settings= Settings().get('diagram_settings', []))
 
         l_main = self._init_layout() 
 
@@ -153,13 +175,13 @@ class App_Main (QMainWindow):
 
         # connect to signals from diagram
 
-        self._diagram_panel.sig_airfoil_changed.connect  (self.refresh)
-        self._diagram_panel.sig_new_airfoil_ref1.connect (self.set_airfoil_ref1)
-        self._diagram_panel.sig_new_airfoil_ref2.connect (self.set_airfoil_ref2)
+        self._diagram_panel.sig_airfoil_changed.connect     (self.refresh)
+        self._diagram_panel.sig_polar_def_changed.connect   (self.refresh_polar_sets)
+        self._diagram_panel.sig_airfoil_ref_changed.connect (self.set_airfoil_ref)
 
         # connect to signals of self
 
-        self.sig_airfoil_changed.connect (self.refresh)
+        self.sig_airfoil_changed.connect        (self.refresh)
 
         # connect signals to slots of diagram
 
@@ -167,12 +189,12 @@ class App_Main (QMainWindow):
         self.sig_airfoil_target_changed.connect (self._diagram_panel.on_target_changed)
         self.sig_bezier_changed.connect         (self._diagram_panel.on_bezier_changed)
         self.sig_panelling_changed.connect      (self._diagram_panel.on_airfoil_changed)
+        self.sig_polar_set_changed.connect      (self._diagram_panel.on_polar_set_changed)
+        self.sig_airfoils_ref_changed.connect   (self._diagram_panel.on_airfoils_ref_changed)
 
-        self.sig_enter_bezier_mode.connect      (self._diagram_panel.on_bezier_mode)
+
         self.sig_enter_blend.connect            (self._diagram_panel.on_blend_airfoil)
-        self.sig_enter_edit_mode.connect        (self._diagram_panel.on_edit_mode)
         self.sig_enter_panelling.connect        (self._diagram_panel.on_enter_panelling)
-
 
 
 
@@ -278,7 +300,6 @@ class App_Main (QMainWindow):
         self.set_edit_mode (True, airfoil_bez)       
 
         self.set_airfoil_target (None, refresh=False)       # current will be reference for Bezier
-        self.sig_enter_bezier_mode.emit(True)
 
 
     def set_edit_mode (self, aBool : bool, for_airfoil):
@@ -298,7 +319,6 @@ class App_Main (QMainWindow):
 
             self.set_airfoil (for_airfoil, silent=True)
 
-            self.sig_enter_edit_mode.emit()
             self.sig_airfoil_changed.emit()             # signal new airfoil 
         
 
@@ -307,20 +327,30 @@ class App_Main (QMainWindow):
         self._data_panel.refresh()
         self._file_panel.refresh()
 
+        # airfoil was probably changed - reset polar set 
+        self._airfoil.set_polarSet (Polar_Set (self._airfoil, polar_def=self.polar_definitions()))
+
+
+    def refresh_polar_sets (self):
+        """ refresh polar sets of all airfoils"""
+
+        for airfoil in self.airfoils():
+            airfoil.set_polarSet (Polar_Set (airfoil, polar_def=self.polar_definitions()))
+
+        self.sig_polar_set_changed.emit()
+
 
     def airfoil (self) -> Airfoil:
         """ encapsulates current airfoil. Childs should acces only via this function
         to enable a new airfoil to be set """
         return self._airfoil
 
-    def airfoils (self) -> Airfoil:
-        """ list of airfoils (current, ref1 and ref2) 
-        Childs should acces only via this function to enable a new airfoil to be set """
+    def airfoils (self) -> list [Airfoil]:
+        """ list of airfoils (current, ref1 and ref2) """
         airfoils = [self._airfoil]
-        if self.airfoil_ref1:       airfoils.append (self.airfoil_ref1)
-        if self.airfoil_ref2:       airfoils.append (self.airfoil_ref2)
         if self.airfoil_target:     airfoils.append (self.airfoil_target)
         if self.airfoil_org:        airfoils.append (self.airfoil_org)
+        if self.airfoils_ref:       airfoils.extend (self.airfoils_ref)
 
         # remove duplicates 
         airfoils = list(dict.fromkeys(airfoils))
@@ -329,32 +359,57 @@ class App_Main (QMainWindow):
 
 
     def set_airfoil (self, aNew : Airfoil , silent=False):
-        """ encapsulates current airfoil. Childs should acces only via this function
-        to enable a new airfoil to be set """
+        """ set new current aurfoil """
 
         self._airfoil = aNew
-        logger.debug (f"New airfoil: {aNew.name}")
+        self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions()))
+
+
+        logger.debug (f"Load new airfoil: {aNew.name}")
         self.setWindowTitle (AppName + "  v" + str(AppVersion) + "  [" + self.airfoil().fileName + "]")
+
         if not silent: 
+
+            Settings().set('last_opened', aNew.pathFileName)
             self.sig_airfoil_changed.emit ()
 
 
-    @property
-    def airfoil_ref1 (self) -> Airfoil:
-        """ airfoil for reference 1"""
-        return self._airfoil_ref1
-    def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
-        self._airfoil_ref1 = airfoil 
-        if airfoil: airfoil.set_usedAs (usedAs.REF)
+    def polar_definitions (self) -> list [Polar_Definition]:
+        """ list of current polar definitions """
 
+        if not self._polar_definitions: 
+            self._polar_definitions = [Polar_Definition()]
+        return self._polar_definitions
 
+      
     @property
-    def airfoil_ref2 (self) -> Airfoil:
-        """ airfoil for reference 2"""
-        return self._airfoil_ref2
-    def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
-        self._airfoil_ref2 = airfoil 
-        if airfoil: airfoil.set_usedAs (usedAs.REF)
+    def airfoils_ref (self) -> list[Airfoil]:
+        """ reference airfoils"""
+        return self._airfoils_ref
+    
+    def set_airfoil_ref (self, cur_airfoil_ref: Airfoil | None,
+                               new_airfoil_ref: Airfoil | None):
+        """ adds, replace, delete airfoil to the list of reference airfoils"""
+
+        # check if already in list 
+        if new_airfoil_ref in self.airfoils_ref: return 
+
+        if new_airfoil_ref:
+            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions()))
+            new_airfoil_ref.set_usedAs (usedAs.REF)   
+
+        if cur_airfoil_ref:
+            # replace or delete existing 
+            i = self.airfoils_ref.index (cur_airfoil_ref)
+            if new_airfoil_ref:
+               self.airfoils_ref[i] = new_airfoil_ref
+            else: 
+                del self.airfoils_ref [i]
+        else:
+            # add new  
+            self.airfoils_ref.append(new_airfoil_ref)
+
+        self.sig_airfoils_ref_changed.emit()
 
 
     @property
@@ -369,12 +424,13 @@ class App_Main (QMainWindow):
     def set_airfoil_target (self, airfoil: Airfoil | None = None, refresh=True): 
 
         if airfoil is not None: 
+            airfoil.set_polarSet (Polar_Set (airfoil, polar_def=self.polar_definitions()))
             airfoil.set_usedAs (usedAs.TARGET)
         elif self._airfoil_target:                                  # reset the current/old target 
             self._airfoil_target.set_usedAs (usedAs.NORMAL) 
         self._airfoil_target = airfoil 
         
-        self.sig_airfoil_target_changed.emit(refresh)
+        self.sig_airfoil_target_changed.emit()              # refresh
 
 
     @property
@@ -449,9 +505,26 @@ class App_Main (QMainWindow):
         Settings().set('bezier_le_bunch', Panelling_Bezier().le_bunch)
         Settings().set('bezier_te_bunch', Panelling_Bezier().te_bunch)
 
+        # save reference airfoils
+        ref_list = []
+        for airfoil in self.airfoils_ref:
+            ref_list.append (airfoil.pathFileName)
+        Settings().set('reference_airfoils', ref_list)
 
-    def _load_panelling_settings (self):
-        """ load default panelling settings from file """
+        # save polar definitions 
+        def_list = []
+        for polar_def in self.polar_definitions():
+            def_list.append (polar_def._as_dict())
+        Settings().set('polar_definitions', def_list)
+
+        # save polar diagram settings 
+        Settings().set('diagram_settings', self._diagram_panel._as_dict_list())
+
+
+    def _load_settings (self):
+        """ load default settings from file """
+
+        # panelling 
 
         nPanels  = Settings().get('spline_nPanels', None)
         le_bunch = Settings().get('spline_le_bunch', None)
@@ -469,13 +542,35 @@ class App_Main (QMainWindow):
         if le_bunch is not None:    Panelling_Bezier._le_bunch = le_bunch
         if te_bunch is not None:    Panelling_Bezier._te_bunch = te_bunch
 
+        # polar definitions 
+
+        self._polar_definitions = []
+        for def_dict in Settings().get('polar_definitions', []):
+            self._polar_definitions.append(Polar_Definition(dataDict=def_dict))
+
+        # reference airfoils 
+
+        for pathFileName in Settings().get('reference_airfoils', []):
+            try: 
+                airfoil = Airfoil(pathFileName=pathFileName)
+                airfoil.load ()
+                self.set_airfoil_ref (None, airfoil)
+            except: 
+                pass
+
 
     @override
     def closeEvent  (self, event : QCloseEvent):
         """ main window is closed """
 
+        # remove lost worker input files 
+        if Worker.ready:
+            Worker().clean_workingDir (self.airfoil().pathName)
+
+        # save e..g diagram options 
         self._save_settings ()
 
+        # inform parent (PlanformCreator) 
         self.sig_closing.emit (self.airfoil().pathFileName)
 
         event.accept()
@@ -502,14 +597,9 @@ if __name__ == "__main__":
     if args.airfoil: 
         airfoil_file = args.airfoil[0]
     else: 
-        if os.path.isdir(".\\test_airfoilsss"):
-            airfoil_dir   =".\\test_airfoils"
-            airfoil_files = [os.path.join(airfoil_dir, f) for f in os.listdir(airfoil_dir) if os.path.isfile(os.path.join(airfoil_dir, f))]
-            airfoil_files = [f for f in airfoil_files if (f.endswith('.dat') or f.endswith('.bez'))]       
-            airfoil_files = sorted (airfoil_files, key=str.casefold)
-            airfoil_file = airfoil_files[0]
-        else:
-            airfoil_file = None
+        airfoil_file = None
+
+    # init Qt Application and style  
 
     app = QApplication(sys.argv)
     app.setStyle('fusion')

@@ -184,7 +184,8 @@ class Diagram (QWidget):
 
         item : Diagram_Item
         for item in self.diagram_items:
-            item.refresh() 
+            if item.isVisible(): 
+                item.refresh() 
 
         # refresh all panels on viewPanel 
 
@@ -292,7 +293,7 @@ class Diagram_Item (pg.PlotItem):
         super().__init__(name=self.name,                # to link view boxes 
                          **kwargs)
 
-        self._parent : Diagram = parent
+        self._parent : Diagram = parent 
         self._getter = getter
         self._show   = show 
 
@@ -341,9 +342,9 @@ class Diagram_Item (pg.PlotItem):
         
         self.setup_axis()
 
-        # allow only view box context menu  (not plot item) 
+        # no pyqtgraph context menu  - no view box context menu , no plot item 
 
-        self.setMenuEnabled(enableMenu=False, enableViewBoxMenu=True)
+        self.setMenuEnabled(enableMenu=False, enableViewBoxMenu=False)
 
         # initial show or hide - use super() - avoid refresh
  

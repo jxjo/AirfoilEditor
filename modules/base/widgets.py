@@ -422,7 +422,7 @@ class Widget:
 
             #leave callback and refresh in a few ms 
             timer = QTimer()                                
-            timer.singleShot(20, lambda: self.refresh())     # delayed emit 
+            timer.singleShot(20, self.refresh)     # delayed emit 
         
         else: 
 

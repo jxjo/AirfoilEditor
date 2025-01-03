@@ -747,7 +747,8 @@ class Panel_Polar_Defs (Edit_Panel):
                         hide=lambda: len(self.polar_defs) <= 1)
             r += 1
 
-        ToolButton (l,r,c+1, icon=Icon.ADD,   set=self.add_polar_def)
+        if len (self.polar_defs) < 5:
+            ToolButton (l,r,c+1, icon=Icon.ADD,   set=self.add_polar_def)
 
         l.setColumnStretch (c+1,2)
 
@@ -899,7 +900,7 @@ class Panel_Airfoils (Edit_Panel):
         if self._n_REF() < 3:
             Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
                             get=None, set=self.set_airfoil, id=iair+1,
-                            initialDir=self.airfoils[0], addEmpty=False,
+                            initialDir=self.airfoils[0], addEmpty=True,
                             toolTip=f"New reference airfoil {iRef+1}")
             r +=1
         SpaceR (l,r,stretch=0)

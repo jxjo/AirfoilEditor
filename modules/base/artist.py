@@ -815,7 +815,7 @@ class Artist(QObject):
             self._remove_legend_items ()
             self._remove_plots ()
 
-            if self.show_legend:
+            if self.show_legend and self._pi.legend is None:
                 # must be before .plot 
                 self._pi.addLegend(offset=(-10,10),  verSpacing=0 )  
                 self._pi.legend.setLabelTextColor (self.COLOR_LEGEND)
