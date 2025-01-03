@@ -3,6 +3,7 @@ releases
 AirfoilEditor.settings
 example.dat
 README.pdf
+*_polars
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

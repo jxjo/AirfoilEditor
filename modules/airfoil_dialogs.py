@@ -27,6 +27,8 @@ from base.spline            import Bezier
 from model.airfoil          import Airfoil
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
+from model.polar_set        import Polar_Definition, polarType, ALPHA
+
 from airfoil_widgets        import Airfoil_Select_Open_Widget
 
 
@@ -1104,4 +1106,104 @@ class Matcher (QThread):
             self.msleep(2)                      # give parent some time to do updates
 
         return obj 
+
+
+
+
+class Edit_Polar_Definition (Dialog):
+    """ Dialog to edit a single polar definition"""
+
+    _width  = 470
+    _height = 240
+
+    name = "Edit Polar Definition"
+
+    def __init__ (self, parent : QWidget, polar_def : Polar_Definition): 
+
+        self._polar_def = polar_def
+
+        self.has_been_chnaged = False
+
+        # init layout etc 
+
+        super().__init__ (parent=parent)
+
+        # move window a little to the side 
+        p_center = parent.rect().center()               # parent should be main window
+        pos_x = p_center.x() + 400
+        pos_y = p_center.y() + 250            
+        self.move(pos_x, pos_y)
+
+
+    @property
+    def polar_def (self) -> Polar_Definition:
+        return self._polar_def
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=20) 
+        r += 1 
+        FieldF (l,r,c, lab="Re number", width=60, step=10, lim=(1, 5000), unit="k", dec=0,
+                        obj=self.polar_def, prop=Polar_Definition.re_asK)
+        l.setColumnMinimumWidth (c,80)
+        c += 2
+        SpaceC  (l,c)
+        c += 1
+        FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=1,
+                        obj=self.polar_def, prop=Polar_Definition.ma)
+        l.setColumnMinimumWidth (c,40)
+        c += 2
+        SpaceC  (l,c)
+        c += 1
+        FieldF (l,r,c, lab="Ncrit", width=60, step=1, lim=(1, 20), dec=1,
+                        obj=self.polar_def, prop=Polar_Definition.ncrit)
+        l.setColumnMinimumWidth (c,40)
+        c += 2
+        SpaceC  (l,c, stretch=5)
+
+        c = 0 
+        r += 1
+        Label  (l,r,c, get="Polar type")
+        ComboBox (l,r,c+1,  width=60, options=polarType.list(),
+                        obj=self.polar_def, prop=Polar_Definition.type)
+        r += 1
+        SpaceR (l, r, stretch=0, height=20) 
+        r += 1 
+        CheckBox (l,r,c, text="Auto Range values of Alpha for a complete polar", colSpan=6,
+                  obj=self.polar_def, prop=Polar_Definition.autoRange)
+        r += 1
+        if self.polar_def.specVar == ALPHA:
+            FieldF (l,r,c, lab="Step size", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
+                    obj=self.polar_def, prop=Polar_Definition.valRange_step)
+        else:
+            FieldF (l,r,c, lab="Step size", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
+                    obj=self.polar_def, prop=Polar_Definition.valRange_step)
+        Label  (l,r,c+3, style=style.COMMENT, colSpan=4, get="Small value accurate but slow")
+
+        r += 1
+        SpaceR (l, r, height=5) 
+
+        return l
+
+
+    @override
+    def _on_widget_changed (self):
+        """ slot a input field changed - repanel and refresh"""
+
+        self.refresh()
+
+        self.has_been_chnaged = True              # for change detection 
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
 

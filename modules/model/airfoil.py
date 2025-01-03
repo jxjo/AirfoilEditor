@@ -31,8 +31,7 @@ class usedAs (StrEnum):
     NORMAL      = ""
     SEED        = "Seed"
     SEED_DESIGN = "Seed of design"
-    REF1        = "Reference 1" 
-    REF2        = "Reference 2" 
+    REF         = "Reference" 
     DESIGN      = "Design"
     TARGET      = "Target"
     FINAL       = "Final"
@@ -360,6 +359,14 @@ class Airfoil:
         else: 
             self.set_usedAs (usedAs.NORMAL)
 
+    def get_property (self, name, default):
+        """ returns free style property of self"""
+        return fromDict (self._propertyDict, name, default )
+
+    def set_property (self, name, aVal):
+        """ set free style property of self"""
+        return toDict (self._propertyDict, name, aVal )
+
     #-----------------------------------------------------------
 
 
@@ -477,8 +484,10 @@ class Airfoil:
         return name, np.asarray (x), np.asarray (y)
 
 
-    def save (self):
-        """basic save of self to its pathFileName
+    def save (self, onlyShapeFile=False):
+        """
+        Basic save of self to its pathFileName
+            for Hicks-Henne and Bezier 'onlyShapeFile' will write no .dat file 
         """
         if self.isLoaded: 
             self._write_dat_to_file ()
@@ -700,7 +709,7 @@ class Airfoil_Bezier(Airfoil):
 
 
     @property
-    def pathFileName_bezier (self) -> str: 
+    def pathFileName_shape (self) -> str: 
         """ pathfileName of the Bezier definition file """
         if self.pathFileName:  
             return os.path.splitext(self.pathFileName)[0] + ".bez"
@@ -845,7 +854,7 @@ class Airfoil_Bezier(Airfoil):
         #  .bez-format for CAD etc and 
 
         # filename - remove .dat - add .bez 
-        with open(self.pathFileName_bezier, 'w+') as file:
+        with open(self.pathFileName_shape, 'w+') as file:
 
             # airfoil name 
             file.write("%s\n" % self.name)
@@ -920,7 +929,7 @@ class Airfoil_Hicks_Henne(Airfoil):
         self._isLoaded       = False                # hicks henne definition loaded? 
 
     @property
-    def pathFileName_hh (self) -> str: 
+    def pathFileName_shape (self) -> str: 
         """ pathfileName of the hh definition file """
         if self.pathFileName:  
             return os.path.splitext(self.pathFileName)[0] + ".hicks"

@@ -51,7 +51,7 @@ def create_airfoil_from_path (pathFilename) -> Airfoil:
 
 def get_airfoil_files_sameDir (initialDir : Airfoil | str | None): 
     """ 
-    Returns list of airfoil file path in the same directory as airfoil
+    Returns list of airfoil file path in the same directory as airf
     All .dat, .bez and .hicks files are collected 
     """
 
@@ -171,6 +171,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._no_files_here = None
         self._initial_dir = initialDir
         self._addEmpty = addEmpty is True 
+        self
 
         # get initial properties  (cur airfoil) 
         self._get_properties ()
@@ -183,12 +184,16 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             self._combo_widget = ComboSpinBox (l, get=self.airfoil_fileName, 
                                                 set=self.set_airfoil_by_fileName, 
                                                 options=self.airfoil_fileNames_sameDir,
-                                                hide=self.no_files_here, signal=False)
+                                                hide=self.no_files_here,
+                                                toolTip=self._toolTip,
+                                                signal=False)
         else:             
             self._combo_widget = ComboBox      (l, get=self.airfoil_fileName, 
                                                 set=self.set_airfoil_by_fileName, 
                                                 options=self.airfoil_fileNames_sameDir,
-                                                hide=self.no_files_here, signal=False)
+                                                hide=self.no_files_here, 
+                                                toolTip=self._toolTip,
+                                                signal=False)
         if withOpen:
             # either text button if nothing is there
             Airfoil_Open_Widget (l, text=textOpen, set=self.set_airfoil, signal=False,
@@ -217,7 +222,10 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._get_properties ()
         self._set_Qwidget_static ()
         self._set_Qwidget ()
-        self._combo_widget.setToolTip (self.airfoil_fileName())  
+
+        name = self.airfoil_fileName() if self.airfoil_fileName() is not None else ""
+        tip = f"{self._toolTip}: {name}" if self._toolTip else f"{name}"
+        self._combo_widget.setToolTip (tip)  
 
         # assign self to parent layout 
 
