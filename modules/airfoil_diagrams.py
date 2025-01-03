@@ -848,7 +848,7 @@ class Diagram_Airfoil (Diagram):
     def airfoil_ref1 (self) -> Airfoil | None:
         """ ref1 airfoil"""
         for airfoil in self.airfoils():
-            if airfoil.usedAs == usedAs.REF1: return airfoil
+            if airfoil.usedAs == usedAs.REF: return airfoil
         
     def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
         self.sig_new_airfoil_ref1.emit (airfoil)
@@ -858,7 +858,7 @@ class Diagram_Airfoil (Diagram):
     def airfoil_ref2 (self) -> Airfoil | None:
         """ ref2 airfoil"""
         for airfoil in self.airfoils():
-            if airfoil.usedAs == usedAs.REF2: return airfoil
+            if airfoil.usedAs == usedAs.REF: return airfoil
 
     def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
         self.sig_new_airfoil_ref2.emit (airfoil)
@@ -1034,7 +1034,7 @@ class Diagram_Airfoil (Diagram):
     # --- private slots ---------------------------------------------------
 
     @override
-    def refresh (self):
+    def refresh (self, *_):
 
         if self._item_welcome and self._item_welcome.isVisible():
 

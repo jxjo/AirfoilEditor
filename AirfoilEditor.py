@@ -43,7 +43,7 @@ from base.widgets           import *
 from airfoil_widgets        import * 
 from airfoil_diagrams       import * 
 
-from airfoil_dialogs        import Airfoil_Save_Dialog
+from airfoil_dialogs        import *
 from airfoil_ui_panels      import * 
 
 
@@ -345,7 +345,7 @@ class App_Main (QMainWindow):
         return self._airfoil_ref1
     def set_airfoil_ref1 (self, airfoil: Airfoil | None = None): 
         self._airfoil_ref1 = airfoil 
-        if airfoil: airfoil.set_usedAs (usedAs.REF1)
+        if airfoil: airfoil.set_usedAs (usedAs.REF)
 
 
     @property
@@ -354,7 +354,7 @@ class App_Main (QMainWindow):
         return self._airfoil_ref2
     def set_airfoil_ref2 (self, airfoil: Airfoil | None = None): 
         self._airfoil_ref2 = airfoil 
-        if airfoil: airfoil.set_usedAs (usedAs.REF2)
+        if airfoil: airfoil.set_usedAs (usedAs.REF)
 
 
     @property
