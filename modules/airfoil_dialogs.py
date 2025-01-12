@@ -27,7 +27,7 @@ from base.spline            import Bezier
 from model.airfoil          import Airfoil
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
-from model.polar_set        import Polar_Definition, polarType, ALPHA
+from model.polar_set        import Polar_Definition, polarType, ALPHA, CL
 
 from airfoil_widgets        import Airfoil_Select_Open_Widget
 
@@ -42,23 +42,39 @@ class Airfoil_Save_Dialog (Dialog):
     the new <Airfoil> as argument 
     """
 
-    _width  = (500, None)
-    _height = 250
+    _width  = (520, None)
+    _height = 300
 
-    name = "Save Airfoil ..."
+    name = "Save Airfoil Design as..."
+
+    def __init__ (self,*args, **kwargs):
+
+        self._remove_designs = False
+
+        super().__init__ (*args, **kwargs)
+
 
     @property
     def airfoil (self) -> Airfoil:
         return self.dataObject_copy
+
+    @property 
+    def remove_designs (self) -> bool:
+        """ remove designs and dir upon finish"""
+        return self._remove_designs
+    
+    def set_remove_designs (self, aBool : bool):
+        self._remove_designs = aBool
 
 
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
         r = 0 
-        Label  (l,r,0, colSpan=4, get="Change airfoil name and/or filename before saving the airfoil" )
+        Label  (l,r,0, colSpan=4, get="Change airfoil name and/or filename before saving the airfoil",
+                       style=style.COMMENT )
         r += 1
-        SpaceR (l, r) 
+        SpaceR (l, r, stretch=0) 
         r += 1
         Field  (l,r,0, lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None),
                        style=self._style_names, signal=True)
@@ -66,7 +82,7 @@ class Airfoil_Save_Dialog (Dialog):
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use filename as airfoil name")
         r += 1
-        SpaceR (l, r, stretch=0) 
+        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=20)
         r += 1
         Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None),
                 signal=True)
@@ -79,12 +95,17 @@ class Airfoil_Save_Dialog (Dialog):
         ToolButton (l,r,2, icon=Icon.OPEN, set=self._open_dir, signal=True,
                     toolTip = 'Select directory of airfoil') 
         r += 1
-        SpaceR (l, r, height=5, stretch=1) 
+        SpaceR (l, r, height=20, stretch=0) 
         r += 1
-        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=(30,None))
+        CheckBox (l,r,0, text="Remove all designs and design directory on finish", colSpan=4,
+                        get=lambda: self.remove_designs, set=self.set_remove_designs)
+        r += 1
+        SpaceR (l, r, height=5, stretch=1) 
+
         l.setColumnStretch (1,5)
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (2,35)
+
         return l
 
 
@@ -112,11 +133,10 @@ class Airfoil_Save_Dialog (Dialog):
 
     def _messageText (self): 
         """ info / wanrning text"""
-        text = []
         if not self._names_are_equal():
-             text.append("Name of airfoil and its filename are different.")
-             text.append("You can 'sync' either the name or the filename.")
-        text = '\n'.join(text)
+             text = "You may want to sync airfoil Name and Filename"
+        else: 
+             text = ""
         return text 
 
 
@@ -145,6 +165,8 @@ class Airfoil_Save_Dialog (Dialog):
         airfoil.save ()
 
         super().accept() 
+
+
 
 # ----- Blend two airfoils   -----------
 
@@ -1171,16 +1193,17 @@ class Edit_Polar_Definition (Dialog):
         r += 1
         SpaceR (l, r, stretch=0, height=20) 
         r += 1 
-        CheckBox (l,r,c, text="Auto Range values of Alpha for a complete polar", colSpan=6,
-                  obj=self.polar_def, prop=Polar_Definition.autoRange)
+        CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
+                        get=self.polar_def.autoRange)
         r += 1
-        if self.polar_def.specVar == ALPHA:
-            FieldF (l,r,c, lab="Step size", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
-                    obj=self.polar_def, prop=Polar_Definition.valRange_step)
-        else:
-            FieldF (l,r,c, lab="Step size", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
-                    obj=self.polar_def, prop=Polar_Definition.valRange_step)
-        Label  (l,r,c+3, style=style.COMMENT, colSpan=4, get="Small value accurate but slow")
+        FieldF (l,r,c, lab=f"Step {ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
+                        obj=self.polar_def, prop=Polar_Definition.valRange_step,
+                        hide = lambda: self.polar_def.specVar != ALPHA)
+        FieldF (l,r,c, lab=f"Step {CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
+                        obj=self.polar_def, prop=Polar_Definition.valRange_step,
+                        hide = lambda: self.polar_def.specVar != CL)
+        Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
+                        get="The smaller the value, the more time is needed")
 
         r += 1
         SpaceR (l, r, height=5) 

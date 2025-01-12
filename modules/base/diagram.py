@@ -25,7 +25,7 @@ from base.widgets       import ToolButton, Icon
 from base.artist        import Artist
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 
@@ -319,7 +319,7 @@ class Diagram_Item (pg.PlotItem):
 
         # setup item to print coordinates 
 
-        self._coordItem = pg.LabelItem("huhu", color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt", justify="left")  
+        self._coordItem = pg.LabelItem("", color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt", justify="left")  
         self._coordItem.setParentItem(self)  
         self._coordItem.anchor(parentPos=(0,1), itemPos=(0.0,0.0), offset=(45, -20))                       
 

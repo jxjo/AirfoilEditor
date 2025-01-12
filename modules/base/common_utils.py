@@ -236,8 +236,13 @@ class Settings (Parameters):
         dataDict = self.get_dataDict ()
 
         toDict(dataDict, key, value)
-        self.write_dataDict (dataDict, dataName='Settings')
+        self.write_dataDict (dataDict)
 
+
+    def write_dataDict (self, aDict, dataName='Settings'):
+        """ writes data dict to file """
+ 
+        super().write_dataDict (aDict, dataName=dataName)
 
 
 #------------------------------------------------------------------------------

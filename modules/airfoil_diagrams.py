@@ -20,7 +20,7 @@ from airfoil_widgets        import Airfoil_Select_Open_Widget
 from airfoil_ui_panels      import Panel_Polar_Defs, Panel_Airfoils 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 
@@ -87,7 +87,8 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         mods = None 
         if airfoil.usedAsDesign:
-            mods = ', '.join(airfoil.geo.modifications) 
+            mods = ', '.join(airfoil.geo.modifications_as_list) 
+            
         if mods:
             subtitle = "Mods: " + mods
         elif not mods and airfoil.isBezierBased:
@@ -95,7 +96,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         else: 
             subtitle = "" 
 
-        super().plot_title (title=airfoil.name, subtitle=subtitle, **kwargs)
+        super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
 
 
     @override
@@ -357,6 +358,7 @@ class Diagram_Item_Polars (Diagram_Item):
         self.set_xyVars (xyVars)                        # polar vars for x,y axis 
 
         self._title_item2 = None                        # a second 'title' for x-axis 
+        self._viewRange_needs_to_be_set = None          # to handle initial no polars to autoRange 
 
         self.name = f"{self.name} {iItem}"
 
@@ -400,12 +402,14 @@ class Diagram_Item_Polars (Diagram_Item):
     @property
     def xVar (self) -> var:
         return self._xyVars[0]
+
     def set_xVar (self, varType : var):
         self._xyVars = (varType, self._xyVars[1])
 
-        self.setup_viewRange ()
         artist : Polar_Artist = self._artists [0]
         artist.set_xyVars (self._xyVars)
+
+        self.setup_viewRange ()
 
         self.plot_title()
 
@@ -416,11 +420,13 @@ class Diagram_Item_Polars (Diagram_Item):
     def set_yVar (self, varType: var):
         self._xyVars = (self._xyVars[0], varType)
 
-        self.setup_viewRange ()
         artist : Polar_Artist = self._artists [0]
         artist.set_xyVars (self._xyVars)
 
+        self.setup_viewRange ()
+
         self.plot_title ()
+
 
     def set_xyVars (self, xyVars : list[str]):
         """ set xyVars from a list of var strings or enum var"""
@@ -440,7 +446,13 @@ class Diagram_Item_Polars (Diagram_Item):
     def setup_artists (self):
         """ create and setup the artists of self"""
 
-        self._add_artist (Polar_Artist     (self, self.airfoils, xyVars=self._xyVars, show_legend=True))
+        a = Polar_Artist     (self, self.airfoils, xyVars=self._xyVars, show_legend=True)
+
+        # handle initial no polars to in initiate delayed viewRange
+        a.sig_no_polar_plotted.connect      (self._on_no_polar_plotted)
+        a.sig_new_polars_generated.connect  (self._on_new_polars_generated)
+
+        self._add_artist (a)
 
 
     @override
@@ -450,7 +462,7 @@ class Diagram_Item_Polars (Diagram_Item):
         self.viewBox.setDefaultPadding(0.05)
 
         self.viewBox.autoRange ()                           # first ensure best range x,y 
-        self.viewBox.enableAutoRange(enable=True)
+        self.viewBox.enableAutoRange(enable=False)
 
         self.showGrid(x=True, y=True)
 
@@ -463,7 +475,7 @@ class Diagram_Item_Polars (Diagram_Item):
         if self.legend is None:
             # normally Artist adds legend  - here to set legend during init 
             self.addLegend(offset=(-10,10),  verSpacing=0 )  
-            self.legend.setLabelTextColor (self.COLOR_LEGEND)
+            self.legend.setLabelTextColor (Artist.COLOR_LEGEND)
 
         if (self.yVar == CL or self.yVar == ALPHA) and self.xVar == CD:
             self.legend.anchor (itemPos=(1,0.5), parentPos=(1,0.5), offset=(-10,0))     # right, middle 
@@ -482,6 +494,21 @@ class Diagram_Item_Polars (Diagram_Item):
         l.setVerticalSpacing(-5)
 
 
+    def _on_no_polar_plotted (self):
+        """ slot - handle initial no polar plotted"""
+
+        if self._viewRange_needs_to_be_set is None: 
+            self._viewRange_needs_to_be_set = True 
+
+
+    def _on_new_polars_generated (self):
+        """ slot - new polars arrived refresh """
+
+        if self._viewRange_needs_to_be_set == True: 
+            self._viewRange_needs_to_be_set = False 
+            self._viewRange_set = False
+
+        self.refresh()
 
 
 #-------------------------------------------------------------------------------
@@ -752,9 +779,7 @@ class Diagram_Airfoil_Polar (Diagram):
     def refresh(self, also_viewRange=True): 
 
         # hide Welcome item with first refresh
-
         self._hide_item_welcome()
-
         super().refresh(also_viewRange=also_viewRange) 
 
 
@@ -762,7 +787,14 @@ class Diagram_Airfoil_Polar (Diagram):
         """ slot to handle airfoil changed signal """
 
         logger.debug (f"{str(self)} on airfoil changed")
-        self.refresh()
+        self.refresh(also_viewRange=False)
+
+
+    def on_new_design (self):
+        """ slot to handle new airfoil design signal """
+
+        logger.debug (f"{str(self)} on new design")
+        self.refresh(also_viewRange=False)
 
 
     def on_bezier_changed (self, aSide_type: Line.Type):
@@ -810,10 +842,6 @@ class Diagram_Airfoil_Polar (Diagram):
         logger.debug (f"{str(self)} on airfoils ref changed")
         self.refresh(also_viewRange=False)
 
-        # for item in self.diagram_items:
-        #     if item.isVisible(): 
-        #         item.refresh()
-
 
     # --- private slots ---------------------------------------------------
 
@@ -823,7 +851,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on geometry changed in diagram")
     
-        self.refresh()                          # refresh other diagram items 
+        # self.refresh()                          # refresh other diagram items 
         self.sig_airfoil_changed.emit()         # refresh app
 
 

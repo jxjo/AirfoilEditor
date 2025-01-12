@@ -83,10 +83,12 @@ def _label_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> str:
             if a == airfoil: iRef = nRef 
             if a.usedAs == usedAs.REF: nRef += 1
         use = f"Ref {iRef+1}: "
+    elif airfoil.usedAs == usedAs.DESIGN or not airfoil.usedAs: # no prefix 
+        use = ""
     else: 
-        use = f"{airfoil.usedAs}: " if airfoil.usedAs else ""
+        use = f"{airfoil.usedAs}: " 
 
-    label = f"{use}{airfoil.name}"
+    label = f"{use}{airfoil.name_to_show}"
     return label 
 
 
@@ -703,7 +705,7 @@ class Curvature_Artist (Artist):
                 else: 
                     pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
 
-                label = f"{side.name} - {airfoil.name}"
+                label = f"{side.name} - {airfoil.name_to_show}"
                 self._plot_dataItem (x, y, name=label, pen=pen)
 
                 # plot derivative1 of curvature ('spikes') 
@@ -891,6 +893,9 @@ class Airfoil_Line_Artist (Artist, QObject):
 class Polar_Artist (Artist):
     """Plot the airfoils contour  """
 
+    sig_no_polar_plotted         = pyqtSignal()          # nothing plotted - viewRange won't be set 
+    sig_new_polars_generated     = pyqtSignal()          # inform to refresh self  
+
     def __init__ (self, axes, modelFn, 
                   xyVars = (CD, CL), 
                   onDblclick=None,
@@ -934,6 +939,7 @@ class Polar_Artist (Artist):
 
         # plot polars of airfoils
 
+        nPolar_plotted      = 0 
         nPolar_calculations = 0                     # is there a polar in calculation 
         error_msg           = []  
 
@@ -958,12 +964,15 @@ class Polar_Artist (Artist):
                 if not polar.isLoaded: 
                     nPolar_calculations += 1
                 elif polar.error_occurred:
-                    error_msg.append (f"'{airfoil.name_short} - {polar.name}': {polar.error_reason}")
+                    # in error_msg could be e.g. '<' 
+                    error_msg.append (f"'{airfoil.name_to_show} - {polar.name}': {html.escape(polar.error_reason)}")
+                else: 
+                    nPolar_plotted += 1
 
         # show error messages 
 
         if error_msg:
-            text = '<br>'.join (error_msg) 
+            text = '<br>'.join (error_msg)          
             self._plot_text (text, color=qcolors.ERROR, itemPos=(0.5,0.5))
 
         # show generating message 
@@ -978,6 +987,10 @@ class Polar_Artist (Artist):
             # refresh for new polars 
             QTimer().singleShot(1000, self.check_for_new_polars)     # delayed emit 
 
+        # info to diagram item that nothing plotted --> viewRange 
+
+        if nPolar_plotted == 0:
+            self.sig_no_polar_plotted.emit()
 
 
     def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color): 
@@ -1043,14 +1056,15 @@ class Polar_Artist (Artist):
         for airfoil in self.airfoils: 
             polarSet : Polar_Set = airfoil.polarSet
             if polarSet.has_polars_not_loaded:
-                n_new += polarSet.load_polars ()
+                n_new += polarSet.load_or_generate_polars ()
                 all_loaded = False
 
         if n_new > 0:
             logger.debug (f"{self} Found {n_new} new polars")
-            self.refresh()
+            self.sig_new_polars_generated.emit ()           # inform diagram item to refresh self 
+
         elif not all_loaded:
             QTimer().singleShot(300, self.check_for_new_polars) 
         else: 
-            self.refresh()                                  # final refresh (for second diagram) 
+            self.sig_new_polars_generated.emit ()           # final refresh (for second diagram) 
 

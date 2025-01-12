@@ -58,7 +58,7 @@ class style (Enum):
 
 
 class size (Enum):
-    HEADER         = (13, QFont.Weight.ExtraLight)
+    HEADER         = (11, QFont.Weight.Medium) # (13, QFont.Weight.ExtraLight)
     HEADER_SMALL   = (10, QFont.Weight.DemiBold)
     NORMAL         = (11, QFont.Weight.Normal) 
 

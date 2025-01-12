@@ -98,7 +98,8 @@ class X_Program:
 
         self._popen : Popen     = None                      # instance of subprocess when async
         self._returncode        = 0                         # returncode when async finished 
-        self._pipe_error_lines  = None                      # errortext lines vom stderr when finished
+        self._pipe_error_lines  = None                      # errortext lines from stderr when finished
+        self._pipe_out_lines    = []                        # output lines from stdout when finished
 
         self._tmpInpFile        = None                      # tmpfile of this instance, to be deleted 
 
@@ -177,11 +178,20 @@ class X_Program:
             self._popen.poll ()                 # check return code
 
             if self._popen.returncode is None: 
+
                 isRunning = True
+                logger.debug (f"==> {self.name} running" )
+                
             else: 
-                self._returncode = self._popen.returncode
+
+                self._returncode       = self._popen.returncode
+                self._pipe_error_lines = self._popen.stderr.readlines() if self._returncode else []
+                self._pipe_out_lines.extend(self._popen.stdout.readlines() if self._popen.stdout else [])
+
                 if self._returncode:
-                    self._pipe_error_lines = self._popen.stderr.readlines()
+                    logger.error (f"{self.name} returncode: {self._returncode} - {''.join (self._pipe_error_lines)}")
+                logger.debug ("Finished" + ''.join (self._pipe_out_lines))
+                 
                 self._popen = None              # close down process instance 
 
         return isRunning
@@ -213,13 +223,19 @@ class X_Program:
     @property
     def finished_errortext (self): 
         """ errortext from subprocess in case returncode !=0 """
-        # the first line should have the errortext 
+
+        # scan stderr and stdout for a line with 'Error: ' 
+
         text = None
+        line : str
         if self._pipe_error_lines:
-            textline = self._pipe_error_lines[0]
-            # remove "Error:"
-            textsplit = textline.split("Error: ")
-            text = textsplit[1] if len(textsplit) == 2 else textsplit[0] 
+            for line in self._pipe_error_lines:
+                _,_,text = line.partition ("Error: ")
+                if text: return text 
+        if self._pipe_out_lines:
+            for line in self._pipe_out_lines:
+                _,_,text = line.partition ("Error: ")
+                if text: return text 
         return text
 
 
@@ -293,8 +309,8 @@ class X_Program:
 
             popen = Popen (exe + args, creationflags=flags, text=True, **startupinfo, 
                              stdin=stdin, stdout=stdout, stderr=stderr)  
-            
-            # logging.debug (f"Executed: '{exe + args}'")
+
+            logging.debug (f"==> run async: '{exe + args}'")
 
             popen.poll()                            # update returncode 
 
@@ -312,6 +328,8 @@ class X_Program:
 
             completed   = run (exe + args, text=True, 
                                input=input_stream, capture_output=capture_output)
+
+            logging.debug (f"==> run sync: '{exe + args}'")
 
             returncode  = completed.returncode
             pipe_result = completed.stdout
@@ -698,7 +716,7 @@ class Worker (X_Program):
 
         # if async - capture output to pipe - so its in background
         if run_async:
-            capture = False # True
+            capture = True
         else:
             capture = False
 

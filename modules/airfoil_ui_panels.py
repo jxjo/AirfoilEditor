@@ -14,10 +14,11 @@ from copy                   import copy
 from base.widgets           import * 
 from base.panels            import Edit_Panel
 
-from model.airfoil          import Airfoil
+from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Geometry, Geometry_Bezier, Curvature_Abstract
 from model.airfoil_geometry import Line, Side_Airfoil_Bezier
 from model.polar_set        import Polar_Definition
+from model.case             import Case_Direct_Design
 
 from airfoil_widgets        import * 
 from airfoil_dialogs        import Match_Bezier, Matcher, Edit_Polar_Definition
@@ -150,6 +151,14 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
         """ overloaded: only visible if edit_moder """
         return self.edit_mode
 
+    @property
+    def airfoilg_org (self) -> Airfoil:
+        return self.myApp.airfoil_org
+
+    @property
+    def case (self) -> Case_Direct_Design:
+        return self.myApp.case
+
 
     def _init_layout (self): 
 
@@ -157,8 +166,12 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Field (l,r,c, colSpan=3, get=lambda: self.airfoil().fileName, 
-                                 set=self.airfoil().set_fileName, disable=True)
+        Field (l,r,c, colSpan=3, width=180, get=lambda: self.airfoilg_org.fileName)
+        r += 1
+        ComboSpinBox (l,r,c, colSpan=3, width=150, get=self.airfoil_fileName, 
+                             set=self.set_airfoil_by_fileName,
+                             options=self.airfoil_fileNames,
+                             signal=False)
         r += 1
         SpaceR (l,r)
         l.setRowStretch (r,2)
@@ -178,7 +191,30 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         return l
-        
+
+
+
+    def airfoil_fileName(self) -> list[str]:
+        """ fileName of current airfoil without extension"""
+        return os.path.splitext(self.airfoil().fileName)[0]
+
+
+    def airfoil_fileNames(self) -> list[str]:
+        """ list of design airfoil fileNames without extension"""
+
+        fileNames = []
+        for airfoil in self.case.airfoil_designs:
+            fileNames.append (os.path.splitext(airfoil.fileName)[0])
+        return fileNames
+
+
+    def set_airfoil_by_fileName (self, fileName : str):
+        """ set new current design airfoil by fileName"""
+
+        airfoil = self.case.get_design_by_name (fileName)
+        self.myApp.set_airfoil (airfoil)
+
+
 
 
 class Panel_Geometry (Panel_Airfoil_Abstract):
@@ -204,13 +240,13 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.1,
+        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.2,
                 obj=self.geo, prop=Geometry.max_thick,
-                disable=self._disabled_for_airfoil)
+                disable=lambda: self.airfoil().isBezierBased)
         r += 1
-        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.1,
+        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.2,
                 obj=self.geo, prop=Geometry.max_camb,
-                disable=self._disabled_for_airfoil)
+                disable=lambda: self.airfoil().isBezierBased or self.airfoil().isSymmetrical)
         r += 1
         FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.te_gap)
@@ -218,17 +254,17 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         r,c = 0, 2 
         SpaceC (l,c, stretch=0)
         c += 1 
-        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.1,
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.5,
                 obj=self.geo, prop=Geometry.max_thick_x,
-                disable=self._disabled_for_airfoil)
+                disable=lambda: self.airfoil().isBezierBased)
         r += 1
-        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.1,
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.5,
                 obj=self.geo, prop=Geometry.max_camb_x,
-                disable=self._disabled_for_airfoil)
+                disable=lambda: self.airfoil().isBezierBased or self.airfoil().isSymmetrical)
         r += 1
         FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.1,
                 obj=self.geo, prop=Geometry.le_radius,
-                disable=self._disabled_for_airfoil)
+                disable=lambda: self.airfoil().isBezierBased)
         r += 1
         SpaceR (l,r)
         r += 1
@@ -238,11 +274,6 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         l.setColumnMinimumWidth (3,60)
         l.setColumnStretch (5,2)
         return l 
-
-    def _disabled_for_airfoil (self):
-        """ returns disable for eg. bezier based - thickness can't be changed """
-        return self.airfoil().isBezierBased
-
 
 
 
@@ -260,6 +291,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=80,
                 set=self.myApp.repanel_airfoil, hide=lambda: not self.edit_mode,
+                disable=lambda: self.geo().isBasic or self.geo().isHicksHenne,
                 toolTip="Repanel airfoil with a new number of panels" ) 
 
 
@@ -791,10 +823,9 @@ class Panel_Polar_Defs (Edit_Panel):
 
         self.polar_defs.append (new_polar_def)
 
-        # sort polar definitions ascending re number 
-        self.polar_defs.sort (key=lambda aDef : aDef.re)
+        # open edit dialog for new def 
 
-        self._on_polar_def_changed ()
+        self.edit_polar_def (len(self.polar_defs)-1)
 
 
     def _on_polar_def_changed (self):
@@ -809,7 +840,11 @@ class Panel_Polar_Defs (Edit_Panel):
 
 
 class Panel_Airfoils (Edit_Panel):
-    """ Panel to add, delete, edit reference airfoils """
+    """ 
+    Panel to show active airfoils 
+    - add, delete, edit reference airfoils
+    
+    """
 
     name = "Airfoils"   
 
@@ -916,8 +951,10 @@ class Panel_Airfoils (Edit_Panel):
         """ get airfoil with index id from list"""
         return self.airfoils[id]
 
-    def set_airfoil (self, new_airfoil, id : int):
+    def set_airfoil (self, new_airfoil : Airfoil|None = None, id : int = None):
         """ set airfoil with index id from list"""
+
+        if new_airfoil is None: return
 
         if id < len(self.airfoils): 
             cur_airfoil = self.airfoils[id]
