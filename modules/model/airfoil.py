@@ -287,7 +287,7 @@ class Airfoil:
 
 
     def set_name (self, newName, reset_original=False):
-        """  Set name of the airfoil. 'reset_original' will also overwrite original filename  
+        """  Set name of the airfoil. 'reset_original' will also overwrite original name  
         Note:  This will not rename an existing airfoil (file)...
         """
         self._name = newName
@@ -425,7 +425,7 @@ class Airfoil:
         Set fullpaths of airfoils directory  
             ! This will not move or copy the airfoil physically
         """
-        if noCheck or (os.path.isdir(aDir)):
+        if noCheck or (os.path.isdir(aDir)) or aDir == '':
             self.pathFileName = os.path.join (aDir, self.fileName)
         else:
             raise ValueError ("Directory \'%s\' does not exist. Couldn\'t be set" % aDir)
@@ -597,7 +597,13 @@ class Airfoil:
         airfoil = self.asCopy (name=destName, pathFileName=newPathFileName)
 
         if te_gap is not None: 
+
             airfoil.geo.set_te_gap (te_gap)
+
+            # build new airfoil name 
+            mods = airfoil.geo.modifications_as_label
+            airfoil.set_name (f"{airfoil._name_org}{mods}")
+            airfoil.set_fileName_from_name ()
 
         # save it to file 
         airfoil.save ()

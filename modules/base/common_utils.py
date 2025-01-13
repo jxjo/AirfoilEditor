@@ -141,7 +141,7 @@ class Parameters ():
                     paramFile.close()
                     dataDict = {}
             except:
-                logger.info (f"Paramter file {self._paramFilePath} not found")
+                logger.debug (f"Paramter file {self._paramFilePath} not found")
 
         return dataDict
 

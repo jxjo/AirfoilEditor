@@ -69,10 +69,12 @@ class Case_Direct_Design (Case_Abstract):
     @property
     def design_dir (self) -> str:
         """ directory with airfoil designs"""
+
         base=os.path.basename (self._airfoil_seed.pathFileName)
         dir =os.path.dirname  (self._airfoil_seed.pathFileName)
         design_dir_name = f"{os.path.splitext(base)[0]}{self.DESIGN_DIR_EXT}"
         return os.path.join(dir, design_dir_name)
+
 
     @property
     def airfoil_designs (self) -> list[Airfoil]: 
@@ -80,11 +82,6 @@ class Case_Direct_Design (Case_Abstract):
         if self._airfoil_designs is None: 
             self._airfoil_designs = Reader_Airfoil_Designs(self.design_dir).read_all(prefix=self.DESIGN_NAME_BASE)
         return self._airfoil_designs 
-
-    @property
-    def nDesigns (self) -> int:
-        """ number of actual designs """
-        return len(self.airfoil_designs) 
       
 
     def first_working_design (self) -> Airfoil:
@@ -115,9 +112,16 @@ class Case_Direct_Design (Case_Abstract):
     def add_design (self, airfoil : Airfoil):
         """ add a airfoil as a copy design to list - save it """
 
+        # get highest design number 
+
+        if len(self.airfoil_designs) > 0:
+            iDesign = self.get_i_from_design (self.airfoil_designs[-1])
+            iDesign += 1
+        else: 
+            iDesign = 0 
+
         # save and append copy to list of designs
 
-        iDesign = self.nDesigns
         fileName = f"{self.DESIGN_NAME_BASE}{iDesign:4}{airfoil.Extension}"
         pathFileName = os.path.join (self.design_dir, fileName)
 
@@ -132,7 +136,42 @@ class Case_Direct_Design (Case_Abstract):
         airfoil.set_isModified (False)                      # avoid being saved for polar generation, there is already a Design
 
 
-    def get_design_by_name (self, fileName : str):
+    def remove_design (self, airfoil_design : Airfoil) -> Airfoil:
+        """ 
+        Remove airfoil_design having design number of airfoil from list
+        Returns next airfoil or None if it fails """
+
+        # sanity - don't remove the first design 0 
+
+        if len(self.airfoil_designs) <= 1: return
+
+        # get the instance which could be a copy of airfoil_design and remove  
+
+        airfoil = self.get_design_by_name (airfoil_design.fileName, as_copy=False)
+
+        # remove it and return airfoil next to airfoil_design
+        try: 
+            i = self.airfoil_designs.index (airfoil)
+            self.airfoil_designs.pop (i)
+
+            # remove file 
+            os.remove (airfoil.pathFileName)
+
+            if i < (len (self.airfoil_designs) - 1):
+                next_airfoil = self.airfoil_designs [i]
+            else: 
+                next_airfoil = self.airfoil_designs [-1]
+        except:
+            logger.error (f"design airfoil {airfoil.fileName} couldn't be removed")
+
+            self._airfoil_designs = None                        # reset list to reread
+            return None
+
+        return next_airfoil.asCopy_design ()    
+
+
+
+    def get_design_by_name (self, fileName : str, as_copy = True):
         """ returns a working copy of Design having fileName (with or without extension)"""
 
         airfoil = None 
@@ -144,7 +183,10 @@ class Case_Direct_Design (Case_Abstract):
         if airfoil is None:
             raise RuntimeError (f"Airfoil with fileName {fileName} doesn't exist anymore")
         else: 
-            return airfoil.asCopy_design () 
+            if as_copy:
+                return airfoil.asCopy_design () 
+            else: 
+                return airfoil 
 
 
     def get_i_from_design (self, airfoil_design : Airfoil) -> int:
@@ -191,11 +233,10 @@ class Case_Direct_Design (Case_Abstract):
             remove_designs: True - remove 
                             False - do not remove 
                             None - remove if only 1 Design 
-        
         """
 
         if remove_designs is None: 
-            remove = self.nDesigns < 2 
+            remove = len (self.airfoil_designs) < 2 
         else: 
             remove = remove_designs 
 

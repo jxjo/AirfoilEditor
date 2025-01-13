@@ -1526,8 +1526,8 @@ class Geometry ():
     def modifications_as_label (self) -> str:
         """returns a short label string of all modifications  'norm_t8.1_cx40.3'"""
         mods = []
+
         # build list of relevant modifications (use short name) 
-        nmods = len (self._modification_dict)
         for aMod, val in self._modification_dict.items():
                 if aMod == Geometry.MOD_TE_GAP:
                     val = round(val,2) 

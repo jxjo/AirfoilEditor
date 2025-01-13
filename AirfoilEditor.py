@@ -67,7 +67,7 @@ logger.setLevel(logging.DEBUG)
 # ------ globals -----
 
 AppName         = "Airfoil Editor"
-AppVersion      = "3.0"
+AppVersion      = "3.0 beta 1"
 
 
 class App_Main (QMainWindow):
@@ -150,7 +150,7 @@ class App_Main (QMainWindow):
 
         # Worker for polar generation ready? 
 
-        Worker().isReady(min_version=self.WORKER_MIN_VERSION)
+        Worker().isReady (__file__, min_version=self.WORKER_MIN_VERSION)
         if Worker.ready:
             Worker().clean_workingDir (self.airfoil().pathName)
 
@@ -177,6 +177,7 @@ class App_Main (QMainWindow):
         # connect self signals to slots of self
 
         self.sig_new_airfoil.connect            (self.refresh)
+        self.sig_new_design.connect             (self.refresh)
         self.sig_airfoil_changed.connect        (self._on_airfoil_changed)
 
         # connect self signals to slots of diagram

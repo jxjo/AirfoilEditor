@@ -112,7 +112,7 @@ class Polar_Definition:
 
     """
 
-    VAL_RANGE_ALPHA = [-4.0, 13.0, 0.50]
+    VAL_RANGE_ALPHA = [-4.0, 13.0, 0.25]
     VAL_RANGE_CL    = [-0.2,  1.2, 0.05]
 
     def __init__(self, dataDict=None):

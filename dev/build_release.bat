@@ -1,6 +1,6 @@
 @echo off
 
-set APP_VERSION=2.0.1
+set APP_VERSION=3.0 beta
 set WIN_RELEASE=AirfoilEditor_%APP_VERSION%_win
 
 echo.

@@ -11,7 +11,7 @@ the path to program location location must be set
 
 
 import os
-from subprocess     import Popen, run, CREATE_NEW_CONSOLE, PIPE, STARTUPINFO, STARTF_USESHOWWINDOW
+from subprocess     import Popen, run, CREATE_NEW_CONSOLE, PIPE, STARTUPINFO, STARTF_USESHOWWINDOW, CREATE_NO_WINDOW
 from glob           import glob
 from io             import StringIO
 
@@ -33,9 +33,10 @@ logger.setLevel(logging.DEBUG)
 SW_NORMAL = 1 
 SW_MINIMIZE = 6 
 
-EXE_DIR = 'assets\\windows'                       # directory of exe files 
+EXE_DIR_WIN    = 'assets/windows'                  # directory of exe files 
+EXE_DIR_UNIX   = 'assets/linux'                    
 
-TMP_INPUT_NAME = 'tmpInput'                       # temporary input file (~1 will be appended)
+TMP_INPUT_NAME = 'tmpInput'                         # temporary input file (~1 will be appended)
 TMP_INPUT_EXT  = '.inp'
 
 #------- Helper function -----------------------------------------#
@@ -87,10 +88,6 @@ class X_Program:
 
     def __init__ (self, workingDir = None):
 
-        cls = self.__class__
-        if cls.exePath is None: 
-            cls.exePath    = self._get_exePath ()
-
         if workingDir and not os.path.isdir (workingDir):
             raise ValueError (f"Working directory '{workingDir}' does not exist" )
         else:    
@@ -109,10 +106,13 @@ class X_Program:
         return f"<{type(self).__name__}"
 
    
-    def isReady (self, min_version : str = ''):
+    def isReady (self, parent_file : str, min_version : str = '') -> bool:
         """ 
         checks if self is available with min_version.
-        Returns ready  
+
+        Args: 
+            parent_file: pathFilename of the parent (app) which will use self
+            min_version: check fpr min version number 
         """
 
         version_ok = False
@@ -121,11 +121,16 @@ class X_Program:
 
         if self.ready: return True
 
+        # find .exe
+
+        if self.exePath is None: 
+            cls = self.__class__
+            cls.exePath = self._get_exePath (parent_file)
+
         # try to execute with -h help argument to get version 
         try: 
             returncode, pipe_output, _ = self._execute (' -h', run_async=False, capture_output=True)
         except: 
-            print (self.exePath)
             returncode = 1
 
         # extract version and check version
@@ -159,7 +164,7 @@ class X_Program:
                 self.__class__.ready_msg = f"Ready"
 
         else: 
-            self.__class__.ready_msg = f"{self.name} not found either in '{EXE_DIR}' nor via OS search path"      
+            self.__class__.ready_msg = f"{self.name} not found either in '{EXE_DIR_WIN}' nor via OS search path"      
 
         if self.ready: 
             logging.info (f"{self.name} {self.version} {self.ready_msg}" )
@@ -181,7 +186,7 @@ class X_Program:
 
                 isRunning = True
                 logger.debug (f"==> {self.name} running" )
-                
+
             else: 
 
                 self._returncode       = self._popen.returncode
@@ -189,8 +194,8 @@ class X_Program:
                 self._pipe_out_lines.extend(self._popen.stdout.readlines() if self._popen.stdout else [])
 
                 if self._returncode:
-                    logger.error (f"{self.name} returncode: {self._returncode} - {''.join (self._pipe_error_lines)}")
-                logger.debug ("Finished" + ''.join (self._pipe_out_lines))
+                    logger.error (f"==> {self.name} returncode: {self._returncode} - {''.join (self._pipe_error_lines)}")
+                logger.debug (f"==> {self.name} finished {''.join (self._pipe_out_lines)}")
                  
                 self._popen = None              # close down process instance 
 
@@ -290,7 +295,12 @@ class X_Program:
             if capture_output:
                 stdout = PIPE                               # output is piped to suppress window 
                 stderr = PIPE                               # Xoptfoil will write error to stderr
-                flags  = 0          
+                # needed when running as pyinstaller .exe 
+                # https://stackoverflow.com/questions/7006238/how-do-i-hide-the-console-when-i-use-os-system-or-subprocess-call/7006424#7006424
+                if os.name == 'nt':
+                    flags = CREATE_NO_WINDOW    
+                else: 
+                    flags  = 0          
                 startupinfo = self._get_popen_startupinfo (SW_NORMAL)  
             else: 
                 stdout = None 
@@ -310,7 +320,7 @@ class X_Program:
             popen = Popen (exe + args, creationflags=flags, text=True, **startupinfo, 
                              stdin=stdin, stdout=stdout, stderr=stderr)  
 
-            logging.debug (f"==> run async: '{exe + args}'")
+            logger.debug (f"==> run async: '{exe + args}'")
 
             popen.poll()                            # update returncode 
 
@@ -329,7 +339,7 @@ class X_Program:
             completed   = run (exe + args, text=True, 
                                input=input_stream, capture_output=capture_output)
 
-            logging.debug (f"==> run sync: '{exe + args}'")
+            logger.debug (f"==> run sync: '{exe + args}'")
 
             returncode  = completed.returncode
             pipe_result = completed.stdout
@@ -358,28 +368,32 @@ class X_Program:
         if os.name == 'nt':
             if show != SW_NORMAL:
                 startupinfo = STARTUPINFO()  
-                startupinfo.dwFlags |= 1 # = STARTF_USESHOWWINDOW    # |= 1               
+                startupinfo.dwFlags |= STARTF_USESHOWWINDOW    # |= 1               
                 startupinfo.wShowWindow = show
                 return dict(startupinfo=startupinfo)
         return dict(startupinfo=None) 
 
 
-    def _get_exePath (self): 
+    def _get_exePath (self, parent_file : str): 
         """trys to find path to call programName"""
+
+        parent_dir = os.path.dirname(os.path.realpath(parent_file))
 
         exePath = ''
 
-        _checkPath = os.path.join('..' , EXE_DIR)
+        if os.name == 'nt':
+            assets_dir = EXE_DIR_WIN
+        else: 
+            assets_dir = EXE_DIR_UNIX     
+        assets_dir = os.path.normpath (assets_dir)  
+
+        _checkPath = os.path.join (parent_dir , assets_dir)
+
         if os.path.isfile(os.path.join(_checkPath, self.name +'.exe')) : 
             exePath = os.path.abspath(_checkPath) 
             logger.info (f"{self.name} found in: {_checkPath}" )
         else:     
-            _checkPath = os.path.join('.' , EXE_DIR)
-            if os.path.isfile(os.path.join(_checkPath, self.name +'.exe')) : 
-                exePath = os.path.abspath(_checkPath) 
-                logger.debug ("%s found in: %s" % (self.name,_checkPath))
-            else:
-                logger.debug ("Using OS search path to execute %s" % (self.name))
+            logger.debug ("Using OS search path to execute %s" % (self.name))
         return exePath
 
 

@@ -297,7 +297,7 @@ class Diagram_Item_Welcome (Diagram_Item):
         p1.setZValue(5)
         self._title_item = p1
 
-        self.setFixedHeight(200)
+        self.setFixedHeight(220)
 
 
     def _welcome_message (self) -> str: 
@@ -305,22 +305,37 @@ class Diagram_Item_Welcome (Diagram_Item):
 
         message = """
 <span style="font-size: 18pt; color: whitesmoke">Welcome to <strong>Airfoil<span style="color:deeppink">Editor</span></strong></span>
+<br>
 
 <span style="font-size: 10pt; color: darkgray">
-<p>
-    This is an example airfoil as no airfoil was provided on startup. Try out the functionality with this example airfoil or  
-    <strong><span style="color: silver;">Open&nbsp;</span></strong>an existing airfoil.
-    <p>
-    You can view the properties of an airfoil like thickness distribution or camber, analyze the curvature of the surface or  
-    <strong><span style="color: silver;">Modify</span></strong> the airfoils geometry. 
-    </p> 
-    <p>
-    <strong><span style="color: silver;">New as Bezier</span></strong> allows to convert the airfoil into an airfoil which is based on two Bezier curves.
-    </p> 
-    <p>
-    <span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the Airfoil Editor to open an airfoil with a double click.
-    </p>
-</p>
+<table style="width:100%">
+  <tr>
+    <td style="width:50%">
+        <p>
+        This is an example airfoil as no airfoil was provided on startup.<br>
+        Try out the functionality with this example airfoil or <strong><span style="color: silver;">Open&nbsp;</span></strong>an existing airfoil.
+        </p> 
+        <p>
+        You can view the properties of an airfoil like thickness distribution or camber,<br> 
+        analyze with <strong><span style="color: silver;">View Curvature</span></strong> the upper and lower surface or <br>
+        examine the polars created by Worker & Xfoil with <strong><span style="color: silver;">View Polar</span></strong>. 
+        </p> 
+        <p>
+        <span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the Airfoil Editor to open an airfoil with a double click.
+        </p>
+    </td>
+    <td style="width:50%">
+        <p>
+        <strong><span style="color: silver;">Modify Airfoil</span></strong> lets you change the geometry of the airfoil<br> 
+        creating a new design for each change.
+        </p> 
+        <p>
+        <strong><span style="color: silver;">New as Bezier</span></strong> allows to convert the airfoil into a new airfoil<br> 
+        based on two Bezier curves. Use the 'Match Bezier' optimization algorithm. 
+        </p> 
+    </td>
+  </tr>
+</table>
 </span>
 """
         return message
@@ -628,7 +643,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
             # show Welcome text if Airfoil is the Example arfoil 
             item = Diagram_Item_Welcome (self)
-            self._add_item (item, r, 0)
+            self._add_item (item, r, 0, colspan=2)
             r += 1
 
         item = Diagram_Item_Airfoil (self, getter=self.airfoils)
@@ -752,7 +767,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
                 SpaceR (l,r, height=10, stretch=1)
                 r += 1
-                Label  (l,r,c, colSpan=6, get="Powered by Worker using Xfoil", style=style.COMMENT)
+                Label  (l,r,c, colSpan=6, get=f"Powered by Worker {Worker.version} using Xfoil", style=style.COMMENT, fontSize=size.SMALL)
 
             else: 
                 SpaceR (l,r, height=10) 

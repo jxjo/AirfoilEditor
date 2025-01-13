@@ -168,10 +168,12 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
         r,c = 0, 0 
         Field (l,r,c, colSpan=3, width=180, get=lambda: self.airfoilg_org.fileName)
         r += 1
-        ComboSpinBox (l,r,c, colSpan=3, width=150, get=self.airfoil_fileName, 
+        ComboSpinBox (l,r,c, colSpan=2, width=150, get=self.airfoil_fileName, 
                              set=self.set_airfoil_by_fileName,
                              options=self.airfoil_fileNames,
                              signal=False)
+        ToolButton   (l,r,c+2, icon=Icon.DELETE, set=self.remove_current_airfoil,
+                      disable=lambda: len(self.case.airfoil_designs) <2)
         r += 1
         SpaceR (l,r)
         l.setRowStretch (r,2)
@@ -187,7 +189,7 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
                         toolTip="Cancel modifications of airfoil and leave edit mode")
         r += 1
         SpaceR (l,r, height=5, stretch=0)
-        l.setColumnStretch (1,2)
+        l.setColumnStretch (3,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         return l
@@ -213,6 +215,15 @@ class Panel_File_Edit (Panel_Airfoil_Abstract):
 
         airfoil = self.case.get_design_by_name (fileName)
         self.myApp.set_airfoil (airfoil)
+
+
+    def remove_current_airfoil (self):
+        """ remove current design and set new current design airfoil by fileName"""
+
+        next_airfoil = self.case.remove_design (self.airfoil())
+
+        if next_airfoil: 
+            self.myApp.set_airfoil (next_airfoil)
 
 
 

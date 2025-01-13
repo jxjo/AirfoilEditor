@@ -44,7 +44,7 @@ def create_airfoil_from_path (parent, pathFilename, example_if_none=False, silen
             airfoil = Airfoil_Hicks_Henne (pathFileName=pathFilename)
         else: 
             airfoil = Airfoil(pathFileName=pathFilename, geometry=GEO_BASIC)
-    except ValueError:
+    except:
         file_found = False
 
     if file_found:
@@ -63,7 +63,7 @@ def create_airfoil_from_path (parent, pathFilename, example_if_none=False, silen
 
         if silent: 
             logger.error (f"Could not load '{pathFilename}'")
-        else: 
+        elif pathFilename: 
             fileName = os.path.basename (pathFilename)
             if not file_found:
                 msg = f"{fileName} does not exist."

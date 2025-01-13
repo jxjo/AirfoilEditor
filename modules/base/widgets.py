@@ -60,7 +60,8 @@ class style (Enum):
 class size (Enum):
     HEADER         = (11, QFont.Weight.Medium) # (13, QFont.Weight.ExtraLight)
     HEADER_SMALL   = (10, QFont.Weight.DemiBold)
-    NORMAL         = (11, QFont.Weight.Normal) 
+    NORMAL         = ( 9, QFont.Weight.Normal) 
+    SMALL          = ( 7, QFont.Weight.Normal) 
 
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
 ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
@@ -717,7 +718,7 @@ class Widget:
             widget : QWidget = self
 
         # set font 
-        if self._font == size.HEADER or self._font == size.HEADER_SMALL:
+        if self._font != size.NORMAL:
             font = widget.font() 
             font.setPointSize(self._font.value[0])
             font.setWeight   (self._font.value[1])  
