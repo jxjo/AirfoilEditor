@@ -336,8 +336,16 @@ class X_Program:
 
             # uses subproocess run which returns a CompletedProcess instance 
 
+            if capture_output:
+                # needed when running as pyinstaller .exe 
+                # https://stackoverflow.com/questions/7006238/how-do-i-hide-the-console-when-i-use-os-system-or-subprocess-call/7006424#7006424
+                if os.name == 'nt':
+                    flags = CREATE_NO_WINDOW    
+                else: 
+                    flags  = 0          
+
             completed   = run (exe + args, text=True, 
-                               input=input_stream, capture_output=capture_output)
+                               input=input_stream, capture_output=capture_output, creationflags=flags)
 
             logger.debug (f"==> run sync: '{exe + args}'")
 

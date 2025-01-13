@@ -544,8 +544,11 @@ class App_Main (QMainWindow):
         toDict (settings,'bezier_te_bunch', Panelling_Bezier().te_bunch)
 
         # save airfoils
-        airfoil = self.airfoil_org if self.airfoil().usedAsDesign else self.airfoil()
-        toDict (settings,'last_opened', airfoil.pathFileName)
+        airfoil : Airfoil = self.airfoil_org if self.airfoil().usedAsDesign else self.airfoil()
+
+        if not airfoil.isExample:
+            toDict (settings,'last_opened', airfoil.pathFileName)
+            
         ref_list = []
         for airfoil in self.airfoils_ref:
             ref_list.append (airfoil.pathFileName)
