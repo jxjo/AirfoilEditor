@@ -273,7 +273,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 obj=self.geo, prop=Geometry.max_camb_x,
                 disable=lambda: self.airfoil().isBezierBased or self.airfoil().isSymmetrical)
         r += 1
-        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.1,
+        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.05,
                 obj=self.geo, prop=Geometry.le_radius,
                 disable=lambda: self.airfoil().isBezierBased)
         r += 1
@@ -367,8 +367,8 @@ class Panel_Panels (Panel_Airfoil_Abstract):
             text.append("- Min. angle of two panels is < 150°")
         if self.geo().panelAngle_le == 180.0: 
             text.append("- Leading edge has 2 points")
-        if self.geo().nPanels < 120 or self.geo().nPanels > 260: 
-            text.append("- No of panels should be > 120 and < 260")
+        if self.geo().nPanels < 100 or self.geo().nPanels > 200: 
+            text.append("- No of panels should be > 100 and < 200")
         
         text = '\n'.join(text)
         return text 

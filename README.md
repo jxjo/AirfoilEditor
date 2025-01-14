@@ -1,21 +1,22 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-# v2.0
+# v3.0
 
 
-The AirfoilEditor is on one hand a fast airfoil viewer and on the other hand a powerful editor to modify the geometry of an airfoil. Focusing on an airfoils geometry the principle of this app is: Don't do too much but do it really well.
+The AirfoilEditor is on one hand a fast airfoil viewer and on the other hand a powerful editor to modify the geometry of an airfoil. Focusing on an airfoils geometric and aerodynamic characteristics the principle of this app is: Don't do too much but do it really well.
 
 
 Main features:  
 
 * View an airfoil and browse through the airfoils of its subdirectory
-* View the curvature of the airfoil surface
+* Analyze the curvature of the airfoil surface
+* **! New !** View polars of an airfoil  
 * Repanel and normalize the airfoil
 * Modify the geometry parameters thickness, camber, its high points, trailing edge gap  
 * Create a Bezier curve based 'copy' of an airfoil 
 * Blend an airfoil with another airfoil 
 
-The driver for this app was to overcome some of the artefacts using xfoils geometry routines (for example used in Xflr5) when creating geometric 'high quality' airfoils. The focus of the app is on pure geometry work with airfoils - aerodynamic aspects are out of scope. 
+The driver for this app was to overcome some of the artefacts using xfoils geometry routines (for example used in Xflr5) when creating geometric 'high quality' airfoils. 
 
 An attempt was made to create a self-explanatory app that invites to play and try out. Hopefully this objective has been achieved ... 
 
@@ -23,14 +24,14 @@ An attempt was made to create a self-explanatory app that invites to play and tr
 ![AE](images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
 
 
-## Basic concepts
+## Geometry: Basic Concepts
 
 The `AirfoilEditor` implements different "strategies" to represent an airfoils geometry:
 
 - 'Linear interpolation' -  Based on the point coordinates of the airfoils '.dat' file, intermediate points are evaluated with a simple linear interpolation. This is used for fast preview and basic operations.
 - 'Cubic spline interpolation' - A cubic spline is built based on the airfoils point coordinates. The spline allows to evaluate intermediate points with high precision.
 - 'Bezier curve' - An airfoil is represented by two Bezier curves for upper and lower side of the airfoil. A nelder mead optimization allows to approximate the Bezier curves to an existing airfoil.
-- (not in 2.0 beta) 'Hicks Henne' - Hicks Henne bump functions are applied to a "seed airfoil" to achieve a new shape (in development for Xoptfoil2)  
+
 
 The spline interpolation is used to find the position of the 'real' leading edge, which may differ from the leading edge of the coordinates (which is the point with the smallest x-value). When 'normalizing' the airfoil, the 'real' leading edge is taken in an iteration to rotate, stretch and move the airfoil to become 0,0 - 1,0 normalized.
 

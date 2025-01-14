@@ -38,13 +38,12 @@ sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier
-from model.airfoil_examples import Example
 from model.polar_set        import Polar_Definition, Polar_Set
 from model.xo2_driver       import Worker
 from model.case             import Case_Direct_Design
 
 from base.common_utils      import * 
-from base.panels            import Container_Panel, MessageBox
+from base.panels            import Container_Panel
 from base.widgets           import *
 
 from airfoil_widgets        import * 
@@ -64,23 +63,21 @@ logger.setLevel(logging.DEBUG)
 # The App   
 #-------------------------------------------------------------------------------
 
-# ------ globals -----
 
-AppName         = "Airfoil Editor"
-AppVersion      = "3.0 beta 1"
+APP_NAME         = "Airfoil Editor"
+APP_VERSION      = "3.0 beta"
 
 
 class App_Main (QMainWindow):
     '''
         The Airfoil Editor App
-
     '''
 
-    name = AppName  
+    name = APP_NAME  
 
     WORKER_MIN_VERSION          = '1.0.3'
 
-    # Signals 
+    # Qt Signals 
 
     sig_new_airfoil             = pyqtSignal()          # new airfoil selected 
     sig_new_design              = pyqtSignal()          # new airfoil design created 
@@ -101,22 +98,20 @@ class App_Main (QMainWindow):
     def __init__(self, airfoil_file, parent=None):
         super().__init__(parent)
 
-        self._airfoil = None                        # current airfoil 
-        self._airfoil_org = None                    # airfoil saved in edit_mode 
-        self._airfoils_ref = []                     # reference airfoils 
-        self._airfoil_target = None                 # target for match Bezier    
+        self._airfoil        = None                     # current airfoil 
+        self._airfoil_org    = None                     # airfoil saved in edit_mode 
+        self._airfoils_ref   = []                       # reference airfoils 
+        self._airfoil_target = None                     # target for match Bezier    
 
-        self._polar_definitions = None              # current polar definitions  
+        self._polar_definitions = None                  # current polar definitions  
 
-        self._edit_mode = False                     # edit/view mode of app 
-        self._case      = None                      # design Case holding all designs 
+        self._edit_mode = False                         # edit/view mode of app 
+        self._case      = None                          # design Case holding all designs 
 
-        self._data_panel = None 
+        self._data_panel = None                         # main panels of app
         self._file_panel = None
-        self._diagram = None
+        self._diagram    = None
 
-        self.parentApp = parent
-        self.initial_geometry = None                # window geometry at the beginning
 
         # if called from other applcation (PlanformCreator) make it modal to this 
 
@@ -195,11 +190,9 @@ class App_Main (QMainWindow):
         self.sig_enter_panelling.connect        (self._diagram.on_enter_panelling)
 
 
-
+    @override
     def __repr__(self) -> str:
-        # overwritten to get a nice print string 
-        text = f""  
-        return f"<{type(self).__name__}{text}>"
+        return f"<{type(self).__name__}>"
 
 
     def _init_layout (self): 
@@ -388,7 +381,7 @@ class App_Main (QMainWindow):
         self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions()))
 
         logger.debug (f"Load new airfoil: {aNew.name}")
-        self.setWindowTitle (AppName + "  v" + str(AppVersion) + "  [" + self.airfoil().fileName + "]")
+        self.setWindowTitle (APP_NAME + "  v" + str(APP_VERSION) + "  [" + self.airfoil().fileName + "]")
 
         if not silent: 
             if self._airfoil.usedAsDesign:
@@ -465,7 +458,6 @@ class App_Main (QMainWindow):
     # --- airfoil functions -----------------------------------------------
 
 
-
     def blend_with (self): 
         """ run blend airfoil with dialog to blend current with another airfoil""" 
 
@@ -501,7 +493,6 @@ class App_Main (QMainWindow):
             self.airfoil().geo.repanel (just_finalize=True)                
 
         self.sig_airfoil_changed.emit()
-
 
 
     # --- private ---------------------------------------------------------
@@ -548,7 +539,7 @@ class App_Main (QMainWindow):
 
         if not airfoil.isExample:
             toDict (settings,'last_opened', airfoil.pathFileName)
-            
+
         ref_list = []
         for airfoil in self.airfoils_ref:
             ref_list.append (airfoil.pathFileName)
@@ -636,7 +627,7 @@ if __name__ == "__main__":
 
     # command line arguments? 
     
-    parser = argparse.ArgumentParser(prog=AppName, description='View and edit an airfoil')
+    parser = argparse.ArgumentParser(prog=APP_NAME, description='View and edit an airfoil')
     parser.add_argument("airfoil", nargs='*', help="Airfoil .dat or .bez file to show")
     args = parser.parse_args()
     if args.airfoil: 
