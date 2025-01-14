@@ -87,6 +87,8 @@ class X_Program:
     ready       = False                                    # is Worker ready to work 
     ready_msg   = ''                                       # ready or error message 
 
+    instances : list ['X_Program']= []                     # keep track of all instances ceated to reset 
+
     def __init__ (self, workingDir = None):
 
         if workingDir and not os.path.isdir (workingDir):
@@ -101,6 +103,40 @@ class X_Program:
 
         self._tmpInpFile        = None                      # tmpfile of this instance, to be deleted 
 
+        self._finalized         = False                     # worker has done the job - set by parent
+
+        # todo X_Program.add_to_instances (self) 
+
+
+    #---------------------------------------------------------------
+
+    @classmethod
+    def add_to_instances (cls , x_program : 'X_Program'):
+        """ add x_program to instances"""
+
+        cls.instances.append (x_program)
+
+    @classmethod
+    def refresh_get_instances (cls):
+        """ removes finalized instances and returns list of active instances"""
+
+        n_instances = 0
+        n_running   = 0 
+        n_finalized = 0 
+        for x in cls.instances [:]:
+            n_instances += 1
+            if x.isRunning():
+                n_running += 1
+            elif x._finalized: 
+                x._finalized += 1
+                cls.instances.remove (x)
+        logger.debug (f"-- {cls.__name__} {n_instances} instances, {n_running} running,  {n_finalized} finalized")
+
+        return cls.instances
+        
+
+
+    #---------------------------------------------------------------
 
     def __repr__(self) -> str:
         """ nice representation of self """
@@ -250,14 +286,21 @@ class X_Program:
         self._returncode = 0 
         self._pipe_error_lines = None 
 
+
+    def finalize (self):
+        """ do cleanup actions """
+
+        self.remove_tmp_inp_file ()
+        self._finalized = True 
+
+
     def terminate (self):
         """ terminate os process of self"""
 
         if self.isRunning():
             self._popen.terminate()
             self._popen = None 
-
-        self.remove_tmp_inp_file ()
+        self.finalize()
 
     # ---------- Private --------------------------------------
 

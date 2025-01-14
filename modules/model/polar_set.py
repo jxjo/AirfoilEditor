@@ -333,8 +333,6 @@ class Polar_Set:
             polar_def: (list of) Polar_Definition to be added initially
         """
 
-        self.__class__.instances.append(self)       # keep track of all instances
-
         self._airfoil = myAirfoil 
         self._polars = []                           # list of Polars of self is holding
 
@@ -343,12 +341,28 @@ class Polar_Set:
 
         self.add_polar_defs (polar_def)             # add initial polar def 
 
+        Polar_Set.add_to_instances (self)
+
 
     def __repr__(self) -> str:
         """ nice representation of self """
         return f"<{type(self).__name__} of {self.airfoil}>"
 
     #---------------------------------------------------------------
+
+    @classmethod
+    def add_to_instances (cls , polar_set : 'Polar_Set'):
+        """ add polar_set to instances - remove already existing polar_set for a airfoil"""
+
+        airfoil = polar_set.airfoil
+        for a in cls.instances [:]:
+            if a == airfoil:
+                logger.warning (f"-- removing {airfoil} from polat_set instances")
+                cls.instances.remove (airfoil) 
+
+        cls.instances.append (polar_set)
+        logger.debug (f"-- {cls.__name__} now having {len(cls.instances)} instances")
+
 
     @classmethod
     def terminate_polar_generation_except_for (cls, airfoils):
@@ -991,7 +1005,7 @@ class Polar_Worker_Task (Polar_Definition):
         if self._myWorker and self._myWorker.isRunning():
             logger.warning (f"terminating {self}")
             self._myWorker.terminate()
-            self.finalize()
+            self._myWorker = None 
 
 
     def finalize (self):
@@ -999,7 +1013,7 @@ class Polar_Worker_Task (Polar_Definition):
 
         if self._myWorker:
             if not self.isRunning():
-                self._myWorker.remove_tmp_inp_file ()
+                self._myWorker.finalize ()
                 self._myWorker = None 
 
         self._polars = []
