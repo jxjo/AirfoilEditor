@@ -178,10 +178,8 @@ class Blend_Airfoil (Dialog):
 
     name = "Blend Airfoil with ..."
 
-    sig_airfoil_changed    = pyqtSignal ()
+    sig_blend_changed      = pyqtSignal ()
     sig_airfoil2_changed   = pyqtSignal (Airfoil)
-
-    # ---- static members for external use 
 
 
     def __init__ (self, parent : QWidget, 
@@ -248,7 +246,7 @@ class Blend_Airfoil (Dialog):
         if self._airfoil2 is not None: 
             self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2.geo, 
                                      self._blendBy, ensure_fast=True)
-            self.sig_airfoil_changed.emit()
+            self.sig_blend_changed.emit()
 
 
     @property
@@ -266,7 +264,7 @@ class Blend_Airfoil (Dialog):
         if aAirfoil is not None: 
             self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2.geo, 
                                      self._blendBy, ensure_fast=True)
-            self.sig_airfoil_changed.emit()
+            self.sig_blend_changed.emit()
 
 
     @override

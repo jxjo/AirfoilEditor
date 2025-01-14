@@ -87,6 +87,7 @@ class App_Main (QMainWindow):
     sig_airfoils_ref_changed    = pyqtSignal()          # list of reference airfoils changed
     sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
     sig_panelling_changed       = pyqtSignal()          # new panelling
+    sig_blend_changed           = pyqtSignal()          # new (intermediate) blend 
     sig_polar_set_changed       = pyqtSignal()          # new polar sets attached to airfoil
 
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
@@ -183,6 +184,7 @@ class App_Main (QMainWindow):
         self.sig_airfoil_target_changed.connect (self._diagram.on_target_changed)
         self.sig_bezier_changed.connect         (self._diagram.on_bezier_changed)
         self.sig_panelling_changed.connect      (self._diagram.on_airfoil_changed)
+        self.sig_blend_changed.connect          (self._diagram.on_airfoil_changed)
         self.sig_polar_set_changed.connect      (self._diagram.on_polar_set_changed)
         self.sig_airfoils_ref_changed.connect   (self._diagram.on_airfoils_ref_changed)
 
@@ -465,7 +467,7 @@ class App_Main (QMainWindow):
 
         dialog = Blend_Airfoil (self, self.airfoil(), self.airfoil_org)  
 
-        dialog.sig_airfoil_changed.connect (self.sig_airfoil_changed.emit)
+        dialog.sig_blend_changed.connect (self.sig_blend_changed.emit)
         dialog.sig_airfoil2_changed.connect (self.set_airfoil_target)
         dialog.exec()     
 

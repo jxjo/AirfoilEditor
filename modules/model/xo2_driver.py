@@ -11,6 +11,7 @@ the path to program location location must be set
 
 
 import os
+from tempfile       import NamedTemporaryFile
 from subprocess     import Popen, run, CREATE_NEW_CONSOLE, PIPE, STARTUPINFO, STARTF_USESHOWWINDOW, CREATE_NO_WINDOW
 from glob           import glob
 from io             import StringIO
@@ -36,7 +37,7 @@ SW_MINIMIZE = 6
 EXE_DIR_WIN    = 'assets/windows'                  # directory of exe files 
 EXE_DIR_UNIX   = 'assets/linux'                    
 
-TMP_INPUT_NAME = 'tmpInput'                         # temporary input file (~1 will be appended)
+TMP_INPUT_NAME = 'tmp~'                             # temporary input file (~1 will be appended)
 TMP_INPUT_EXT  = '.inp'
 
 #------- Helper function -----------------------------------------#
@@ -767,50 +768,43 @@ class Worker (X_Program):
         &xfoil_run_options
             ncrit = 7.0
         /
-        :return: filename of input file  """
+        :return: pathFilename of input file  """
+
+        tmpFilePath = None
 
         airfoilPath, airfoilFileName = os.path.split(airfoilPathFileName)
 
-        # find a tmp filename not used up to now 
+        # create tmp input file 
 
-        tmpFilePath = os.path.join (airfoilPath, TMP_INPUT_NAME + TMP_INPUT_EXT)
-        i = 0 
-        while os.path.isfile (tmpFilePath):                                 # find a non existing tmp name 
-            i += 1
-            tmpFilePath = os.path.join (airfoilPath, f"{TMP_INPUT_NAME}~{i}{TMP_INPUT_EXT}")
-    
-        stream = open(tmpFilePath, 'w+')
+        with NamedTemporaryFile(mode="w", delete=False, dir=airfoilPath, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
 
-        # generate tmp in dir of airfoil 
+            tmp.write ("&polar_generation\n")
+            tmp.write ("  type_of_polar = %d\n" % polarType)  
+            tmp.write ("  polar_reynolds  = %s\n" % (', '.join(str(e) for e in reNumbers))) 
+            if max(maNumbers) > 0.0: 
+                tmp.write ("  polar_mach  = %s\n" % (', '.join(str(e) for e in maNumbers))) 
+            if autoRange:
+                tmp.write ("  auto_range = .true.\n") 
+                if valRange[2]:                                 # write only increment
+                    tmp.write ("  op_point_range = , , %.2f \n" % (valRange[2])) 
+            else:
+                if spec_al:  tmp.write ("  op_mode = 'spec-al'\n") 
+                else:        tmp.write ("  op_mode = 'spec-cl'\n") 
+                tmp.write ("  op_point_range = %.2f , %.2f , %.2f \n" % (valRange[0], valRange[1], valRange[2])) 
+            tmp.write ("/\n")
 
-        stream.write ("&polar_generation\n")
-        stream.write ("  type_of_polar = %d\n" % polarType)  
-        stream.write ("  polar_reynolds  = %s\n" % (', '.join(str(e) for e in reNumbers))) 
-        if max(maNumbers) > 0.0: 
-            stream.write ("  polar_mach  = %s\n" % (', '.join(str(e) for e in maNumbers))) 
-        if autoRange:
-            stream.write ("  auto_range = .true.\n") 
-            if valRange[2]:                                 # write only increment
-                stream.write ("  op_point_range = , , %.2f \n" % (valRange[2])) 
-        else:
-            if spec_al:  stream.write ("  op_mode = 'spec-al'\n") 
-            else:        stream.write ("  op_mode = 'spec-cl'\n") 
-            stream.write ("  op_point_range = %.2f , %.2f , %.2f \n" % (valRange[0], valRange[1], valRange[2])) 
-        stream.write ("/\n")
+            tmp.write ("&xfoil_run_options\n")
+            tmp.write ("  ncrit = %.1f\n" % ncrit)  
+            tmp.write ("/\n")
 
-        stream.write ("&xfoil_run_options\n")
-        stream.write ("  ncrit = %.1f\n" % ncrit)  
-        stream.write ("/\n")
+            if nPoints is not None: 
+                tmp.write ("&paneling_options\n")
+                tmp.write (f"  npoint = {int(nPoints)}\n")  
+                tmp.write ("/\n")
 
-        if nPoints is not None: 
-            stream.write ("&paneling_options\n")
-            stream.write (f"  npoint = {int(nPoints)}\n")  
-            stream.write ("/\n")
+            tmpFilePath = tmp.name
 
-        stream.close()
-        tmpFile = tmpFilePath 
-
-        return tmpFile              
+        return tmpFilePath              
 
 
 
