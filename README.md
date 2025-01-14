@@ -39,7 +39,15 @@ For thickness and camber geometry operations the airfoil (spline) is splitted in
 
 The same approach is applied to move the highpoint of the upper and lower side of the airfoil which makes it possible to optimize the upper and lower side independently of each other.
 
+<figure>
+  <img src="images/Modify.png" alt="my alt text"/>
+  <figcaption><sub>The 'Edit Mode' of the Airfoil Editor allowing to change the geometry either by value or by moving the mouse helper points. Each change creates a new 'Design' variant which allows to browse through the changes made in this session. </sub></figcaption>
+</figure>
+
+
 ![Modify](images/Modify.png "Screenshot of Modifying Airfoil")
+<sub>The 'Edit Mode' of the Airfoil Editor allowing to change the geometry either by value or by moving the mouse helper points. Each change creates a new 'Design' variant which allows to browse through the changes made in this session. </sub>
+</p>
 
 Repaneling is based on a modified cosine distribution of the airfoil points on the arc of the spline. This differs from the xfoil approach but the repanel shows 'nice' behavior in aero calculation. 
 
