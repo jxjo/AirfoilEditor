@@ -94,7 +94,7 @@ The Airfoil Editor allows to visualize the Hicks-Henne functions which were appl
 
 ## Airfoil Polars
 
-To generate the polars of an airfoil the `AirfoilEditor` uses the `Worker` tool of the [ Xoptfoil2](https://jxjo.github.io/Xoptfoil2) project. On of the `Worker` actions is the multi-threaded creation of a polar set using Xfoil.
+To generate the polars of an airfoil the `AirfoilEditor` uses the `Worker` tool of the [Xoptfoil2 project](https://jxjo.github.io/Xoptfoil2). On of the `Worker` actions is the multi-threaded creation of a polar set using Xfoil.
 
 Within the app a polar is generated 'lazy' - meaning at the moment when the polar should be displayed - and asynchronous in a backround task. Each polar is stored in a single file having the Xfoil polar format. This approach allows to step through airfoils or the designs of an airfoil and present the polars without further user interaction.
 
@@ -102,11 +102,11 @@ For polar generation the `auto_range` feature of the `Worker` is applied which o
 
 
 ![Polars](images/Polars.png "Screenshot of Polar Generation")
-<sub>Polar view with the polar definitions and settings for the polar diagrams. The polars are generated in the background. </sub>
+<sub>Polar view with polar definitions and settings for the polar diagrams. The polars were generated in the background. </sub>
 
 ### Airfoil Direct Design 
 
-The combination of the 'Edit Mode' and automated polar generation allows a playful approach to a 'Direct Design' of an airfoil based its geometry: Each modification, e.g. moving the camber highpoint or the control point of a Bezier curve, will generate a new design with its individual new polars. Stepping through the design polars creates an intuitive understanding how geometeric modifications influence the aerodynamic characteristics of an airfoil. 
+The combination of the 'Edit Mode' and automated polar generation allows a playful approach to a 'Direct Design' of an airfoil based on its geometry: Each modification, e.g. moving the camber highpoint or the control point of a Bezier curve, will generate a new design with its individual new polars. Stepping through the design polars creates an intuitive understanding how geometeric modifications influence the aerodynamic characteristics of an airfoil. 
 
 
 ![Polars](images/Polars_direct_design.png "Direct Design with polar gneration")

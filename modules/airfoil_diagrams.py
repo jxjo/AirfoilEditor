@@ -373,7 +373,7 @@ class Diagram_Item_Polars (Diagram_Item):
         self.set_xyVars (xyVars)                        # polar vars for x,y axis 
 
         self._title_item2 = None                        # a second 'title' for x-axis 
-        self._viewRange_needs_to_be_set = None          # to handle initial no polars to autoRange 
+        self._autoRange_not_set = True                  # to handle initial no polars to autoRange 
 
         self.name = f"{self.name} {iItem}"
 
@@ -458,15 +458,22 @@ class Diagram_Item_Polars (Diagram_Item):
 
 
     @override
+    def refresh(self): 
+        """ refresh my artits and section panel """
+
+        if self._autoRange_not_set:
+            self._viewRange_set = False                     # ensure refresh will setup_viewRange (autoRange)
+
+        super().refresh()
+
+        return
+
+
+    @override
     def setup_artists (self):
         """ create and setup the artists of self"""
 
         a = Polar_Artist     (self, self.airfoils, xyVars=self._xyVars, show_legend=True)
-
-        # handle initial no polars to in initiate delayed viewRange
-        a.sig_no_polar_plotted.connect      (self._on_no_polar_plotted)
-        a.sig_new_polars_generated.connect  (self._on_new_polars_generated)
-
         self._add_artist (a)
 
 
@@ -476,7 +483,11 @@ class Diagram_Item_Polars (Diagram_Item):
 
         self.viewBox.setDefaultPadding(0.05)
 
-        self.viewBox.autoRange ()                           # first ensure best range x,y 
+        # it could be that there are initially no polars, so autoRange wouldn't set a range, retry at next refresh
+        if  self.viewBox.childrenBounds() != [None,None] and self._autoRange_not_set:
+            self.viewBox.autoRange ()                           # first ensure best range x,y 
+            self._autoRange_not_set = False 
+
         self.viewBox.enableAutoRange(enable=False)
 
         self.showGrid(x=True, y=True)
@@ -508,22 +519,6 @@ class Diagram_Item_Polars (Diagram_Item):
         l : QGraphicsGridLayout = self.legend.layout
         l.setVerticalSpacing(-5)
 
-
-    def _on_no_polar_plotted (self):
-        """ slot - handle initial no polar plotted"""
-
-        if self._viewRange_needs_to_be_set is None: 
-            self._viewRange_needs_to_be_set = True 
-
-
-    def _on_new_polars_generated (self):
-        """ slot - new polars arrived refresh """
-
-        if self._viewRange_needs_to_be_set == True: 
-            self._viewRange_needs_to_be_set = False 
-            self._viewRange_set = False
-
-        self.refresh()
 
 
 #-------------------------------------------------------------------------------
@@ -810,6 +805,15 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on new design")
         self.refresh(also_viewRange=False)
+
+
+    def on_new_polars (self):
+        """ slot to handle new polars loaded which were generated async by Worker """
+
+        logger.debug (f"{str(self)} on new polars")
+
+        for item in self._get_items (Diagram_Item_Polars):
+            item.refresh ()
 
 
     def on_bezier_changed (self, aSide_type: Line.Type):

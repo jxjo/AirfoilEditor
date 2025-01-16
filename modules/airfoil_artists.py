@@ -893,17 +893,13 @@ class Airfoil_Line_Artist (Artist, QObject):
 class Polar_Artist (Artist):
     """Plot the airfoils contour  """
 
-    sig_no_polar_plotted         = pyqtSignal()          # nothing plotted - viewRange won't be set 
-    sig_new_polars_generated     = pyqtSignal()          # inform to refresh self  
 
     def __init__ (self, axes, modelFn, 
                   xyVars = (CD, CL), 
-                  onDblclick=None,
-                  onPolarGeneration = None,
                   **kwargs):
         super().__init__ (axes, modelFn, **kwargs)
 
-        self._show_points = False                       # show point marker 
+        self._show_points = True                       # show point marker 
         self._xyVars = xyVars                           # definition of x,y axis
 
 
@@ -929,7 +925,10 @@ class Polar_Artist (Artist):
 
         if not self.airfoils : return 
 
-        Polar_Set.terminate_polar_generation_except_for (self.airfoils)
+        # cancel all polar generations which are not for this current set of airfoils 
+        #   to avoid to many os worker threads 
+
+        Polar_Task.terminate_instances_except_for (self.airfoils)
 
         # load or generate polars which are not loaded up to now
 
@@ -940,7 +939,7 @@ class Polar_Artist (Artist):
         # plot polars of airfoils
 
         nPolar_plotted      = 0 
-        nPolar_calculations = 0                     # is there a polar in calculation 
+        nPolar_generating = 0                     # is there a polar in calculation 
         error_msg           = []  
 
         airfoil: Airfoil
@@ -962,7 +961,7 @@ class Polar_Artist (Artist):
                 self._plot_polar (self.airfoils, airfoil, polar, color)
 
                 if not polar.isLoaded: 
-                    nPolar_calculations += 1
+                    nPolar_generating += 1
                 elif polar.error_occurred:
                     # in error_msg could be e.g. '<' 
                     error_msg.append (f"'{airfoil.name_to_show} - {polar.name}': {html.escape(polar.error_reason)}")
@@ -977,20 +976,16 @@ class Polar_Artist (Artist):
 
         # show generating message 
 
-        if nPolar_calculations > 0: 
-            if nPolar_calculations == 1:
+        if nPolar_generating > 0: 
+            if nPolar_generating == 1:
                 text = f"Generating polar"
             else: 
-                text = f"Generating {nPolar_calculations} polars"
+                text = f"Generating {nPolar_generating} polars"
             self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
 
             # refresh for new polars 
-            QTimer().singleShot(1000, self.check_for_new_polars)     # delayed emit 
+            # QTimer().singleShot(1000, self.check_for_new_polars)     # delayed emit 
 
-        # info to diagram item that nothing plotted --> viewRange 
-
-        if nPolar_plotted == 0:
-            self.sig_no_polar_plotted.emit()
 
 
     def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color): 
@@ -1042,29 +1037,3 @@ class Polar_Artist (Artist):
         self._plot_dataItem  (x, y, name=label, pen = pen, 
                                 symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                 antialias = antialias, zValue=zValue)
-
-
-    def check_for_new_polars (self):
-        """ 
-        checks and loads new polars
-            - if there are new: refresh 
-            - if not single shot for next check 
-        """
-        n_new = 0 
-        all_loaded = True 
-
-        for airfoil in self.airfoils: 
-            polarSet : Polar_Set = airfoil.polarSet
-            if polarSet.has_polars_not_loaded:
-                n_new += polarSet.load_or_generate_polars ()
-                all_loaded = False
-
-        if n_new > 0:
-            logger.debug (f"{self} Found {n_new} new polars")
-            self.sig_new_polars_generated.emit ()           # inform diagram item to refresh self 
-
-        elif not all_loaded:
-            QTimer().singleShot(300, self.check_for_new_polars) 
-        else: 
-            self.sig_new_polars_generated.emit ()           # final refresh (for second diagram) 
-

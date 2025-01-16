@@ -87,7 +87,6 @@ class X_Program:
     ready       = False                                    # is Worker ready to work 
     ready_msg   = ''                                       # ready or error message 
 
-    instances : list ['X_Program']= []                     # keep track of all instances ceated to reset 
 
     def __init__ (self, workingDir = None):
 
@@ -103,40 +102,6 @@ class X_Program:
 
         self._tmpInpFile        = None                      # tmpfile of this instance, to be deleted 
 
-        self._finalized         = False                     # worker has done the job - set by parent
-
-        # todo X_Program.add_to_instances (self) 
-
-
-    #---------------------------------------------------------------
-
-    @classmethod
-    def add_to_instances (cls , x_program : 'X_Program'):
-        """ add x_program to instances"""
-
-        cls.instances.append (x_program)
-
-    @classmethod
-    def refresh_get_instances (cls):
-        """ removes finalized instances and returns list of active instances"""
-
-        n_instances = 0
-        n_running   = 0 
-        n_finalized = 0 
-        for x in cls.instances [:]:
-            n_instances += 1
-            if x.isRunning():
-                n_running += 1
-            elif x._finalized: 
-                x._finalized += 1
-                cls.instances.remove (x)
-        logger.debug (f"-- {cls.__name__} {n_instances} instances, {n_running} running,  {n_finalized} finalized")
-
-        return cls.instances
-        
-
-
-    #---------------------------------------------------------------
 
     def __repr__(self) -> str:
         """ nice representation of self """
@@ -222,7 +187,7 @@ class X_Program:
             if self._popen.returncode is None: 
 
                 isRunning = True
-                logger.debug (f"==> {self.name} running" )
+                # logger.debug (f"==> {self.name} running" )
 
             else: 
 
@@ -291,7 +256,6 @@ class X_Program:
         """ do cleanup actions """
 
         self.remove_tmp_inp_file ()
-        self._finalized = True 
 
 
     def terminate (self):
@@ -300,7 +264,7 @@ class X_Program:
         if self.isRunning():
             self._popen.terminate()
             self._popen = None 
-        self.finalize()
+
 
     # ---------- Private --------------------------------------
 
@@ -570,7 +534,68 @@ class Worker (X_Program):
 
     name    = 'Worker'
 
-        
+    # -- static methods --------------------------------------------
+
+    @staticmethod
+    def remove_polarDir (airfoilPath, polarDir, only_if_older = False):
+        """ 
+        deletes polar directory of airfoilPathFileName
+        If only_if_older the directory is not removed if it is younger than the airfoil
+        """ 
+
+        # sanity check 
+        if not os.path.isdir(polarDir): return 
+
+        remove = True 
+
+        if only_if_older and os.path.isfile(airfoilPath):
+
+            # compare datetime of airfoil file and polar dir 
+            ts = os.path.getmtime(polarDir)                 # file modification timestamp of a file
+            polarDir_dt = datetime.datetime.fromtimestamp(ts)        # convert timestamp into DateTime object
+
+            ts = os.path.getmtime(airfoilPath)              # file modification timestamp of a file
+            airfoil_dt = datetime.datetime.fromtimestamp(ts)         # convert timestamp into DateTime object
+
+            # add safety seconds (async stuff?) 
+            if (airfoil_dt < (polarDir_dt + datetime.timedelta(seconds=2))):
+                remove = False 
+
+        if remove: 
+            shutil.rmtree(polarDir, ignore_errors=True)
+
+
+    @staticmethod
+    def get_existingPolarFile (airfoil_pathFileName, 
+                               polarType : str, re :float, ma : float, ncrit : float):
+        """ 
+        Get pathFileName of polar file if it exists 
+        """ 
+
+        polar_pathFileName = None
+
+        # build name of polar dir from airfoil file 
+        polarDir = str(Path(airfoil_pathFileName).with_suffix('')) + '_polars'
+
+        # remove a maybe older polarDir
+        Worker.remove_polarDir (airfoil_pathFileName, polarDir, only_if_older=True)    
+
+        # no polarDir - no polarFile 
+        if os.path.isdir (polarDir):            
+
+            # build the typical xfoil filename like T1_Re0.500_M0.00_N7.0.txt
+            polar_fileName     =  f'{polarType}_Re{re/1000000:.3f}_M{ma:.2f}_N{ncrit:.1f}.txt'
+            polar_pathFileName = os.path.join (polarDir, polar_fileName)
+
+            # check if polar file exists
+            if not os.path.isfile (polar_pathFileName):
+                polar_pathFileName = None
+
+        return polar_pathFileName 
+
+    #---------------------------------------------------------------
+
+
     def showHelp(self):
         
         return (self._execute_Worker ("help"))
@@ -668,65 +693,6 @@ class Worker (X_Program):
         else: 
             raise Exception ("generatePolar - airfoil file %s doesn't exist" % airfoilPathFileName )
 
-
-
-    def get_existingPolarFile (self, airfoilPathFileName, 
-                               polarType : str, re :float, ma : float, ncrit : float):
-        """ 
-        Get exsting polar file of airfoilPathFileName 
-        """ 
-
-        # if worker is still working return 
-        if self.isRunning():
-            return None
-        elif self.finished_returncode:
-            raise RuntimeError (f"Worker failed: {self.finished_errortext}")
-
-        # build name of polar dir from airfoil file 
-        polarDir = str(Path(airfoilPathFileName).with_suffix('')) + '_polars'
-
-        # remove a maybe older polarDir
-        self.remove_polarDir (airfoilPathFileName, polarDir, only_if_older=True)    
-
-        # no polarDir - no polarFile 
-        if os.path.isdir (polarDir):            
-
-            # check if polar file exists
-            polar_fileName = self._build_xfoil_fileName (polarType, re, ma, ncrit)
-            polar_pathFileName = os.path.join (polarDir, polar_fileName)
-
-            if os.path.isfile (polar_pathFileName):
-                return polar_pathFileName
-
-        return None 
-
-
-    def remove_polarDir (self, airfoilPath, polarDir, only_if_older = False):
-        """ 
-        deletes polar directory of airfoilPathFileName
-        If only_if_older the directory is not removed if it is younger than the airfoil
-        """ 
-
-        # sanity check 
-        if not os.path.isdir(polarDir): return 
-
-        remove = True 
-
-        if only_if_older and os.path.isfile(airfoilPath):
-
-            # compare datetime of airfoil file and polar dir 
-            ts = os.path.getmtime(polarDir)                 # file modification timestamp of a file
-            polarDir_dt = datetime.datetime.fromtimestamp(ts)        # convert timestamp into DateTime object
-
-            ts = os.path.getmtime(airfoilPath)              # file modification timestamp of a file
-            airfoil_dt = datetime.datetime.fromtimestamp(ts)         # convert timestamp into DateTime object
-
-            # add safety seconds (async stuff?) 
-            if (airfoil_dt < (polarDir_dt + datetime.timedelta(seconds=2))):
-                remove = False 
-
-        if remove: 
-            shutil.rmtree(polarDir, ignore_errors=True)
 
 
     def clean_workingDir (self, workingDir):
@@ -848,14 +814,6 @@ class Worker (X_Program):
             tmpFilePath = tmp.name
 
         return tmpFilePath              
-
-
-
-    def _build_xfoil_fileName (self, polarType : str, re :float, ma : float, ncrit : float):
-        """ build the typical xfoil filename like T1_Re0.500_M0.00_N7.0.txt"""
-
-        return f'{polarType}_Re{re/1000000:.3f}_M{ma:.2f}_N{ncrit:.1f}.txt'
-
 
 
 # -------------- End --------------------------------------
