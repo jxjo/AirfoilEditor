@@ -483,9 +483,10 @@ class Diagram_Item_Polars (Diagram_Item):
 
         self.viewBox.setDefaultPadding(0.05)
 
+        self.viewBox.autoRange ()                           # ensure best range x,y 
+
         # it could be that there are initially no polars, so autoRange wouldn't set a range, retry at next refresh
         if  self.viewBox.childrenBounds() != [None,None] and self._autoRange_not_set:
-            self.viewBox.autoRange ()                           # first ensure best range x,y 
             self._autoRange_not_set = False 
 
         self.viewBox.enableAutoRange(enable=False)
@@ -544,6 +545,8 @@ class Diagram_Airfoil_Polar (Diagram):
         self._polar_panel   = None 
         self._polar_defs_fn = polar_defs_fn 
         self._diagram_settings = diagram_settings
+
+        self._show_operating_points = False             # show polars operating points 
 
         super().__init__(*args, **kwargs)
 
@@ -721,6 +724,19 @@ class Diagram_Airfoil_Polar (Diagram):
         return self._section_panel 
 
 
+    @property 
+    def show_operating_points (self) -> bool:
+        """ show polar operatins points """
+        return self._show_operating_points
+
+    def set_show_operating_points (self, aBool : bool):
+        self._show_operating_points = aBool
+
+        artist : Polar_Artist
+        for artist in self._get_artist (Polar_Artist):
+            artist.set_show_points (aBool) 
+
+
     @property
     def polar_panel (self) -> Edit_Panel:
         """ return polar extra panel to admin polar definitions and define polar diagrams"""
@@ -760,6 +776,11 @@ class Diagram_Airfoil_Polar (Diagram):
                     SpaceC      (l,c+5)
                     r += 1
 
+                SpaceR (l,r, height=10, stretch=0) 
+                r += 1
+                CheckBox (l,r,c, text="Operating points", colSpan=4,
+                                get=lambda: self.show_operating_points, set=self.set_show_operating_points) 
+                r += 1
                 SpaceR (l,r, height=10, stretch=1)
                 r += 1
                 Label  (l,r,c, colSpan=6, get=f"Powered by Worker {Worker.version} using Xfoil", style=style.COMMENT, fontSize=size.SMALL)

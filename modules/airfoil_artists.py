@@ -891,7 +891,7 @@ class Airfoil_Line_Artist (Artist, QObject):
 
 
 class Polar_Artist (Artist):
-    """Plot the airfoils contour  """
+    """Plot the polars of airfoils """
 
 
     def __init__ (self, axes, modelFn, 
@@ -899,14 +899,15 @@ class Polar_Artist (Artist):
                   **kwargs):
         super().__init__ (axes, modelFn, **kwargs)
 
-        self._show_points = True                       # show point marker 
+        self._show_points = False                       # show point marker 
         self._xyVars = xyVars                           # definition of x,y axis
 
 
     @property
     def show_points(self): return self._show_points
-    def set_show_points (self, aBool): self._show_points = aBool 
-
+    def set_show_points (self, aBool): 
+        self._show_points = aBool 
+        self.refresh()
 
     @property
     def xyVars(self): return self._xyVars
