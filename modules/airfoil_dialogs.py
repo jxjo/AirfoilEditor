@@ -189,6 +189,8 @@ class Blend_Airfoil (Dialog):
         self._airfoil  = airfoil 
         self._airfoil1 = airfoil1
         self._airfoil2 = None
+        self._airfoil2_copy = None
+        
         self._blendBy  = 0.5                            # initial blend value 
 
         # init layout etc 
@@ -242,9 +244,9 @@ class Blend_Airfoil (Dialog):
         self._blendBy = aVal
         self.refresh()
 
-        # Blend with new blend value  
-        if self._airfoil2 is not None: 
-            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2.geo, 
+        # Blend with new blend value - use copy as airfoil2 could be normalized
+        if self._airfoil2_copy is not None: 
+            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, ensure_fast=True)
             self.sig_blend_changed.emit()
 
@@ -260,9 +262,12 @@ class Blend_Airfoil (Dialog):
         self.refresh()
         self.sig_airfoil2_changed.emit (aAirfoil)
 
-        # first blend with new airfoil 
+        # first blend with new airfoil - use copy as airfoil2 could be normalized
+
+        self._airfoil2_copy = aAirfoil.asCopy()
+
         if aAirfoil is not None: 
-            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2.geo, 
+            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, ensure_fast=True)
             self.sig_blend_changed.emit()
 
