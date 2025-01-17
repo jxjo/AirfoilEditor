@@ -12,7 +12,6 @@ the path to program location location must be set
 
 import os
 from tempfile       import NamedTemporaryFile
-from subprocess     import Popen, run, CREATE_NEW_CONSOLE, PIPE, STARTUPINFO, STARTF_USESHOWWINDOW, CREATE_NO_WINDOW
 from glob           import glob
 from io             import StringIO
 
@@ -21,6 +20,10 @@ import time
 import shutil
 import logging
 import datetime 
+
+from subprocess     import Popen, run, PIPE
+if os.name == 'nt':                                 # startupinfo only available in windows environment  
+    from subprocess import STARTUPINFO, CREATE_NEW_CONSOLE, STARTF_USESHOWWINDOW, CREATE_NO_WINDOW
 
 from base.common_utils          import *
 
@@ -34,7 +37,7 @@ logger.setLevel(logging.DEBUG)
 SW_NORMAL = 1 
 SW_MINIMIZE = 6 
 
-EXE_DIR_WIN    = 'assets/windows'                  # directory of exe files 
+EXE_DIR_WIN    = 'assets/windows'                   # directory of exe files 
 EXE_DIR_UNIX   = 'assets/linux'                    
 
 TMP_INPUT_NAME = 'tmp~'                             # temporary input file (~1 will be appended)
@@ -308,12 +311,15 @@ class X_Program:
                 if os.name == 'nt':
                     flags = CREATE_NO_WINDOW    
                 else: 
-                    flags  = 0          
+                    flags  = 0                              # posix must be 0 
                 startupinfo = self._get_popen_startupinfo (SW_NORMAL)  
             else: 
                 stdout = None 
                 stderr = PIPE                               # Xoptfoil will write error to stderr
-                flags  = CREATE_NEW_CONSOLE                 # a new console is created (Xoptfoil) 
+                if os.name == 'nt':
+                    flags  = CREATE_NEW_CONSOLE             # a new console is created (Xoptfoil) 
+                else: 
+                    flags  = 0                              # posix must be 0 
                 startupinfo = self._get_popen_startupinfo (SW_MINIMIZE)  
             if input_stream:
                 raise ValueError ("Input stream for subprocess not implemented")
@@ -350,7 +356,7 @@ class X_Program:
                 if os.name == 'nt':
                     flags = CREATE_NO_WINDOW    
                 else: 
-                    flags  = 0          
+                    flags  = 0                      # posix must be 0       
 
             completed   = run (exe + args, text=True, 
                                input=input_stream, capture_output=capture_output, creationflags=flags)
@@ -384,7 +390,7 @@ class X_Program:
         if os.name == 'nt':
             if show != SW_NORMAL:
                 startupinfo = STARTUPINFO()  
-                startupinfo.dwFlags |= STARTF_USESHOWWINDOW    # |= 1               
+                startupinfo.dwFlags |= STARTF_USESHOWWINDOW       
                 startupinfo.wShowWindow = show
                 return dict(startupinfo=startupinfo)
         return dict(startupinfo=None) 
