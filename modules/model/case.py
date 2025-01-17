@@ -10,7 +10,7 @@ from model.polar_set        import Polar_Set
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 """  

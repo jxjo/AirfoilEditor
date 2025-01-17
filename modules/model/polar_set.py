@@ -50,7 +50,7 @@ from model.xo2_driver       import Worker, file_in_use
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 #  Constants for polar types 

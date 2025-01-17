@@ -55,7 +55,7 @@ from airfoil_ui_panels      import *
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 
@@ -686,7 +686,7 @@ if __name__ == "__main__":
 
     dev_mode = os.path.isdir(os.path.dirname(os.path.realpath(__file__)) +"\\test_airfoils")
 
-    # init logging  
+    # init logging - can be overwritten within a module  
 
     if dev_mode:   
         init_logging (level= logging.DEBUG)             # INFO, DEBUG or WARNING

@@ -24,7 +24,7 @@ from airfoil_widgets        import *
 from airfoil_dialogs        import Match_Bezier, Matcher, Edit_Polar_Definition
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 
