@@ -29,7 +29,7 @@ from base.common_utils          import *
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.WARNING)
 
 # Windows - popen - startupinfo codes
 # https://learn.microsoft.com/de-de/windows/win32/api/winuser/nf-winuser-showwindow
@@ -86,7 +86,7 @@ class X_Program:
     """
     name        = 'my_program'
     version     = ''                                       # version of self - will be set in isReady
-    exePath     = None                                     # where to find .exe 
+    exe_path    = None                                     # where to find .exe 
     ready       = False                                    # is Worker ready to work 
     ready_msg   = ''                                       # ready or error message 
 
@@ -120,7 +120,6 @@ class X_Program:
             min_version: check fpr min version number 
         """
 
-        version_ok = False
 
         # ready already checked? 
 
@@ -128,13 +127,26 @@ class X_Program:
 
         # find .exe
 
-        if self.exePath is None: 
-            cls = self.__class__
-            cls.exePath = self._get_exePath (parent_file)
+        version_ok = False
+        ready_msg  = None 
+        cls = self.__class__
+
+        if self.exe_path is None: 
+
+            exe_path, ready_msg = self._get_exePath (parent_file)
+
+            if exe_path is None:                                        # self not found anywhere
+                cls.ready_msg = ready_msg
+                logger.warning (ready_msg)
+                return 
+            else:     
+                cls.exe_path = exe_path
+                logger.debug (ready_msg)
 
         # try to execute with -h help argument to get version 
+
         try: 
-            returncode, pipe_output, _ = self._execute (' -h', run_async=False, capture_output=True)
+            returncode, pipe_output, _ = self._execute ('-h', run_async=False, capture_output=True)
         except: 
             returncode = 1
 
@@ -148,7 +160,7 @@ class X_Program:
                 if len (words) >=1 and words[0] == self.name:
 
                     # second word is version - compare single version numbers
-                    self.__class__.version = words[1]
+                    cls.version = words[1]
                     version_ok = True
                     min_nums = min_version.split(".") 
 
@@ -163,13 +175,13 @@ class X_Program:
                                 version_ok = False
             
             if not version_ok:
-                self.__class__.ready_msg = f"Wrong version {self.version} (need {min_version})"
+                cls.ready_msg = f"Wrong version {self.version} (need {min_version})"
             else: 
-                self.__class__.ready = True
-                self.__class__.ready_msg = f"Ready"
+                cls.ready = True
+                cls.ready_msg = f"Ready"
 
         else: 
-            self.__class__.ready_msg = f"{self.name} not found either in '{EXE_DIR_WIN}' nor via OS search path"      
+            cls.ready_msg = f"{self.name} couldn't be executed"      
 
         if self.ready: 
             logging.info (f"{self.name} {self.version} {self.ready_msg}" )
@@ -296,13 +308,23 @@ class X_Program:
             curDir = os.getcwd()
             os.chdir (self.workingDir)
 
-        exe = os.path.join (self.exePath, self.name)
+        exe = os.path.join (self.exe_path, self.name)
+
+        # build list of args needed by popen 
+
+        if isinstance (args, list):
+            arg_list = [exe] + args
+        elif isinstance (args, str):
+            arg_list = [exe, args]
+        else: 
+            arg_list = [exe]
+
+        # run either sync or async 
 
         if run_async:
 
             # uses subproccess Popen instance to start a subprocess
 
-             
             if capture_output:
                 stdout = PIPE                               # output is piped to suppress window 
                 stderr = PIPE                               # Xoptfoil will write error to stderr
@@ -331,10 +353,10 @@ class X_Program:
             else: 
                 stdin = None 
 
-            popen = Popen (exe + args, creationflags=flags, text=True, **startupinfo, 
+            popen = Popen (arg_list, creationflags=flags, text=True, **startupinfo, 
                              stdin=stdin, stdout=stdout, stderr=stderr)  
 
-            logger.debug (f"==> run async: '{exe + args}'")
+            logger.debug (f"==> run {self.name}: '{args}'")
 
             popen.poll()                            # update returncode 
 
@@ -358,14 +380,17 @@ class X_Program:
                 else: 
                     flags  = 0                      # posix must be 0       
 
-            completed   = run (exe + args, text=True, 
-                               input=input_stream, capture_output=capture_output, creationflags=flags)
+            completed_process = run (arg_list, text=True, 
+                                      input=input_stream, capture_output=capture_output, creationflags=flags)
 
-            logger.debug (f"==> run sync: '{exe + args}'")
+            returncode  = completed_process.returncode
+            pipe_result = completed_process.stdout
+            pipe_error  = completed_process.stderr
 
-            returncode  = completed.returncode
-            pipe_result = completed.stdout
-            pipe_error  = completed.stderr
+            if returncode:
+                logger.error (f"==> run sync {self.name}: '{completed_process}'")
+            else: 
+                logger.debug (f"==> run sync {self.name}: '{args}'")
 
         if self.workingDir: 
             os.chdir (curDir)
@@ -385,7 +410,7 @@ class X_Program:
 
 
     def _get_popen_startupinfo (self, show : int):
-        """ returns popen startinfo parm to eg. minize shell window - only windows"""
+        """ returns popen startinfo parm to eg. minimize shell window - only windows"""
 
         if os.name == 'nt':
             if show != SW_NORMAL:
@@ -397,11 +422,16 @@ class X_Program:
 
 
     def _get_exePath (self, parent_file : str): 
-        """trys to find path to call programName"""
+        """
+        trys to find path to call programName
+        
+        If found, returns exePath and ready_msg
+        If not, return None and ready_msg (error)"""
 
         parent_dir = os.path.dirname(os.path.realpath(parent_file))
 
-        exePath = ''
+        exe_path  = None
+        ready_msg = None 
 
         if os.name == 'nt':
             assets_dir = EXE_DIR_WIN
@@ -409,14 +439,18 @@ class X_Program:
             assets_dir = EXE_DIR_UNIX     
         assets_dir = os.path.normpath (assets_dir)  
 
-        _checkPath = os.path.join (parent_dir , assets_dir)
+        check_path = os.path.join (parent_dir , assets_dir)
 
-        if os.path.isfile(os.path.join(_checkPath, self.name +'.exe')) : 
-            exePath = os.path.abspath(_checkPath) 
-            logger.info (f"{self.name} found in: {_checkPath}" )
-        else:     
-            logger.debug ("Using OS search path to execute %s" % (self.name))
-        return exePath
+        if os.path.isfile(os.path.join(check_path, self.name +'.exe')) : 
+            exe_path  = os.path.abspath(check_path) 
+            ready_msg = f"{self.name} found in: {exe_path}"
+        else: 
+            exe_path = shutil.which (self.name)  
+            if exe_path:   
+                ready_msg = f"{self.name} using OS search path to execute: {exe_path}"
+            else: 
+                ready_msg = f"{self.name} not found either in '{check_path}' nor via OS search path" 
+        return exe_path, ready_msg
 
 
 
@@ -456,14 +490,15 @@ class Xoptfoil2 (X_Program):
             returncode: = 0 - no errors (which could be retrieved via 'finished_errortext' )
         """
 
-        args = ''
-        if seed_airfoil  : args += f' -a "{seed_airfoil}"'
-        if outname       : args += f' -o "{outname}"' 
+        args = []
+        if seed_airfoil  : args.extend(['-a', seed_airfoil])
+        if outname       : args.extend(['-o', outname])  
         
         if input_file is None: input_file = outname + '.inp'
+        args.extend(['-i', input_file]) 
 
         # add 'mode' option - will write error to stderr
-        args += f' -i {input_file} -m ao'
+        args.extend(['-m', 'ao']) 
 
         returncode, _, _ = self._execute (args=args, run_async=True)
 
@@ -614,9 +649,9 @@ class Worker (X_Program):
         if not ready: return 1, self.name + " not ready"
 
         error_text = ""
-        arg = f' -w check-input -i "{inputFile}"'
+        args = ['-w', 'check-input', '-i', inputFile]
 
-        returncode, pipe_output, pipe_error = self._execute (arg, run_async=False, capture_output=True)
+        returncode, pipe_output, pipe_error = self._execute (args, run_async=False, capture_output=True)
 
         if returncode != 0 and pipe_error:
 
@@ -738,19 +773,21 @@ class Worker (X_Program):
         else: 
             localInputfile = '' 
 
-        args = ''
+        args = []
 
         if (action != ''): 
-            if (action == 'help'): args += ' -h '
-            else:                  args += ' -w ' + action
+            if (action == 'help'): 
+                args.extend(['-h'])
+            else:                  
+                args.extend(['-w', action])
+                if (actionArg): args.extend([actionArg]) 
         else: 
             raise ValueError ('action for worker is mandatory')
 
-        if (actionArg): args += f' {actionArg}' 
-        if (airfoil1 ): args += f' -a "{airfoil1FileName}"'
-        if (airfoil2 ): args += f' -a2 "{airfoil2FileName}"'
-        if (outname  ): args += f' -o "{outname}"' 
-        if (inputfile): args += f' -i  {localInputfile}'
+        if (airfoil1 ): args.extend(['-a',  airfoil1FileName])
+        if (airfoil2 ): args.extend(['-a2', airfoil2FileName])
+        if (outname  ): args.extend(['-o',  outname]) 
+        if (inputfile): args.extend(['-i',  localInputfile])
 
         # if async - capture output to pipe - so its in background
         if run_async:
