@@ -102,10 +102,9 @@ SPEC_ALLOWED = [ALPHA,CL]
 
 class Polar_Definition:
     """ 
-    Defines the properties of a Polar  
+    Defines the properties of a Polar (independent of an airfoil) 
 
     Polar_Definition
-
     Airfoil 
         |--- Polar_Set 
                 |--- Polar    <-- Polar_Definition
@@ -130,7 +129,7 @@ class Polar_Definition:
 
 
     def __repr__(self) -> str:
-        """ nice print string wie polarType and Re """
+        """ nice print string polarType and Re """
         return f"<{type(self).__name__} {self.name}>"
 
     # --- save --------------------- 
@@ -220,29 +219,6 @@ class Polar_Definition:
             return ", ".join(str(x).rstrip('0').rstrip('.')  for x in self._valRange) 
         else: 
             return f"auto range ({self.valRange_step:.2f})"
-    
-    def set_valRange_string (self, aString):
-        """ set new value range from something like '-4, 12, 0.1'"""
-        
-        valRange = []
-        valsString = aString.split(',')
-        if len(valsString) == 3:
-            try:
-                rangeFrom = float (valsString[0]) 
-                rangeTo   = float (valsString[1]) 
-                rangeStep = float (valsString[2]) 
-                if rangeFrom < rangeTo and rangeStep > 0.0: 
-                    valRange.append(rangeFrom)
-                    valRange.append(rangeTo)
-                    valRange.append(rangeStep)
-            except: 
-                pass
-        self.set_valRange (valRange)
-
-    @property
-    def valRange_string_long (self): 
-        """ value range something like 'alpha: -4, 12, 0.1' """
-        return f"{self.specVar}: {self.valRange_string}"
 
     @property
     def valRange_from (self) -> float: 
@@ -276,8 +252,7 @@ class Polar_Definition:
         """ Reynolds number"""
         return self._re
     def set_re (self, re): 
-        if re and (re >= 1000 and re < 10000000):
-            self._re = re
+        self._re = np.clip (re, 1000, 10000000)
 
     @property
     def re_asK (self) -> int: 
@@ -286,13 +261,15 @@ class Polar_Definition:
     def set_re_asK (self, aVal): 
         self.set_re (aVal * 1000)
 
+
     @property
     def ma (self) -> float: 
         """ Mach number like 0.3"""
         return self._ma
     def set_ma (self, aMach):
-        if aMach is not None and (aMach >= 0.0 and aMach < 1.0):
-            self._ma = aMach 
+        mach = aMach if aMach is not None else 0.0 
+        self._ma = np.clip (mach, 0.0, 1.0)   
+
 
     @property
     def name (self): 
@@ -300,10 +277,9 @@ class Polar_Definition:
         return Polar.get_label(self.type, self.re, self.ma, self.ncrit)
 
     @property
-    def polarName_long (self):
+    def name_long (self):
         """ returns polar extended name self represents """
-        return self.name + f"  {self.valRange_string_long}"
-    
+        return f"{self.name}  {self.specVar}: {self.valRange_string}"    
 
 
 
@@ -324,23 +300,27 @@ class Polar_Set:
     instances : list ['Polar_Set']= []               # keep track of all instances ceated to reset 
 
 
-    def __init__(self, myAirfoil: Airfoil, polar_def : Polar_Definition | list | None = None):
+    def __init__(self, myAirfoil: Airfoil, 
+                 polar_def : Polar_Definition | list | None = None,
+                 re_scale = 1.0):
         """
         Main constructor for new polar set which belongs to an airfoil 
 
         Args:
             myAirfoil: the airfoil object it belongs to 
             polar_def: (list of) Polar_Definition to be added initially
+            re_scale: will scale (down) all polars reynolds and mach number of self
         """
 
         self._airfoil = myAirfoil 
-        self._polars = []                           # list of Polars of self is holding
+        self._polars = []                                   # list of Polars of self is holding
+        self._re_scale = np.clip (re_scale, 0.02,10)
 
-        self._polar_worker_tasks = []               # polar generation tasks for worker 
+        self._polar_worker_tasks = []                       # polar generation tasks for worker 
         self._polar_tasks_created = False
-        self._worker_polar_sets = {}                # polar generation job list for worker  
+        self._worker_polar_sets = {}                        # polar generation job list for worker  
 
-        self.add_polar_defs (polar_def)             # add initial polar def 
+        self.add_polar_defs (polar_def)                     # add initial polar def 
 
         # not active Polar_Set.add_to_instances (self)
 
@@ -428,12 +408,14 @@ class Polar_Set:
 
     #---------------------------------------------------------------
 
-    def add_polar_defs (self, polar_defs):
+    def add_polar_defs (self, polar_defs, re_scale = None):
         """ 
         Adds polars based on a active polar_def to self.
         The polars won't be loaded (or generated) 
 
         polar_defs can be a list or a single Polar_Definition
+
+        re_scale will scale (down) reynolds and mach number of all polars 
         """
 
         if isinstance(polar_defs, list):
@@ -441,6 +423,12 @@ class Polar_Set:
         else: 
             polar_def_list = [polar_defs]
 
+        # scale reynolds number 
+
+        if re_scale is not None: 
+            self._re_scale = re_scale
+
+        # create polar for each polar definition 
         polar_def : Polar_Definition
         for polar_def in polar_def_list:
 
@@ -453,7 +441,7 @@ class Polar_Set:
 
             # append new polar if it is active 
             if polar_def.active:
-                self.polars.append (Polar(self, polar_def))
+                self.polars.append (Polar(self, polar_def, re_scale=self._re_scale))
 
 
 
@@ -550,13 +538,17 @@ class Polar (Polar_Definition):
 
 
 
-    def __init__(self, mypolarSet: Polar_Set, polar_def : Polar_Definition = None):
+    def __init__(self, mypolarSet: Polar_Set, 
+                       polar_def : Polar_Definition = None, 
+                       re_scale = 1.0):
         """
         Main constructor for new polar which belongs to a polar set 
 
         Args:
-            :mypolarSet: the polar set object it belongs to 
-            :polar_def: optional the polar_definition to initilaize self deinitions
+            mypolarSet: the polar set object it belongs to 
+            polar_def: optional the polar_definition to initilaize self deinitions
+            re_scale: will scale (down) polar reynolds and mach number of self
+
         """
         self._polar_set = mypolarSet
         self._error_reason = None               # if error occurred during polar generation 
@@ -574,8 +566,8 @@ class Polar (Polar_Definition):
 
         if polar_def: 
             self.set_type       (polar_def.type)
-            self.set_re         (polar_def.re)
-            self.set_ma         (polar_def.ma)
+            self.set_re         (polar_def.re * re_scale)      # scale reynolds if requested
+            self.set_ma         (polar_def.ma * re_scale)
             self.set_ncrit      (polar_def.ncrit)
             self.set_autoRange  (polar_def.autoRange)
             self.set_specVar    (polar_def.specVar)
@@ -768,7 +760,7 @@ class Polar (Polar_Definition):
 
             airfoil_pathFileName = self.polar_set.airfoil_abs_pathFileName
             polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
-                                                self.type, self.re, self.ma , self.ncrit)
+                                                self.type, self.re, self.ma, self.ncrit)
 
             if polar_pathFileName and not file_in_use (polar_pathFileName): 
 
