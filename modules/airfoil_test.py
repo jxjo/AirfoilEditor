@@ -327,15 +327,16 @@ class Test_Worker:
 
     def test_worker_ready (self):
 
-        # check wrong project dir 
+        # handle different current dir 
 
         Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
-        assert not Worker.ready
 
-        # check .\assets\...
+        if not Worker.ready:
+            # check .\assets\...
 
-        Worker.exe_dir = None               # reset exe_dir
-        Worker().isReady ("..", min_version=self.WORKER_MIN_VERSION)
+            Worker.exe_dir = None               # reset exe_dir
+            Worker().isReady ("..", min_version=self.WORKER_MIN_VERSION)
+
         assert Worker.ready
 
 
