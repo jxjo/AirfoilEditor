@@ -163,7 +163,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title=self.name, layout=l, height=(100,None), 
+            self._section_panel = Edit_Panel (title=self.name, layout=l, height=(None,None), 
                                               switchable=True, on_switched=self.setVisible)
 
         return self._section_panel 
@@ -749,7 +749,7 @@ class Diagram_Airfoil_Polar (Diagram):
             l = QGridLayout()
             r,c = 0, 0
 
-            Label (l,r,c, colSpan=4, get="Polar definitions", style=style.COMMENT) 
+            Label (l,r,c, colSpan=4, get="Polar definitions") 
             r += 1
 
             # helper panel for polar definitions 
@@ -767,7 +767,7 @@ class Diagram_Airfoil_Polar (Diagram):
             if Worker.ready:
                 SpaceR (l,r, height=5, stretch=0) 
                 r += 1
-                Label (l,r,c, colSpan=4, get="Diagram variables", style=style.COMMENT) 
+                Label (l,r,c, colSpan=4, get="Diagram variables") 
                 r += 1
                 for item in self._get_items (Diagram_Item_Polars):
 

@@ -7,10 +7,6 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 
 """
 
-import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
 from copy               import copy
 from typing             import override
 
@@ -23,6 +19,10 @@ from PyQt6              import sip
 
 from base.widgets       import set_background
 from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, SpaceR, Icon
+
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 #------------------------------------------------------------------------------
@@ -146,7 +146,8 @@ class Panel_Abstract (QWidget):
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
-        return f"<Panel '{self.name}'>"
+        name = self.name if self.name else type(self).__name__
+        return f"<Panel '{name}'>"
 
 
     @property

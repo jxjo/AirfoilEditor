@@ -856,9 +856,10 @@ class Panel_Polar_Defs (Edit_Panel):
     def refresh(self, **_):
         """ refreshes all Widgets on self """
 
-        # refresh has to reinit layout for new/deleted items 
-        super().refresh (reinit_layout=True)
-
+        # layout has to be rebuild to show updated list of polar defs
+        # strange: on slow machine ghost widgets flash up. 
+        #          -> let the event loop calm down ...
+        QTimer.singleShot (50, self._set_panel_layout)
 
 
 
@@ -937,7 +938,7 @@ class Panel_Airfoils (Edit_Panel):
                              toolTip=f"Target airfoil {airfoil.name}")
                 r += 1
 
-        Label (l,r,c, colSpan=4, get="Reference airfoils", style=style.COMMENT) 
+        Label (l,r,c, colSpan=4, get="Reference airfoils") 
         r += 1
 
         for iair, airfoil in enumerate (self.airfoils):
