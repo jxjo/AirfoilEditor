@@ -767,6 +767,17 @@ class Airfoil_Bezier(Airfoil):
         if cp_lower is not None: 
             self.geo.lower.set_controlPoints (cp_lower)
 
+        # pathFileName must exist if no coordinates were given 
+
+        if (pathFileName is not None) and  (cp_upper is None or cp_lower is None): 
+            pathFileName = os.path.normpath(pathFileName)       # make all slashes to double back
+            if os.path.isabs (pathFileName):
+                checkPath = pathFileName
+            else:
+                checkPath = os.path.join (self.workingDir, pathFileName)
+            if not os.path.isfile(checkPath):
+                raise ValueError ("Airfoil file '%s' does not exist. Couldn't create Airfoil" % checkPath)
+ 
 
     @staticmethod
     def onAirfoil (anAirfoil : Airfoil):
