@@ -22,7 +22,7 @@ from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, Sp
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 #------------------------------------------------------------------------------

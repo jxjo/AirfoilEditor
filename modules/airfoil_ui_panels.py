@@ -277,9 +277,9 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 obj=self.geo, prop=Geometry.le_radius,
                 disable=lambda: self.airfoil().isBezierBased)
         r += 1
-        SpaceR (l,r)
+        SpaceR (l,r, height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=lambda : "Geometry " + self.geo().description, style=style.COMMENT)
+        Label  (l,r,0,colSpan=4, get=lambda : "Geometry " + self.geo().description, style=style.COMMENT, height=(None,None))
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (3,60)
@@ -422,7 +422,6 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         FieldF (l,r,c+1,get=lambda: self.geo().te[1], width=75, dec=7, style=lambda: self._style (self.geo().te[1], -self.geo().te[3]))
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo().te[3], width=75, dec=7, style=lambda: self._style (self.geo().te[3], -self.geo().te[1]))
-        # SpaceC (l,c+2)
 
         r += 1
         SpaceR (l,r, height=5)
@@ -430,9 +429,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
 
         l.setColumnMinimumWidth (0,80)
-        # l.setColumnStretch (0,1)
         l.setColumnStretch (c+3,1)
-        l.setRowStretch    (r-1,2)
         return l
 
 

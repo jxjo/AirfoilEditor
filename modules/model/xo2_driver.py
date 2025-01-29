@@ -28,7 +28,7 @@ if os.name == 'nt':                                 # startupinfo only available
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 SW_NORMAL = 1 
@@ -469,7 +469,7 @@ class X_Program:
         assets_dir = os.path.normpath (assets_dir)  
         check_dir  = os.path.join (project_dir , assets_dir)
 
-        if os.path.isfile(os.path.join(check_dir, self.name +'.exe')) : 
+        if shutil.which (self.name, path=check_dir) : 
             exe_dir  = os.path.abspath(check_dir) 
             ready_msg = f"{self.name} found in: {exe_dir}"
         else: 
