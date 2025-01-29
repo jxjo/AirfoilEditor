@@ -36,7 +36,7 @@ from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 # let python find the other modules in modules relativ to path of self  
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
-from model.airfoil          import Airfoil, usedAs, GEO_SPLINE
+from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier
 from model.polar_set        import Polar_Definition, Polar_Set
 from model.xo2_driver       import Worker
@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "Airfoil Editor"
-APP_VERSION      = "3.0 beta 2"
+APP_VERSION      = "3.0"
 
 
 class App_Main (QMainWindow):
@@ -75,7 +75,7 @@ class App_Main (QMainWindow):
 
     name = APP_NAME  
 
-    WORKER_MIN_VERSION          = '1.0.3'
+    WORKER_MIN_VERSION          = '1.0.5'
 
     # Qt Signals 
 
