@@ -1,14 +1,12 @@
-# PlanformCreator2
-PlanformCreator2.settings
-PlanformCreator2.code-workspace
-README.pdf
-Root_Example.dat
-Tip_Example.dat
+# AirfoilEditor
 releases
-T*.txt
-tmp*.inp
-test/*
-
+AirfoilEditor.settings
+example.dat
+example_mod.dat
+README.pdf
+*_polars
+*_designs
+tmpinp*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -109,6 +107,7 @@ ipython_config.py
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
+
 #   commonly ignored for libraries.
 #   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 #poetry.lock
