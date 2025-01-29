@@ -7,26 +7,104 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 
 """
 
-import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
 from copy               import copy
 from typing             import override
 
 from PyQt6.QtCore       import Qt
-from PyQt6.QtCore       import QSize, QMargins, pyqtSignal 
+from PyQt6.QtCore       import QSize, QMargins 
 from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
 from PyQt6.QtWidgets    import QMainWindow, QWidget, QDialog, QDialogButtonBox, QLabel, QMessageBox
-from PyQt6.QtGui        import QPalette, QColor, QShowEvent
+from PyQt6.QtGui        import QGuiApplication, QScreen, QColor
 from PyQt6              import sip
 
 from base.widgets       import set_background
 from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, SpaceR, Icon
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
 
 
-#-------------------------------------------
+#------------------------------------------------------------------------------
+# Utils for QMainWindow and QDialog  
+#------------------------------------------------------------------------------
+
+class Win_Util: 
+    """ 
+    Utility functions for window handling 
+    """
+
+    @staticmethod
+    def set_initialWindowSize (qwindow : QWidget,
+                               size : tuple | None = None,
+                               size_frac : tuple | None = None,
+                               pos : tuple | None = None,
+                               pos_frac: tuple | None = None,
+                               geometry : tuple | None = None,
+                               maximize : bool = False):
+        """
+        Set size and position of Qt window in fraction of screensize or absolute
+        """
+
+        # geometry argument has priority 
+
+        if geometry: 
+            qwindow.setGeometry (*geometry)
+            if maximize:
+                qwindow.showMaximized()
+            return
+        else:  
+            x, y, width, height = None, None, None, None
+ 
+        # set size 
+
+        if size_frac: 
+
+            screen : QScreen = QGuiApplication.primaryScreen()
+            screenGeometry = screen.geometry()
+ 
+            width_frac, height_frac  = size_frac
+
+            if width_frac:   width  = screenGeometry.width()  * width_frac
+            if height_frac:  height = screenGeometry.height() * height_frac
+
+        if size:
+            width, height = size
+
+        width  = int (width)  if width  is not None else 1000
+        height = int (height) if height is not None else  700
+        
+        qwindow.resize (QSize(width, height))
+
+        if maximize: 
+            qwindow.showMaximized()
+
+        # set position 
+
+        if pos: 
+            x, y = pos
+
+        if pos_frac: 
+
+            screen : QScreen = QGuiApplication.primaryScreen()
+            screenGeometry = screen.geometry()
+ 
+            x_frac = pos_frac[0]
+            y_frac = pos_frac[1]
+            if x_frac: x = screenGeometry.width()  * x_frac
+            if y_frac: y = screenGeometry.height() * y_frac
+
+        x = int (x) if x  is not None else 200
+        y = int (y) if y is not None else  200
+        
+        qwindow.move (x, y)
+
+
+
+#------------------------------------------------------------------------------
+# Panels - QWidgets like a field group within a context 
+#------------------------------------------------------------------------------
+
 
 class Panel_Abstract (QWidget):
     """ 
@@ -68,7 +146,8 @@ class Panel_Abstract (QWidget):
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
-        return f"<Panel '{self.name}'>"
+        name = self.name if self.name else type(self).__name__
+        return f"<Panel '{name}'>"
 
 
     @property
@@ -136,10 +215,8 @@ class Edit_Panel (Panel_Abstract):
     """
 
     _height = (150, None) 
-
-    # Signals 
-    sig_switched = pyqtSignal(bool)
-
+    _panel_margins = (15, 0, 0, 0)          # margins of panel data 
+    _main_margins  = (10, 5, 10, 5)         # margins of Edit_Panel
 
     def __init__(self, *args, 
                  layout : QLayout | None = None,
@@ -153,6 +230,10 @@ class Edit_Panel (Panel_Abstract):
         self._switchable = switchable
         self._hide_switched = hide_switched
         self._switched_on = switched_on
+        self._on_switched = on_switched 
+
+        self._head  = None
+        self._panel = None
 
         # set background color depending light/dark mode
 
@@ -163,19 +244,19 @@ class Edit_Panel (Panel_Abstract):
 
         # title layout - with optional on/off switch 
 
-        self._head = QWidget(self)
-        l_head = QHBoxLayout(self._head)
-        l_head.setContentsMargins (QMargins(0,0,0,5))
+        if self.title_text() is not None: 
 
-        if self._switchable:
-            CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
-                      get=lambda: self.switched_on, set=self.set_switched_on)
-            if on_switched is not None: 
-                self.sig_switched.connect (on_switched)
-        else: 
-            Label (l_head, fontSize=size.HEADER, get=self.title_text)
+            self._head = QWidget(self)
+            l_head = QHBoxLayout(self._head)
+            l_head.setContentsMargins (QMargins(0,0,0,5))
 
-        self._add_to_header_layout (l_head)     # optional individual widgets
+            if self._switchable:
+                CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
+                        get=lambda: self.switched_on, set=self.set_switched_on)
+            else: 
+                Label (l_head, fontSize=size.HEADER, get=self.title_text)
+
+            self._add_to_header_layout (l_head)     # optional individual widgets
  
         # inital content panel content - layout in >init  
 
@@ -185,9 +266,10 @@ class Edit_Panel (Panel_Abstract):
         # main layout with title and panel 
 
         l_main   = QVBoxLayout()
-        l_main.addWidget (self._head)
+        if self._head: 
+            l_main.addWidget (self._head)
         l_main.addWidget (self._panel, stretch=2)
-        l_main.setContentsMargins (QMargins(10, 5, 15, 5))
+        l_main.setContentsMargins (QMargins(*self._main_margins))  
         l_main.setSpacing(2)
         self.setLayout (l_main)
 
@@ -218,7 +300,7 @@ class Edit_Panel (Panel_Abstract):
     def set_switched_on (self, aBool : bool, silent=False):
         """ switch on/off 
             - optional hide main panel 
-            - emit sig_switched
+            - option callback on_switched
         """
         self._switched_on = aBool is True 
         
@@ -230,8 +312,8 @@ class Edit_Panel (Panel_Abstract):
             else: 
                 Widget._set_height (self, 40)
 
-        if not silent:                                          # set by checkbox - signal to Diagram_Item 
-            self.sig_switched.emit (self._switched_on)
+        if not silent and callable (self._on_switched):                                          # set by checkbox - callback to Diagram_Item 
+            self._on_switched (self._switched_on)
 
 
     @property
@@ -242,8 +324,12 @@ class Edit_Panel (Panel_Abstract):
 
     @property
     def header_widgets (self) -> list[Widget]:
-        """ list of widgets defined in self panel area"""
-        return self._head.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
+        """ list of widgets defined in self header area"""
+        if self._head: 
+            childs = self._head.findChildren (Widget) # options=Qt.FindChildOption.FindDirectChildrenOnly
+        else: 
+            childs = []
+        return childs 
  
 
     def refresh(self, reinit_layout=False):
@@ -300,7 +386,7 @@ class Edit_Panel (Panel_Abstract):
                 wdt = QLabel ("This shouldn't be visible")
                 layout.addWidget (wdt)
 
-        layout.setContentsMargins (QMargins(15, 0, 0, 0))   # inset left 
+        layout.setContentsMargins (QMargins(*self._panel_margins))   # inset left 
         layout.setSpacing(2)
         self._panel.setLayout (layout)
 
