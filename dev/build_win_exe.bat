@@ -30,6 +30,7 @@ pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --add-data="./modules/AE_ico.ico;./icons" ^
     --add-data="./assets/windows/worker.exe;./assets/windows" ^
 	--runtime-tmpdir="mySuperTemp" ^
+	--exclude-module matplotlib ^
     AirfoilEditor.py 
 
 echo.
