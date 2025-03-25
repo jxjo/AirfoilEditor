@@ -370,17 +370,87 @@ class Diagram_Item_Polars (Diagram_Item):
     def __init__(self, *args, iItem= 1, xyVars=None | tuple, **kwargs):
 
         self._iItem  = iItem
+        self._xyVars = None
+        self._xyVars_show_list = []                     # dict of xyVars shown up to now 
         self.set_xyVars (xyVars)                        # polar vars for x,y axis 
+
 
         self._title_item2 = None                        # a second 'title' for x-axis 
         self._autoRange_not_set = True                  # to handle initial no polars to autoRange 
+        self._next_btn    = None
+        self._prev_btn    = None 
 
         self.name = f"{self.name} {iItem}"
 
         super().__init__(*args, **kwargs)
 
+        # buttons for prev/next diagram 
+
+        ico = Icon (Icon.COLLAPSE,light_mode = False)
+        self._prev_btn = pg.ButtonItem(pixmap=ico.pixmap(QSize(52,52)), width=26, parentItem=self)
+        self._prev_btn.mode = 'auto'
+        self._prev_btn.clicked.connect(self._prev_btn_clicked)  
+
+        ico = Icon (Icon.EXPAND,light_mode = False)
+        self._next_btn = pg.ButtonItem(pixmap=ico.pixmap(QSize(52,52)), width=26, parentItem=self)
+        self._next_btn.mode = 'auto'
+        self._next_btn.clicked.connect(self._next_btn_clicked)       
+
+        self._add_xyVars_to_show_dict ()       
+        self._refresh_prev_next_btn ()
+
         # set margins (inset) of self 
         self.setContentsMargins ( 0,10,10,20)
+
+    @property 
+    def has_reset_button (self) -> bool:
+        """ reset view button in the lower left corner"""
+        # to be overridden
+        return False 
+
+    @override
+    def resizeEvent(self, ev):
+
+        # update position next/prev button 
+        if self._next_btn is not None:  
+            item_height = self.size().height()
+            item_width  = self.size().width()
+
+            btn_rect = self.mapRectFromItem(self._next_btn, self._next_btn.boundingRect())
+            x = item_width / 2
+            y = item_height - btn_rect.height() + 3
+            self._next_btn.setPos(x, y)             
+
+            y = 5
+            self._prev_btn.setPos(x, y)             
+
+        super().resizeEvent (ev)
+
+
+    def _prev_btn_clicked (self):
+        """ previous diagram button clicked"""
+
+        try:
+            i = self._xyVars_show_list.index(self._xyVars) - 1
+            if i >= 0 :
+                self._xyVars = self._xyVars_show_list[i]
+                self._refresh_artist ()
+                self._refresh_prev_next_btn ()
+        except:
+            pass
+
+
+    def _next_btn_clicked (self):
+        """ next diagram button clicked"""
+
+        try:
+            i = self._xyVars_show_list.index(self._xyVars) + 1
+            if i < len(self._xyVars_show_list) :
+                self._xyVars = self._xyVars_show_list[i]
+                self._refresh_artist ()
+                self._refresh_prev_next_btn ()
+        except:
+            pass
 
 
     @override
@@ -414,33 +484,68 @@ class Diagram_Item_Polars (Diagram_Item):
         return self._getter()
     
 
+    def _add_xyVars_to_show_dict (self):
+        """ add actual xyVars to the dict of already shown combinations"""
+        if not self._xyVars in self._xyVars_show_list:
+            self._xyVars_show_list.append(self._xyVars)
+
+        self._refresh_prev_next_btn ()
+
+
+    def _refresh_prev_next_btn (self):
+        """ hide/show previous / next buttons"""
+
+        try: 
+            index = self._xyVars_show_list.index(self._xyVars)
+            if index == 0:
+                self._prev_btn.hide()
+            else:
+                self._prev_btn.show()
+            if index >= (len (self._xyVars_show_list) - 1):
+                self._next_btn.hide()
+            else:
+                self._next_btn.show()
+        except: 
+            self._prev_btn.hide()
+            self._next_btn.hide()
+
+
+    def _refresh_artist (self): 
+        """ refresh plar artist with new diagram variables"""
+
+        artist : Polar_Artist = self._artists [0]
+        artist.set_xyVars (self._xyVars)
+
+        self.setup_viewRange ()
+        self.plot_title()
+
+
     @property
     def xVar (self) -> var:
         return self._xyVars[0]
 
     def set_xVar (self, varType : var):
+        """ set x diagram variable"""
+
         self._xyVars = (varType, self._xyVars[1])
+        # wait a little until user is sure for new xyVars (prev/next buttons)
+        QTimer.singleShot (3000, self._add_xyVars_to_show_dict)
 
-        artist : Polar_Artist = self._artists [0]
-        artist.set_xyVars (self._xyVars)
-
-        self.setup_viewRange ()
-
-        self.plot_title()
+        self._refresh_artist ()
 
 
     @property
     def yVar (self) -> var:
         return self._xyVars[1]
+
     def set_yVar (self, varType: var):
+        """ set y diagram variable"""
+
         self._xyVars = (self._xyVars[0], varType)
+        # wait a little until user is sure for new xyVars (prev/next buttons)
+        QTimer.singleShot (3000, self._add_xyVars_to_show_dict)
 
-        artist : Polar_Artist = self._artists [0]
-        artist.set_xyVars (self._xyVars)
-
-        self.setup_viewRange ()
-
-        self.plot_title ()
+        self._refresh_artist ()
 
 
     def set_xyVars (self, xyVars : list[str]):

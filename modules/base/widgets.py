@@ -91,6 +91,7 @@ class Icon (QIcon):
 
     SETTINGS   = "settings" 
     COLLAPSE   = "collapse" 
+    EXPAND     = "expand" 
     OPEN       = "open"     
     EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
     DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
