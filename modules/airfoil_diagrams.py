@@ -371,7 +371,7 @@ class Diagram_Item_Polars (Diagram_Item):
 
         self._iItem  = iItem
         self._xyVars = None
-        self._xyVars_show_list = []                     # dict of xyVars shown up to now 
+        self._xyVars_show_dict = {}                     # dict of xyVars shown up to now 
         self.set_xyVars (xyVars)                        # polar vars for x,y axis 
 
 
@@ -396,7 +396,6 @@ class Diagram_Item_Polars (Diagram_Item):
         self._next_btn.mode = 'auto'
         self._next_btn.clicked.connect(self._next_btn_clicked)       
 
-        self._add_xyVars_to_show_dict ()       
         self._refresh_prev_next_btn ()
 
         # set margins (inset) of self 
@@ -431,12 +430,19 @@ class Diagram_Item_Polars (Diagram_Item):
         """ previous diagram button clicked"""
 
         try:
-            i = self._xyVars_show_list.index(self._xyVars) - 1
+            # save current view Range
+            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
+
+            # get index of current and set new 
+            l = list (self._xyVars_show_dict.keys())
+            i = l.index(self._xyVars) - 1
             if i >= 0 :
-                self._xyVars = self._xyVars_show_list[i]
-                self._refresh_artist ()
-                self._refresh_prev_next_btn ()
-        except:
+                self._xyVars = l[i]
+                viewRect = self._xyVars_show_dict [self._xyVars]
+                self.setup_viewRange (rect=viewRect)                # restore view Range
+                self._refresh_artist ()                             # draw new polar
+            self._refresh_prev_next_btn ()                          # update vsibility of buttons
+        except ValueError:
             pass
 
 
@@ -444,12 +450,19 @@ class Diagram_Item_Polars (Diagram_Item):
         """ next diagram button clicked"""
 
         try:
-            i = self._xyVars_show_list.index(self._xyVars) + 1
-            if i < len(self._xyVars_show_list) :
-                self._xyVars = self._xyVars_show_list[i]
-                self._refresh_artist ()
-                self._refresh_prev_next_btn ()
-        except:
+            # save current view Range
+            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
+
+            # get index of current and set new 
+            l = list (self._xyVars_show_dict.keys())
+            i = l.index(self._xyVars) + 1
+            if i < len(l) :
+                self._xyVars = l[i]
+                viewRect = self._xyVars_show_dict [self._xyVars]
+                self.setup_viewRange (rect=viewRect)                # restore view Range
+                self._refresh_artist ()                             # draw new polar
+            self._refresh_prev_next_btn ()                          # update vsibility of buttons
+        except ValueError:
             pass
 
 
@@ -485,23 +498,25 @@ class Diagram_Item_Polars (Diagram_Item):
     
 
     def _add_xyVars_to_show_dict (self):
-        """ add actual xyVars to the dict of already shown combinations"""
-        if not self._xyVars in self._xyVars_show_list:
-            self._xyVars_show_list.append(self._xyVars)
-
-        self._refresh_prev_next_btn ()
+        """ add actual xyVars and viewRange to the dict of already shown combinations"""
+        try:
+            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
+            self._refresh_prev_next_btn ()
+        except:
+            pass
 
 
     def _refresh_prev_next_btn (self):
         """ hide/show previous / next buttons"""
 
         try: 
-            index = self._xyVars_show_list.index(self._xyVars)
-            if index == 0:
+            l = list (self._xyVars_show_dict.keys())
+            i = l.index(self._xyVars)
+            if i == 0:
                 self._prev_btn.hide()
             else:
                 self._prev_btn.show()
-            if index >= (len (self._xyVars_show_list) - 1):
+            if i >= (len (self._xyVars_show_dict) - 1):
                 self._next_btn.hide()
             else:
                 self._next_btn.show()
@@ -516,7 +531,6 @@ class Diagram_Item_Polars (Diagram_Item):
         artist : Polar_Artist = self._artists [0]
         artist.set_xyVars (self._xyVars)
 
-        self.setup_viewRange ()
         self.plot_title()
 
 
@@ -527,11 +541,15 @@ class Diagram_Item_Polars (Diagram_Item):
     def set_xVar (self, varType : var):
         """ set x diagram variable"""
 
+        # save current state
+        self._add_xyVars_to_show_dict ()       
+
         self._xyVars = (varType, self._xyVars[1])
         # wait a little until user is sure for new xyVars (prev/next buttons)
         QTimer.singleShot (3000, self._add_xyVars_to_show_dict)
 
         self._refresh_artist ()
+        self.setup_viewRange ()
 
 
     @property
@@ -541,11 +559,15 @@ class Diagram_Item_Polars (Diagram_Item):
     def set_yVar (self, varType: var):
         """ set y diagram variable"""
 
+        # save current state
+        self._add_xyVars_to_show_dict ()       
+
         self._xyVars = (self._xyVars[0], varType)
         # wait a little until user is sure for new xyVars (prev/next buttons)
         QTimer.singleShot (3000, self._add_xyVars_to_show_dict)
 
         self._refresh_artist ()
+        self.setup_viewRange ()
 
 
     def set_xyVars (self, xyVars : list[str]):
@@ -586,22 +608,24 @@ class Diagram_Item_Polars (Diagram_Item):
 
 
     @override
-    def setup_viewRange (self):
+    def setup_viewRange (self, rect=None):
         """ define view range of this plotItem"""
 
         self.viewBox.setDefaultPadding(0.05)
 
-        self.viewBox.autoRange ()                           # ensure best range x,y 
+        if rect is None: 
+            self.viewBox.autoRange ()                           # ensure best range x,y 
 
-        # it could be that there are initially no polars, so autoRange wouldn't set a range, retry at next refresh
-        if  self.viewBox.childrenBounds() != [None,None] and self._autoRange_not_set:
-            self._autoRange_not_set = False 
+            # it could be that there are initially no polars, so autoRange wouldn't set a range, retry at next refresh
+            if  self.viewBox.childrenBounds() != [None,None] and self._autoRange_not_set:
+                self._autoRange_not_set = False 
+            self.viewBox.enableAutoRange(enable=False)
 
-        self.viewBox.enableAutoRange(enable=False)
+            self.showGrid(x=True, y=True)
+        else: 
+            self.viewBox.setRange (rect=rect, padding=0.0)      # restore view Range
 
-        self.showGrid(x=True, y=True)
-
-        self._set_legend_position ()                         # find nice legend position 
+        self._set_legend_position ()                            # find nice legend position 
 
 
     def _set_legend_position (self):
