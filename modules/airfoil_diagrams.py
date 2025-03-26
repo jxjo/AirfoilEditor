@@ -42,6 +42,10 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
 
     def __init__(self, *args, **kwargs):
+
+        self._stretch_y         = False                 # show y stretched 
+        self._stretch_y_factor  = 3                     # factor to stretch 
+
         super().__init__(*args, **kwargs)
 
         # set margins (inset) of self 
@@ -77,6 +81,26 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.section_panel.refresh()
 
         logger.debug (f"{str(self)} _on_blend_airfoil")
+
+
+    @property
+    def stretch_y (self) -> bool:
+        """ show y axis stretched"""
+        return self._stretch_y
+    
+    def set_stretch_y (self, aBool : bool):
+        self._stretch_y = aBool
+        self.section_panel.refresh()                    # show / hide stretch factor field
+        self.setup_viewRange ()
+
+    @property
+    def stretch_y_factor (self) -> int:
+        """ y axis stretche factor"""
+        return self._stretch_y_factor
+    
+    def set_stretch_y_factor (self, aVal : int):
+        self._stretch_y_factor = clip (aVal, 1, 50)
+        self.setup_viewRange ()
 
 
     @override
@@ -118,12 +142,15 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         self.viewBox.setDefaultPadding(0.05)
 
+        if self.stretch_y:
+            self.viewBox.setAspectLocked(ratio= (1 / self.stretch_y_factor))
+        else: 
+            self.viewBox.setAspectLocked(ratio= 1)
+
         self.viewBox.autoRange ()               # first ensure best range x,y 
         self.viewBox.setXRange( 0, 1)           # then set x-Range
 
-        self.viewBox.setAspectLocked()
-
-        self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
+        # self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
 
         self.showGrid(x=True, y=True)
 
@@ -147,19 +174,28 @@ class Diagram_Item_Airfoil (Diagram_Item):
         if self._section_panel is None:    
             l = QGridLayout()
             r,c = 0, 0 
-            CheckBox (l,r,c, text="Coordinate points", 
+            CheckBox (l,r,c, text="Coordinate points", colSpan=2,
                     get=lambda: self.airfoil_artist.show_points,
                     set=self.airfoil_artist.set_show_points) 
             r += 1
-            CheckBox (l,r,c, text="Thickness && Camber", 
+            CheckBox (l,r,c, text="Thickness && Camber", colSpan=2,
                     get=lambda: self.line_artist.show,
                     set=self.line_artist.set_show) 
             r += 1
-            CheckBox (l,r,c, text="Shape function (Bezier)", 
+            CheckBox (l,r,c, text="Stretch y axis", 
+                    get=lambda: self.stretch_y,
+                    set=self.set_stretch_y) 
+            FieldF (l,r,c+1, lab="by factor", dec=0, step=1, lim=(1,50), width=40,
+                    get=lambda: self.stretch_y_factor,
+                    set=self.set_stretch_y_factor,
+                    hide=lambda: not self.stretch_y) 
+            r += 1
+            CheckBox (l,r,c, text="Shape function (Bezier)", colSpan=2,
                     get=lambda: self.bezier_artist.show,
                     set=self.bezier_artist.set_show,
                     hide=lambda : not self._one_is_bezier_based()) 
             r += 1
+            l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 

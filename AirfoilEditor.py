@@ -550,7 +550,9 @@ class App_Main (QMainWindow):
         # save airfoils
         airfoil : Airfoil = self.airfoil_org if self.airfoil().usedAsDesign else self.airfoil()
 
-        if not airfoil.isExample:
+        if airfoil.isExample:
+            toDict (settings,'last_opened', None)
+        else:
             toDict (settings,'last_opened', airfoil.pathFileName)
 
         ref_list = []
