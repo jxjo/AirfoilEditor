@@ -363,8 +363,7 @@ class Diagram_Item_Polars (Diagram_Item):
     title       = None 
     subtitle    = None                                  # optional subtitle 
 
-
-    sig_geometry_changed         = pyqtSignal()          # airfoil data changed in a diagram 
+    sig_xyVars_changed           = pyqtSignal()         # airfoil data changed in a diagram 
 
 
     def __init__(self, *args, iItem= 1, xyVars=None | tuple, **kwargs):
@@ -426,8 +425,8 @@ class Diagram_Item_Polars (Diagram_Item):
         super().resizeEvent (ev)
 
 
-    def _prev_btn_clicked (self):
-        """ previous diagram button clicked"""
+    def _handle_prev_next (self, step = 0):
+        """ activates prev or next xy view defined by step"""
 
         try:
             # save current view Range
@@ -435,35 +434,26 @@ class Diagram_Item_Polars (Diagram_Item):
 
             # get index of current and set new 
             l = list (self._xyVars_show_dict.keys())
-            i = l.index(self._xyVars) - 1
+            i = l.index(self._xyVars) + step
             if i >= 0 :
                 self._xyVars = l[i]
                 viewRect = self._xyVars_show_dict [self._xyVars]
                 self.setup_viewRange (rect=viewRect)                # restore view Range
                 self._refresh_artist ()                             # draw new polar
+                self.sig_xyVars_changed.emit()                      # update view panel 
             self._refresh_prev_next_btn ()                          # update vsibility of buttons
-        except ValueError:
+        except :
             pass
+
+
+    def _prev_btn_clicked (self):
+        """ previous diagram button clicked"""
+        self._handle_prev_next (step=-1)
 
 
     def _next_btn_clicked (self):
         """ next diagram button clicked"""
-
-        try:
-            # save current view Range
-            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
-
-            # get index of current and set new 
-            l = list (self._xyVars_show_dict.keys())
-            i = l.index(self._xyVars) + 1
-            if i < len(l) :
-                self._xyVars = l[i]
-                viewRect = self._xyVars_show_dict [self._xyVars]
-                self.setup_viewRange (rect=viewRect)                # restore view Range
-                self._refresh_artist ()                             # draw new polar
-            self._refresh_prev_next_btn ()                          # update vsibility of buttons
-        except ValueError:
-            pass
+        self._handle_prev_next (step=1)
 
 
     @override
@@ -541,8 +531,9 @@ class Diagram_Item_Polars (Diagram_Item):
     def set_xVar (self, varType : var):
         """ set x diagram variable"""
 
-        # save current state
-        self._add_xyVars_to_show_dict ()       
+        # save current state - here: only if it is already in dict or first time
+        if self._xyVars in self._xyVars_show_dict or not self._xyVars_show_dict:
+            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
 
         self._xyVars = (varType, self._xyVars[1])
         # wait a little until user is sure for new xyVars (prev/next buttons)
@@ -559,8 +550,9 @@ class Diagram_Item_Polars (Diagram_Item):
     def set_yVar (self, varType: var):
         """ set y diagram variable"""
 
-        # save current state
-        self._add_xyVars_to_show_dict ()       
+        # save current state - here: only if it is already in dict or first time
+        if self._xyVars in self._xyVars_show_dict or not self._xyVars_show_dict:
+            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
 
         self._xyVars = (self._xyVars[0], varType)
         # wait a little until user is sure for new xyVars (prev/next buttons)
@@ -794,12 +786,14 @@ class Diagram_Airfoil_Polar (Diagram):
             xyVars = dataDict ["xyVars"]
 
             item = Diagram_Item_Polars (self, iItem=1, getter=self.airfoils, xyVars=xyVars, show=False)
+            item.sig_xyVars_changed.connect (self._on_xyVars_changed)
             self._add_item (item, r, 0)
 
             dataDict = self._diagram_settings[1] if len(self._diagram_settings) > 1 else {"xyVars" : (var.CL,var.GLIDE)}
             xyVars = dataDict ["xyVars"]
 
             item = Diagram_Item_Polars (self, iItem=2, getter=self.airfoils, xyVars=xyVars, show=False)
+            item.sig_xyVars_changed.connect (self._on_xyVars_changed)
             self._add_item (item, r, 1)
  
 
@@ -1023,8 +1017,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on geometry changed in diagram")
     
-        # self.refresh()                          # refresh other diagram items 
-        self.sig_airfoil_changed.emit()         # refresh app
+        self.sig_airfoil_changed.emit()             # refresh app
 
 
 
@@ -1056,3 +1049,12 @@ class Diagram_Airfoil_Polar (Diagram):
         for item in self.diagram_items:
             if item.isVisible(): 
                 item.refresh()
+
+    def _on_xyVars_changed (self):
+        """ slot to handle change of xyVars made in diagram """
+
+        logger.debug (f"{str(self)} on xyVars changed in diagram")
+
+        self.polar_panel.refresh()
+
+
