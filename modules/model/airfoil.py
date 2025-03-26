@@ -707,7 +707,7 @@ class Airfoil:
         if not os.path.isabs (pathFileName) and self.workingDir:
             abs_pathFileName = os.path.join(self.workingDir, self.pathFileName)
         else:
-            abs_pathFileName = self.pathFileName 
+            abs_pathFileName = pathFileName 
 
         with open(abs_pathFileName, 'w+') as file:
             file.write("%s\n" % self.name)
