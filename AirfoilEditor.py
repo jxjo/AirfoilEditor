@@ -81,10 +81,11 @@ class App_Main (QMainWindow):
 
     sig_new_airfoil             = pyqtSignal()          # new airfoil selected 
     sig_new_design              = pyqtSignal()          # new airfoil design created 
-    sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
 
-    sig_airfoil_target_changed  = pyqtSignal()          # target airfoil changed 
+    sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
+    sig_airfoil_2_changed       = pyqtSignal()          # 2nd airfoil data changed 
     sig_airfoils_ref_changed    = pyqtSignal()          # list of reference airfoils changed
+
     sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
     sig_panelling_changed       = pyqtSignal()          # new panelling
     sig_blend_changed           = pyqtSignal()          # new (intermediate) blend 
@@ -99,10 +100,10 @@ class App_Main (QMainWindow):
     def __init__(self, airfoil_file, parent=None):
         super().__init__(parent)
 
-        self._airfoil        = None                     # current airfoil 
-        self._airfoil_org    = None                     # airfoil saved in edit_mode 
-        self._airfoils_ref   = []                       # reference airfoils 
-        self._airfoil_target = None                     # target for match Bezier    
+        self._airfoil           = None                  # current airfoil 
+        self._airfoil_org       = None                  # airfoil saved in edit_mode 
+        self._airfoils_ref      = []                    # reference airfoils 
+        self._airfoil_2         = None                  # 2nd airfoil for blend    
 
         self._polar_definitions = None                  # current polar definitions  
         self._watchdog          = None                  # polling thread for new olars
@@ -192,7 +193,7 @@ class App_Main (QMainWindow):
         self.sig_new_airfoil.connect            (self._diagram.on_airfoil_changed)
         self.sig_new_design.connect             (self._diagram.on_new_design)
         self.sig_airfoil_changed.connect        (self._diagram.on_airfoil_changed)
-        self.sig_airfoil_target_changed.connect (self._diagram.on_target_changed)
+        self.sig_airfoil_2_changed.connect      (self._diagram.on_airfoil_2_changed)
         self.sig_bezier_changed.connect         (self._diagram.on_bezier_changed)
         self.sig_panelling_changed.connect      (self._diagram.on_airfoil_changed)
         self.sig_blend_changed.connect          (self._diagram.on_airfoil_changed)
@@ -328,7 +329,6 @@ class App_Main (QMainWindow):
         first_design = self._case.first_working_design() 
 
         self.set_edit_mode (True, first_design)       
-        self.set_airfoil_target (None, refresh=False)       # current will be reference for Bezier
 
 
     def set_edit_mode (self, aBool : bool, for_airfoil):
@@ -345,7 +345,6 @@ class App_Main (QMainWindow):
 
             else: 
                 self._airfoil_org = None                # leave edit_mode - remove original 
-                self._airfoil_target = None   
                 self._case = None         
 
             self.set_airfoil (for_airfoil, silent=True)
@@ -377,7 +376,7 @@ class App_Main (QMainWindow):
     def airfoils (self) -> list [Airfoil]:
         """ list of airfoils (current, ref1 and ref2) """
         airfoils = [self._airfoil]
-        if self.airfoil_target:     airfoils.append (self.airfoil_target)
+        if self.airfoil_2:          airfoils.append (self.airfoil_2)
         if self.airfoil_org:        airfoils.append (self.airfoil_org)
         if self.airfoils_ref:       airfoils.extend (self.airfoils_ref)
 
@@ -442,24 +441,17 @@ class App_Main (QMainWindow):
 
 
     @property
-    def airfoil_target (self) -> Airfoil:
-        """ target airfoil for match Bezier or 2nd airfoil doing Blend"""
-        if self._airfoil_target is None: 
-            return self._airfoil_org
-        else: 
-            return self._airfoil_target
-    
+    def airfoil_2 (self) -> Airfoil:
+        """ 2nd airfoil for blend etc"""
+        return self._airfoil_2
 
-    def set_airfoil_target (self, airfoil: Airfoil | None = None, refresh=True): 
-
-        if airfoil is not None: 
-            airfoil.set_polarSet (Polar_Set (airfoil, polar_def=self.polar_definitions(), only_active=True))
-            airfoil.set_usedAs (usedAs.TARGET)
-        elif self._airfoil_target:                                  # reset the current/old target 
-            self._airfoil_target.set_usedAs (usedAs.NORMAL) 
-        self._airfoil_target = airfoil 
-        
-        self.sig_airfoil_target_changed.emit()              # refresh
+    def set_airfoil_2 (self, airfoil: Airfoil | None = None) -> Airfoil:
+        if self._airfoil_2:                                         # reset eventual current
+            self._airfoil_2.set_usedAs (usedAs.NORMAL)
+        if airfoil: 
+            airfoil.set_usedAs (usedAs.SECOND)
+        self._airfoil_2 = airfoil
+        self.sig_airfoil_2_changed.emit()             
 
 
     @property
@@ -479,7 +471,7 @@ class App_Main (QMainWindow):
         dialog = Blend_Airfoil (self, self.airfoil(), self.airfoil_org, dx=-250, dy=100)  
 
         dialog.sig_blend_changed.connect (self.sig_blend_changed.emit)
-        dialog.sig_airfoil2_changed.connect (self.set_airfoil_target)
+        dialog.sig_airfoil_2_changed.connect (self.set_airfoil_2)
         dialog.exec()     
 
         if dialog.airfoil2 is not None: 
@@ -487,6 +479,7 @@ class App_Main (QMainWindow):
             self.airfoil().geo.blend (self.airfoil_org.geo, 
                                       dialog.airfoil2.geo, 
                                       dialog.blendBy) 
+        self.set_airfoil_2 (None)
 
         self.sig_airfoil_changed.emit()
 

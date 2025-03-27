@@ -54,13 +54,26 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
     def airfoils (self) -> list[Airfoil]: 
         return self._getter()
-    
-    def _one_is_bezier_based (self) -> bool: 
+
+
+    def _is_one_airfoil_bezier (self) -> bool: 
         """ is one of airfoils Bezier based? """
         a : Airfoil
         for a in self.airfoils():
             if a.isBezierBased: return True
         return False 
+
+    def _is_bezier_modify (self) -> bool: 
+        """ is bezier modify / match target active """
+
+        design_is_bezier = False 
+        second_is_normal = False 
+        for a in self.airfoils():
+            if a.usedAsDesign and a.isBezierBased:
+                design_is_bezier = True 
+            if not a.usedAsDesign and a.usedAs == usedAs.NORMAL : 
+                second_is_normal = True 
+        return design_is_bezier and second_is_normal
 
 
     def _on_enter_panelling (self):
@@ -135,6 +148,8 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.bezier_artist = Bezier_Artist (self, self.airfoils)
         self.bezier_artist.sig_bezier_changed.connect (self.sig_geometry_changed.emit)
 
+        self.bezier_devi_artist = Bezier_Deviation_Artist (self, self.airfoils, show=False, show_legend=True)
+
 
     @override
     def setup_viewRange (self):
@@ -160,12 +175,18 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.airfoil_artist.refresh() 
         self.line_artist.refresh() 
 
+        # switch off bezier deviation artist if no match 
+        if not self._is_bezier_modify():
+            self.bezier_devi_artist.set_show(False)
+
         # show Bezier shape function when current airfoil is Design and Bezier 
         cur_airfoil : Airfoil = self.airfoils()[0]
         if cur_airfoil.isBezierBased and cur_airfoil.usedAsDesign:
             self.bezier_artist.set_show (True)
+            self.bezier_devi_artist.refresh()
         else: 
             self.bezier_artist.refresh() 
+            self.bezier_devi_artist.refresh()
 
     @property
     def section_panel (self) -> Edit_Panel:
@@ -190,10 +211,15 @@ class Diagram_Item_Airfoil (Diagram_Item):
                     set=self.set_stretch_y_factor,
                     hide=lambda: not self.stretch_y) 
             r += 1
-            CheckBox (l,r,c, text="Shape function (Bezier)", colSpan=2,
+            CheckBox (l,r,c, text="Bezier control points", colSpan=2,
                     get=lambda: self.bezier_artist.show,
                     set=self.bezier_artist.set_show,
-                    hide=lambda : not self._one_is_bezier_based()) 
+                    hide=lambda : not self._is_one_airfoil_bezier()) 
+            r += 1
+            CheckBox (l,r,c, text="Deviation to target", colSpan=2,
+                    get=lambda: self.bezier_devi_artist.show,
+                    set=self.bezier_devi_artist.set_show,
+                    hide=lambda : not self._is_bezier_modify()) 
             r += 1
             l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)
@@ -1017,7 +1043,7 @@ class Diagram_Airfoil_Polar (Diagram):
         logger.debug (f"{str(self)} on_blend_airfoil")
 
 
-    def on_target_changed (self):
+    def on_airfoil_2_changed (self):
         """ slot to handle airfoil target changed signal """
 
         logger.debug (f"{str(self)} on airfoil target changed")

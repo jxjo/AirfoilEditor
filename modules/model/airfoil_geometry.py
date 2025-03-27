@@ -643,8 +643,8 @@ class Line:
                   linetype : Type |None = None, 
                   name : str|None = None):
 
-        self._x         = x
-        self._y         = y
+        self._x         = np.array(x)
+        self._y         = np.array(y)
         self._type      = linetype 
         self._name      = name 
         self._threshold = 0.1                   # threshold for reversal dectection 
@@ -1670,7 +1670,10 @@ class Geometry ():
         """ 
         Leading edge radius which is the reciprocal of curvature at le 
         """
-        return  1.0 / self.curvature.at_le
+        if self.curvature.at_le:
+            return 1.0 / self.curvature.at_le
+        else: 
+            return 0.0 
 
     def _le_radius (self, moving=False): 
         """ when 'moving' the radius of a temporary curvature based on _x,_y is returned"""
@@ -1678,7 +1681,6 @@ class Geometry ():
             curv = Curvature_of_xy (self._x, self._y) 
         else: 
             curv = self.curvature
-        print (1.0 / curv.at_le)
         return  1.0 / curv.at_le
 
 

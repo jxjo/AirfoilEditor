@@ -36,6 +36,7 @@ class usedAs (StrEnum):
     REF         = "Reference" 
     DESIGN      = "Design"
     TARGET      = "Target"
+    SECOND      = "Airfoil 2"
     FINAL       = "Final"
 
 # geometry specification 
@@ -285,7 +286,7 @@ class Airfoil:
     def name_to_show (self) -> str: 
         """ name of airfoil - for DESIGN use a modified name"""
 
-        if self.name.find("_mods:") != -1:
+        if self.name.find("_mods:") != -1 or self.usedAsDesign:
             # for DESIGN airfoil build name string 
             if self.usedAsDesign:
                 name = self._name_org

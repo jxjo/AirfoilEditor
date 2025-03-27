@@ -179,7 +179,7 @@ class Blend_Airfoil (Dialog):
     name = "Blend Airfoil with ..."
 
     sig_blend_changed      = pyqtSignal ()
-    sig_airfoil2_changed   = pyqtSignal (Airfoil)
+    sig_airfoil_2_changed  = pyqtSignal (Airfoil)
 
 
     def __init__ (self, parent : QWidget, 
@@ -254,7 +254,7 @@ class Blend_Airfoil (Dialog):
         """ set new 2nd airfoil - do blend - signal change"""
         self._airfoil2 = aAirfoil
         self.refresh()
-        self.sig_airfoil2_changed.emit (aAirfoil)
+        self.sig_airfoil_2_changed.emit (aAirfoil)
 
         # first blend with new airfoil - use copy as airfoil2 could be normalized
 
@@ -401,8 +401,9 @@ class Match_Bezier (Dialog):
 
     name = "Match Bezier"
 
-    sig_new_bezier = pyqtSignal (Line.Type)
-    sig_match_finished = pyqtSignal (Side_Airfoil_Bezier)
+    sig_new_bezier      = pyqtSignal (Line.Type)
+    sig_pass_finished   = pyqtSignal ()
+    sig_match_finished  = pyqtSignal (Side_Airfoil_Bezier)
 
     MAX_PASS = 4                                            # max passes for match Bezier with increased weighting
     INITIAL_WEIGHTING = 0.25                                # initial weighting of le curvature 
@@ -549,14 +550,19 @@ class Match_Bezier (Dialog):
     def _on_finished(self):
         """ slot for thread finished """
 
-        if self._ipass < self.MAX_PASS: 
-            # further passes to go?
+        if self._matcher.is_interrupted:
+            # user stop request - no more loops 
+            finished = True
 
+        elif self._ipass < self.MAX_PASS: 
+            # further passes to go?
             finished = self._result_is_good_enough ()
             if not finished:
+                self.sig_pass_finished.emit ()                          # intermediate update
+
                 # start next pass after this thread has really finished 
                 timer = QTimer()                                
-                timer.singleShot(10, self._start_matcher)
+                timer.singleShot(20, self._start_matcher)
         else: 
             finished = True 
 
@@ -803,10 +809,18 @@ class Matcher (QThread):
 
 
     @staticmethod
-    def norm2_deviation_to (bezier : Bezier, target_line : 'Line', isReduced=False)  -> float:
-        """returns norm2 deviation of self to a target_line"""
+    def deviation_to (bezier : Bezier, target_line : 'Line', isReduced=False, fast=False) \
+                     -> tuple [np.ndarray, np.ndarray, np.ndarray]:
+        """
+        calculate deviation betwenn bezier and a target line (which will optionally be reduced)
+        
+        Returns: 
+            x,y:    coordinates on bezier curve used for deviation
+            devi:   +- deviations of bezier to a target_line
+        """
 
-        if not isinstance (target_line, Line): return 0.0 
+        if not isinstance (target_line, Line): 
+            raise ValueError ("target is not a Line object")
 
         # reduce no of coordinates to speed up evaluation 
         if not isReduced:
@@ -814,14 +828,24 @@ class Matcher (QThread):
         else: 
             reduced_target = target_line 
 
-        # evaluate the new y values on Bezier for the target x-coordinate   
-        y_new = np.zeros (len(reduced_target.y))
-        for i, x in enumerate(reduced_target.x) :
-            y_new[i] = bezier.eval_y_on_x (x, fast=False, epsilon=1e-7)
+        # evaluate the new y values on Bezier for the target x-coordinate  
+        x = reduced_target.x 
+        y = np.zeros (len(reduced_target.y))
+        for i, xi in enumerate(reduced_target.x) :
+            y[i] = bezier.eval_y_on_x (xi, fast=fast, epsilon=1e-7)
 
-        # calculate abs difference between bezier y and target y
-        devi = np.abs((y_new - reduced_target.y))
-        return np.linalg.norm (devi)
+        # calculate difference between bezier y and target y
+        devi = (y - reduced_target.y)
+        return x, y, devi
+
+
+    @staticmethod
+    def norm2_deviation_to (bezier : Bezier, target_line : 'Line', isReduced=False)  -> float:
+        """returns norm2 deviation of bezier to a target_line"""
+
+        _, _, devi = Matcher.deviation_to (bezier, target_line, isReduced)
+        return np.linalg.norm (np.abs(devi))
+
 
     # ------------------
 
@@ -831,6 +855,7 @@ class Matcher (QThread):
         super().__init__(parent)
 
         self._exiting = False 
+        self._is_interrupted = False 
 
         # nelder mead results 
         self._niter      = 0                        # number of iterations needed
@@ -922,7 +947,15 @@ class Matcher (QThread):
         self._niter      = niter
         self._evals      = 0 
 
+        if self.isInterruptionRequested():
+            self._is_interrupted = True 
+
         return 
+
+    @property
+    def is_interrupted (self) -> bool:
+        """ True if thread has finished and was interrupted"""
+        return self._is_interrupted
 
 
     # --------------------
