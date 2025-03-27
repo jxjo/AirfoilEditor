@@ -465,7 +465,7 @@ class Match_Bezier (Dialog):
         self._target_curv_le = target_curv_le
         self._max_curv_te = max_curv_te
 
-        self._norm2 = Matcher.norm2_deviation_to (side_bezier.bezier, target_line) 
+        self._norm2 = Line.norm2_deviation_to (side_bezier.bezier, target_line) 
         self._nevals = 0
 
         self._target_curv_le_weighting = self.INITIAL_WEIGHTING
@@ -568,7 +568,7 @@ class Match_Bezier (Dialog):
 
         if finished:      
             # we really finished
-            self._norm2 = Matcher.norm2_deviation_to (self._side_bezier.bezier, self._target_line)
+            self._norm2 = Line.norm2_deviation_to (self._side_bezier.bezier, self._target_line)
 
             self._ipass = 0                                             # reset pass counter 
             self._target_curv_le_weighting = self.INITIAL_WEIGHTING     # reset weighing 
@@ -745,8 +745,6 @@ class Matcher (QThread):
             return cls.result_quality.GOOD
 
 
-
-
     @classmethod
     def result_deviation (cls, norm2 : float) -> result_quality:
         """ returns enum result_quality depending of deviation"""
@@ -771,80 +769,6 @@ class Matcher (QThread):
             return cls.result_quality.OK
         else: 
             return cls.result_quality.GOOD
-
-
-
-    @staticmethod
-    def _reduce_target_points (target_line: Line) -> Line:
-        """ 
-        Returns a new target Line with a reduced number of points 
-        to increase speed of deviation evaluation
-
-        The reduction tries to get best points which represent an aifoil side 
-        """
-        # based on delta x
-        # we do not take every coordinate point - define different areas of point intensity 
-        x1  = 0.02 # 0.03                               # a le le curvature is master 
-        dx1 = 0.020 # 0.025                              # now lower density at nose area
-        x2  = 0.25 
-        dx2 = 0.04
-        x3  = 0.8                                       # no higher density at te
-        dx3 = 0.03 # 0.03                               # to handle reflexed or rear loading
-
-        targ_x = []
-        targ_y = []
-        x = x1
-        while x < 1.0: 
-            i = find_closest_index (target_line.x, x)
-            targ_x.append(float(target_line.x[i]))
-            targ_y.append(float(target_line.y[i]))
-            if x > x3:
-                x += dx3
-            elif x > x2:                             
-                x += dx2
-            else: 
-                x += dx1
-
-        return Line(targ_x, targ_y)
-
-
-    @staticmethod
-    def deviation_to (bezier : Bezier, target_line : 'Line', isReduced=False, fast=False) \
-                     -> tuple [np.ndarray, np.ndarray, np.ndarray]:
-        """
-        calculate deviation betwenn bezier and a target line (which will optionally be reduced)
-        
-        Returns: 
-            x,y:    coordinates on bezier curve used for deviation
-            devi:   +- deviations of bezier to a target_line
-        """
-
-        if not isinstance (target_line, Line): 
-            raise ValueError ("target is not a Line object")
-
-        # reduce no of coordinates to speed up evaluation 
-        if not isReduced:
-            reduced_target = Matcher._reduce_target_points (target_line)
-        else: 
-            reduced_target = target_line 
-
-        # evaluate the new y values on Bezier for the target x-coordinate  
-        x = reduced_target.x 
-        y = np.zeros (len(reduced_target.y))
-        for i, xi in enumerate(reduced_target.x) :
-            y[i] = bezier.eval_y_on_x (xi, fast=fast, epsilon=1e-7)
-
-        # calculate difference between bezier y and target y
-        devi = (y - reduced_target.y)
-        return x, y, devi
-
-
-    @staticmethod
-    def norm2_deviation_to (bezier : Bezier, target_line : 'Line', isReduced=False)  -> float:
-        """returns norm2 deviation of bezier to a target_line"""
-
-        _, _, devi = Matcher.deviation_to (bezier, target_line, isReduced)
-        return np.linalg.norm (np.abs(devi))
 
 
     # ------------------
@@ -884,7 +808,7 @@ class Matcher (QThread):
 
         # selected target points for objective function
 
-        self._target_line  = Matcher._reduce_target_points (target_line)
+        self._target_line  = Line._reduce_target_points (target_line)
         self._target_y_te = target_line.y[-1]        
 
         # curvature targets  
@@ -1041,7 +965,7 @@ class Matcher (QThread):
         # print (' '.join(f'{p:8.4f}' for p in self._bezier.points_y))   
           
         # norm2 of deviations to target
-        norm2 = Matcher.norm2_deviation_to (self._bezier, self._target_line, isReduced=True)
+        norm2 = Line.norm2_deviation_to (self._bezier, self._target_line, reduce_points=False)
         obj_norm2 = norm2 * 1000                                # 1.0   is ok, 0.2 is good 
 
         # --- LE curvature 

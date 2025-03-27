@@ -63,17 +63,14 @@ class Diagram_Item_Airfoil (Diagram_Item):
             if a.isBezierBased: return True
         return False 
 
-    def _is_bezier_modify (self) -> bool: 
-        """ is bezier modify / match target active """
 
-        design_is_bezier = False 
-        second_is_normal = False 
+    def _is_one_design (self) -> bool: 
+        """ is one airfoil used as design ?"""
+
         for a in self.airfoils():
-            if a.usedAsDesign and a.isBezierBased:
-                design_is_bezier = True 
-            if not a.usedAsDesign and a.usedAs == usedAs.NORMAL : 
-                second_is_normal = True 
-        return design_is_bezier and second_is_normal
+            if a.usedAsDesign:
+                return True 
+        return False
 
 
     def _on_enter_panelling (self):
@@ -175,18 +172,18 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.airfoil_artist.refresh() 
         self.line_artist.refresh() 
 
-        # switch off bezier deviation artist if no match 
-        if not self._is_bezier_modify():
+        # switch off deviation artist if not design
+        if not self._is_one_design():
             self.bezier_devi_artist.set_show(False)
+        else: 
+            self.bezier_devi_artist.refresh()
 
         # show Bezier shape function when current airfoil is Design and Bezier 
         cur_airfoil : Airfoil = self.airfoils()[0]
         if cur_airfoil.isBezierBased and cur_airfoil.usedAsDesign:
             self.bezier_artist.set_show (True)
-            self.bezier_devi_artist.refresh()
         else: 
             self.bezier_artist.refresh() 
-            self.bezier_devi_artist.refresh()
 
     @property
     def section_panel (self) -> Edit_Panel:
@@ -216,10 +213,10 @@ class Diagram_Item_Airfoil (Diagram_Item):
                     set=self.bezier_artist.set_show,
                     hide=lambda : not self._is_one_airfoil_bezier()) 
             r += 1
-            CheckBox (l,r,c, text="Deviation to target", colSpan=2,
+            CheckBox (l,r,c, text="Deviation of Design", colSpan=2,
                     get=lambda: self.bezier_devi_artist.show,
                     set=self.bezier_devi_artist.set_show,
-                    hide=lambda : not self._is_bezier_modify()) 
+                    hide=lambda : not self._is_one_design()) 
             r += 1
             l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)

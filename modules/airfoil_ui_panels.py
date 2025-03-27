@@ -595,14 +595,14 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     def norm2_upper (self): 
         """ norm2 deviation of airfoil to target - upper side """
         if self._norm2_upper is None: 
-            self._norm2_upper = Matcher.norm2_deviation_to (self.upper.bezier, self.target_upper) 
+            self._norm2_upper = Line.norm2_deviation_to (self.upper.bezier, self.target_upper) 
         return  self._norm2_upper    
 
 
     def norm2_lower (self): 
         """ norm2 deviation of airfoil to target  - upper side """
         if self._norm2_lower is None: 
-            self._norm2_lower = Matcher.norm2_deviation_to (self.lower.bezier, self.target_lower)  
+            self._norm2_lower = Line.norm2_deviation_to (self.lower.bezier, self.target_lower)  
         return self._norm2_lower
 
 

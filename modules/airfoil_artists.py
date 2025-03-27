@@ -659,18 +659,18 @@ class Bezier_Deviation_Artist (Artist):
     
         from airfoil_dialogs    import Matcher
 
-        # check - is there bezier based design airfoil and a target airfoil 
+        # check - is there a design airfoil and a target (normal) airfoil 
 
-        geo_bezier : Geometry_Bezier = None 
-        geo_target : Geometry        = None 
+        geo_from   : Geometry = None 
+        geo_target : Geometry = None 
 
         for airfoil in self.airfoils:
-            if airfoil.isBezierBased and airfoil.usedAsDesign:
-                geo_bezier = airfoil.geo 
+            if airfoil.usedAsDesign:
+                geo_from = airfoil.geo 
             elif airfoil.usedAs == usedAs.NORMAL:
                 geo_target = airfoil.geo
 
-        if not geo_bezier or not geo_target: return 
+        if not geo_from or not geo_target: return 
 
         # plot difference as thick lines at deviation check coordinates 
 
@@ -681,15 +681,15 @@ class Bezier_Deviation_Artist (Artist):
         for side in [Line.Type.UPPER, Line.Type.LOWER]:     
 
             if side == Line.Type.UPPER:
-                bezier      = geo_bezier.upper.bezier
+                from_line   = geo_from.upper  
                 target_line = geo_target.upper
             else:
-                bezier      = geo_bezier.lower.bezier
+                from_line   = geo_from.lower  
                 target_line = geo_target.lower
 
             # get deviation from Matcher 
 
-            x, y, devi = Matcher.deviation_to (bezier, target_line, isReduced=True, fast=True)
+            x, y, devi = Line.deviation_to (from_line, target_line, reduce_points=False, fast=True)
 
             # build array of coordinate pairs for fast plot -> connect='pairs'
 
