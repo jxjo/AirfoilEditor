@@ -118,7 +118,7 @@ class Airfoil:
             if os.path.isabs (pathFileName):
                 checkPath = pathFileName
             else:
-                checkPath = self.pathFileName_abs
+                checkPath = os.path.join(self.workingDir, pathFileName)
             if not os.path.isfile(checkPath):
                 self._name = "-- Error --"
                 raise ValueError ("Airfoil file '%s' does not exist. Couldn't create Airfoil" % checkPath)

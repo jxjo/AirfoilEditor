@@ -507,11 +507,13 @@ class Diagram_Item_Polars (Diagram_Item):
 
     def _prev_btn_clicked (self):
         """ previous diagram button clicked"""
+        # leave scene clicked event as plot items will be removed with new xy vars 
         QTimer.singleShot (10, lambda: self._handle_prev_next (step=-1))
 
 
     def _next_btn_clicked (self):
         """ next diagram button clicked"""
+        # leave scene clicked event as plot items will be removed with new xy vars 
         QTimer.singleShot (10, lambda: self._handle_prev_next (step=1))
 
 

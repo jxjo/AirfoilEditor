@@ -630,11 +630,7 @@ class Polar (Polar_Definition):
     def opPoints (self) -> list:
         """ returns the sorted list of opPoints of self """
         return self._opPoints
-    
-    def set_opPoints (self, opPoints_new: list):
-        """ set list of opPoints of self """
-        self._opPoints = opPoints_new 
-    
+        
     @property
     def isLoaded (self) -> bool: 
         """ is polar data loaded from file (for async polar generation)"""
