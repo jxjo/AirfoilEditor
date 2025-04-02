@@ -120,13 +120,13 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         r += 1
         SpaceR (l,r, height=5)
         r += 1
-        Button (l,r,c, text="&Modify Airfoil", width=100, 
+        Button (l,r,c, text="&Modify", width=100, 
                 set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel",
                 button_style=button_style.PRIMARY)
         r += 1
         SpaceR (l,r, height=2, stretch=0)
         r += 1
-        Button (l,r,c, text="&New as Bezier", width=100, 
+        Button (l,r,c, text="&As Bezier", width=100, 
                 set=self.myApp.new_as_Bezier, disable=lambda: self.airfoil().isBezierBased,
                 toolTip="Create new Bezier airfoil based on current airfoil")
         r += 1

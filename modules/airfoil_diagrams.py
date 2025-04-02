@@ -507,12 +507,12 @@ class Diagram_Item_Polars (Diagram_Item):
 
     def _prev_btn_clicked (self):
         """ previous diagram button clicked"""
-        self._handle_prev_next (step=-1)
+        QTimer.singleShot (10, lambda: self._handle_prev_next (step=-1))
 
 
     def _next_btn_clicked (self):
         """ next diagram button clicked"""
-        self._handle_prev_next (step=1)
+        QTimer.singleShot (10, lambda: self._handle_prev_next (step=1))
 
 
     @override
@@ -558,8 +558,9 @@ class Diagram_Item_Polars (Diagram_Item):
     def _refresh_prev_next_btn (self):
         """ hide/show previous / next buttons"""
 
-        try: 
-            l = list (self._xyVars_show_dict.keys())
+        l = list (self._xyVars_show_dict.keys())
+
+        if self._xyVars in l:
             i = l.index(self._xyVars)
             if i == 0:
                 self._prev_btn.hide()
@@ -569,7 +570,7 @@ class Diagram_Item_Polars (Diagram_Item):
                 self._next_btn.hide()
             else:
                 self._next_btn.show()
-        except: 
+        else: 
             self._prev_btn.hide()
             self._next_btn.hide()
 
@@ -729,7 +730,7 @@ class Diagram_Airfoil_Polar (Diagram):
         self._polar_defs_fn = polar_defs_fn 
         self._diagram_settings = diagram_settings
 
-        self._show_operating_points = False             # show polars operating points 
+        self._show_polar_points = False             # show polars operating points 
 
         super().__init__(*args, **kwargs)
 
@@ -910,12 +911,12 @@ class Diagram_Airfoil_Polar (Diagram):
 
 
     @property 
-    def show_operating_points (self) -> bool:
+    def show_polar_points (self) -> bool:
         """ show polar operatins points """
-        return self._show_operating_points
+        return self._show_polar_points
 
-    def set_show_operating_points (self, aBool : bool):
-        self._show_operating_points = aBool
+    def set_show_polar_points (self, aBool : bool):
+        self._show_polar_points = aBool
 
         artist : Polar_Artist
         for artist in self._get_artist (Polar_Artist):
@@ -943,6 +944,11 @@ class Diagram_Airfoil_Polar (Diagram):
             l.addWidget (p, r, c, 1, 6)
             l.setRowStretch (r,1)
 
+            SpaceR (l,r, height=10, stretch=0) 
+            r += 1
+            CheckBox (l,r,c, text="Polar points", colSpan=4,
+                            get=lambda: self.show_polar_points, set=self.set_show_polar_points) 
+
             # polar diagrams variables setting 
 
             r += 1
@@ -961,10 +967,6 @@ class Diagram_Airfoil_Polar (Diagram):
                     SpaceC      (l,c+5)
                     r += 1
 
-                SpaceR (l,r, height=10, stretch=0) 
-                r += 1
-                CheckBox (l,r,c, text="Operating points", colSpan=4,
-                                get=lambda: self.show_operating_points, set=self.set_show_operating_points) 
                 r += 1
                 SpaceR (l,r, height=10, stretch=1)
                 r += 1

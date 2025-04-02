@@ -774,7 +774,7 @@ class Matcher (QThread):
     # ------------------
 
     def __init__ (self, parent = None):
-        """ use .set_initial(...) to put data into thread 
+        """ use .set_match(...) to put data into thread 
         """
         super().__init__(parent)
 
