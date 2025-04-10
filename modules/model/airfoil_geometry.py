@@ -54,7 +54,7 @@ import numpy as np
 import time
 from enum               import Enum
 from typing             import override
-from copy               import copy, deepcopy
+from copy               import deepcopy
 
 from base.math_util    import * 
 from base.spline import Spline1D, Spline2D, Bezier
@@ -63,9 +63,6 @@ from base.spline import HicksHenne
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
-
-CAMBER      = 'camber'
-
 
 
 class GeometryException(Exception):

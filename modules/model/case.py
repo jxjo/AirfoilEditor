@@ -3,14 +3,20 @@
 
 import os
 import fnmatch      
-import shutil           
+import shutil      
+import datetime 
+
+from pathlib                import Path
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, GEO_SPLINE
+
+from model.xo2_input        import Input_File
+from model.xo2_controller   import Xo2_Controller
+from model.xo2_results      import Xo2_Results
 
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
-
 
 """  
 
@@ -248,6 +254,157 @@ class Case_Direct_Design (Case_Abstract):
         if remove: 
             shutil.rmtree (self.design_dir, ignore_errors=True)
 
+
+
+class Case_Optimize (Case_Abstract):
+    """
+    A Xoptfoil2 optimizer Case 
+
+    """
+
+    INPUT_FILE_EXT = [".inp", ".xo2"]
+
+    def __init__(self, airfoil_or_input_file : Airfoil | str):
+
+        self._airfoil_seed     = None   
+        self._airfoil_final    = None
+        self._airfoil_designs  = None 
+
+        self._workingDir       = None
+        self._input_file       = None
+        self._results          = None
+
+        # init input file instance 
+
+        if isinstance (airfoil_or_input_file, Airfoil):
+            airfoil : Airfoil = airfoil_or_input_file
+            input_fileName = self._get_input_fileName (airfoil) 
+
+            self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName)
+            self._airfoil_final = airfoil_or_input_file
+
+        elif isinstance (airfoil_or_input_file, str):
+
+            fileName : str = airfoil_or_input_file
+            self._input_file    = Input_File (fileName)
+
+        else: 
+            raise ValueError (f"{airfoil_or_input_file} not a valid argument")
+        
+
+        self._workingDir = airfoil.pathName
+
+        # init xo2 controller
+
+        self._xo2 = Xo2_Controller (self.workingDir)
+
+        # init xo2 results 
+
+        self._results = Xo2_Results (self.workingDir, self.outName)
+
+
+    def _get_input_fileName (self, airfoil : Airfoil) -> str:
+        """ returns fileName of xo2 input file belonging to airfoil - or None if not existing"""
+
+        for extension in Case_Optimize.INPUT_FILE_EXT:
+            pathFileName = os.path.join (airfoil.pathName, airfoil.fileName_stem + extension)
+            if os.path.isfile (pathFileName):
+                return airfoil.fileName_stem + extension
+        return None 
+
+
+    @property
+    def workingDir (self) -> str:
+        """working directory where input file is located"""
+        return self._workingDir
+
+
+    @property
+    def input_file (self) -> Input_File:
+        """ xo2 input file proxy"""
+        return self._input_file
+    
+    @property
+    def results (self) -> Xo2_Results:
+        """ xo2 results handler"""
+        return self._results
+
+
+    @property
+    def isInput_faultless (self) -> bool:
+        """ is input file ready for optimization """
+        return self.input_file.fileName and not self.input_file.hasErrors
+
+
+    @property 
+    def xo2 (self) -> Xo2_Controller:
+        """ the Xoptfoil2 (controller) instance """
+
+        return self._xo2
+    
+
+    @property
+    def outName (self) -> str:
+        """ outName of Xoptfoil2 equals stem of result airfoil (and base of temp directory)"""
+
+        return Path(self.input_file.fileName).stem 
+
+
+    @property
+    def isFinished (self) -> bool:
+        """ 
+        True if an optimization is finished ...
+            - input file exists 
+            - result airfoil is younger than results directory
+            - xo2 is ready 
+        """
+
+        isFinished = False
+
+        try: 
+            if os.path.isfile (self.input_file.pathFileName) and \
+               os.path.isfile (self._airfoil_final.pathFileName) and \
+               os.path.isdir  (self.results.resultDir) and self.xo2.isReady:
+                
+                results_dir_dt = datetime.datetime.fromtimestamp(os.path.getmtime(self.results.resultDir))
+                airfoil_dt     = datetime.datetime.fromtimestamp(os.path.getmtime(self._airfoil_final.pathFileName))
+
+                if airfoil_dt > results_dir_dt:
+                    isFinished = True
+        except:
+            pass
+
+        return isFinished
+
+
+
+
+    # ---- Methods -------------------------------------------
+
+    def run (self):
+        """ start a new optimization run """
+
+        if not self.input_file.hasErrors and self.xo2.isReady:
+
+            rc = self.xo2.run (self.outName, self.input_file.fileName)
+
+            if rc == 0: 
+                # re-init results - remove result_dir as Xoptfoil2 is slow 
+                self._results = Xo2_Results (self.workingDir, self.outName, remove_result_dir=True)
+                self._results.set_results_could_be_dirty ()
+
+
+    def state_info (self):
+        """returns stae info tuple of current state (progress)
+
+        Returns:
+            state: xo2 state
+            nSteps: number of optimization steps 
+            nDesigns: number of optimization designs 
+        """
+
+        return self.xo2.state, self.xo2.nSteps, self.xo2.nDesigns
+    
 
 
 #-------------------------------------------------------------------------------

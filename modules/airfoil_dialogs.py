@@ -21,13 +21,16 @@ from PyQt6.QtWidgets        import QFileDialog, QWidget
 
 from base.math_util         import nelder_mead, find_closest_index, derivative1
 from base.widgets           import * 
-from base.panels            import Dialog 
+from base.panels            import Dialog, Edit_Panel, Container_Panel 
 from base.spline            import Bezier 
 
 from model.airfoil          import Airfoil
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
 from model.polar_set        import Polar_Definition, polarType, var
+from model.case             import Case_Optimize
+from model.xo2_controller   import xo2_state, Xo2_Controller
+from model.xo2_results      import Xo2_Results
 
 from airfoil_widgets        import Airfoil_Select_Open_Widget
 
@@ -170,7 +173,7 @@ class Airfoil_Save_Dialog (Dialog):
 
 # ----- Blend two airfoils   -----------
 
-class Blend_Airfoil (Dialog):
+class Blend_Airfoil_Dialog (Dialog):
     """ Dialog to two airfoils into a new one"""
 
     _width  = 560
@@ -281,7 +284,7 @@ class Blend_Airfoil (Dialog):
 # ----- repanel dialog helper window  -----------
 
 
-class Repanel_Airfoil (Dialog):
+class Repanel_Airfoil_Dialog (Dialog):
     """ Dialog to repanel an airfoil"""
 
     _width  = 460
@@ -393,7 +396,7 @@ class Repanel_Airfoil (Dialog):
 
 # ----- Match a Bezier curve to a Side of an airfoil  -----------
 
-class Match_Bezier (Dialog):
+class Match_Bezier_Dialog (Dialog):
     """ Main handler represented as little tool window"""
 
     _width  = 350
@@ -619,11 +622,11 @@ class Match_Bezier (Dialog):
         r += 1
         Label  (l,r,0, get=f"{self._side_bezier.name} side", width=80)
         FieldF (l,r,1, width=60, dec=3, unit='%', get=lambda: self._norm2, 
-                       style=lambda: Match_Bezier.style_deviation (self._norm2 ))
+                       style=lambda: Match_Bezier_Dialog.style_deviation (self._norm2 ))
         FieldF (l,r,3, width=50, dec=0, get=lambda: self._curv_le,
-                       style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self._curv_le))
+                       style=lambda: Match_Bezier_Dialog.style_curv_le(self._target_curv_le, self._curv_le))
         FieldF (l,r,4, width=50, dec=1, get=lambda: self._curv_te,
-                       style=lambda: Match_Bezier.style_curv_te(self._max_curv_te, self._curv_te))
+                       style=lambda: Match_Bezier_Dialog.style_curv_te(self._max_curv_te, self._curv_te))
         r += 1
         SpaceR (l, r) 
 
@@ -700,6 +703,315 @@ class Match_Bezier (Dialog):
         
         # normal close 
         super().reject()
+
+
+
+# ----- Run / Watch Optimizer Xoptfoil2  -----------
+
+class Run_Optimizer_Dialog (Dialog):
+    """ Dialog to run/watch Xoptfoil2"""
+
+    _width  = 350
+    _height = 400
+
+    name = "Xoptfoil2 Controller"
+
+
+    def __init__ (self, parent : QWidget, 
+                  case,
+                  **kwargs): 
+
+        if not isinstance (case, Case_Optimize):
+            raise ValueError ("case isn't a Case_Optimize")
+        
+        self._case = case
+
+        # init layout etc 
+
+        self._panel_running  : Edit_Panel = None
+        self._panel_ready    : Edit_Panel = None
+        self._panel_stopping : Edit_Panel = None
+        self._panel_finished : Edit_Panel = None
+        
+        self._btn_stop   : QPushButton = None
+        self._btn_close  : QPushButton = None 
+        self._btn_run    : QPushButton = None 
+
+        super().__init__ (parent, title=self._titletext(), **kwargs)
+
+        # no border for main layout 
+
+        self._panel.layout().setContentsMargins (QMargins(0, 0, 0, 0))
+
+        # handle button (signals) 
+
+        self._btn_stop.clicked.connect   (self._stop_optimize)
+        self._btn_close.clicked.connect  (self.close)
+        self._btn_run.clicked.connect    (self.run_optimize)
+
+        # switch panel and buttons on/off
+
+        self._set_view ()
+
+    @property
+    def case(self) -> Case_Optimize:
+        return self._case
+
+    @property
+    def xo2(self) -> Xo2_Controller:
+        return self.case.xo2
+
+    @property
+    def results(self) -> Xo2_Results:
+        return self.case.results
+
+
+    def run_optimize (self): 
+        """ run optimizer"""
+
+        if self.case.xo2.isReady:
+
+            self.case.run()
+
+            self._set_view ()              # after to get running state 
+
+
+    def _on_results (self, nevals, norm2, curv_le, curv_te):
+        """ slot to receice new results from running thread"""
+
+        self.refresh ()
+        self.setWindowTitle (self._titletext())
+
+
+    @property
+    def panel_running (self) -> Edit_Panel:
+        """ shows info during Xo2 run"""
+
+        if self._panel_running is None: 
+
+            l = QGridLayout()
+            r,c = 0, 0 
+            SpaceR (l, r, stretch=0, height=5) 
+            r += 1
+            FieldI (l,r,c, lab="Iterations", width=60, get=lambda: self.xo2.nSteps)
+            r += 1
+            FieldI (l,r,c, lab="Designs", width=60, get=lambda: self.xo2.nDesigns)
+            r += 1
+            Field  (l,r,c, lab="Time elapsed", width=60, get=lambda: self.xo2.time_running())
+            r += 1
+            FieldF (l,r,c, lab="Improvement", width=60, get=lambda: self.xo2.improvement, dec=5, unit="%")
+            r += 1
+            SpaceR (l, r) 
+
+            l.setColumnMinimumWidth (0,100)
+            l.setColumnStretch (c+2,2)
+
+            self._panel_running = Edit_Panel (title="Running", layout=l, height=(None,None)) 
+            self._panel_running.set_background_color (color='steelblue', alpha=0.3)        
+
+        return self._panel_running
+
+
+    @property
+    def panel_ready (self) -> Edit_Panel:
+        """ default panel for being idle"""
+
+        if self._panel_ready is None: 
+
+            l = QGridLayout()
+            r = 0
+            Label  (l,r,0, colSpan=5, height=40, get="Ready for Optimization")
+            r += 1
+            SpaceR (l, r, stretch=0, height=5) 
+            r += 1
+            SpaceR (l, r) 
+
+            self._panel_ready = Edit_Panel (title="Ready", layout=l, height=(None,None))
+
+        return self._panel_ready
+
+
+    @property
+    def panel_stopping (self) -> Edit_Panel:
+        """ stop requested """
+
+        if self._panel_stopping is None: 
+
+            l = QGridLayout()
+            r = 0
+            Label  (l,r,0, colSpan=5, height=40, get="Stopping")
+            r += 1
+            SpaceR (l, r, stretch=0, height=5) 
+            r += 1
+            SpaceR (l, r) 
+
+            self._panel_stopping = Edit_Panel (title="Stopping", layout=l, height=(None,None))
+            self._panel_stopping.set_background_color (color='darkorange', alpha=0.2)
+
+        return self._panel_stopping
+
+
+    @property
+    def panel_finished (self) -> Edit_Panel:
+        """ shows info during Xo2 run"""
+
+        if self._panel_finished is None: 
+
+            l = QGridLayout()
+            r,c = 0, 0 
+            SpaceR (l, r, stretch=0, height=5) 
+            r += 1
+            FieldI (l,r,c, lab="Iterations", width=60, get=lambda: self.results.nSteps)
+            r += 1
+            FieldI (l,r,c, lab="Designs", width=60, get=lambda: self.results.nDesigns)
+            r += 1
+            Field  (l,r,c, lab="Time elapsed", width=60, get=lambda: self.results.time_running())
+            r += 1
+            FieldF (l,r,c, lab="Improvement", width=60, get=lambda: self.results.improvement, dec=5, unit="%")
+            r += 1
+            SpaceR (l, r) 
+
+            l.setColumnMinimumWidth (0,100)
+            l.setColumnStretch (c+2,2)
+
+            self._panel_finished = Edit_Panel (title="Finished - Final Results", layout=l, height=(None,None)) 
+            self._panel_finished.set_background_color (color='darkturquoise', alpha=0.2)
+
+        return self._panel_finished
+
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QHBoxLayout()
+        l.addWidget (self.panel_ready)
+        l.addWidget (self.panel_running)
+        l.addWidget (self.panel_stopping)
+        l.addWidget (self.panel_finished)
+        l.setContentsMargins (QMargins(0, 0, 0, 0))
+
+        return l
+
+
+    def _titletext (self) -> str: 
+        """ headertext depending on state """
+        if self.case.xo2.state == xo2_state.RUNNING:
+            return f"Xoptfoil2 running ..."
+        else: 
+            return self.name
+
+
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+
+        self._btn_close  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
+
+        self._btn_stop = QPushButton ("Stop", parent=self)
+        self._btn_stop.setFixedWidth (100)
+
+        self._btn_run = QPushButton ("Run", parent=self)
+        self._btn_run.setFixedWidth (100)
+
+        buttonBox.addButton (self._btn_run, QDialogButtonBox.ButtonRole.ActionRole)
+        buttonBox.addButton (self._btn_stop, QDialogButtonBox.ButtonRole.RejectRole)
+
+        return buttonBox 
+
+
+    def _set_view (self):
+        """ depending on xo2 state, set panel and button visibility """
+
+        state = self.case.xo2.state
+
+        # state = xo2_state.RUNNING
+
+        self.panel_running.set_visibilty (False)
+        self.panel_ready.set_visibilty(False)
+        self.panel_stopping.set_visibilty(False)
+        self.panel_finished.set_visibilty(False)
+
+        self._btn_stop.setVisible (False) 
+        self._btn_stop.setDisabled (False)
+        self._btn_run.setVisible (False) 
+        self._btn_close.setVisible (False) 
+
+
+        if state == xo2_state.RUNNING:
+
+            self.panel_running.set_visibilty (True)
+
+            self._btn_stop.setVisible (True) 
+            self._btn_stop.setFocus ()
+
+        elif state == xo2_state.READY and self.case.isFinished:
+
+            self.panel_finished.set_visibilty(True)
+
+            self._btn_close.setVisible (True) 
+            self._btn_run.setVisible (True) 
+            self._btn_run.setFocus ()
+
+        elif state == xo2_state.READY:
+
+            self.panel_ready.set_visibilty(True)
+
+            self._btn_close.setVisible (True) 
+            self._btn_run.setVisible (True) 
+            self._btn_run.setFocus ()
+
+        elif state == xo2_state.STOPPING:
+
+            self.panel_stopping.set_visibilty(True)
+            self._btn_stop.setVisible (True) 
+            self._btn_stop.setDisabled (True)
+
+        else: 
+
+            self.panel_ready.set_visibilty(True)
+
+            self._btn_close.setVisible (True) 
+            self._btn_close.setFocus ()
+
+        self.setWindowTitle (self._titletext())
+
+
+
+    def _stop_optimize (self):
+        """ request thread termination"""
+    
+        self.case.xo2.stop()
+
+        self._set_view ()
+
+
+    @override
+    def refresh (self, disable=None):
+        """ overidden to set panel view according to state """
+
+        self._set_view ()
+
+        # refresh only the visible widgets 
+        # w : QWidget
+        for w in self.widgets:
+            if w.isVisible():
+                w.refresh(disable=disable)
+        # super().refresh (disable=disable)
+
+
+    @override
+    def reject(self): 
+        """ close or x-Button pressed"""
+
+        # stop running matcher if x-Button pressed
+        if self.case.xo2.isRunning:
+            self._stop_optimize()
+        
+        # normal close 
+        super().reject()
+
 
 
     
@@ -1074,7 +1386,7 @@ class Matcher (QThread):
 
 
 
-class Edit_Polar_Definition (Dialog):
+class Polar_Definition_Dialog (Dialog):
     """ Dialog to edit a single polar definition"""
 
     _width  = 470

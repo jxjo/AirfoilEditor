@@ -820,7 +820,7 @@ class Artist(QObject):
                 self._pi.addLegend(offset=(-10,10),  verSpacing=0 )  
                 self._pi.legend.setLabelTextColor (self.COLOR_LEGEND)
 
-            if len(self.data_list) > 0:
+            if self.data_object is not None:
 
                 self._plot()                        # plot data list 
 

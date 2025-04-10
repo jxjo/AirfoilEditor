@@ -653,7 +653,7 @@ class Toaster (QFrame):
     def showMessage(parent, message, 
                     corner=Qt.Corner.BottomLeftCorner, 
                     margin=QMargins(10, 10, 10, 10), 
-                    style = style.HINT,
+                    toast_style = style.HINT,
                     duration=2000, parentWindow=False):
         """
         show a toaster for a while
@@ -674,6 +674,9 @@ class Toaster (QFrame):
         if isinstance (margin, int):
             margin = QMargins(margin, margin, margin, margin)
 
+        if toast_style is None: 
+            toast_style = style.HINT
+
         self = Toaster(parent)
         parentRect : QRectF = parent.rect()
 
@@ -685,14 +688,14 @@ class Toaster (QFrame):
 
         # set background style 
 
-        if style in [style.WARNING, style.ERROR, style.COMMENT, style.GOOD, style.HINT]:
+        if toast_style in [style.WARNING, style.ERROR, style.COMMENT, style.GOOD, style.HINT]:
 
             palette : QPalette = self.palette()
             if Widget.light_mode:
                 index = Widget.LIGHT_INDEX
             else: 
                 index = Widget.DARK_INDEX
-            color = QColor (style.value[index])
+            color = QColor (toast_style.value[index])
 
             color.setAlphaF (0.3)
 
@@ -747,8 +750,8 @@ class Dialog (QDialog):
         getter: bound method for data object 
         width : overwrite default width of self 
         height: overwrite default height of self 
-        dx    : move top left corner dx pixel to the right of parent center
-        dy    : move top left corner dy pixel down of parent center
+        dx    : move top left corner dx pixel to the right of parent bottom left
+        dy    : move top left corner dy pixel down of parent bottom left
     Returns:
         _type_: _description_
     """
@@ -784,12 +787,12 @@ class Dialog (QDialog):
         Widget._set_width  (self, self._width)
         Widget._set_height (self, self._height)
 
-        # move self relative to parent center
+        # move self relative to parent bottom left
 
         if dx is not None and dy is not None:
-            parent_center = self._parent.mapToGlobal (self._parent.rect().center())  # parent in global coordinates
-            pos_x = parent_center.x() + dx
-            pos_y = parent_center.y() + dy            
+            bottom_left = self._parent.mapToGlobal (self._parent.rect().bottomLeft())  # parent in global coordinates
+            pos_x = bottom_left.x() + dx
+            pos_y = bottom_left.y() + dy            
             self.move (pos_x, pos_y)
 
         # title of dialog 

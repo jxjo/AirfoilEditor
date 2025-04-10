@@ -24,7 +24,6 @@ from subprocess     import Popen, run, PIPE
 if os.name == 'nt':                                 # startupinfo only available in windows environment  
     from subprocess import STARTUPINFO, CREATE_NEW_CONSOLE, STARTF_USESHOWWINDOW, CREATE_NO_WINDOW
 
-# from base.common_utils          import *
 
 import logging
 logger = logging.getLogger(__name__)
@@ -92,9 +91,8 @@ class X_Program:
 
         if workingDir and not os.path.isdir (workingDir):
             raise ValueError (f"Working directory '{workingDir}' does not exist" )
-        else:    
-            self.workingDir = workingDir
 
+        self._workingDir        = workingDir                # directory in which self will be executed
         self._popen : Popen     = None                      # instance of subprocess when async
         self._returncode        = 0                         # returncode when async finished 
         self._pipe_error_lines  = None                      # errortext lines from stderr when finished
@@ -107,6 +105,12 @@ class X_Program:
         """ nice representation of self """
         return f"<{type(self).__name__}>"
 
+
+    @property
+    def workingDir (self) -> str: 
+        """ directory in which self will be executed"""
+        return self._workingDir
+    
    
     def isReady (self, project_dir : str, min_version : str = '') -> bool:
         """ 
@@ -155,8 +159,8 @@ class X_Program:
                 # first word is program name 
                 if len (words) >=1 and words[0] == self.name:
 
-                    # second word is version - compare single version numbers
-                    cls.version = words[1]
+                    # last word is version - compare single version numbers
+                    cls.version = words[-1]
                     version_ok = True
                     min_nums = min_version.split(".") 
 
@@ -413,7 +417,7 @@ class X_Program:
 
             popen.poll()                            # update returncode
 
-            returncode  = popen.returncode
+            returncode  = popen.returncode if popen.returncode is not None else 0   # async returns None 
 
             if returncode:
                 logger.error (f"==> {self.name} ended: '{popen}'")
@@ -496,8 +500,12 @@ class Xoptfoil2 (X_Program):
     """
 
     name        = 'Xoptfoil2'
+
     RUN_CONTROL = 'run_control'                     # file name of control file 
     STILL_ALIVE = 10                                # max. age in seconds of run_control
+
+    RESULT_DIR_POSTFIX = '_temp'                    # result directory of Xoptfoil2 postfix of 'outname'
+
 
     @property
     def run_control_filePath (self):
@@ -514,7 +522,7 @@ class Xoptfoil2 (X_Program):
         Args:
             outname: output name for generated airfoil
             inputfile: name of input file. Defaults to 'outname'.inp.
-            seed_airfoil: optional seedairfoil filename.
+            seed_airfoil: optional seed airfoil filename.
         Returns: 
             returncode: = 0 - no errors (which could be retrieved via 'finished_errortext' )
         """
@@ -529,7 +537,7 @@ class Xoptfoil2 (X_Program):
         # add 'mode' option - will write error to stderr
         args.extend(['-m', 'ao']) 
 
-        returncode, _, _ = self._execute (args=args, run_async=True)
+        returncode = self._execute_async (args=args, workingDir=self.workingDir)
 
         return returncode
 
@@ -538,7 +546,7 @@ class Xoptfoil2 (X_Program):
         """ 
         - still running?    ... process when async
                             ... otherwise check run_control file if self was started from outside 
-        - update nSteps, nDesings"""
+        """
 
         if self._popen:                         # started program myself as process
             running = super().isRunning ()
@@ -778,12 +786,12 @@ class Worker (X_Program):
 
 
         if (airfoil1_dir != ''):
-            self.workingDir = airfoil1_dir
+            self._workingDir = airfoil1_dir
             # in this case also strip airfoil2 
             if (airfoil2 != ''):
                 _, airfoil2_fileName = os.path.split(airfoil2)
         else:
-            self.workingDir = None
+            self._workingDir = None
 
         # info inputfile is in a dir - strip dir from path - local execution 
         if (inputfile != ''):

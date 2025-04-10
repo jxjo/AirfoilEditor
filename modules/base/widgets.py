@@ -58,7 +58,7 @@ class style (Enum):
 
 
 class size (Enum):
-    HEADER         = (12, QFont.Weight.Medium) # (13, QFont.Weight.ExtraLight)
+    HEADER         = (13, QFont.Weight.Medium) # (13, QFont.Weight.ExtraLight)
     HEADER_SMALL   = (10, QFont.Weight.DemiBold)
     NORMAL         = ( 9, QFont.Weight.Normal) 
     SMALL          = ( 7, QFont.Weight.Normal) 
@@ -1365,8 +1365,8 @@ class ToolButton (Widget, QToolButton):
         - when clicked, 'set' is called without argument 
     """
 
-    _width  = 24
-    _height = 24 
+    _width  = 22
+    _height = 22 
 
     def __init__(self, *args, 
                  icon : str =None, 
