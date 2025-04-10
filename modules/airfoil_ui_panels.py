@@ -137,7 +137,8 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, textOpen="&Open",
+        Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
+                                    textOpen="&Open", widthOpen=90, 
                                     get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
         SpaceR (l,r, height=5)
