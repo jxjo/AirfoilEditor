@@ -346,7 +346,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
     """ Main geometry data of airfoil"""
 
     name = 'Geometry'
-    _width  = (350, None)
+    _width  = 370
 
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):

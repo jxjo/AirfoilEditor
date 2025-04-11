@@ -133,7 +133,7 @@ class App_Main (QMainWindow):
         Settings.belongTo (__file__, nameExtension=None, fileExtension= '.settings')
         geometry = Settings().get('window_geometry', [])
         maximize = Settings().get('window_maximize', False)
-        Win_Util.set_initialWindowSize (self, size_frac= (0.60, 0.70), pos_frac=(0.1, 0.1),
+        Win_Util.set_initialWindowSize (self, size_frac= (0.85, 0.80), pos_frac=(0.1, 0.1),
                                         geometry=geometry, maximize=maximize)
         
         # load settings

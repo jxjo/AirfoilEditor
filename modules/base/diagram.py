@@ -281,8 +281,8 @@ class Diagram_Item (pg.PlotItem):
     title       = "The Title"                           # title of diagram item
     subtitle    = "my subtitle"                         # optional subtitle 
 
-    min_width   = 600                                   # min size needed - see below 
-    min_height  = 200 
+    min_width   = 500                                   # min size needed - see below 
+    min_height  = 150 
 
     # Signals 
 

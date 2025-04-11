@@ -349,7 +349,7 @@ class Diagram_Item_Welcome (Diagram_Item):
 
         parentPos = (0.0)                               # parent x starts at PlotItem (including axis)       
         itemPos   = (0,0)
-        offset    = (50,5)
+        offset    = (50,0)
 
         p1 = pg.LabelItem(self._welcome_message(), color=QColor(Artist.COLOR_HEADER), size=f"{Artist.SIZE_HEADER}pt")    
 
@@ -382,7 +382,7 @@ class Diagram_Item_Welcome (Diagram_Item):
         examine the polars created by Worker & Xfoil with <strong><span style="color: silver;">View Polar</span></strong>. 
         </p> 
         <p>
-        <span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the Airfoil Editor to open an airfoil with a double click.
+        <span style="color: deepskyblue;">Tip: </span>Assign extension '.dat' to the AirfoilEditor to open an airfoil with a double click.
         </p>
     </td>
     <td style="width:50%">
@@ -681,7 +681,7 @@ class Diagram_Item_Polars (Diagram_Item):
         a = Polar_Artist            (self, self.airfoils,     xyVars=self._xyVars, show_legend=True)
         self._add_artist (a)
 
-        a = Xo2_OpPoint_Defs_Artist  (self, self.opPoint_defs, xyVars=self._xyVars, show_legend=True)
+        a = Xo2_OpPoint_Defs_Artist  (self, self.opPoint_defs, xyVars=self._xyVars, show=False)
         a.sig_opPoint_def_changed.connect (self.sig_opPoint_def_changed.emit)
         self._add_artist (a)
 
@@ -944,7 +944,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         if self._section_panel is None:
         
-            p = Panel_Airfoils (self, getter=self.all_airfoils, height=(80,None))
+            p = Panel_Airfoils (self, getter=self.all_airfoils, height=(120,None))
             
             p.sig_airfoil_ref_changed.connect (self.sig_airfoil_ref_changed.emit)
             p.sig_airfoils_to_show_changed.connect (self._on_show_airfoil_changed)
@@ -1057,7 +1057,7 @@ class Diagram_Airfoil_Polar (Diagram):
                         style=style.COMMENT, fontSize=size.SMALL)
 
 
-            self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(150,None),
+            self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(200,None),
                                               switchable=True, switched_on=False, on_switched=self._on_polars_switched)
         return self._polar_panel 
 
@@ -1069,6 +1069,11 @@ class Diagram_Airfoil_Polar (Diagram):
 
         # hide Welcome item with first refresh
         self._hide_item_welcome()
+
+        # switch off optimize opPoint definitions
+        if not self.mode_optimize and self.show_xo2_opPoint_def:
+            self.set_show_xo2_opPoint_def (False) 
+
         super().refresh(also_viewRange=also_viewRange) 
 
 
