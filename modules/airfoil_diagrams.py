@@ -990,12 +990,12 @@ class Diagram_Airfoil_Polar (Diagram):
 
             # helper panel for polar definitions 
 
-            p = Panel_Polar_Defs (self, self.polar_defs, height=(None,None),)
+            p = Panel_Polar_Defs (self, self.polar_defs, height=(50,None),)
 
             p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
 
             l.addWidget (p, r, c, 1, 6)
-            l.setRowStretch (r,1)
+            l.setRowStretch (r,2)
 
             SpaceR (l,r, height=10, stretch=0) 
             r += 1
@@ -1020,9 +1020,6 @@ class Diagram_Airfoil_Polar (Diagram):
                     SpaceC      (l,c+5)
                     r += 1
 
-                r += 1
-                SpaceR (l,r, height=10, stretch=1)
-
             else: 
                 SpaceR (l,r, height=10) 
                 r += 1
@@ -1034,8 +1031,6 @@ class Diagram_Airfoil_Polar (Diagram):
                 r += 1
                 lab = Label (l,r,c, colSpan=6, get=Worker.ready_msg, style=style.COMMENT, height=(None,100)) 
                 lab.setWordWrap(True)
-                r += 1
-                SpaceR (l,r, height=10, stretch=3) 
 
             # additional options for optimization  
 
@@ -1050,7 +1045,6 @@ class Diagram_Airfoil_Polar (Diagram):
                                 hide=lambda: not self.mode_optimize) 
 
             if Worker.ready:
-                SpaceR (l,r, height=5)
                 r += 1
                 pgm =  f"{Worker.name} and {Xoptfoil2.name}" if Xoptfoil2.ready else f"{Worker.name}"
                 Label  (l,r,c, colSpan=6, get=f"Powered by {pgm} {Worker.version}", 

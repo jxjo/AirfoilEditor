@@ -369,6 +369,7 @@ class Edit_Panel (Panel_Abstract):
             self.refresh_widgets (self._isDisabled)
             logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
 
+            # print (self, self.layout().minimumSize(), self.size())
 
     def refresh_widgets (self, disable : bool):
         """ enable / disable all widgets of self - except Labels (color!) """
