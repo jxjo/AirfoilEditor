@@ -416,7 +416,8 @@ class Edit_Panel (Panel_Abstract):
                 childWidget = child.widget()
                 if childWidget:
                     childWidget.setParent(None)
-                    childWidget.deleteLater()
+                    sip.delete (childWidget)
+                    # childWidget.deleteLater()                             # will create ghost widget due to async event loop
             logger.debug (f"{self} - clear layout ")
 
         # finally remove self 

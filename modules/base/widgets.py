@@ -822,6 +822,9 @@ class Field_With_Label (Widget):
 
         In this case, only QGridLayout is supported    
     """
+
+    _height = 26 
+
     def __init__(self, *args, 
                  lab : str | None = None, 
                  **kwargs):
@@ -969,8 +972,6 @@ class FieldI (Field_With_Label, QSpinBox):
     Integer entry field with spin buttons
     """
     
-    _height = 26 
-
     def __init__(self, *args, 
                  step = None,
                  lim = None, 
@@ -1499,7 +1500,7 @@ class ComboBox (Field_With_Label, QComboBox):
         - when clicked, 'set' is called argument with selected text as argument 
     """
         
-    _height = 24 
+    _height = 26 
 
     def __init__(self, *args, 
                  options = [], 

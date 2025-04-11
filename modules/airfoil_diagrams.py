@@ -944,7 +944,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         if self._section_panel is None:
         
-            p = Panel_Airfoils (self, getter=self.all_airfoils, height=(120,None))
+            p = Panel_Airfoils (self, getter=self.all_airfoils, height=(135,None))
             
             p.sig_airfoil_ref_changed.connect (self.sig_airfoil_ref_changed.emit)
             p.sig_airfoils_to_show_changed.connect (self._on_show_airfoil_changed)
@@ -1057,7 +1057,7 @@ class Diagram_Airfoil_Polar (Diagram):
                         style=style.COMMENT, fontSize=size.SMALL)
 
 
-            self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(200,None),
+            self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(250,None),
                                               switchable=True, switched_on=False, on_switched=self._on_polars_switched)
         return self._polar_panel 
 

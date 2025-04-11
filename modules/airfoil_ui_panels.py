@@ -999,6 +999,7 @@ class Panel_Airfoils (Edit_Panel):
     def _init_layout (self): 
 
         l = QGridLayout()
+        self._panel.setLayout (l)
         r,c = 0, 0 
         iRef = 0
 
