@@ -103,6 +103,8 @@ class Polar_Definition:
 
     """
 
+    MAX_POLAR_DEFS  = 5                             # limit to check in App
+
     VAL_RANGE_ALPHA = [-4.0, 13.0, 0.25]
     VAL_RANGE_CL    = [-0.2,  1.2, 0.05]
 
@@ -291,6 +293,12 @@ class Polar_Definition:
         return f"{self.name}  {self.specVar}: {self.valRange_string}"    
 
 
+    def is_equal_to (self, aPolarDef: 'Polar_Definition'):
+        """ True if aPolarDef is equals self"""
+        if isinstance (aPolarDef, Polar_Definition):
+            return aPolarDef._as_dict() == self._as_dict()
+        else:
+            return False
 
 #------------------------------------------------------------------------------
 
@@ -795,30 +803,26 @@ class Polar (Polar_Definition):
 
 
     def get_interpolated (self, xVar : var, xVal : float, yVar : var) -> float:
-        """ interpolates yVar in polar (xVar, yVar)"""
+        """ interpolates yVar in polar (xVar, yVar) - returns None if not successful"""
 
         if not self.isLoaded: return None
 
         xVals = self._ofVar (xVar)
-        yVals  = self._ofVar (yVar)
+        yVals = self._ofVar (yVar)
 
-        # find the index in self.x which is right before x
-        jl = bisection (xVals, xVal)
+        # find the index in xVals which is right before x
+        i = bisection (xVals, xVal)
         
-        # now interpolate the y-value on lower side 
-        if jl < (len(xVals) - 1):
-            x1 = xVals[jl]
-            x2 = xVals[jl+1]
-            y1 = yVals[jl]
-            y2 = yVals[jl+1]
+        # now interpolate the y-value  
+        if i < (len(xVals) - 1) and i >= 0:
+            x1 = xVals[i]
+            x2 = xVals[i+1]
+            y1 = yVals[i]
+            y2 = yVals[i+1]
             y = interpolate (x1, x2, y1, y2, xVal)
+            y = round (y,5) if yVar == var.CD else round(y,3)
         else: 
-            y = yVals[-1]
-
-        if yVar == var.CD:
-            y = round (y,5)
-        else:
-            y = round(y,2) 
+            y = None
 
         return y
 

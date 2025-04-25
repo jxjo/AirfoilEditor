@@ -1,4 +1,4 @@
-#!/usr/bin/env pythonupper
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """  
@@ -8,6 +8,8 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 """
 import html 
 
+from typing                     import Callable
+
 from base.math_util             import derivative1
 from base.artist                import *
 from base.common_utils          import *
@@ -16,10 +18,10 @@ from base.spline                import Bezier
 from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry
 from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Geometry_Bezier
 from model.polar_set            import * 
-from model.xo2_input            import OpPoint_Definition, OpPoint_Definitions
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
 from PyQt6.QtCore               import pyqtSignal, QObject
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
         color = 'springgreen'  
         alpha = 1.0
     elif airfoil_type == usedAs.FINAL:
-        color = 'springgreen'
+        color = QColor('turquoise').lighter (120)
     elif airfoil_type == usedAs.SEED:
         color = 'dodgerblue'
     elif airfoil_type == usedAs.SEED_DESIGN:
@@ -1111,187 +1113,3 @@ class Polar_Artist (Artist):
         self._plot_dataItem  (x, y, name=label, pen = pen, 
                                 symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                 antialias = antialias, zValue=zValue)
-
-
-class Xo2_OpPoint_Defs_Artist (Artist):
-    """ Plot / Modify Xoptfoil2 operating point defin itions """
-
-    sig_opPoint_def_changed     = pyqtSignal()              # opPoint_def changed changed 
-
-
-    def __init__ (self, *args, 
-                  xyVars = (var.CD, var.CL), 
-                  **kwargs):
-        super().__init__ (*args, **kwargs)
-
-        self._xyVars = xyVars                               # definition of x,y axis
-
-
-    @property
-    def xyVars(self): return self._xyVars
-    def set_xyVars (self, xyVars: Tuple[var, var]): 
-        """ set new x, y variables for polar """
-        self._xyVars = xyVars 
-        self.refresh()
-
-
-    @property
-    def opPoint_defs (self) -> OpPoint_Definitions: 
-        return self.data_list
-
-
-    def _plot (self): 
-
-
-        for opPoint_def in self.opPoint_defs:
-
-            x, y = opPoint_def.xyValues_for_xyVars (self.xyVars)
-
-            # does it fit into this x,y polar view
-
-            if x is not None and y is not None: 
-
-                pt = self.Movable_OpPoint_Def  (self._pi, opPoint_def, self.xyVars, on_changed=self.sig_opPoint_def_changed.emit)
-                self._add (pt) 
-
-
-        # make scene clickable to add wing section - delayed as during init scene is not yet available
-
-        QTimer().singleShot (10, self._connect_scene_mouseClick)
-
-
-        msg = "OpPoint Definitions: Click to select, move by position or by chord, shift-click to remove, " + \
-                                "ctrl-click to add a OpPoint"
-        self.set_help_message (msg)
-
-
-
-    def _connect_scene_mouseClick (self): 
-        """ connect mouse click in scene to slot"""           
-
-        scene : pg.GraphicsScene = self._pi.scene()
-        if scene:  scene.sigMouseClicked.connect (self._scene_clicked)
-
-
-    @override
-    def _remove_plots(self):
-        """ overloaded to disconnect older slot when doing refresh"""
-
-        super()._remove_plots()
-
-        scene : pg.GraphicsScene = self._pi.scene()
-
-        try:                            # slot could be not connected up to now
-            scene.sigMouseClicked.disconnect (self._scene_clicked)
-        except:
-            pass
-
-
-    def _scene_clicked (self, ev : MouseClickEvent):
-        """ 
-        slot - mouse click in scene of self - handle add wing section with crtl-click 
-        """ 
-
-        # handle only ctrl-click
-        if not (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier): return  
-       
-        # was the scene click in my viewbox?
-
-        if isinstance(ev.currentItem, pg.ViewBox):
-            viewbox : pg.ViewBox = ev.currentItem
-        else:
-            viewbox : pg.ViewBox = ev.currentItem.getViewBox()
-
-        if viewbox == self._pi.vb:                     # is this my view box (or of another plot item)? 
-            
-            # get scene coordinates of click pos and map to view box 
-
-            ev.accept()
-            pos : pg.Point = viewbox.mapSceneToView(ev.scenePos())
-
-            # create new opPoint_def in the list of opPoint_defs 
-
-            self.opPoint_defs.create_in_xyVars (self.xyVars, pos.x(), pos.y())
-
-            self.sig_opPoint_def_changed.emit()
-
-
-
-
-    class Movable_OpPoint_Def (Movable_Point):
-        """ 
-        Abstract: A point of box to change planform. 
-        """
-        name = "OpPoint Def"
-
-        def __init__ (self, pi : pg.PlotItem, 
-                      opPoint_def : OpPoint_Definition,
-                      xyVars : Tuple[var, var], 
-                      movable = True, 
-                      **kwargs):
-
-            self._pi = pi
-            self._opPoint_def = opPoint_def
-            self._xyVars = xyVars
-
-            color = QColor(COLOR_EDITABLE)                          # brush color - make copy
-            color.setAlphaF (0.6) 
-            movable_color = COLOR_EDITABLE                          # symbol color 
-
-            super().__init__(self._point_xy(), movable=movable, label_anchor = (0, 0.5),
-                             color=color, movable_color=movable_color,
-                             symbol='s', size=8, show_label_static = True, **kwargs)
-
-            self.sigShiftClick.connect             (self._delete_opPoint_def)
-
-
-        def _delete_opPoint_def (self, _):
-            """ shift-clik - delete me opPoint_dev"""
-            self._opPoint_def.delete_me ()
-            self._changed ()
-
-
-        def _point_xy (self) -> tuple:  
-            return self._opPoint_def.xyValues_for_xyVars (self._xyVars)     
-
-
-        @override
-        def _moving (self, _):
-            """ slot -point is moved"""
-            self._opPoint_def.set_xyValues_for_xyVars (self._xyVars, (self.x,self.y))
-            self.setPos (self._point_xy())                      # ... if we run against limits 
-
-
-        @override
-        def label_static (self, *_) -> str:
-            """ the static label - can be overloaded """
-            return f"{self._opPoint_def.iPoint}" 
-
-        @override
-        def _label_opts (self, moving=False, hover=False) -> dict:
-            """ returns the label options as dict """
-
-            opts = super()._label_opts (moving=moving, hover=hover)
-
-            # brush style 
-            brushColor = QColor('black')
-            brushColor.setAlphaF (0.4)
-            opts ['fill'] = pg.mkBrush (brushColor)
-
-            # text color 
-            opts ['color'] = QColor(Artist.COLOR_NORMAL)
-
-            return opts
-
-        @override
-        def label_moving (self, *_):
-            return f"{self._opPoint_def.labelLong}"
-
-
-
-        @override
-        def _finished (self, _):
-            """ slot - point moving is finished"""
-
-            self._changed()
-

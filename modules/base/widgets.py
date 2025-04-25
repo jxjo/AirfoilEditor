@@ -65,6 +65,7 @@ class size (Enum):
 
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
 ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
+ALIGN_TOP           = Qt.AlignmentFlag.AlignTop
 
 
 
@@ -252,20 +253,21 @@ class Widget:
 
     def __init__(self,
                  layout: QLayout, 
-                 *args,                     # optional: row:int, col:int, 
+                 *args,                                 # optional: row:int, col:int, 
                  rowSpan = 1, colSpan=1, 
-                 align = None,              # alignment within layout 
+                 align : Qt.AlignmentFlag = None,       # alignment within layout 
                  width :int = None,
                  height:int = None,
-                 obj = None,                # object | bound method  
-                 prop = None,               # Property 
+                 obj = None,                            # object | bound method  
+                 prop = None,                           # Property 
                  get = None, 
                  set = None, 
                  signal : bool | None = None, 
                  id = None,
                  disable = None, 
-                 hide = None,
-                 style = style.NORMAL,
+                 hide = None,                           
+                 style = style.NORMAL,                  # color style 
+                 styleRole = QPalette.ColorRole.Base,   # default apply style to background
                  fontSize = size.NORMAL,
                  toolTip = None,
                  orientation = None): 
@@ -346,7 +348,8 @@ class Widget:
 
         self._style_getter = style 
         self._style = None 
-        self._palette_normal = None       # will be copy of palette - for style reset  
+        self._style_role = styleRole                # apply to background or text 
+        self._palette_normal = None                 # will be copy of palette - for style reset  
         self._font = fontSize
 
         self._toolTip = toolTip
@@ -750,7 +753,7 @@ class Widget:
         # can be olverlaoded by subclass  
 
         # QPalette.ColorRole.Text, .ColorRole.WindowText, .ColorRole.Base, .ColorRole.Window
-        self._set_Qwidget_style_color (self._style, QPalette.ColorRole.Base)  
+        self._set_Qwidget_style_color (self._style, self._style_role)  
 
 
     def _set_Qwidget_style_color (self, aStyle : style, color_role : QPalette.ColorRole= None):
@@ -774,15 +777,25 @@ class Widget:
             color = QColor (aStyle.value[index])
 
             # if it's background color apply alpha
-            if color_role == QPalette.ColorRole.Base:
-                color.setAlphaF (0.15)
- 
+            if color_role == QPalette.ColorRole.Base or color_role == QPalette.ColorRole.Window:
+                if aStyle == style.GOOD:
+                    color.setAlphaF (0.5)
+                else:
+                    if self._disabled:
+                        color.setAlphaF (0.3)
+                    else: 
+                        color.setAlphaF (0.15)
+                qwidget : QWidget = self
+                qwidget.setAutoFillBackground(True)             # important to be applied
+
             # palette.setColor(self.backgroundRole(), color)
             palette.setColor(color_role, color)
 
             self._update_palette (palette)                      # Qt strange : on init 'setPalette' is needed
                                                                 # later compounds like SpinBox need different treatment
         elif aStyle == style.NORMAL and self._palette_normal is not None:
+            qwidget : QWidget = self
+            qwidget.setAutoFillBackground(False)                 # transparent background again
             self._update_palette (self._palette_normal)
 
 
@@ -886,8 +899,11 @@ class Label (Widget, QLabel):
 
     _height = 26 
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, 
+                 styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Base
+                 **kwargs):
+
+        super().__init__(*args, styleRole=styleRole, **kwargs)
 
 
         self._set_Qwidget_static ()
@@ -901,8 +917,6 @@ class Label (Widget, QLabel):
     def _set_Qwidget_style (self): 
         """ set (color) style of QWidget based on self._style"""
 
-        # overloaded QLabel uses QPalette.ColorRole.WindowText
-
         if self._style == style.NORMAL and not self.light_mode:
 
             # dark mode: make labels a little darker (not white)      
@@ -910,7 +924,7 @@ class Label (Widget, QLabel):
             palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
             self.setPalette (palette)
 
-        self._set_Qwidget_style_color (self._style, QPalette.ColorRole.WindowText)  
+        super()._set_Qwidget_style ()  
 
 
     def _set_Qwidget (self, **kwargs):
@@ -1436,8 +1450,9 @@ class CheckBox (Widget, QCheckBox):
 
     def __init__(self, *args, 
                  text=None,
+                 styleRole = QPalette.ColorRole.WindowText,
                  **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, styleRole=styleRole, **kwargs)
 
         self._text = None 
         self._text_getter = text 
@@ -1476,8 +1491,6 @@ class CheckBox (Widget, QCheckBox):
     def _set_Qwidget_style (self): 
         """ set (color) style of QWidget based on self._style"""
 
-        # overloaded QCheckBox uses QPalette.ColorRole.WindowText for label 
-
         if self._style == style.NORMAL and not self.light_mode:
 
             # dark mode: make labels a little darker (not white)      
@@ -1485,7 +1498,7 @@ class CheckBox (Widget, QCheckBox):
             palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
             self.setPalette (palette)
 
-        self._set_Qwidget_style_color (self._style, QPalette.ColorRole.WindowText)  
+        super()._set_Qwidget_style()
 
 
     def _on_checked(self):

@@ -53,12 +53,28 @@ class Input_File:
         else: 
             raise ValueError (f"Input file '{self.pathFileName}' doesn't exist")
 
+        # read all the namelist group from nml_file
+         
+        self._init_nml ()
+
+        # save namelist dict as string for later comapre 
+
+        self.opPoint_defs.set_nml()                             # dummy write to have same format
+        self.nml_geometry_targets.geoTarget_defs.set_nml ()
+
+        self._nml_file_str = str(self.nml_file)
+
+
+    def _init_nml (self): 
+        """" init and read all single namelist objects"""
+
         # fortran namelist of the input file  
 
         self._nml_file = None                   # f90nml namelist as dict 
 
         # single namelists within the input file 
 
+        self._nml_info                   = Nml_info (self)                      # added for AE
         self._nml_operating_conditions   = Nml_operating_conditions (self)
         self._nml_optimization_options   = Nml_optimization_options (self)
         self._nml_hicks_henne_options    = Nml_hicks_henne_options (self)
@@ -78,21 +94,10 @@ class Input_File:
         self._polar_defs     = None                 # Polar definitions in input file
         self._geoTargets_def = None                 # geo targets definition in input file
 
-
-    def reset (self): 
-        """ reset namelist, etc so there will be a re-re-read"""
-        self._nml_file = None
-        self._hasErrors  = False                # errors in input file? 
-        self._error_text = None                 # text from error check by worker
-
-        self._airfoil_seed   = None
-        self._geoTargets_def = None
-        self._polar_defs     = None
-        self._opPoints_def   = None
-
+        self._hasErrors  = False                    # errors in input file? 
+        self._error_text = None                     # text from error check by worker
 
     # ---- Properties -------------------------------------------
-
 
     @property
     def workingDir (self): 
@@ -125,9 +130,9 @@ class Input_File:
     def pathFileName_save (self): 
         """returns the pathFileName of the output file"""
 
-        dir  = os.path.split (self.pathFileName) [0]
-        return os.path.join(dir, self.name + '_patched.nml')
-        # return self.pathFileName
+        # dir  = os.path.split (self.pathFileName) [0]
+        # return os.path.join(dir, self.name + '_patched.nml')
+        return self.pathFileName
 
     @property
     def nml_file (self) -> f90nml.Namelist:
@@ -143,6 +148,10 @@ class Input_File:
                 self._hasErrors  = True  
                 self._error_text = 'Generell syntax error'            
         return self._nml_file
+
+    @property 
+    def nml_info (self) -> 'Nml_info':
+        return self._nml_info
 
     @property 
     def nml_operating_conditions (self) -> 'Nml_operating_conditions':
@@ -169,8 +178,8 @@ class Input_File:
         return self._nml_paneling_options
 
     @property 
-    def particle_swarm_options (self) -> 'Nml_particle_swarm_options':
-        return self._particle_swarm_options
+    def nml_particle_swarm_options (self) -> 'Nml_particle_swarm_options':
+        return self._nml_particle_swarm_options
 
     @property 
     def nml_xfoil_run_options (self) -> 'Nml_xfoil_run_options':
@@ -273,9 +282,9 @@ class Input_File:
 
 
     @property
-    def polar_defs (self) -> list [Polar_Definition]: 
-        """ polar definitions of input file """
-        return self.nml_operating_conditions.polar_defs
+    def nxfoil_per_step (self) -> int:
+        """ no of xfoil calculations per step (particles * nopPoints)"""
+        return self.nml_particle_swarm_options.pop * len(self.opPoint_defs)
 
 
     # ---- Methods -------------------------------------------
@@ -326,7 +335,7 @@ class Input_File:
 
 
     def text_save (self, text, pathFileName=None, hasErrors=None): 
-        "save text to input file - overwrite existing data"
+        "save text to input file - overwrite existing data - re-init nml"
 
         if pathFileName is None: pathFileName = self.pathFileName
 
@@ -337,10 +346,10 @@ class Input_File:
         if hasErrors is not None:  self._hasErrors = hasErrors
 
         # reset f90nml 
-        self._nml_file = None 
+        self._init_nml ()
 
 
-    def check_content (self, text): 
+    def check_content (self, text) -> tuple: 
         """check text being input definition with Worker for errors
 
         Returns:
@@ -357,7 +366,7 @@ class Input_File:
         returncode,error_text = Worker().check_inputFile (inputFile = tmpFilePath)
 
         if returncode == 0: 
-            tmpInput = Input_File (self, workingDir=self.workingDir, fileName=tmpFile) 
+            tmpInput = Input_File (tmpFile, workingDir=self.workingDir) 
             returncode,error_text = tmpInput.check_additional()
 
         os.remove (tmpFilePath)
@@ -365,13 +374,20 @@ class Input_File:
         return returncode,error_text
 
 
-    def save_nml (self):
-        """ save current namelist to file """
+    def save_nml (self) -> bool:
+        """ save current namelist to file - return False if no changes, no save"""
 
         # write back list objects to namelist dictionary
 
         self.opPoint_defs.set_nml() 
         self.nml_geometry_targets.geoTarget_defs.set_nml ()
+
+        # check if there are changes 
+
+        cur_nml_file_str = str(self._nml_file)
+
+        if cur_nml_file_str == self._nml_file_str:
+            return False
 
         # write namelist dictionaries to file 
 
@@ -388,31 +404,19 @@ class Input_File:
                     nml : Nml_Abstract = nml_class(self)
                     nml.write_to_stream (nml_stream)
 
+        return True
+
     # -----------------------------------------------
 
 
     def opPoints_def_as_splined_polar (self):
         """ returns a splines polar based on opPoins_def"""
 
-        polar = Polar_Splined (None, polar_def=self.polar_defs[0])
-        polar.set_knots_from_opPoints_def (var.CL, var.CD, self.opPoints_def)
-        polar.generate()
-        return polar 
-
-
-    def get_value_in_seed_polar (self, re, ma, ncrit, specVar, specVal, optVar):
-        """ 
-        Interpolates optVvalue in polar (specVar,optvar) of seed airfoil
-        Returns None if polar doesn't exist """
-        if self.airfoil_seed is None or self.airfoil_seed.polarSet is None: 
-            return None 
-        
-        polar: Polar
-        for polar in self.airfoil_seed.polarSet.polars:
-            if polar.re == re and polar.ma == ma and polar.ncrit == ncrit:
-                return polar.get_optValue (specVar, specVal, optVar) 
-        return None 
-
+        pass
+        # polar = Polar_Splined (None, polar_def=self.polar_defs[0])
+        # polar.set_knots_from_opPoints_def (var.CL, var.CD, self.opPoints_def)
+        # polar.generate()
+        # return polar 
 
 
 #-------------------------------------------------------------------------------
@@ -481,7 +485,7 @@ class OpPoint_Definition:
         self._ma         = None                 # an individual re number of self
         self._ncrit      = None                 # an individiual xfoil ncrit 
         self._flap_angle = None                 # an individiual flap angle        
-        self._flap_optimize = False             # optimize this flap angle 
+        self._flap_optimize = None              # optimize this flap angle 
 
         # set to format values 
         self.set_specValue (specValue)
@@ -490,7 +494,80 @@ class OpPoint_Definition:
 
     def __repr__(self) -> str:
         """ nice print string polarType and Re """
-        return f"<{type(self).__name__} {self.labelLongFix}>"
+        return f"<{type(self).__name__} {self.labelLong_for()}>"
+
+
+    def _get_labelLong (self, optVar:var, optValue:float, fix=False): 
+        """ 
+        long label including spec like 'cl: 0.2  target-cd: .00123 600k N7'
+            if fix=True 0-decimals are not cutted
+        """
+        # format spec Value 
+
+        if self.specVar == var.ALPHA:
+            valstr = "%4.2f" % self.specValue
+        else :
+            valstr = "%4.2f" % self.specValue
+        if not fix: 
+                valstr = (f"{valstr}").rstrip('0')                          # remove trailing 0
+                valstr = valstr if valstr[-1] != "." else valstr + "0"      # at least one '0'
+
+        specText = f"{self.specVar} {valstr}: " 
+
+        iPoint = f"{self.iPoint}  "
+
+        # add re and ncrit if defined for opPoint 
+
+        if self._re: 
+            reText = f"  {int(self._re/1000):3d}k" 
+        else:
+            reText = ''
+        if self._ncrit: 
+            ncritText = f"  N{int(self._ncrit)}" 
+        else:
+            ncritText = ''
+        return iPoint + specText + self._get_opt_label (optVar, optValue, fix=fix) + reText + ncritText
+
+
+    def _get_opt_label (self, optVar : var, optValue : float, fix=False): 
+        """ short label like 'target-cd: .00123' or 'Min-cd' 
+            if fix=True 0-decimals are not cutted """
+
+        if self.optType == OPT_TARGET:
+
+            if optVar == var.CL:
+                valstr = f"{optValue:4.2f}"
+
+            elif optVar == var.CD:
+                if self.optValue_isFactor: 
+                    valstr = (f"seed*{optValue:.2f}")                       # cd val is factor  
+                    fix = False                                             # always cut 0   
+                else:
+                    if optValue >= 0.0:       
+                        valstr = (f"{optValue:7.5f}")[1:]                   # remove leading 0 
+                    else:                                                   # altValue can be negative
+                        valstr = "-" +(f"{optValue:7.5f}")[2:]  
+
+            elif optVar == var.GLIDE or optVar == var.SINK:
+                if self.optValue_isFactor:
+                    valstr = (f"seed*{optValue:.2f}")                       # glide val is factor     
+                    fix = False                                             # always cut 0   
+                else:       
+                    valstr = (f"{optValue:4.2f}")[1:]                       # remove leading 0 
+                valstr = "%4.2f" % optValue
+            elif self.optVar == var.CM:
+                valstr = "%5.3f" % optValue
+            else:
+                valstr = "%5.3f" % optValue
+
+            if not fix: 
+                valstr = (f"{valstr}").rstrip('0')                          # remove trailing 0
+                valstr = valstr if valstr[-1] != "." else valstr + "0"      # at least one '0'
+
+            return f"targ-{optVar} {valstr}"
+        else: 
+            return f"{self.optType}-{optVar}"
+
 
     @property
     def specVar (self): return self._specVar
@@ -503,11 +580,12 @@ class OpPoint_Definition:
 
     @property
     def specValue (self): return self._specValue
+    """ set specValue - alpha with 2 dec, cl with 3 dec"""
     def set_specValue (self, aVal):  
         if self.specVar == var.ALPHA:
             self._specValue = round (aVal,2)
         else: 
-            self._specValue = round (aVal,3)
+            self._specValue = round (aVal,2)
 
     def set_specValue_limited (self, aVal):  
         """ set specValue - assures aVal is between specValues of self neighbours"""
@@ -542,9 +620,9 @@ class OpPoint_Definition:
         if opt in OPT_ALLOWED and (optType != self._optType or optVar != self._optVar): 
             self._optType = opt[0] 
             self._optVar  = opt[1] 
-            self._optValue = self.get_optValue_seed_polar()
+            self._optValue = self._myList.get_optValue_seed_polar(self)
 
-    def opt_allowed_asString (self) -> list: 
+    def opt_allowed_asString (self) -> list [str]: 
         """ return allowed optType,optVar combinations depending on specVar"""
         return [f"{opt[0]}-{opt[1]}" for opt in OPT_ALLOWED if opt[1] != self.specVar]  
 
@@ -556,6 +634,8 @@ class OpPoint_Definition:
     def set_optType (self, aVal):  
         if aVal in OPT_TYPES: 
             self._optType = aVal 
+            if aVal in [OPT_MIN, OPT_MAX]:
+                self._optValue = None                       # no target value 
 
     @property
     def optVar (self): 
@@ -578,10 +658,10 @@ class OpPoint_Definition:
             else: 
                 return self._optValue
         else: 
-            return self.get_optValue_seed_polar()
+            return self._myList.get_optValue_seed_polar(self)
         
     def set_optValue (self, aVal):  
-        if self.optType == OPT_TARGET:
+        if self.optType == OPT_TARGET and aVal is not None:
             if self.optValue_isFactor:
                 self._optValue = -abs(round(aVal,2))
             else: 
@@ -589,6 +669,9 @@ class OpPoint_Definition:
                     self._optValue = round (aVal,5)
                 else: 
                     self._optValue = round (aVal,3)
+        else: 
+            self._optValue = None 
+
 
     @property
     def optValue_isFactor (self) -> bool: 
@@ -609,17 +692,15 @@ class OpPoint_Definition:
                 self.set_optValue (-1.0) 
             else: 
                 # reset - take inital value from seed airfoil polar
-                seedValue = self.get_optValue_seed_polar()
+                seedValue = self._myList.get_optValue_seed_polar(self)
                 if seedValue: 
                     self._optValue = seedValue 
 
     @property
     def re (self): 
         """ the individual reynolds number - normaly the default value is returned"""
-        if self._re is None:
-            return self._myList.re_default
-        else: 
-            return self._re
+        return self._myList.re_default if self._re is None else self._re
+
     def set_re (self, aVal):
         if aVal == self._myList.re_default: 
             self._re = None
@@ -673,6 +754,25 @@ class OpPoint_Definition:
             self._ncrit = aVal
 
     @property
+    def has_default_polar (self) -> bool:
+        """ True if op point has default polar (re, ma, ncrit == None) """
+        return self._re == None and self._ma == None and self._ncrit == None 
+
+    @property
+    def polar_def (self) -> Polar_Definition | None:
+        """ individial polar definition (re, ma, ncrit) or None """
+        if self.has_default_polar:
+            return None
+        else: 
+            return Polar_Definition ({"re": self.re, "mach": self.ma, "ncrit": self.ncrit})
+        
+    def set_polar_def (self, polar_def : Polar_Definition):
+        self.set_re (polar_def.re)
+        self.set_ma (polar_def.ma)
+        self.set_ncrit (polar_def.ncrit)
+
+
+    @property
     def weighting (self): 
         """ an individual weighting - default is 1"""
         if self._weighting is None: 
@@ -694,17 +794,30 @@ class OpPoint_Definition:
     @property
     def flap_angle (self): 
         """ the individual flap angle """
-        return self._flap_angle
+        return self._myList.flap_angle_default if self._flap_angle is None else self._flap_angle
+
     def set_flap_angle (self, aVal : float): 
-        self._flap_angle = aVal 
+        if isinstance(aVal, float):
+            if aVal == self._myList.flap_angle_default:
+                self._flap_angle = None
+            else:
+                self._flap_angle = aVal
+        else: 
+            self._flap_angle = None 
     
     @property
     def flap_optimize (self) -> bool: 
         """ optimize this flap angle flap angle """
         return self._flap_optimize is True
     def set_flap_optimize (self, aVal : bool): 
-        self._flap_angle = aVal is True 
+        self._flap_optimize = aVal == True
     
+    @property
+    def has_default_flap (self) -> bool:
+        """ True if op point has default (no) flap settings """
+        return not self._myList.use_flap or \
+              (self._myList.use_flap and self._flap_angle is None and not self.flap_optimize)
+
     #------------
 
     @property
@@ -714,59 +827,39 @@ class OpPoint_Definition:
     @property
     def label (self): 
         """ short label like 'target-cd: .00123' or 'Min-cd' """
-        return self._get_label()
+        return self._get_opt_label(self.optVar, self.optValue)
 
-    def _get_label (self, fix=False): 
-        """ short label like 'target-cd: .00123' or 'Min-cd' 
-            if fix=True 0-decimals are not cutted """
-        if self.optType == OPT_TARGET:
-            return f"{self.opt_asString}: {self.optValue_formatted(fix=fix)}"
-        else: 
-            return f"{self.opt_asString}"
 
     @property
     def labelLong (self): 
-        """ long label including spec like 'cl: 0.2  target-cd: .00123'"""
-        return self._get_labelLong()
-    @property
-    def labelLongFix (self): 
-        """ long label including spec like 'cl: 0.2  target-cd: .00123' with fixed decimals"""
-        return self._get_labelLong (fix=True)
+        """ long label including spec like 'cl: 0.2  target-cd: .0012 600k N7' """
+        return self._get_labelLong(self.optVar, self.optValue, fix=True)
     
-    def _get_labelLong (self, fix=False): 
+
+    def labelLong_for (self, xyVars : tuple = None, fix=True ): 
         """ 
-        long label including spec like 'cl: 0.2  target-cd: .00123'
-            if fix=True 0-decimals are not cutted
+        long label including spec like 'cl: 0.200  target-cd: .00124 600k N7' with fixed decimals
+            - will be converted to xyVars of diagram
+            - fix==False will cut trailing '0'        
         """
-        specText = f"{self.specVar}: {self.specValue_formatted(fix=fix)}  " 
-        if self._re: 
-            reText = f"  {int(self._re/1000):3d}k" 
+
+        if self._xyVars_are_indirect (xyVars): 
+            # recalc cl/cd to cd  - or vice versa 
+            if self.optVar == var.GLIDE and self.specVar == var.CL:
+                optVar = var.CD 
+                optValue = self.specValue / self.optValue       # cd = cl / glide
+            elif self.optVar == var.CD and self.specVar == var.CL:
+                optVar = var.GLIDE 
+                optValue = self.specValue / self.optValue       # glide = cl / cd
+            else:
+                optVar   = None
+                optValue = 0.0
         else:
-            reText = ''
-        if self._ncrit: 
-            ncritText = f"  N{int(self._ncrit)}" 
-        else:
-            ncritText = ''
-        return specText + self._get_label (fix=fix) + reText + ncritText
+            optVar   = self.optVar
+            optValue = self.optValue
 
-
-    def specValue_formatted (self, fix=False ):
-        """ 
-        format specValue according its type like CL or alpha.
-            if fix=True the value will have a fixed length, otherwise the 0-decimals are cut"""
-
-        try:
-            if self.specVar == var.ALPHA:
-                valstr = "%4.2f" % self.specValue
-            else :
-                valstr = "%4.2f" % self.specValue
-        except: 
-            valstr = ''
-
-        if not fix: 
-            valstr = (f"{valstr}").rstrip('0').rstrip('.')          # remove trailing 0 and .
-        return valstr
-
+        return self._get_labelLong (optVar, optValue, fix=fix)
+    
 
     def specValue_limits (self) -> tuple:
         """ 
@@ -792,54 +885,13 @@ class OpPoint_Definition:
         return (lower_limit, upper_limit)
 
 
-    def optValue_formatted (self, altValue : float =None, fix : bool =False ) -> float:
-        """ 
-        format optVar according its type like CD or GLIDE.
-            Value can be alternate for self.optValue  
-            if fix=True the value will have a fixed length, otherwise the 0-decimals are cut
-        """
-
-        value = altValue if altValue is not None else self.optValue 
-
-        if self.optVar == var.CL:
-            valstr = f"{value:4.2f}"
-
-        elif self.optVar == var.CD:
-            if self.optValue_isFactor and not altValue:
-                valstr = (f"seed*{value:.2f}")              # cd val is factor  
-                fix = False                                 # always cut 0   
-            else:
-                if value >= 0.0:       
-                    valstr = (f"{value:7.5f}")[1:]          # remove leading 0 
-                else:                                       # altValue can be negative
-                    valstr = "-" +(f"{value:7.5f}")[2:]  
-                # if valstr == "": valstr = ".0"  
-
-        elif self.optVar == var.GLIDE or self.optVar == var.SINK:
-            if self.optValue_isFactor and not altValue:
-                valstr = (f"seed*{value:.2f}")              # glide val is factor     
-                fix = False                                 # always cut 0   
-            else:       
-                valstr = (f"{value:4.2f}")[1:]              # remove leading 0 
-            valstr = "%4.2f" % value
-        elif self.optVar == var.CM:
-            valstr = "%5.3f" % value
-        else:
-            valstr = "%5.3f" % value
-
-        if not fix: 
-            valstr = (f"{valstr}").rstrip('0').rstrip('.')          # remove trailing 0 and .
-        return valstr
-
-
-
     @property
     def isTarget_type (self) -> bool:
         """ is self based on targets"""
         return self.optType == OPT_TARGET
 
 
-    def xyValues_for_xyVars (self, xyVar : tuple):
+    def xyValues_for_xyVars (self, xyVars : tuple):
         """ 
         Returns x,y values for either optVar or specVar in x or y
             if xVar and yVar does not fit return None 
@@ -848,17 +900,25 @@ class OpPoint_Definition:
         y = None
         x = None
         optVar   = self.optVar
-        optValue = self.optValue
 
         # target (opt)value could be a factor to seed airfoil value 
         if self.isTarget_type and self.optValue_isFactor:
-            seedValue = self.get_optValue_seed_polar()
+            seedValue = self._myList.get_optValue_seed_polar(self)
             if seedValue : 
                 optValue = self.optValue * seedValue
             else:                                       
-                return None, None      
+                return None, None 
+        # if not target e.g. min-cd get value from seed polar
+        elif not self.isTarget_type:
+            optValue = self._myList.get_optValue_seed_polar(self)
+            if optValue is None: 
+                return None, None 
 
-        if self.xyVars_are_indirect (xyVar): 
+        # normal target - opValue is target value     
+        else: 
+            optValue = self.optValue        
+
+        if self._xyVars_are_indirect (xyVars): 
             # recalc cl/cd to cd  - or vice versa 
             if self.optVar == var.GLIDE and self.specVar == var.CL:
                 optVar = var.CD 
@@ -870,10 +930,10 @@ class OpPoint_Definition:
                 optVar = None
 
         if optVar is not None: 
-            if xyVar[0] == optVar and xyVar[1] == self.specVar:
+            if xyVars[0] == optVar and xyVars[1] == self.specVar:
                 x = optValue 
                 y = self.specValue
-            elif xyVar[1] == optVar and xyVar[0] == self.specVar:
+            elif xyVars[1] == optVar and xyVars[0] == self.specVar:
                 y = optValue 
                 x = self.specValue
 
@@ -881,7 +941,7 @@ class OpPoint_Definition:
 
 
 
-    def xyVars_are_indirect (self, xyVar : tuple):
+    def _xyVars_are_indirect (self, xyVars : tuple):
         """ 
         true if xyVar is 'indirect' to self - e.g. (GLIDE,CL) is indirect to (CL,CD) 
         """
@@ -891,15 +951,15 @@ class OpPoint_Definition:
         optVar  = self.optVar
 
         if (specVar, optVar) == (var.CL, var.CD) or (specVar, optVar) == (var.CD, var.CL): 
-            if xyVar == (var.GLIDE, var.CL) or xyVar == (var.CL, var.GLIDE): 
+            if xyVars == (var.GLIDE, var.CL) or xyVars == (var.CL, var.GLIDE): 
                 indirect = True
         elif (specVar, optVar) == (var.CL, var.GLIDE) or (specVar, optVar) == ( var.GLIDE, var.CL): 
-            if xyVar == (var.CD, var.CL) or xyVar == (var.CL, var.CD): 
+            if xyVars == (var.CD, var.CL) or xyVars == (var.CL, var.CD): 
                 indirect = True
         return indirect 
 
 
-    def xyVars_as_spec (self, xyVar : tuple, xyValues : tuple = None):
+    def xyVars_as_spec (self, xyVars : tuple, xyValues : tuple = None):
         """ 
         returns specVar and optVar of the tuple xyVar which could be flipped. 
             if xyVar does not find return None  
@@ -910,7 +970,7 @@ class OpPoint_Definition:
         optValue  = None
         specValue = None
 
-        xVar, yVar     = xyVar[0], xyVar[1]
+        xVar, yVar     = xyVars[0], xyVars[1]
         xValue, yValue = xyValues [0], xyValues [1]
 
         if (xVar == self.specVar and yVar == self.optVar):
@@ -935,7 +995,7 @@ class OpPoint_Definition:
             if xVar and yVar does not fit return None 
             if indirect cd/cl optVars will be calculated to cd and vice versa"""
 
-        if self.xyVars_are_indirect (xyVar): 
+        if self._xyVars_are_indirect (xyVar): 
             # recalc cl/cd to cd  - or vice versa 
             xVar, yVar     = xyVar [0], xyVar[1]
             xValue, yValue = xyValues [0], xyValues [1]
@@ -966,14 +1026,11 @@ class OpPoint_Definition:
 
         # target (opt)value could be a factor to seed airfoil value 
         if self.isTarget_type and self.optValue_isFactor:
-            seedValue = self.get_optValue_seed_polar()
+            seedValue = self._myList.get_optValue_seed_polar(self)
             if seedValue : 
                 optValue = optValue / seedValue
             else: 
                 optValue = None 
-
-
-
 
         # do not set if seed couldn't be calculated
         if optValue is not None: 
@@ -983,18 +1040,45 @@ class OpPoint_Definition:
         return 
 
 
-    def get_optValue_seed_polar(self):
+    def optVar_type_for_xyVars (self, xyVars : tuple) -> tuple [var, float]:
         """ 
-        returns the value for optValue interpolated from seed polar
-        If seed polar is not available etc. returns None"""
-    
-        raise RuntimeError ("to be implemented")
-        # optVal =  self._input_file.get_value_in_seed_polar (self.re, self.ma, self.ncrit,
-        #                                              self.specVar, self.specValue, self.optVar)
-        # # not allow Glide < 0 - would confuse factor which detects negative value ...
-        # if self.optVar == var.GLIDE and  optVal is not None and optVal < 0.0:
-        #     optVal = 0.0 
+        Returns optVar and optType in x or y
+            e.g. max-glide becomes min-cd in cd(cl)-diagram
+            Return None, None if it doesn't match
+        """
 
+        optVar   = self.optVar
+        optType  = self.optType
+
+        newVar   = None
+        newType  = None
+
+        if self._xyVars_are_indirect (xyVars): 
+            # recalc cl/cd to cd  - or vice versa 
+            if optType == OPT_MAX and optVar== var.GLIDE:
+                if var.CD in xyVars and var.CL in xyVars: 
+                    newVar  = var.CD
+                    newType = OPT_MIN
+            elif optType == OPT_MIN and optVar== var.SINK:
+                if var.CD in xyVars and var.CL in xyVars: 
+                    newVar  = var.CD
+                    newType = OPT_MIN
+            elif optType == OPT_MIN and optVar== var.CD:
+                if var.GLIDE in xyVars and var.CL in xyVars: 
+                    newVar  = var.GLIDE
+                    newType = OPT_MAX
+            elif optType == OPT_TARGET:
+                newType = optType
+                if optVar== var.CD and var.GLIDE in xyVars and var.CL in xyVars: 
+                    newVar  = var.GLIDE
+                if optVar== var.GLIDE and var.CD in xyVars and var.CL in xyVars: 
+                    newVar  = var.CD
+            
+        elif optVar in xyVars:
+            newVar   = optVar
+            newType  = optType
+
+        return newVar, newType
 
     def delete_me (self):
         """ remove self from list"""
@@ -1032,13 +1116,13 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
 
         optimization_types  = nml._get('optimization_type')
         target_values       = nml._get('target_value',   default=[None] * npoints)
-        weightings          = nml._get('weighting',      default=[1.0] * npoints)
+        weightings          = nml._get('weighting',      default=[None] * npoints)
         reynolds            = nml._get('reynolds',       default=[None] * npoints)        
         machs               = nml._get('mach',           default=[None] * npoints)    
         ncrits              = nml._get('ncrit_pt',       default=[None] * npoints)
-        op_modes            = nml._get('op_mode',        default=['spec_cl'] * npoints)
+        op_modes            = nml._get('op_mode',        default=[None] * npoints)
         flap_angles         = nml._get('flap_angle',     default=[None] * npoints)
-        flap_optimizes      = nml._get('flap_optimizes', default=[False] * npoints)
+        flap_optimizes      = nml._get('flap_optimizes', default=[None] * npoints)
 
         # get default polar type 
 
@@ -1067,6 +1151,8 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             op_def.set_flap_angle   (flap_angles[iop])
             op_def.set_flap_optimize(flap_optimizes[iop])
 
+            op_def.set_optValue     (target_values[iop])            # could be reset by opt type
+
             opt = optimization_types[iop]
             if opt == 'min-drag':
                 op_def.set_optType (OPT_MIN)
@@ -1094,8 +1180,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 op_def.set_optVar  (var.XTRT)
             else:
                 raise ValueError ("Type '%s' of Operating point %d not known. Using default" %(opt, iop))
-
-            op_def.set_optValue (target_values[iop])
 
             self.append (op_def) 
 
@@ -1183,17 +1267,66 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
 
 
     @property
-    def ncrit (self):  
+    def ncrit (self) -> float:  
         return self._input_file.nml_xfoil_run_options.ncrit
 
     @property
-    def re_default (self):  
+    def re_default (self) -> float:  
         return self._nml.re_default
 
     @property
-    def ma_default (self):  
+    def ma_default (self) -> float:  
         return self._nml.mach_default
     
+    @property
+    def flap_angle_default (self) -> float:
+        return self._nml.flap_angle_default
+    
+    @property
+    def use_flap (self) -> float:
+        return self._nml.use_flap
+    
+    @property
+    def allow_improved_target (self) -> bool:  
+        return self._nml.allow_improved_target
+    
+
+    def polar_defs (self) -> list[Polar_Definition]: 
+        """ the polar definitions defined within self"""
+
+        polar_defs_dict = {}
+
+        # default polar and explicit polars of operating points 
+         
+        for opPoint_def in self: 
+            # build unique key to detect dublicates
+            key = str([opPoint_def.re, opPoint_def.ma, opPoint_def.ncrit, opPoint_def.re_type])
+
+            polar_def : Polar_Definition = polar_defs_dict.get (key, Polar_Definition())
+            polar_def.set_ncrit (opPoint_def.ncrit)
+            polar_def.set_autoRange (True)                  # auto range is default 
+            polar_def.set_re (opPoint_def.re)
+            polar_def.set_type (opPoint_def.re_type)
+            polar_def.set_ma (opPoint_def.ma)
+            polar_defs_dict[key] = polar_def
+
+        return list(polar_defs_dict.values())
+
+    @property
+    def polar_def_default(self) -> Polar_Definition: 
+        """ default polar definition for opPoints"""
+
+        for polar_def in self.polar_defs():
+            if polar_def.re == self.re_default and polar_def.ma == self.ma_default \
+               and polar_def.ncrit == self.ncrit:
+                return polar_def
+        return None 
+
+    def set_polar_def_default (self, polar_def : Polar_Definition):
+        self._nml.set_re_default (polar_def.re)
+        self._nml.set_mach_default (polar_def.ma)
+        self._input_file.nml_xfoil_run_options.set_ncrit (polar_def.ncrit)
+        
 
     def create_after (self, index = 0):
         """
@@ -1311,6 +1444,29 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self._sort ()
 
 
+    def get_optValue_seed_polar (self, opPoint : OpPoint_Definition):
+        """ 
+        Interpolates optVvalue in polar (specVar,optvar) of seed airfoil
+        Returns None if polar doesn't exist """
+
+        airfoil_seed = self._input_file.airfoil_seed
+
+        if airfoil_seed is None or airfoil_seed.polarSet is None: 
+            return None 
+
+        # find polar in seed airfoils polars which fits to opPoint
+        polarSet : Polar_Set = airfoil_seed.polarSet
+        polarSet.load_or_generate_polars ()                         # ensure loaded (if possible) 
+
+        for polar in polarSet.polars:
+            if opPoint.re == polar.re and opPoint.ma == polar.ma and \
+               opPoint.ncrit == polar.ncrit and opPoint.re_type == polar.type:
+                
+                # get interpolated value in this polar
+                return polar.get_interpolated (opPoint.specVar, opPoint.specValue, opPoint.optVar) 
+                
+        return None
+
 
 #-------------------------------------------------------------------------------
 # Geometry target Definition 
@@ -1425,7 +1581,7 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
         target_types = self._nml._get('target_type', []) 
         ngeo = len(target_types)
  
-        if ngeo == 0: return self
+        if ngeo == 0: return None
 
         target_values   = self._nml._get('target_value',        default=[None] * ngeo)
         weightings      = self._nml._get('weighting',           default=[1.0] * ngeo)
@@ -1524,11 +1680,7 @@ class Nml_Abstract:
     def nml (self) -> dict:
         """ the namelist as dict self represents""" 
 
-        try:
-            return self._input_file.nml_file[self.name]
-        except:                                     # create new, empty namelist
-            self._input_file.nml_file [self.name] = {}
-            return self._input_file.nml_file[self.name]
+        return fromDict (self._input_file.nml_file,self.name, default={})
 
 
     def _get (self, key: str, default=None):
@@ -1551,6 +1703,10 @@ class Nml_Abstract:
 
     def _set (self, key: str, aVal): 
         """ sets a namelist entry in self having key"""
+
+        # create namelist group if it doesn't exist up to now 
+        if not (self.name in self._input_file.nml_file):
+            self._input_file.nml_file [self.name] = self.nml
 
         toDict (self.nml, key, aVal)
 
@@ -1614,6 +1770,69 @@ class Nml_Abstract:
 
 
 # --------- Concrete subclasses ------------------------------------
+
+
+class Nml_info (Nml_Abstract):
+    # additional namelist for AE with meta informations 
+    """ 
+    &info                                          ! main control of optimization
+    description(1)   = 'The first line ...'        ! description for thsi input file 
+    description(2)   = 'and the second and so on'  !  
+    author           = 'Jochen Guenzel'            ! author of ths input file  
+    """
+
+    name = "info"
+
+    def __init__(self, *args):
+
+        super().__init__ (*args)
+
+        # read initial comments in input file as descriptions 
+        if not self.descriptions:
+            self.set_descriptions (self._get_descriptions_from_file())
+
+
+    @override
+    def _write_arrays (self, aStream : TextIO):
+        """ write arrays to stream"""
+
+        # write description as single value like 
+        # description(1)   = 'first line'                    
+        # description(2)   = 'second'                    
+
+        descriptions = self._get('description', [])        
+        for i, description in enumerate (descriptions):
+            self._write_entry (aStream, f"description({i+1})", description)
+
+
+    def _get_descriptions_from_file (self) -> list:
+        """ try to read (legacy) descriptions being comments from input file directly"""
+
+        descriptions = []
+        text  = self._input_file.as_text()
+         
+        for line in text.split ("\n"):
+            line = line.strip()
+            if line:
+                if line[0] == "!":
+                    descriptions.append (line[1:].strip())
+                else: 
+                    break
+        return descriptions
+
+
+    @property
+    def author (self) -> str:                   return self._get('author', default='')
+    def set_author (self, aVal):                self._set ('author', aVal) 
+
+    @property
+    def descriptions (self) -> list :           return self._get('description', default=[])
+    def set_descriptions (self, aList : list):  self._set ('description', [line for line in aList if line]) 
+
+    @property
+    def descriptions_string (self) -> str:      
+        return '\n'.join(self.descriptions)
+
 
 
 class Nml_optimization_options (Nml_Abstract):
@@ -1681,6 +1900,11 @@ class Nml_hicks_henne_options (Nml_Abstract):
     def smooth_seed (self) -> bool:             return self._get ('smooth_seed', default=False) 
     def set_smooth_seed (self, aVal : bool):    self._set('initial_perturb', aVal is True) 
 
+    @property
+    def ndesign_var (self) -> int:
+        """ number of design variables based on ncp"""
+        return (self.nfunctions_top * 3) + (self.nfunctions_bot * 3)
+
 
 
 class Nml_bezier_options (Nml_Abstract):
@@ -1704,6 +1928,10 @@ class Nml_bezier_options (Nml_Abstract):
     def initial_perturb (self) -> float:        return self._get ('initial_perturb', default=0.1) 
     def set_initial_perturb (self, aVal:float): self._set ('initial_perturb', clip (aVal, 0.01, 0.5)) 
 
+    @property
+    def ndesign_var (self) -> int:
+        """ number of design variables based on ncp"""
+        return (self.ncp_top * 2 - 5) + (self.ncp_bot * 2 - 5)
 
 
 class Nml_camb_thick_options (Nml_Abstract):
@@ -1737,16 +1965,31 @@ class Nml_camb_thick_options (Nml_Abstract):
 
     @property
     def le_radius (self) -> bool:               return self._get('le_radius', default=True) 
-    def set_le_radius (self, aVal : bool):      self._set('le_radius', aVal is True) 
+    def set_le_radius (self, aVal : bool):      
+        self._set('le_radius', aVal is True) 
+        self.set_le_radius_blend (aVal)
 
     @property
     def le_radius_blend (self) -> bool:         return self._get('le_radius_blend', default=True) 
-    def set_le_radius_blend (self, aVal : bool):self._set ('le_radius_blend', aVal is True) 
+    def set_le_radius_blend (self, aVal : bool):
+        if not (not self.le_radius and aVal):
+            self._set ('le_radius_blend', aVal is True) 
 
     @property
     def initial_perturb(self) -> float:         return self._get('initial_perturb', default=0.1) 
     def set_initial_perturb (self, aVal:float): self._set ('initial_perturb', clip(aVal, 0.01, 0.5)) 
 
+
+    @property
+    def ndesign_var (self) -> int:
+        """ number of design variables based on ncp"""
+        n = (1 if self.thickness else 0) +  \
+            (1 if self.thickness_pos else 0) +  \
+            (1 if self.camber else 0) +  \
+            (1 if self.camber_pos else 0) +  \
+            (1 if self.le_radius else 0) +  \
+            (1 if self.le_radius_blend else 0) 
+        return n
 
 
 class Nml_operating_conditions (Nml_Abstract):
@@ -1804,13 +2047,15 @@ class Nml_operating_conditions (Nml_Abstract):
 
         noneArr = [None] * len(op_points)                       # len op_points is master
 
-        optimization_types = self._get('optimization_type', noneArr)
-        target_values = self._get('target_value', noneArr)
-        weightings    = self._get('weighting', noneArr)
-        reynolds      = self._get('reynolds', noneArr)        
-        machs         = self._get('mach', noneArr)    
-        ncrits        = self._get('ncrit_pt', noneArr)
-        op_modes      = self._get('op_mode', noneArr)
+        optimization_types  = self._get('optimization_type', noneArr)
+        target_values       = self._get('target_value', noneArr)
+        weightings          = self._get('weighting', noneArr)
+        reynolds            = self._get('reynolds', noneArr)        
+        machs               = self._get('mach', noneArr)    
+        ncrits              = self._get('ncrit_pt', noneArr)
+        op_modes            = self._get('op_mode', noneArr)
+        flap_optimizes      = self._get('flap_optimize', noneArr)
+        flap_angles         = self._get('flap_angle', noneArr)
 
         for i, op_point in enumerate (op_points):
 
@@ -1824,6 +2069,8 @@ class Nml_operating_conditions (Nml_Abstract):
             self._write_entry (aStream, f"reynolds({i+1})", reynolds[i])
             self._write_entry (aStream, f"mach({i+1})", machs[i])
             self._write_entry (aStream, f"ncrit({i+1})", ncrits[i])
+            self._write_entry (aStream, f"flap_optimize({i+1})", flap_optimizes[i])
+            self._write_entry (aStream, f"flap_angle({i+1})", flap_angles[i])
 
 
     @property
@@ -1888,28 +2135,6 @@ class Nml_operating_conditions (Nml_Abstract):
         if self._opPoint_defs is None: 
             self._opPoint_defs = OpPoint_Definitions(self, self._input_file)
         return self._opPoint_defs
-
-    @property
-    def polar_defs (self) -> list[Polar_Definition]: 
-        """ the polar definitions defined within self"""
-
-        polar_defs_dict = {}
-
-        # implicit polars by operating points 
-         
-        for opPoint_def in  self.opPoint_defs: 
-            # build unique key to detect dublicates
-            key = str([opPoint_def.re, opPoint_def.ma, opPoint_def.ncrit, opPoint_def.re_type])
-
-            polar_def : Polar_Definition = polar_defs_dict.get (key, Polar_Definition())
-            polar_def.set_ncrit (opPoint_def.ncrit)
-            polar_def.set_autoRange (True)           # auto range is default 
-            polar_def.set_re (opPoint_def.re)
-            polar_def.set_type (opPoint_def.re_type)
-            polar_def.set_ma (opPoint_def.ma)
-            polar_defs_dict[key] = polar_def
-
-        return list(polar_defs_dict.values())
 
 
 

@@ -8,7 +8,8 @@ import datetime
 
 from pathlib                import Path
 
-from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, GEO_SPLINE
+from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, GEO_SPLINE, usedAs
+from model.polar_set        import Polar_Definition
 
 from model.xo2_input        import Input_File
 from model.xo2_controller   import Xo2_Controller
@@ -282,6 +283,7 @@ class Case_Optimize (Case_Abstract):
 
             self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName)
             self._airfoil_final = airfoil_or_input_file
+            self._airfoil_final.set_usedAs (usedAs.FINAL)
 
         elif isinstance (airfoil_or_input_file, str):
 
@@ -351,6 +353,12 @@ class Case_Optimize (Case_Abstract):
 
 
     @property
+    def isRunning (self) -> bool:
+        """ True if Xoptfoil2 is running"""
+        return self.xo2.isRunning
+
+
+    @property
     def isFinished (self) -> bool:
         """ 
         True if an optimization is finished ...
@@ -377,6 +385,10 @@ class Case_Optimize (Case_Abstract):
         return isFinished
 
 
+    def polar_definitions_of_input (self) -> list[Polar_Definition]:
+        """ polar definitions defined in input file - operating conditions"""
+
+        return self.input_file.opPoint_defs.polar_defs()
 
 
     # ---- Methods -------------------------------------------

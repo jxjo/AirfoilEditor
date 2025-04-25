@@ -146,7 +146,7 @@ class Xo2_Results:
         
 
     @property
-    def steps (self) -> int:
+    def steps (self) -> list ['Optimization_History_Entry']:
         """ optimization steps imported (up to now)""" 
         return self._reader_optimization_history.steps
 
@@ -333,11 +333,11 @@ class GeoTarget_Result (OpPoint):
 
 class OpPoint_Result (OpPoint):
     """ 
-    The optimization result of xfoil calculation for single op point - inherits from opPoint   
+    The optimization result of Xoptfoil2 for single op point - inherits from opPoint   
     """
     def __init__(self):
         """
-        New operating point result (xfoil) from optimization 
+        New operating point result  from optimization 
         """
 
         self.distance       = 0.0              # distance from target  / distance from seed 
@@ -387,7 +387,6 @@ class Reader_Abstract:
         """Superclass for the different Result Handlers for reading results
 
         Arguments:
-            myOptimizer -- the Optimizer self belongs to 
             resultDir -- directory where designs with 'filename' can be found    
         """
 
@@ -589,7 +588,7 @@ class Reader_Optimization_History (Reader_Abstract):
 
 class Reader_OpPoints (Reader_Abstract):
     """
-    The xfoil results for the operating points during an optimization 
+    The Xoptfoil2 results for the operating points during an optimization 
     """
 
     filename = 'Design_OpPoints.csv'

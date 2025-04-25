@@ -123,8 +123,9 @@ class Panel_Abstract (QWidget):
 
     def __init__(self,  
                  parent=None,
-                 getter = None, 
+                 getter= None, 
                  width=None, 
+                 hide=None,                                     # either callable or bool
                  height=None, 
                  title=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
@@ -137,7 +138,13 @@ class Panel_Abstract (QWidget):
         if height is not None: 
             self._height = height
 
-        self._shouldBe_visible = True                                   # defaulit visibilty of self 
+        # handle visibility  
+        self._shouldBe_visible = True                               # defaulit visibilty of self 
+        self._hidden_getter = None                                  # altern. getter to set visibility
+        if isinstance(hide, bool):
+            self._shouldBe_visible = not hide
+        elif callable (hide):
+            self._hidden_getter = hide
 
         # set width and height 
         Widget._set_width  (self, self._width)
@@ -164,7 +171,11 @@ class Panel_Abstract (QWidget):
     @property 
     def shouldBe_visible (self) -> bool:
         """ True if self is visible 
-            - can be overridden to control visibility in sibclass """
+            - can be overridden to control visibility in subclass """
+        
+        if callable (self._hidden_getter):
+            self._shouldBe_visible = not self._hidden_getter ()
+
         return self._shouldBe_visible
 
 
@@ -210,17 +221,26 @@ class Container_Panel (Panel_Abstract):
         
 
 
-    def refresh (parent: QWidget):
+    def refresh (self):
         """ refresh all child Panels self"""
-        p : Edit_Panel
 
-        # first hide the now not visible panels so layout won't be stretched
-        for p in parent.findChildren (Panel_Abstract):
-            if not p.shouldBe_visible: p.refresh() 
+        self.setVisible (self.shouldBe_visible)
 
-        # now show the now visible panels
-        for p in parent.findChildren (Panel_Abstract):
-            if p.shouldBe_visible: p.refresh() 
+        if self.shouldBe_visible:
+            # first hide the now not visible panels so layout won't be stretched
+            p : Edit_Panel
+            for p in self.findChildren (Panel_Abstract):
+                try:
+                    if not p.shouldBe_visible: p.refresh() 
+                except: 
+                    logger.warning (f"{p} {hex(id(p))} (not visible) already deleted")
+
+            # now show the now visible panels
+            for p in self.findChildren (Panel_Abstract):
+                try:
+                    if p.shouldBe_visible: p.refresh() 
+                except: 
+                    logger.warning (f"{p} {hex(id(p))} (visible) already deleted")
 
 
 
@@ -277,7 +297,8 @@ class Edit_Panel (Panel_Abstract):
         # inital content panel content - layout in >init  
 
         self._panel  = QWidget() 
-        self._set_panel_layout (layout=layout) 
+        self._initial_layout = layout 
+        self._set_panel_layout () 
 
         # main layout with title and panel 
 
@@ -328,6 +349,10 @@ class Edit_Panel (Panel_Abstract):
             else: 
                 Widget._set_height (self, 40)
 
+        # refresh also header checkbox
+        for w in self.header_widgets:
+            w.refresh ()
+
         if not silent and callable (self._on_switched):                                          # set by checkbox - callback to Diagram_Item 
             self._on_switched (self._switched_on)
 
@@ -356,7 +381,7 @@ class Edit_Panel (Panel_Abstract):
 
         # reinit layout 
         if (hide or show) or reinit_layout:
-            self._set_panel_layout () 
+            self._set_panel_layout  () 
             logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
 
         # hide / show self 
@@ -383,17 +408,19 @@ class Edit_Panel (Panel_Abstract):
             w.refresh (disable=disable)
 
 
-    def _set_panel_layout (self, layout = None ):
+    def _set_panel_layout (self):
         """ 
         Set layout of self._panel   
             - typically defined in subclass in _init_layout
             - or as init argument 'layout'"""
 
-        # remove existing layout with all its content 
-        if self._panel.layout():
-            self._clear_existing_panel_layout ()
+        # remove and rebuild only in case of _init_layout done in a subclass
 
-        if layout is None:
+        if not self._initial_layout:
+
+            if self._panel.layout():
+                self._clear_existing_panel_layout ()
+
             if self.shouldBe_visible:
                 layout = self._init_layout()        # subclass will create layout 
             else: 
@@ -402,6 +429,9 @@ class Edit_Panel (Panel_Abstract):
                 layout = QVBoxLayout()               
                 wdt = QLabel ("This shouldn't be visible")
                 layout.addWidget (wdt)
+
+        else: 
+            layout = self._initial_layout
 
         layout.setContentsMargins (QMargins(*self._panel_margins))   # inset left 
         layout.setSpacing(2)
@@ -415,15 +445,18 @@ class Edit_Panel (Panel_Abstract):
             while layout.count():
                 child = layout.takeAt(0)
                 childWidget = child.widget()
-                if childWidget:
-                    childWidget.setParent(None)
-                    sip.delete (childWidget)
-                    # childWidget.deleteLater()                             # will create ghost widget due to async event loop
+                if childWidget:                
+                    childWidget.deleteLater() # sip.delete (childWidget)
+                sip.delete (child)
+                # if childWidget:
+                #     childWidget.disconnect()
+                #     childWidget.setParent(None)
+                #     sip.delete (childWidget)
+                #     # childWidget.deleteLater()                             # will create ghost widget due to async event loop
             logger.debug (f"{self} - clear layout ")
 
-        # finally remove self 
-        sip.delete (self._panel.layout())
-
+            # finally remove self 
+            sip.delete (self._panel.layout())
 
 
     def _init_layout(self) -> QLayout:
@@ -765,14 +798,18 @@ class Dialog (QDialog):
 
 
     def __init__(self,  
-                 parent : QWidget =None,
+                 parent : QWidget = None,
+                #  flags : Qt.WindowType = None, 
                  getter = None, 
                  width  : int | None =None, 
                  height : int | None =None, 
+                 dialogPos : tuple = (0.5,0.5),          # reference point for positioning - (0,0) is upper, left corner
+                 parentPos : tuple = (0.5,0.5),          # position anchor in parent - (0,0) is upper, left corner
                  dx : int | None = None, 
                  dy : int | None = None, 
-                 title=None, **kwargs):
-        super().__init__(parent=parent, **kwargs)
+                 title=None, 
+                 flags=Qt.WindowType.Dialog, **kwargs):
+        super().__init__(parent, flags=flags, **kwargs)
 
         self._parent = parent
         self._getter = getter
@@ -790,12 +827,26 @@ class Dialog (QDialog):
         Widget._set_height (self, self._height)
 
         # move self relative to parent bottom left
+        #       calc from the relative parentPos and dialogPos arguments the absolute positioning
+
+        parent_topLeft     = self._parent.mapToGlobal (self._parent.rect().topLeft())
+        parent_bottomRight = self._parent.mapToGlobal (self._parent.rect().bottomRight())
+        parent_width  = parent_bottomRight.x() - parent_topLeft.x()
+        parent_height = parent_bottomRight.y() - parent_topLeft.y()
+
+        parentPos_rel = QPoint (int(parent_width * parentPos[0]), int(parent_height * parentPos[1]))
+        parentPos_abs = parent_topLeft + parentPos_rel
+
+        self_width  = self.rect().width()
+        self_height = self.rect().height()
+        selfPos_rel = QPoint (int(self_width * dialogPos[0]), int(self_height * dialogPos[1]))
 
         if dx is not None and dy is not None:
-            bottom_left = self._parent.mapToGlobal (self._parent.rect().bottomLeft())  # parent in global coordinates
-            pos_x = bottom_left.x() + dx
-            pos_y = bottom_left.y() + dy            
-            self.move (pos_x, pos_y)
+            dxy_rel = QPoint (int(dx), int(dy))
+        else:
+            dxy_rel = QPoint (0,0)
+
+        self.move (parentPos_abs - selfPos_rel + dxy_rel)
 
         # title of dialog 
 
@@ -817,15 +868,18 @@ class Dialog (QDialog):
 
         # Qt buttonBox at footer
 
-        l_button = QHBoxLayout()
-        l_button.addWidget(self._button_box())
-        l_button.setContentsMargins (QMargins(5, 0, 25, 0))
+        button_box = self._button_box()
+        if button_box:
+            l_button = QHBoxLayout()
+            l_button.addWidget(self._button_box())
+            l_button.setContentsMargins (QMargins(5, 0, 25, 0))
  
         # main layout with title and panel 
 
         l_main   = QVBoxLayout()
         l_main.addWidget (self._panel, stretch=1)
-        l_main.addLayout (l_button)
+        if button_box:
+            l_main.addLayout (l_button)
         l_main.setContentsMargins (QMargins(5, 5, 5, 15))
         l_main.setSpacing(15)
         self.setLayout (l_main)
@@ -854,7 +908,7 @@ class Dialog (QDialog):
         # to be implemented by sub class
         return QVBoxLayout ()
 
-    def _button_box (self):
+    def _button_box (self) -> QDialogButtonBox:
         """ returns the QButtonBox with the buttons of self"""
         buttons = QDialogButtonBox.StandardButton.Ok | \
                   QDialogButtonBox.StandardButton.Cancel
@@ -910,97 +964,98 @@ class Dialog (QDialog):
 
     @override
     def reject (self): 
-        """ handle rject (close) actions"""
+        """ handle reject (close) actions"""
         # to override 
         super().reject()
+
 
 # ------------------------------------------------------------------------------
 # ------------ test functions - to activate  -----------------------------------
 # ------------------------------------------------------------------------------
 
-class Test_Panel (Edit_Panel):
+# class Test_Panel (Edit_Panel):
 
-    name = "Airfoil Data"
-    _width  = 200
-    _height = (100, None)
+#     name = "Airfoil Data"
+#     _width  = 200
+#     _height = (100, None)
 
-    def _init_layout (self)-> QLayout: 
-        l = QGridLayout()
-        Label  (l,0,0,get="Ein Label")
-        Button (l,2,0, text= "Open dialog", set=self._open_dialog)
-        l.setRowStretch (0,1)
-        return l 
+#     def _init_layout (self)-> QLayout: 
+#         l = QGridLayout()
+#         Label  (l,0,0,get="Ein Label")
+#         Button (l,2,0, text= "Open dialog", set=self._open_dialog)
+#         l.setRowStretch (0,1)
+#         return l 
 
-    def _open_dialog (self):
+#     def _open_dialog (self):
 
-        dlg = Test_Dialog(parent=self, title="mein Titel", height=400, width=600)
-        dlg.exec ()
-
-
-class Test_Dialog (Dialog):
-
-    def _init_layout(self) -> QLayout:
-        l = QGridLayout()
-        Label  (l,0,0,get="Hallo Dialog")
-        SpaceR (l,1)
-        Label  (l,2,0,get="ganz unten")
-        l.setRowStretch (1,1)
-        return l 
+#         dlg = Test_Dialog(parent=self, title="mein Titel", height=400, width=600)
+#         dlg.exec ()
 
 
-class Test_Panel2 (Edit_Panel):
+# class Test_Dialog (Dialog):
 
-    name   = "Curvature"
-    _width  = 200
-    _height = (200, None)
-
-    def _init_layout (self) -> QLayout: 
-        l = QGridLayout()
-        r = 0 
-        Label  (l,0,0, colSpan=2, get="Ein Läbele extra lang")
-        r += 1
-        Label  (l,r,0,get="Weight", width=70)
-        FieldI (l,r,1,get=15, lim=(0,100), unit="kg", step=1, width=(70,90)) # (70, 90)
-        r += 1
-        Label  (l,r,0,get="Span")
-        FieldI (l,r,1,get="2980", lim=(0,9999), unit="mm", step=10, width=(100, None))
-        r+= 1
-        SpaceR (l,r)
-        l.setColumnStretch (1,3)
-        l.setColumnStretch (2,1)
-        l.setRowStretch (r, 1)
-        return l 
+#     def _init_layout(self) -> QLayout:
+#         l = QGridLayout()
+#         Label  (l,0,0,get="Hallo Dialog")
+#         SpaceR (l,1)
+#         Label  (l,2,0,get="ganz unten")
+#         l.setRowStretch (1,1)
+#         return l 
 
 
-class Test_Panels (QMainWindow):
+# class Test_Panel2 (Edit_Panel):
 
-    def __init__(self):
-        super().__init__()
+#     name   = "Curvature"
+#     _width  = 200
+#     _height = (200, None)
 
-        self.setWindowTitle('Test Edit_Panel')
-        self.setMinimumSize(QSize(400, 200))
+#     def _init_layout (self) -> QLayout: 
+#         l = QGridLayout()
+#         r = 0 
+#         Label  (l,0,0, colSpan=2, get="Ein Läbele extra lang")
+#         r += 1
+#         Label  (l,r,0,get="Weight", width=70)
+#         FieldI (l,r,1,get=15, lim=(0,100), unit="kg", step=1, width=(70,90)) # (70, 90)
+#         r += 1
+#         Label  (l,r,0,get="Span")
+#         FieldI (l,r,1,get="2980", lim=(0,9999), unit="mm", step=10, width=(100, None))
+#         r+= 1
+#         SpaceR (l,r)
+#         l.setColumnStretch (1,3)
+#         l.setColumnStretch (2,1)
+#         l.setRowStretch (r, 1)
+#         return l 
 
-        air_panel  = Test_Panel  (self) 
-        curv_panel = Test_Panel2 (self, switchable=True,hide_switched=True) 
 
-        container = QWidget()
-        l = QHBoxLayout ()
-        l.addWidget (air_panel) 
-        l.addWidget (curv_panel)
-        container.setLayout (l)  
+# class Test_Panels (QMainWindow):
 
-        self.setCentralWidget(container)
+#     def __init__(self):
+#         super().__init__()
+
+#         self.setWindowTitle('Test Edit_Panel')
+#         self.setMinimumSize(QSize(400, 200))
+
+#         air_panel  = Test_Panel  (self) 
+#         curv_panel = Test_Panel2 (self, switchable=True,hide_switched=True) 
+
+#         container = QWidget()
+#         l = QHBoxLayout ()
+#         l.addWidget (air_panel) 
+#         l.addWidget (curv_panel)
+#         container.setLayout (l)  
+
+#         self.setCentralWidget(container)
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout
-    # logging.basicConfig(level=logging.DEBUG)
+#     from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout
+#     # logging.basicConfig(level=logging.DEBUG)
  
-    app = QApplication([])
-    app.setStyle('fusion')
-    app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
+#     app = QApplication([])
+#     app.setStyle('fusion')
+#     app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
 
-    w = Test_Panels()
-    w.show()
-    app.exec() 
+#     w = Test_Panels()
+#     w.show()
+#     app.exec() 

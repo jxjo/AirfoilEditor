@@ -40,10 +40,13 @@ logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 
-COLOR_EDITABLE      = QColor('orange') 
+COLOR_EDITABLE      = QColor('orange')                          # Movable Point 
 COLOR_HOVER         = QColor('deepskyblue')
+
+COLOR_GOOD          = QColor("lime").darker (120)
+COLOR_OK            = QColor("lightgray")
 COLOR_ERROR         = QColor('red').darker(120)
-COLOR_WARNING       = QColor('gold')
+COLOR_WARNING       = QColor('gold').darker(120)
 
 
 # -------- common methodes ------------------------
@@ -112,7 +115,7 @@ class Movable_Point (pg.TargetItem):
 
     name = 'Point'                                  # name of self - shown in 'label'
 
-    sigShiftClick = QtCore.Signal(object)           # signal when point is shift clicked
+    sigShiftClick = pyqtSignal(object)             # signal when point is shift clicked
 
     def __init__ (self, 
                   xy_or_point : tuple | JPoint, 
@@ -125,7 +128,8 @@ class Movable_Point (pg.TargetItem):
                   movable_color = None,
                   show_label_static : bool = True, 
                   label_anchor = (0,1),
-                  color = "red",
+                  color = "red", 
+                  brush=None,
                   on_changed = None,
                   **kwargs):
 
@@ -182,10 +186,14 @@ class Movable_Point (pg.TargetItem):
             penColor = QColor (color).darker (120)
 
             pen = pg.mkPen (penColor, width=1)
-            brush_color = QColor (penColor) # QColor (color)
 
+            if brush is not None: 
+                brush_color = brush
+            else:
+                brush_color = QColor(penColor)  
+
+            hoverBrush  = QColor(color)
             hoverPen = pg.mkPen (color, width=1) 
-            hoverBrush = QColor(color)
 
         # init TargetItem  
 
@@ -200,11 +208,10 @@ class Movable_Point (pg.TargetItem):
         if parent is not None: 
             self.setParentItem (parent)
 
-        # points are above other things
-        if movable:
-            self.setZValue (10)                     # only within same parent item
-        else: 
-            self.setZValue (2)
+        # z value - points are above other things 
+        self._zValue_passive = 10 if movable else 5
+        self._zValue_active  = 100
+        self.setZValue (self._zValue_passive)
 
         # default callback setup 
         self.sigPositionChanged.connect (self._moving)
@@ -265,13 +272,19 @@ class Movable_Point (pg.TargetItem):
         """ returns the label options as dict """
 
         if moving or hover:
+            # brush to get black background 
+            brushColor = QColor('black')
+            brushColor.setAlphaF (0.6)
+            brush = pg.mkBrush (brushColor)
+
             labelOpts = {'color': QColor(Artist.COLOR_NORMAL),
-                        'anchor': self._label_anchor,
-                        'offset': (5, 0)}
+                         'fill': brush,
+                         'anchor': self._label_anchor,
+                         'offset': (5, 0)}
         else: 
             labelOpts = {'color': QColor(Artist.COLOR_LEGEND),
-                        'anchor': self._label_anchor,
-                        'offset': (5, 0)}
+                         'anchor': self._label_anchor,
+                         'offset': (5, 0)}
         return labelOpts
 
 
@@ -324,7 +337,7 @@ class Movable_Point (pg.TargetItem):
 
     @override
     def mouseClickEvent(self, ev : MouseClickEvent):
-        """ pg overloaded - ghandle shift_click """
+        """ pg overloaded - handle shift_click """
         if self.movable :
             if ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier: 
                 ev.accept()
@@ -341,10 +354,12 @@ class Movable_Point (pg.TargetItem):
             self.setLabel (self.label_moving, self._label_opts(moving=True))
             self.setMovingBrush ()
             self.setPath (Symbols[self._symbol_moving])
+            self.setZValue (self._zValue_active)             # above all
 
         if ev.isFinish() and not self.moving:
             self.setLabel (self.label_static, self._label_opts(moving=False))
             self.setPath (Symbols[self._symbol_movable])
+            self.setZValue (self._zValue_passive)     
 
 
     @override
@@ -364,8 +379,10 @@ class Movable_Point (pg.TargetItem):
         if not self.mouseHovering is hover:
             if hover:
                 self.setLabel (self.label_hover, self._label_opts(hover=hover))
+                self.setZValue (self._zValue_active)              # above all
             else: 
                 self.setLabel (self.label_static, self._label_opts(hover=hover))        
+                self.setZValue (self._zValue_passive)             # quite above
                 
         super().setMouseHover(hover)
 
@@ -693,11 +710,15 @@ class Artist(QObject):
     @property
     def data_object (self): 
         # to be ooverloaded - or implemented with semantic name 
-        if callable(self._getter):
-            return self._getter()
-        else: 
-            return self._getter
-        
+        try:
+            if callable(self._getter):
+                return self._getter()
+            else: 
+                return self._getter
+        except:
+            return None
+
+
     @property
     def data_list (self): 
         # to be overloaded - or implemented with semantic name        
@@ -871,6 +892,7 @@ class Artist(QObject):
                     *args,                     # optional: tuple or x,y
                      symbol='o', color=None, style=Qt.PenStyle.SolidLine, 
                      size=7, pxMode=True, 
+                     zValue=3,
                      brushColor=None, brushAlpha=1.0,
                      text=None, textColor=None, textFill=None,
                      textPos=None, anchor=None, angle=0,
@@ -897,7 +919,7 @@ class Artist(QObject):
         brush = pg.mkBrush(brushColor) 
         p = pg.ScatterPlotItem  ([xt], [yt], symbol=symbol, size=size, pxMode=pxMode, 
                                  pen=pen, brush=brush)
-        p.setZValue(3)                                      # move to foreground 
+        p.setZValue(zValue)                                 # move to foreground 
 
         # plot label as TextItem 
 

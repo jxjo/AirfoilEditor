@@ -651,6 +651,7 @@ class Diagram_Item (pg.PlotItem):
     def plot_title (self, 
                     title : str|None = None,
                     title_size : int = None,
+                    title_color : str|QColor = None,
                     subtitle : str|None = None, 
                     align :str ='left', 
                     offset : tuple = (50,5)):
@@ -659,6 +660,7 @@ class Diagram_Item (pg.PlotItem):
         Args:
             title: optional - default is class.title
             title_size: optional - title font size in pt 
+            title_color: optional - title color as String or QColor
             subtitle: optional - default is class.subtitle
             align: aligned to the left or right of th item .
             offset: from the upper left (right) corner in pixel  
@@ -689,7 +691,12 @@ class Diagram_Item (pg.PlotItem):
             parentPos = (0.98,0)
             itemPos   = (1,0)
 
-        p1 = pg.LabelItem(title, color=QColor(Artist.COLOR_HEADER), size=f"{title_size}pt")    
+        if title_color is None: 
+            color = Artist.COLOR_HEADER
+        else:
+            color = title_color
+
+        p1 = pg.LabelItem(title, color=color, size=f"{title_size}pt")    
 
         p1.setParentItem(self)                            # add to self (Diagram Item) for absolute position 
         p1.anchor(itemPos=itemPos, parentPos=parentPos, offset=offset)

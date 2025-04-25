@@ -1,4 +1,4 @@
-#!/usr/bin/env pythonbutton_color
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """  
@@ -12,7 +12,7 @@ from copy                   import copy
 
 
 from base.widgets           import * 
-from base.panels            import Edit_Panel
+from base.panels            import Edit_Panel, Toaster
 
 from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Geometry, Geometry_Bezier, Curvature_Abstract
@@ -24,16 +24,9 @@ from model.xo2_driver       import Xoptfoil2
 from airfoil_widgets        import * 
 from airfoil_dialogs        import Match_Bezier_Dialog, Matcher, Polar_Definition_Dialog
 
-from model.xo2_input        import Input_File
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
-
-
-
-#-------------------------------------------------------------------------------
-# Single edit panels    
-#-------------------------------------------------------------------------------
 
 
 class Panel_Airfoil_Abstract (Edit_Panel):
@@ -58,11 +51,12 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         return self.myApp.case()
 
 
-    def _set_panel_layout (self, layout = None ):
+    @override
+    def _set_panel_layout (self ):
         """ Set layout of self._panel """
-        # overloaded to connect to widgets changed signal
+        # overridden to connect to widgets changed signal
 
-        super()._set_panel_layout (layout=layout)
+        super()._set_panel_layout ()
         for w in self.widgets:
             w.sig_changed.connect (self._on_airfoil_widget_changed)
         for w in self.header_widgets:
@@ -80,9 +74,10 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         """ panel in mode_modify or disabled ? - from App """
         return self.myApp.mode_modify
 
+
     @property
     def mode_optimize (self) -> bool:
-        """ panel in optimize_mode or disabled ? - from App """
+        """ panel in mode_modify or disabled ? - from App """
         return self.myApp.mode_optimize
 
 
@@ -92,7 +87,6 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         """ overloaded: only enabled in edit mode of App """
         return not self.mode_modify
     
-
 
 
 class Panel_File_View (Panel_Airfoil_Abstract):
@@ -147,10 +141,10 @@ class Panel_File_View (Panel_Airfoil_Abstract):
                 set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel",
                 button_style=button_style.PRIMARY)
         Button (l,r,c+2, text="&Optimize", width=90, colSpan=2,
-                set=self.myApp.optimize_airfoil, 
+                set=self.myApp.optimize, 
                 toolTip="Optimize current airfoil with Xoptfoil2",
-                hide=lambda: not self._is_xo2_input_existing(),
-                disable=not Xoptfoil2.ready)
+                # hide=lambda: not self._is_xo2_input_existing(),
+                disable=lambda: not self._is_xo2_input_existing() or not Xoptfoil2.ready)
         r += 1
         SpaceR (l,r, height=2, stretch=0)
         r += 1
@@ -255,90 +249,6 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
 
         if next_airfoil: 
             self.myApp.set_airfoil (next_airfoil)
-
-
-
-class Panel_File_Optimize (Panel_Airfoil_Abstract):
-    """ File panel with open / save / ... """
-
-    name = 'Optimize Mode'
-
-    @override
-    @property
-    def shouldBe_visible (self) -> bool:
-        """ only visible if mode_optimze """
-        return self.mode_optimize
-
-    @override
-    @property
-    def _isDisabled (self) -> bool:
-        """ only enabled in optimze mode of App """
-        return not self.mode_optimize
-
-
-    @property
-    def airfoilg_org (self) -> Airfoil:
-        return self.myApp.airfoil_org
-
-    @property
-    def case (self) -> Case_Optimize:
-        return self.myApp.case()
-
-
-    def _init_layout (self): 
-
-        self.set_background_color (color='darkturquoise', alpha=0.2)
-
-        l = QGridLayout()
-        r,c = 0, 0 
-        Field (l,r,c, colSpan=3, width=190, get=lambda: self.airfoil().fileName)
-        r += 1
-        ComboSpinBox (l,r,c, colSpan=2, width=160, get=self.airfoil_fileName, 
-                             set=self.set_airfoil_by_fileName,
-                             options=self.airfoil_fileNames,
-                             signal=False)
-        r += 1
-        SpaceR (l,r)
-        l.setRowStretch (r,2)
-        r += 1
-        Button (l,r,c,  text="&Finish ...", width=90, 
-                        set=lambda : self.myApp.mode_optimize_finished(ok=True), 
-                        toolTip="Save current airfoil, optionally modifiy name and leave optimize mode")
-        r += 1
-        SpaceR (l,r, height=5, stretch=0)
-        r += 1
-        Button (l,r,c,  text="&Cancel",  width=90, 
-                        set=lambda : self.myApp.mode_optimize_finished(ok=False),
-                        toolTip="Cancel optimization of airfoil")
-        r += 1
-        SpaceR (l,r, height=5, stretch=0)
-        l.setColumnStretch (3,2)
-        l.setContentsMargins (QMargins(0, 0, 0, 0)) 
-
-        return l
-
-
-
-    def airfoil_fileName(self) -> list[str]:
-        """ fileName of current airfoil without extension"""
-        return os.path.splitext(self.airfoil().fileName)[0]
-
-
-    def airfoil_fileNames(self) -> list[str]:
-        """ list of design airfoil fileNames without extension"""
-
-        fileNames = []
-        for airfoil in []: # self.case.airfoil_designs:
-            fileNames.append (os.path.splitext(airfoil.fileName)[0])
-        return fileNames
-
-
-    def set_airfoil_by_fileName (self, fileName : str):
-        """ set new current design airfoil by fileName"""
-
-        pass
-        # airfoil = self.case.get_design_by_name (fileName)
-        # self.myApp.set_airfoil (airfoil)
 
 
 
@@ -500,7 +410,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is not Bezier """
-        return not (self.geo().isBezier and self.mode_modify)
+        return not (self.geo().isBezier and self.mode_modify) 
 
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
@@ -625,7 +535,7 @@ class Panel_Bezier (Panel_Airfoil_Abstract):
         l = QGridLayout()
 
         r,c = 0, 0 
-        Label (l,r,c+1, get="Points")
+        Label (l,r,c, get="Bezier control Points", colSpan=4)
 
         r += 1
         FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.nControlPoints,  width=50, step=1, lim=(3,10),
@@ -793,7 +703,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         match_bezier = Match_Bezier_Dialog (self, aSide, aTarget_line,
                                     target_curv_le = target_curv_le,
                                     max_curv_te = max_curv_te,
-                                    dx=200, dy=-400)
+                                    parentPos=(0.1, 0.1), dialogPos=(0,1))
 
         match_bezier.sig_new_bezier.connect     (self.myApp.sig_bezier_changed.emit)
         match_bezier.sig_pass_finished.connect  (self.myApp.sig_airfoil_changed.emit)
@@ -846,7 +756,6 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
 
 
-
 class Panel_Polar_Defs (Edit_Panel):
     """ Panel to add, delete, edit polar definitions """
 
@@ -856,8 +765,6 @@ class Panel_Polar_Defs (Edit_Panel):
     _main_margins  = (0, 0, 0, 0)                       # margins of Edit_Panel
 
     sig_polar_def_changed = pyqtSignal()                # polar definition changed 
-
-    MAX_POLAR_DEFS = 5
 
     # ---------------------------------------------
 
@@ -882,7 +789,7 @@ class Panel_Polar_Defs (Edit_Panel):
                         hide=lambda: len(self.polar_defs) <= 1)
             r += 1
 
-        if len (self.polar_defs) < self.MAX_POLAR_DEFS:
+        if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS:
             ToolButton (l,r,c+1, icon=Icon.ADD,   set=self.add_polar_def)
 
         l.setColumnStretch (c+1,2)
@@ -1092,14 +999,6 @@ class Panel_Airfoils (Edit_Panel):
             self.sig_airfoil_ref_changed.emit (airfoil, None)
 
 
-    def add_airfoil_ref (self):
-        """ add a new ref airfoil"""
-
-        self.airfoils.append (None)
-
-        self._on_airfoil_list_changed ()
-
-
     @override
     def refresh (self, reinit_layout=None):
         """ refreshes all Widgets on self """
@@ -1107,56 +1006,3 @@ class Panel_Airfoils (Edit_Panel):
         # rebuild layout with new airfoil entries 
         logger.debug (f"{self} refresh with reinit layout")
         super().refresh (reinit_layout=True)
-
-
-
-class Panel_Xo2_Case (Panel_Airfoil_Abstract):
-    """ Main panel of optimization"""
-
-    name = 'Case'
-    _width  = (350, None)
-
-    @override
-    def case (self) -> Case_Optimize:
-        return super().case()
-
-
-    def input_file (self) -> Input_File:
-        return self.case().input_file
-
-
-    @override
-    @property
-    def shouldBe_visible (self) -> bool:
-        """ overloaded: only visible if geo is Bezier """
-        return self.mode_optimize
-
-
-    @override
-    @property
-    def _isDisabled (self) -> bool:
-        """ overloaded: only enabled in edit mode of App """
-        return not self.mode_optimize
-    
-
-    def _init_layout (self): 
-
-        l = QGridLayout()
-        r,c = 0, 0 
-        Field (l,r,c, lab="Input file", width=190, 
-                obj=self.input_file, prop=Input_File.fileName)
-        r += 1
-        SpaceR (l,r)
-        r += 1
-        Button (l,r,c+1, text="Optimize", width=90,
-                set=self.myApp.optimize_run, 
-                toolTip="Run Optimizer Xoptfoil2")
-        r += 1
-        l.setRowStretch (r,2)
-        l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (5,2)
-        return l 
-
-
-
-

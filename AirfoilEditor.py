@@ -49,9 +49,11 @@ from base.widgets           import *
 from airfoil_widgets        import * 
 from airfoil_diagrams       import * 
 
-from airfoil_dialogs        import Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog, Run_Optimizer_Dialog
+from airfoil_dialogs        import Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog
 from airfoil_ui_panels      import * 
 
+from xo2_dialogs            import Xo2_Run_Dialog
+from xo2_panels             import *
 
 import logging
 logger = logging.getLogger(__name__)
@@ -65,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "Airfoil Editor"
-APP_VERSION      = "4.0 dev"
+APP_VERSION      = "4.0 dev Optimizer"
 
 
 class App_Main (QMainWindow):
@@ -92,9 +94,14 @@ class App_Main (QMainWindow):
     sig_panelling_changed       = pyqtSignal()          # new panelling
     sig_blend_changed           = pyqtSignal()          # new (intermediate) blend 
     sig_polar_set_changed       = pyqtSignal()          # new polar sets attached to airfoil
-
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
     sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
+
+    sig_mode_optimize           = pyqtSignal(bool)      # enter / leave mode optimze
+    sig_xo2_new_state           = pyqtSignal()          # Xoptfoil2 new info/state
+    sig_xo2_input_changed       = pyqtSignal()          # data of Xoptfoil2 input changed
+    sig_opPoint_def_selected    = pyqtSignal(object)    # new opPoint definition selected somewhere 
+    sig_opPoint_def_changed     = pyqtSignal(object)    # opPoint definition changed (in diagram) 
 
     sig_closing                 = pyqtSignal(str)       # the app is closing with an airfoils pathFilename
 
@@ -118,6 +125,8 @@ class App_Main (QMainWindow):
         self._file_panel        = None
         self._diagram           = None
 
+        self._xo2_panel         = None                 
+        self._xo2_opPoint_def_dialog = None             # singleton for this dialog 
 
         # if called from other applcation (PlanformCreator) make it modal to this 
 
@@ -162,7 +171,8 @@ class App_Main (QMainWindow):
 
         # init main layout of app
 
-        self._data_panel    = Container_Panel (title="Data panel")
+        self._data_panel    = Container_Panel (title="Data panel", hide=lambda: self.mode_optimize)
+        self._xo2_panel     = Container_Panel (title="Xo2 panel",  hide=lambda: not self.mode_optimize)
         self._file_panel    = Container_Panel (title="File panel", width=250)
         self._diagram       = Diagram_Airfoil_Polar (self, self.airfoils, 
                                                      polar_defs_fn = self.polar_definitions,
@@ -186,20 +196,24 @@ class App_Main (QMainWindow):
              self._watchdog.sig_new_polars.connect (self._diagram.on_new_polars)
              self._watchdog.sig_airfoil_reloaded.connect (self._on_airfoil_reloaded)
              self._watchdog.sig_airfoil_removed.connect  (self._on_airfoil_removed)
-             # self._watchdog.sig_new_xo2_state.connect ()          # also run dialog is connected 
+             self._watchdog.sig_xo2_new_state.connect    (self.sig_xo2_new_state.emit)      # update diagram  
              self._watchdog.start()
 
         # connect diagram signals to slots of self
 
-        self._diagram.sig_airfoil_changed.connect     (self._on_airfoil_changed)
-        self._diagram.sig_polar_def_changed.connect   (self.refresh_polar_sets)
-        self._diagram.sig_airfoil_ref_changed.connect (self.set_airfoil_ref)
+        self._diagram.sig_airfoil_changed.connect           (self._on_airfoil_changed)
+        self._diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
+        self._diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
+        self._diagram.sig_opPoint_def_selected.connect      (self.sig_opPoint_def_selected.emit)
+        self._diagram.sig_opPoint_def_changed.connect       (self.sig_opPoint_def_changed.emit)
+        self._diagram.sig_opPoint_def_dblClick.connect      (self.edit_opPoint_def)
 
         # connect self signals to slots of self
 
         self.sig_new_airfoil.connect            (self.refresh)
         self.sig_new_design.connect             (self.refresh)
         self.sig_airfoil_changed.connect        (self._on_airfoil_changed)
+        self.sig_xo2_input_changed.connect      (self._on_xo2_input_changed)
 
         # connect self signals to slots of diagram
 
@@ -212,6 +226,10 @@ class App_Main (QMainWindow):
         self.sig_blend_changed.connect          (self._diagram.on_airfoil_changed)
         self.sig_polar_set_changed.connect      (self._diagram.on_polar_set_changed)
         self.sig_airfoils_ref_changed.connect   (self._diagram.on_airfoils_ref_changed)
+
+        self.sig_mode_optimize.connect          (self._diagram.on_mode_optimize)
+        self.sig_xo2_new_state.connect          (self._diagram.on_new_xo2_state)
+        self.sig_xo2_input_changed.connect      (self._diagram.on_new_xo2_state)
 
         self.sig_enter_blend.connect            (self._diagram.on_blend_airfoil)
         self.sig_enter_panelling.connect        (self._diagram.on_enter_panelling)
@@ -229,14 +247,20 @@ class App_Main (QMainWindow):
         #  || file panel ||        data panel             >||
         #                 | Geometry  | Coordinates | ... >| 
 
+        l_xo2 = QHBoxLayout()        
+        l_xo2.addWidget (Panel_Xo2_Case                    (self, self.airfoil))
+        l_xo2.addWidget (Panel_Xo2_Shape_Functions         (self, self.airfoil))
+        l_xo2.addWidget (Panel_Xo2_Seed_Airfoil            (self, self.airfoil))
+        l_xo2.addWidget (Panel_Xo2_Operating_Conditions    (self, self.airfoil))
+        l_xo2.setContentsMargins (QMargins(0, 0, 0, 0))
+        self._xo2_panel.setLayout (l_xo2)
+
         l_data = QHBoxLayout()        
-        l_data.addWidget (Panel_Xo2_Case        (self, self.airfoil))
         l_data.addWidget (Panel_Geometry        (self, self.airfoil))
         l_data.addWidget (Panel_Panels          (self, self.airfoil))
         l_data.addWidget (Panel_LE_TE           (self, self.airfoil))
         l_data.addWidget (Panel_Bezier          (self, self.airfoil))
         l_data.addWidget (Panel_Bezier_Match    (self, self.airfoil))
-        l_data.addStretch (1)        
         l_data.setContentsMargins (QMargins(0, 0, 0, 0))
         self._data_panel.setLayout (l_data)
 
@@ -247,11 +271,14 @@ class App_Main (QMainWindow):
         l_file.setContentsMargins (QMargins(0, 0, 0, 0))
         self._file_panel.setLayout (l_file)
 
-        l_lower = QHBoxLayout()
-        l_lower.addWidget (self._file_panel)
-        l_lower.addWidget (self._data_panel, stretch=1)
-        # l_lower.addStretch (1)
+        l_lower = QGridLayout()
+        l_lower.addWidget (self._file_panel, 0, 0, 1, 1)
+        l_lower.addWidget (self._data_panel, 0, 1, 1, 1)
+        l_lower.addWidget (self._xo2_panel , 0, 1, 1, 1)
+        l_lower.setHorizontalSpacing (5)
+        l_lower.setColumnStretch (2,1)
         l_lower.setContentsMargins (QMargins(0, 0, 0, 0))
+
         lower = QWidget ()
         lower.setMinimumHeight(180)
         lower.setMaximumHeight(180)
@@ -419,7 +446,7 @@ class App_Main (QMainWindow):
         return self._mode_optimize
 
 
-    def set_mode_optimize (self, aBool : bool, for_airfoil):
+    def set_mode_optimize (self, aBool : bool, for_airfoil : Airfoil):
         """ switch mooptimize / view mode """
 
         if self._mode_optimize != aBool: 
@@ -429,15 +456,18 @@ class App_Main (QMainWindow):
 
                 # save possible example to file to ease consistent further handling in widgets
                 if self._airfoil.isExample: self._airfoil.save()
-                # self._airfoil_org = self._airfoil       # enter mode_modify - save original 
+
+                self._airfoil_org = self._airfoil       # enter mode_modify - save original 
 
             else: 
                 self._airfoil_org = None                # leave mode_modify - remove original 
-                self._case = None         
+                self._case = None   
+                for_airfoil.set_usedAs (usedAs.NORMAL)     
 
             self.set_airfoil (for_airfoil, silent=True)
 
             self.sig_new_airfoil.emit()                 # signal new airfoil 
+            self.sig_mode_optimize.emit(aBool)          # signal enter / leave mode optimize 
 
 
     def mode_modify_finished (self, ok=False):
@@ -493,12 +523,18 @@ class App_Main (QMainWindow):
         if not self.mode_optimize: return 
 
         if ok:
-            pass
+            # be sure input file data is written to file 
+            case: Case_Optimize = self.case()
+            saved = case.input_file.save_nml()
 
-        # if not ok:
-        new_airfoil = self._airfoil_org                 # restore original airfoil 
+            new_airfoil = self.case().airfoil_final
+        else: 
+            # if not ok:
+            new_airfoil = self._airfoil_org                 # restore original airfoil 
 
-        # close case 
+        # close open opPoint_def dialog 
+        if self._xo2_opPoint_def_dialog:
+             self._xo2_opPoint_def_dialog.close()
 
         # self.case.close (remove_designs=remove_designs)     # shut down case
         self._case = None                                
@@ -507,6 +543,7 @@ class App_Main (QMainWindow):
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
+        self._xo2_panel.refresh()
         self._data_panel.refresh()
         self._file_panel.refresh()
 
@@ -517,6 +554,7 @@ class App_Main (QMainWindow):
         for airfoil in self.airfoils():
             airfoil.set_polarSet (Polar_Set (airfoil, polar_def=self.polar_definitions(), only_active=True))
 
+        self._xo2_panel.refresh()
         self.sig_polar_set_changed.emit()
 
 
@@ -538,17 +576,19 @@ class App_Main (QMainWindow):
         self.set_mode_modify (True, first_design)       
 
 
-    def optimize_airfoil (self):
+    def optimize (self):
         """ optimize airfoil with Xoptfoil2 - switch to optimize mode - create Case """
         
         if self.mode_modify or not Xoptfoil2.ready : return 
 
         # create new Design Case and get/create first design 
-
         self._case = Case_Optimize (self._airfoil)
-
         first_design = self._airfoil # self._case.first_working_design() 
 
+        # add polar definitions defined by Xo2 input file 
+        self._insert_polar_defs (self._case.polar_definitions_of_input())
+
+        # switch UI 
         self.set_mode_optimize (True, first_design)      
 
 
@@ -572,7 +612,8 @@ class App_Main (QMainWindow):
 
         self.sig_enter_blend.emit()
 
-        dialog = Blend_Airfoil_Dialog (self, self.airfoil(), self.airfoil_org, dx=450, dy=-380)  
+        dialog = Blend_Airfoil_Dialog (self, self.airfoil(), self.airfoil_org, 
+                                       parentPos=(0.25, 0.75), dialogPos=(0,1))  
 
         dialog.sig_blend_changed.connect (self.sig_blend_changed.emit)
         dialog.sig_airfoil_2_changed.connect (self.set_airfoil_2)
@@ -593,7 +634,8 @@ class App_Main (QMainWindow):
 
         self.sig_enter_panelling.emit()
 
-        dialog = Repanel_Airfoil_Dialog (self, self.airfoil().geo, dx=700, dy=-450)
+        dialog = Repanel_Airfoil_Dialog (self, self.airfoil().geo,
+                                         parentPos=(0.35, 0.75), dialogPos=(0,1))
 
         dialog.sig_new_panelling.connect (self.sig_panelling_changed.emit)
         dialog.exec()     
@@ -605,25 +647,99 @@ class App_Main (QMainWindow):
         self.sig_airfoil_changed.emit()
 
 
+    def edit_opPoint_def (self, opPoint_def : OpPoint_Definition):
+        """ open dialog to edit current xo2 opPoint def"""
+
+        if self._xo2_opPoint_def_dialog is None:
+            diag = Xo2_OpPoint_Def_Dialog (self, self.case, opPoint_def, parentPos=(0.03, 0.05), dialogPos=(0,0)) 
+
+            # connect to selected signals from panel and diagram 
+            self.sig_opPoint_def_selected.connect (diag.set_opPoint_def)
+            self.sig_opPoint_def_changed.connect  (diag.set_opPoint_def)
+
+            diag.sig_opPoint_def_changed.connect  (self.sig_xo2_input_changed.emit)
+            diag.sig_finished.connect             (self.edit_opPoint_def_finished)
+
+            self._xo2_opPoint_def_dialog = diag             # singleton 
+
+        self._xo2_opPoint_def_dialog.show () 
+
+
+    def edit_opPoint_def_finished (self, diag : Xo2_OpPoint_Def_Dialog):
+        """ slot - dialog to edit current opPoint def finished"""
+
+        # diag.sig_opPoint_def_changed.disconnect  (self.sig_xo2_input_changed.emit)
+        # diag.sig_finished.disconnect             (self.edit_opPoint_def_finished)
+
+        self.sig_opPoint_def_selected.disconnect (diag.set_opPoint_def)
+        self.sig_opPoint_def_changed.disconnect  (diag.set_opPoint_def)
+
+        self._xo2_opPoint_def_dialog = None     
+
+
     def optimize_run (self):
         """ open optimize dialog"""
 
-        diag = Run_Optimizer_Dialog (self, self.case(), dx=350, dy=-550)
+        # be sure input file data is written to file 
+
+        case: Case_Optimize = self.case()
+        saved = case.input_file.save_nml()
+
+
+        diag = Xo2_Run_Dialog (self._file_panel, self.case(), dx=100, dy=-400)
+
+        diag.sig_finished.connect (self._optimize_run_finished)
 
         # connect watchdog of xo2 to dialog 
 
         self._watchdog.set_case_optimize (self.case)
-        self._watchdog.sig_new_xo2_state.connect (diag.refresh)
+        self._watchdog.sig_xo2_new_state.connect        (self._data_panel.refresh)
+        self._watchdog.sig_xo2_new_state.connect        (self._file_panel.refresh)
+        self._watchdog.sig_xo2_new_state.connect        (diag.on_results)
+        self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
 
         # diag.run_optimize()
-        diag.exec()
+        diag.show()
 
-        self._watchdog.sig_new_xo2_state.disconnect (diag.refresh)
+
+    def _optimize_run_finished (self, diag : Xo2_Run_Dialog):
+        """ slot for Xo2_Run_Dialog finished"""
+
+        self._watchdog.sig_xo2_new_state.disconnect     (self._data_panel.refresh)
+        self._watchdog.sig_xo2_new_state.disconnect     (self._file_panel.refresh)
+        self._watchdog.sig_xo2_new_state.disconnect     (diag.on_results)
+        self._watchdog.sig_xo2_still_running.disconnect (diag.refresh)
         self._watchdog.set_case_optimize (None)
 
 
-
     # --- private ---------------------------------------------------------
+
+    def _insert_polar_defs (self, new_polar_defs : list [Polar_Definition]):
+        """ insert polar_defs at the beginning of self.polar_definitions - check for duplicates"""
+
+        new_inserted = False
+
+        # insert new, not exiasting ones at the beginning
+
+        for new_polar_def in new_polar_defs:
+
+            already_there = False 
+            for polar_def in self._polar_definitions:
+                if new_polar_def.is_equal_to (polar_def):
+                    already_there = True
+                    break
+            if not already_there: 
+                self._polar_definitions.insert (0, new_polar_def)
+                new_inserted = True 
+
+        # limit to MAX_POLAR_DEFS 
+
+        if len (self._polar_definitions) > Polar_Definition.MAX_POLAR_DEFS:
+            self._polar_definitions = self._polar_definitions [:Polar_Definition.MAX_POLAR_DEFS]
+
+        if new_inserted:
+            self.refresh_polar_sets ()
+
 
     def _on_airfoil_changed (self):
         """ slot handle airfoil changed signal - save new design"""
@@ -650,6 +766,16 @@ class App_Main (QMainWindow):
         """ slot handle airfoil removed changed signal of Watchdog"""
 
         self._toast_message (f"{airfoil.fileName} removed", toast_style=style.WARNING)
+
+
+    def _on_xo2_input_changed (self):
+        """ slot handle change of xo2 input data"""
+
+        # polar definitions could have changed - update polarSets of airfoils 
+        case : Case_Optimize = self.case()
+        self._insert_polar_defs (case.polar_definitions_of_input())
+
+        self.refresh()
 
 
     def _toast_message (self, msg, toast_style : style = None):
@@ -795,7 +921,8 @@ class Watchdog (QThread):
     sig_new_polars          = pyqtSignal ()
     sig_airfoil_reloaded    = pyqtSignal (Airfoil)
     sig_airfoil_removed     = pyqtSignal (Airfoil)
-    sig_new_xo2_state       = pyqtSignal ()
+    sig_xo2_new_state       = pyqtSignal ()
+    sig_xo2_still_running   = pyqtSignal ()
 
 
     def __init__ (self, parent = None):
@@ -857,7 +984,15 @@ class Watchdog (QThread):
 
             if new_state_info != self._case_state_info:
                 self._case_state_info = new_state_info
-                self.sig_new_xo2_state.emit ()
+
+                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
+
+                self.sig_xo2_new_state.emit()
+
+            elif case.isRunning:
+
+                self.sig_xo2_still_running.emit()                               # update time elapsed etc.  
+
 
 
     def set_airfoils (self, airfoils_fn):
@@ -950,10 +1085,6 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setStyle('fusion')
-
-    # Strange: Without setStyleSheet, reset Widget.setPalette doesn't work .. !?
-    # Segoe UI is the font of 'fusion' style 
-    app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
 
     # set dark / light mode for widgets depending on system mode 
 

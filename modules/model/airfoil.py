@@ -569,8 +569,8 @@ class Airfoil:
                 pass
 
 
-    def _loadLines (self, file_lines):
-
+    def _loadLines (self, file_lines : list[str]):
+        """ extract name, x, y from file_lines"""
         # returns the name and x,y (np array) of the airfoil file 
 
         name = ''
@@ -599,8 +599,36 @@ class Airfoil:
         
         if not name or not x or not y:
             raise ValueError ("Invalid .dat file")
+        
+        x, y = self._ensure_counter_clockwise (np.asarray (x), np.asarray (y))
 
-        return name, np.asarray (x), np.asarray (y)
+        # test orientation 
+        # x2, y2 = self._ensure_counter_clockwise (np.flip(np.copy (x)), np.flip(np.copy (y)))
+
+        return name, x, y
+
+
+    def _ensure_counter_clockwise (self, x : np.ndarray, y : np.ndarray):
+        """ ensure x,y coordinates are counter clockwise ordered"""
+
+        # sanity 
+
+        if len(x) != len(y) or len(x) == 0:
+            raise ValueError ("Invalid coordinates")
+
+        # using shoelace formula to get signed area 
+        #   A = 0.5 * sum (xi * yi+1 - xi+1 * yi )
+
+        x_plus = np.append (x[1:], x[0])                            # shift index plus 1
+        y_plus = np.append (y[1:], y[0])
+
+        a = np.sum (x*y_plus) - np.sum(x_plus*y)
+
+        if a < 0:                                                   # clockwise is negative 
+            x, y = np.flip(x), np.flip(y)  
+            logger.warning (f"{self} coordinates flipped to become counter clockwise")
+
+        return x, y
 
 
     def save (self, onlyShapeFile=False):

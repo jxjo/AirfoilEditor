@@ -157,7 +157,7 @@ class X_Program:
                 words = line.split()
 
                 # first word is program name 
-                if len (words) >=1 and words[0] == self.name:
+                if len (words) > 1 and words[0] == self.name:
 
                     # last word is version - compare single version numbers
                     cls.version = words[-1]
@@ -173,6 +173,8 @@ class X_Program:
                                 cur_num = 0 
                             if cur_num < int(min_nums[i]):
                                 version_ok = False
+                    else: 
+                        version_ok = False 
             
             if not version_ok:
                 cls.ready_msg = f"Wrong version {self.version} (need {min_version})"
@@ -676,8 +678,7 @@ class Worker (X_Program):
     def check_inputFile (self, inputFile=None):
         """ uses Worker to check an Xoptfoil2"""
 
-        ready, _ = self.isReady()
-        if not ready: return 1, self.name + " not ready"
+        if not self.ready: return 1, self.name + " not ready"
 
         error_text = ""
         args = ['-w', 'check-input', '-i', inputFile]

@@ -7,6 +7,7 @@ README.pdf
 *_polars
 *_designs
 tmpinp*
+test_optimize
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
