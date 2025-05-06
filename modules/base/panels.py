@@ -120,6 +120,26 @@ class Panel_Abstract (QWidget):
     _width  = None
     _height = None 
 
+    # ------------------------------------------------------
+
+    @staticmethod
+    def widgets_of_layout  (layout: QLayout) -> list[Widget]:
+        """ list of Widgets defined in layout"""
+
+        # iterate over layout - not self._panel.findChildren (Widget) as widgets are "deleted later"
+        #       and can still exist although they are no more in the layout 
+
+        widgets = []
+        if isinstance (layout,QLayout): 
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if isinstance (widget, Widget):                
+                    widgets.append(widget)
+                elif isinstance (widget,QWidget):                       # could be helper QWidget with seperate layout
+                    widgets.extend (Panel_Abstract.widgets_of_layout (widget.layout()))
+        return widgets
+
+    # ------------------------------------------------------
 
     def __init__(self,  
                  parent=None,
@@ -237,10 +257,10 @@ class Container_Panel (Panel_Abstract):
 
             # now show the now visible panels
             for p in self.findChildren (Panel_Abstract):
-                try:
-                    if p.shouldBe_visible: p.refresh() 
-                except: 
+                if sip.isdeleted (p):
                     logger.warning (f"{p} {hex(id(p))} (visible) already deleted")
+                else:
+                    if p.shouldBe_visible: p.refresh() 
 
 
 
@@ -359,18 +379,19 @@ class Edit_Panel (Panel_Abstract):
 
     @property
     def widgets (self) -> list[Widget]:
-        """ list of widgets defined in self panel area"""
-        return self._panel.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
+        """ list of Widgets defined in self panel area"""
+
+        return self.widgets_of_layout (self._panel.layout())
 
 
     @property
     def header_widgets (self) -> list[Widget]:
         """ list of widgets defined in self header area"""
+
         if self._head: 
-            childs = self._head.findChildren (Widget) # options=Qt.FindChildOption.FindDirectChildrenOnly
+            return self.widgets_of_layout (self._head.layout())
         else: 
-            childs = []
-        return childs 
+            return []
  
 
     def refresh(self, reinit_layout=False):
@@ -553,7 +574,7 @@ class MessageBox (QMessageBox):
     def save (parent: object, title : str, text : str, min_width=None):
         """ ask to save or discard - returns QMessageBox.StandardButton"""
 
-        msg = MessageBox (parent, title, text, Icon (Icon.INFO), min_width=min_width)
+        msg = MessageBox (parent, title, text, Icon (Icon.WARNING), min_width=min_width)
 
         msg.setStandardButtons(QMessageBox.StandardButton.Save | 
                                QMessageBox.StandardButton.Discard | 
@@ -941,8 +962,9 @@ class Dialog (QDialog):
     @property
     def widgets (self) -> list[Widget]:
         """ list of widgets defined in self """
-        return self.findChildren (Widget)   # options=Qt.FindChildOption.FindDirectChildrenOnly
- 
+        return Panel_Abstract.widgets_of_layout (self._panel.layout())
+
+
     def _on_widget_changed (self,*_):
         """ slot for change of widgets"""
         # to be overloaded 

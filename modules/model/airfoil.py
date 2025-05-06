@@ -221,14 +221,15 @@ class Airfoil:
 
         self.set_name (f"{self._name_org}_mods:{str(modifications)}")
 
-        # set new filename - take original filename if possible (without ...mod...)
-        if self._fileName_org is None: 
-            self._fileName_org = self.fileName
+        # if not DESIGN set new filename - take original filename if possible (without ...mod...)
+        if not self.usedAsDesign:
+            if self._fileName_org is None: 
+                self._fileName_org = self.fileName
 
-        fileName_stem = os.path.splitext(self._fileName_org)[0]
-        fileName_ext  = os.path.splitext(self._fileName_org)[1]
-        mod_string    = "_mod" if modifications else ""
-        self.set_fileName (fileName_stem + mod_string + fileName_ext)
+            fileName_stem = os.path.splitext(self._fileName_org)[0]
+            fileName_ext  = os.path.splitext(self._fileName_org)[1]
+            mod_string    = "_mod" if modifications else ""
+            self.set_fileName (fileName_stem + mod_string + fileName_ext)
 
         self.set_isModified (True)
         logging.debug (f"{self} - geometry changed: {modifications} ")
@@ -288,17 +289,15 @@ class Airfoil:
     def name_to_show (self) -> str: 
         """ name of airfoil - for DESIGN use a modified name"""
 
-        if self.name.find("_mods:") != -1 or self.usedAsDesign:
-            # for DESIGN airfoil build name string 
-            if self.usedAsDesign:
-                name = self._name_org
-            else:
-                name = self.name 
-            name = name  if len(name) <= 18 else f"{name[:18]}..."
-            return f"{name} - {os.path.splitext(self.fileName)[0]}"
+        # if self.name.find("_mods:") != -1:
+        #     # for DESIGN airfoil build name string 
+        #     name = self.name  if len(self.name) <= 18 else f"{self.name[:18]}..."
+        #     return f"{name} - {self.fileName_stem}"
+
+        if self.usedAsDesign:
+            return f"{self.fileName_stem}"
         else:
-            name = self._name
-            return name if len(name) <= 47 else f"{name[:47]}..."
+            return self._name if len(self._name) <= 47 else f"{self._name[:47]}..."
 
 
     def set_name (self, newName, reset_original=False):
@@ -633,7 +632,7 @@ class Airfoil:
 
     def save (self, onlyShapeFile=False):
         """
-        Basic save of self to its pathFileName
+        Basic save of self to its pathFileName_abs
             for Hicks-Henne and Bezier 'onlyShapeFile' will write no .dat file 
         """
         if self.isLoaded: 
@@ -770,14 +769,9 @@ class Airfoil:
         """ writes .dat file of to self.pathFileName"""
 
         # ensure extension .dat (in case of Bezier) 
-        pathFileName =  os.path.splitext(self.pathFileName)[0] + Airfoil.Extension
+        pathFileName_abs =  os.path.splitext(self.pathFileName_abs)[0] + Airfoil.Extension
 
-        if not os.path.isabs (pathFileName) and self.workingDir:
-            abs_pathFileName = os.path.join(self.workingDir, self.pathFileName)
-        else:
-            abs_pathFileName = pathFileName 
-
-        with open(abs_pathFileName, 'w+') as file:
+        with open(pathFileName_abs, 'w+') as file:
             file.write("%s\n" % self.name)
             for i in range (len(self.x)):
                 file.write("%.7f %.7f\n" %(self.x[i], self.y[i]))
@@ -906,8 +900,8 @@ class Airfoil_Bezier(Airfoil):
 
         # new pathFileName
         fileName_stem = anAirfoil.fileName_stem
-        fileName_ext  = anAirfoil.fileName_ext
-        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + '_bezier' + fileName_ext)
+        # fileName_ext  = anAirfoil.fileName_ext
+        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + '_bezier' + Airfoil_Bezier.Extension)
         airfoil_new.set_pathFileName (pathFileName, noCheck=True)
 
         airfoil_new.set_isLoaded (True)
@@ -917,9 +911,9 @@ class Airfoil_Bezier(Airfoil):
 
     @property
     def pathFileName_shape (self) -> str: 
-        """ pathfileName of the Bezier definition file """
-        if self.pathFileName:  
-            return os.path.splitext(self.pathFileName)[0] + Airfoil_Bezier.Extension
+        """ abs pathfileName of the Bezier definition file """
+        if self.pathFileName_abs:  
+            return os.path.splitext(self.pathFileName_abs)[0] + Airfoil_Bezier.Extension
         else: 
             return None 
 
@@ -1143,9 +1137,9 @@ class Airfoil_Hicks_Henne(Airfoil):
 
     @property
     def pathFileName_shape (self) -> str: 
-        """ pathfileName of the hh definition file """
-        if self.pathFileName:  
-            return os.path.splitext(self.pathFileName)[0] + Airfoil_Hicks_Henne.Extension
+        """ abs pathfileName of the hh definition file """
+        if self.pathFileName_abs:  
+            return os.path.splitext(self.pathFileName_abs)[0] + Airfoil_Hicks_Henne.Extension
         else: 
             return None 
 

@@ -437,6 +437,18 @@ class Polar_Set:
         
 
 
+    def is_equal_to (self, polar_set: 'Polar_Set'):
+        """ True if polar_set has the same polars (defs) """
+
+        if len(self.polars) == len(polar_set.polars):
+            for i, polar in enumerate (self.polars):
+                if not polar.is_equal_to (polar_set.polars[i]):
+                    return False
+        else:
+            return False 
+        return True 
+
+
     #---------------------------------------------------------------
 
     def _add_polar_defs (self, polar_defs, 

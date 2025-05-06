@@ -43,8 +43,9 @@ class Xo2_Results:
 
     TIME_REF_FILE   = 'Optimization_History.csv' 
 
-    def __init__(self, workingDir, outName, remove_result_dir = False ):
-       
+    def __init__(self, workingDir, outName, remove_result_dir = False, remove_airfoil = False ):
+
+        self._outName       = outName                                           # xo2 result airfoil fielName (withput extension) 
         self._workingDir    = workingDir                                        # working dir of optimizer
         self._resultDir_rel = outName + Xoptfoil2.RESULT_DIR_POSTFIX            # directory where the designs are generated
         self._resultDir     = os.path.join (workingDir, self._resultDir_rel)    # directory where the designs are generated
@@ -54,6 +55,16 @@ class Xo2_Results:
         if remove_result_dir and os.path.isdir (self.resultDir):
             shutil.rmtree(self.resultDir, ignore_errors=True)
 
+        # optionally remove out airfoil (avoid race conditions as xo2 is slow in deleting at a new optimization) 
+
+        if remove_airfoil:
+            pathfileName = os.path.join (workingDir, outName + Airfoil.Extension)
+            if os.path.isfile (pathfileName): os.remove (pathfileName)
+            pathfileName = os.path.join (workingDir, outName + Airfoil_Bezier.Extension)
+            if os.path.isfile (pathfileName): os.remove (pathfileName)
+            pathfileName = os.path.join (workingDir, outName + Airfoil_Hicks_Henne.Extension)
+            if os.path.isfile (pathfileName): os.remove (pathfileName)
+
         # results reader  
 
         self._reader_airfoils              = Reader_Airfoils (self.resultDir)        
@@ -62,6 +73,12 @@ class Xo2_Results:
         self._reader_opPoints              = Reader_OpPoints (self.resultDir)            
         self._reader_geoTargets            = Reader_GeoTargets (self.resultDir)          
         self._reader_optimization_history  = Reader_Optimization_History (self.resultDir) 
+
+        # final airfoils 
+
+        self._airfoil_final         = None
+        self._airfoil_final_bezier  = None
+        self._airfoil_final_hh      = None
 
 
     @property
@@ -78,6 +95,44 @@ class Xo2_Results:
     def resultDir (self): 
         """ directory with optimizer results - absolut"""
         return self._resultDir
+
+    @property 
+    def airfoil_final (self) -> Airfoil | None:
+        """ the final airfoil as result of optimization - None if not generated """
+
+        if self._airfoil_final is None:
+            self._airfoil_final = self._get_airfoil_final (self.workingDir, self._outName, Airfoil.Extension)
+        return self._airfoil_final
+
+
+    @property 
+    def airfoil_final_bezier (self) -> Airfoil | None:
+        """ the final airfoil Bezier as result of optimization - None if not generated """
+
+        if self._airfoil_final_bezier is None:
+            self._airfoil_final_bezier = self._get_airfoil_final (self.workingDir, self._outName, Airfoil_Bezier.Extension)
+        return self._airfoil_final_bezier
+
+
+    @property 
+    def airfoil_final_hh (self) -> Airfoil | None:
+        """ the final airfoil Hicks Henneas result of optimization - None if not generated """
+
+        if self._airfoil_final_hh is None:
+            self._airfoil_final_hh = self._get_airfoil_final (self.workingDir, self._outName, Airfoil_Hicks_Henne.Extension)
+        return self._airfoil_final_hh
+
+
+    def _get_airfoil_final (self, workingDir : str, outName: str, extension : str) -> Airfoil | None:
+        """ if exists return final airfoil for extension .dat or .bez or .hh"""
+
+        fileName = outName + extension
+        if os.path.isfile (os.path.join (workingDir, fileName)):
+            airfoil =  Airfoil.onFileType (fileName, workingDir=workingDir)
+            airfoil.load()
+            airfoil.set_usedAs (usedAs.FINAL)
+            return airfoil 
+
 
 
     @property
@@ -196,17 +251,6 @@ class Xo2_Results:
         """ 
 
         shutil.rmtree(self.resultDir, ignore_errors=True)
-
-
-    def airfoils_shape_type (self) -> str:
-        """ shape type of results airfoils 'Bezier' or 'Hicks-Henne""" 
-        shape = ''
-        if self.designs_airfoil: 
-            if isinstance(self.designs_airfoil[0], Airfoil_Bezier):
-                shape = 'Bezier'
-            else:
-                shape = 'Hicks-Henne'
-        return shape
 
 
     def _get_dateTime_resultDir (self):
@@ -382,6 +426,18 @@ class Reader_Abstract:
 
     filename = None 
     objects_text  = ('','')
+
+    DESIGN_DIR_EXT = "_designs"
+    DESIGN_NAME_BASE = "Design"
+
+    @classmethod
+    def design_fileName (cls, iDesign : int, extension : str) -> str:
+        """ returns fileName of design iDesign"""
+
+        return f"{cls.DESIGN_NAME_BASE}{iDesign:4}{extension}"
+    
+    # ----------------------------------
+
 
     def __init__(self, resultDir):
         """Superclass for the different Result Handlers for reading results
@@ -792,23 +848,16 @@ class Reader_Airfoils (Reader_Abstract):
             elif vals[2] == 'x' or vals[2] =='y':                       # a valid line 
                 idesign = int (vals[0])
 
-                if idesign == len (self._results):          # new, next design in list 
+                name    = vals[1]
+                coord   = vals[2]
+                if coord == 'x':
+                    x = [float(i) for i in vals[3:]] 
+                else: 
+                    y = [float(i) for i in vals[3:]] 
+                if x and y: 
+                    n_new += self.add_airfoil_design (idesign, name, x, y) 
+                    x, y = [], []
 
-                    name    = vals[1]
-                    coord   = vals[2]
-                    if coord == 'x':
-                        x = [float(i) for i in vals[3:]] 
-                    else: 
-                        y = [float(i) for i in vals[3:]] 
-                    if x and y: 
-                        self.add_airfoil_design (idesign, name, x, y)
-                        n_new += 1  
-                        x, y = [], []
-
-                elif idesign < len (self._results):         # we have it already 
-                    pass                                     
-                else:                                       #  there would be a gap in design list
-                    raise ValueError ("Add new design airfoil: Index %i doesn't fit" %idesign)
             else:
                 logger.error ("Invalid coordinates file format for designs - skipped.")
                 break 
@@ -818,21 +867,39 @@ class Reader_Airfoils (Reader_Abstract):
     def add_airfoil_design (self, idesign, name, x, y):
         """ add a new airfoil design to my designs """
 
-        # create airfoil - set its file path to resultDir for lazy save to generate polar
-        #                  use basic Geometry (not splined) for faster evaluation
-        airfoil = Airfoil (name=name, geometry=GEO_BASIC)
-        airfoil.set_xy (x,y)
-        airfoil.set_pathFileName (os.path.join(self._resultDir, name + '.dat'), noCheck=True)
-        airfoil.set_usedAs (usedAs.DESIGN)
+        n_new = 0 
+        if idesign == len (self._results):          # new, next design in list 
 
-        # if airfoil file not was already created before, set modify for lazy write 
-        if os.path.isfile (airfoil.pathFileName):
-            airfoil.set_isModified (False)
-        else: 
-            airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  
+            # create airfoil - set its file path to resultDir for lazy save to generate polar
+            #                  use basic Geometry (not splined) for faster evaluation
+            fileName = self.design_fileName (idesign, Airfoil.Extension )
 
-        self._results.append(airfoil)
+            airfoil = Airfoil (name=name, workingDir=self._resultDir, geometry=GEO_BASIC)
 
+            airfoil.set_xy (x,y)
+            airfoil.set_pathFileName (fileName, noCheck=True)               # no check - it doesn't exist
+            airfoil.set_usedAs (usedAs.DESIGN)
+
+            # if airfoil file not was already created before, set modify for lazy write 
+            if os.path.isfile (airfoil.pathFileName):
+                airfoil.set_isModified (False)
+            else: 
+                airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  
+
+            self._results.append(airfoil)
+
+            n_new = 1           
+
+        elif idesign < len (self._results):         # we have it already 
+            pass                                     
+        else:                                       #  there would be a gap in design list
+            raise ValueError ("Add new design airfoil: Index %i doesn't fit" %idesign)
+
+        return n_new
+
+
+
+# -----------------------------------------
 
 
 class Reader_Airfoils_Bezier (Reader_Abstract):
@@ -889,8 +956,11 @@ class Reader_Airfoils_Bezier (Reader_Abstract):
 
             # create bezier airfoil out of bezier upper and lower 
             #  - set its file path to resultDir for lazy save to generate polar
-            airfoil = Airfoil_Bezier (name=name)
-            airfoil.set_pathFileName (os.path.join(self._resultDir, name + '.dat'), noCheck=True)
+            airfoil = Airfoil_Bezier (name=name, workingDir=self._resultDir, )
+
+            fileName = self.design_fileName (idesign, Airfoil_Bezier.Extension )
+
+            airfoil.set_pathFileName (fileName, noCheck=True)
 
             px, py = [], []
             for i, x_or_y in enumerate(pxy_top):
@@ -910,7 +980,7 @@ class Reader_Airfoils_Bezier (Reader_Abstract):
 
             self._results.append(airfoil)
 
-            n_new += 1           
+            n_new = 1           
 
         elif idesign < len (self._results):         # we have it already 
             pass                                     
@@ -1012,8 +1082,10 @@ class Reader_Airfoils_HH (Reader_Abstract):
             top_hhs = self._get_hhs (top_hh_vals)
             bot_hhs = self._get_hhs (bot_hh_vals)
 
-            airfoil = Airfoil_Hicks_Henne (name=name)
-            airfoil.set_pathFileName (os.path.join(self._resultDir, name + '.dat'), noCheck=True)
+            airfoil = Airfoil_Hicks_Henne (name=name, workingDir=self._resultDir)
+
+            fileName = self.design_fileName (idesign, Airfoil_Hicks_Henne.Extension )
+            airfoil.set_pathFileName (fileName, noCheck=True)
             airfoil.set_hh_data (name, self._seed_name, self._seed_x, self._seed_y, top_hhs, bot_hhs)
             airfoil.set_usedAs (usedAs.DESIGN)
             airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  

@@ -24,7 +24,7 @@ from xo2_artists            import *
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 #-------------------------------------------------------------------------------
@@ -768,11 +768,12 @@ class Diagram_Airfoil_Polar (Diagram):
     sig_airfoil_changed         = pyqtSignal()                  # airfoil data changed in a diagram 
     sig_new_airfoil_ref1        = pyqtSignal(object)            # new ref1 airfoil  
     sig_airfoil_ref_changed     = pyqtSignal(object, object)    # changed reference airfoil 
+    sig_airfoil_design_selected = pyqtSignal(Airfoil)           # a airfoil design was slected in ComboBox 
     sig_polar_def_changed       = pyqtSignal()                  # polar definition changed  
 
     sig_opPoint_def_selected    = pyqtSignal(object)            # opPoint definition selected  
     sig_opPoint_def_changed     = pyqtSignal(object)            # opPoint definition changed  
-    sig_opPoint_def_dblClick    = pyqtSignal(object)            # opPoint definition double clicked
+    sig_opPoint_def_dblClick    = pyqtSignal(object,object, object,object)     # opPoint definition double clicked
 
 
     def __init__(self, *args, polar_defs_fn= None, case_fn=None, diagram_settings=[], **kwargs):
@@ -889,6 +890,12 @@ class Diagram_Airfoil_Polar (Diagram):
         return  airfoils 
 
 
+    @property
+    def airfoil_designs (self) -> list [Airfoil]:
+        """ list of airfoil designs in mode modify and optimize"""
+        return self.case.airfoil_designs if self.case else []
+    
+
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
 
@@ -922,7 +929,7 @@ class Diagram_Airfoil_Polar (Diagram):
                 item.sig_xyVars_changed.connect       (self._on_xyVars_changed)
                 item.sig_opPoint_def_changed.connect  (self._on_opPoint_def_changed)
                 item.sig_opPoint_def_selected.connect (self.sig_opPoint_def_selected.emit)
-                item.sig_opPoint_def_dblClick.connect (self.sig_opPoint_def_dblClick.emit)
+                item.sig_opPoint_def_dblClick.connect (self._on_opPoint_def_dblClick)
                 self._add_item (item, r, iItem)
  
 
@@ -969,10 +976,12 @@ class Diagram_Airfoil_Polar (Diagram):
 
         if self._section_panel is None:
         
-            p = Panel_Airfoils (self, getter=self.all_airfoils, height=(135,None))
+            p = Panel_Airfoils (self, getter=self.all_airfoils, airfoil_designs_fn=lambda: self.airfoil_designs,
+                                height=(135,None))
             
             p.sig_airfoil_ref_changed.connect (self.sig_airfoil_ref_changed.emit)
             p.sig_airfoils_to_show_changed.connect (self._on_show_airfoil_changed)
+            p.sig_airfoil_design_selected.connect (self.sig_airfoil_design_selected.emit)
 
             self._section_panel = p 
 
@@ -1184,21 +1193,35 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on Xoptfoil2 new state")
 
-        item : Diagram_Item_Polars 
-        for item in self._get_items (Diagram_Item_Polars):
-            item.refresh()
+        # airfoils (final) could have changed
+        self.refresh (also_viewRange=False)
+
+
+    def on_new_case_optimize (self):
+        """ slot to handle new case of Xoptfoil2"""
+
+        logger.debug (f"{str(self)} on new case optimize")
+
+        # master refresh
+        self.refresh (also_viewRange=True)
 
 
     def on_mode_optimize (self, aBool):
         """ slot when entering / leaving mode optimze """
-        # switch on view polars 
         if aBool: 
+           # switch on view polars 
             self.polar_panel.set_switched_on (True)
             self.set_show_xo2_opPoint_def (True)
             item_airfoil : Diagram_Item_Airfoil = self._get_first_item (Diagram_Item_Airfoil)
             if item_airfoil: 
                 item_airfoil.section_panel.set_switched_on (False)
+        else:
+            self.set_show_xo2_opPoint_def (False)
+            item_airfoil : Diagram_Item_Airfoil = self._get_first_item (Diagram_Item_Airfoil)
+            if item_airfoil: 
+                item_airfoil.section_panel.set_switched_on (True)
 
+        self.refresh(also_viewRange=False)
 
     # --- private slots ---------------------------------------------------
 
@@ -1261,3 +1284,12 @@ class Diagram_Airfoil_Polar (Diagram):
                 artist.refresh ()
                 
             self.sig_opPoint_def_changed.emit (opPoint_def)
+
+
+    def _on_opPoint_def_dblClick (self, opPoint_def : OpPoint_Definition):
+        """  slot to handle double click in xo2 opPoint definition in diagram"""
+
+        parentPos=(0.03, 0.05) 
+        dialogPos=(0,0)
+
+        self.sig_opPoint_def_dblClick.emit(self, parentPos, dialogPos, opPoint_def)

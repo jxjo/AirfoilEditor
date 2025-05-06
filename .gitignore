@@ -8,6 +8,7 @@ README.pdf
 *_designs
 tmpinp*
 test_optimize
+examples_optimize
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -26,6 +26,7 @@ from base.spline            import HicksHenne
 
 from model.polar_set        import * 
 from model.airfoil          import Airfoil, GEO_BASIC
+from model.airfoil_examples import Example
 
 
 
@@ -251,18 +252,23 @@ class Input_File:
 
         # special handling - the airfoil file in input couldn't exist - avoid retry all the time 
         if self._airfoil_seed is None: 
-            seed_airfoil_fileName  = self.nml_optimization_options.airfoil_file
-            if seed_airfoil_fileName:
+            airfoil = None 
+            airfoil_fileName  = self.nml_optimization_options.airfoil_file
 
+            if airfoil_fileName:
                 try: 
-                    airfoil = Airfoil.onFileType (seed_airfoil_fileName, workingDir=self.workingDir, 
-                                                geometry=GEO_BASIC)
+                    airfoil = Airfoil.onFileType (airfoil_fileName, workingDir=self.workingDir, geometry=GEO_BASIC)
                     airfoil.load()
-                    airfoil.set_usedAs (usedAs.SEED)
-                    self._airfoil_seed = airfoil
                 except:
-                    logger.error (f"{seed_airfoil_fileName} could not be created")
-                    pass
+                    logger.error (f"{airfoil_fileName} could not be created. Using example")
+            else: 
+                logger.warning (f"Seed airfoil is missing in input file. Using Example.")
+
+            if airfoil is None:
+                airfoil = Example()
+
+            airfoil.set_usedAs (usedAs.SEED)
+            self._airfoil_seed = airfoil
         
         return self._airfoil_seed
 
@@ -284,7 +290,7 @@ class Input_File:
     @property
     def nxfoil_per_step (self) -> int:
         """ no of xfoil calculations per step (particles * nopPoints)"""
-        return self.nml_particle_swarm_options.pop * len(self.opPoint_defs)
+        return self.nml_particle_swarm_options.pop * self.nml_operating_conditions.noppoint
 
 
     # ---- Methods -------------------------------------------
@@ -373,6 +379,12 @@ class Input_File:
 
         return returncode,error_text
 
+    @property
+    def isChanged (self) -> bool:
+        """ True if changes were made to the namelist"""
+
+        return str(self._nml_file) != self._nml_file_str
+
 
     def save_nml (self) -> bool:
         """ save current namelist to file - return False if no changes, no save"""
@@ -384,16 +396,21 @@ class Input_File:
 
         # check if there are changes 
 
-        cur_nml_file_str = str(self._nml_file)
-
-        if cur_nml_file_str == self._nml_file_str:
-            return False
+        if not self.isChanged: return False 
 
         # write namelist dictionaries to file 
 
         with open(self.pathFileName_save, 'w') as nml_stream:
 
-            for namelist_name in self.nml_file:
+            nml_file = dict (self.nml_file)                             # make a copy 
+
+            # first write info namelist with description to the file 
+            if "info" in nml_file:
+                Nml_info (self).write_to_stream (nml_stream)
+                nml = nml_file.pop('info', None)
+
+            # afterwadrs all other namelist
+            for namelist_name in nml_file:
                 try: 
                     nml_class = globals()['Nml_'+ namelist_name]
                 except: 
@@ -403,6 +420,8 @@ class Input_File:
                 if nml_class:
                     nml : Nml_Abstract = nml_class(self)
                     nml.write_to_stream (nml_stream)
+
+            self._nml_file_str = str(self.nml_file)                     # for change detection
 
         return True
 
@@ -787,6 +806,11 @@ class OpPoint_Definition:
             self._weighting = aVal 
 
     @property
+    def weighting_fixed_label (self) -> str:
+        """ returns a label if weighing is fixed aga not dynamic"""
+        return " = fix" if self.weighting < 0.0 and self._myList.dynamic_weighting else ""
+
+    @property
     def has_default_weighting (self) -> bool:
         """ True if op point has default weighting """
         return self._weighting == None
@@ -1108,21 +1132,21 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         # read self from namelist 
 
         op_points = nml._get ('op_point', []) 
-        npoints = len(op_points)
+        n = nml.noppoint
  
-        if npoints == 0: return 
+        if n == 0: return None
 
         # f90nml delivers op point values as list 
 
         optimization_types  = nml._get('optimization_type')
-        target_values       = nml._get('target_value',   default=[None] * npoints)
-        weightings          = nml._get('weighting',      default=[None] * npoints)
-        reynolds            = nml._get('reynolds',       default=[None] * npoints)        
-        machs               = nml._get('mach',           default=[None] * npoints)    
-        ncrits              = nml._get('ncrit_pt',       default=[None] * npoints)
-        op_modes            = nml._get('op_mode',        default=[None] * npoints)
-        flap_angles         = nml._get('flap_angle',     default=[None] * npoints)
-        flap_optimizes      = nml._get('flap_optimizes', default=[None] * npoints)
+        target_values       = nml._get('target_value',   default=[None] * n)
+        weightings          = nml._get('weighting',      default=[None] * n)
+        reynolds            = nml._get('reynolds',       default=[None] * n)        
+        machs               = nml._get('mach',           default=[None] * n)    
+        ncrits              = nml._get('ncrit_pt',       default=[None] * n)
+        op_modes            = nml._get('op_mode',        default=[None] * n)
+        flap_angles         = nml._get('flap_angle',     default=[None] * n)
+        flap_optimizes      = nml._get('flap_optimizes', default=[None] * n)
 
         # get default polar type 
 
@@ -1133,7 +1157,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
 
         # collect opPoint definitions
 
-        for iop in range (npoints):
+        for iop in range (n):
 
             op_def = OpPoint_Definition(self)
 
@@ -1275,6 +1299,10 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         return self._nml.re_default
 
     @property
+    def re_type_default (self) -> float:  
+        return polarType.T2 if self._nml.re_default_as_resqrtcl else polarType.T1
+
+    @property
     def ma_default (self) -> float:  
         return self._nml.mach_default
     
@@ -1290,25 +1318,43 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
     def allow_improved_target (self) -> bool:  
         return self._nml.allow_improved_target
     
+    @property
+    def dynamic_weighting (self) -> bool:  
+        return self._nml.dynamic_weighting
+    
 
     def polar_defs (self) -> list[Polar_Definition]: 
         """ the polar definitions defined within self"""
 
         polar_defs_dict = {}
 
-        # default polar and explicit polars of operating points 
+        # at least default polar 
+
+        polar_def = Polar_Definition ()
+        polar_def.set_ncrit (self.ncrit)
+        polar_def.set_autoRange (True)                          # auto range is default 
+        polar_def.set_re (self.re_default)
+        polar_def.set_type (self.re_type_default)
+        polar_def.set_ma (self.ma_default)
+
+        key = str([self.re_default,self.ma_default, self.ncrit, self.re_type_default])
+        polar_defs_dict[key] = polar_def
+
+        # explicit polars of operating points 
          
         for opPoint_def in self: 
             # build unique key to detect dublicates
             key = str([opPoint_def.re, opPoint_def.ma, opPoint_def.ncrit, opPoint_def.re_type])
 
-            polar_def : Polar_Definition = polar_defs_dict.get (key, Polar_Definition())
-            polar_def.set_ncrit (opPoint_def.ncrit)
-            polar_def.set_autoRange (True)                  # auto range is default 
-            polar_def.set_re (opPoint_def.re)
-            polar_def.set_type (opPoint_def.re_type)
-            polar_def.set_ma (opPoint_def.ma)
-            polar_defs_dict[key] = polar_def
+            if not (key in polar_defs_dict):
+
+                polar_def = Polar_Definition ()
+                polar_def.set_ncrit (opPoint_def.ncrit)
+                polar_def.set_autoRange (True)                  # auto range is default 
+                polar_def.set_re (opPoint_def.re)
+                polar_def.set_type (opPoint_def.re_type)
+                polar_def.set_ma (opPoint_def.ma)
+                polar_defs_dict[key] = polar_def
 
         return list(polar_defs_dict.values())
 
@@ -1328,11 +1374,17 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self._input_file.nml_xfoil_run_options.set_ncrit (polar_def.ncrit)
         
 
-    def create_after (self, index = 0):
+    def create_after (self, opPoint_def : OpPoint_Definition | None) -> OpPoint_Definition:
         """
-        Create and add a new opPoint_def after index with
+        Create and add a new opPoint_def after opPoint_def with
             a best fit of specVar, specVal
+        Returns new opPoint_def
         """
+
+        if opPoint_def in self: 
+            index = self.index (opPoint_def)
+        else: 
+            index = 0 
 
         opPoint_before : OpPoint_Definition = None 
         opPoint_after  : OpPoint_Definition = None 
@@ -1391,6 +1443,8 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specVal, optType=optType,
                                                     optVar = optVar, optValue = optValue)
         self.insert (index, new_opPoint_def)
+
+        return new_opPoint_def
 
 
     def create_in_xyVars (self, xyVars, x, y, re=None):
@@ -1484,10 +1538,13 @@ class GeoTarget_Definition:
     A geometry target definition for optimization   
     """
 
-    def __init__(self, optVar  = None, optValue = 0.0, weighting = None):
-        """
-        Geometry target definition 
-        """
+    def __init__(self, 
+                 myList : 'GeoTarget_Definitions', 
+                 optVar  = None, 
+                 optValue = 0.0, 
+                 weighting = None):
+        
+        self._myList     = myList
         self._optVar     = optVar                   # either Thickness or Camber
         self._optValue   = optValue                 # target value 
         self._weighting  = weighting                # weighting during optimization 
@@ -1513,38 +1570,23 @@ class GeoTarget_Definition:
     def set_optValue (self, aVal):  
         self._optValue = aVal
 
-    @property
-    def optValue_in_perc (self) -> float:
-        """ target value in percent"""
-        if self.optValue_is_numeric:
-            return round((self.optValue * 100),2)
-        else:
-            return self.optValue
-        
-    def set_optValue_in_perc (self, aVal):  
-        if self.optValue_is_numeric:
-            self.set_optValue (aVal/100)
-        else:
-            self.set_optValue (aVal/100)
-
-    @property
-    def optValue_is_numeric (self) -> bool:
-        """ true if optValue is numeric like optVar THICKNESS""" 
-        return self.optVar in [THICKNESS, CAMBER]
-
 
     @property
     def weighting (self): 
         """ an individual weighting - default is 1"""
-        if self._weighting is None: 
-            return 1.0
-        else: 
-            return self._weighting   
+        return self._weighting if self._weighting is not None else 1.0   
+
     def set_weighting (self, aVal): 
         if aVal == 1.0: 
             self._weighting = None
         else: 
             self._weighting = aVal 
+
+    @property
+    def weighting_fixed_label (self) -> str:
+        """ returns a label if weighing is fixed aga not dynamic"""
+        return " = fix" if self.weighting < 0.0 else ""
+
 
     @property
     def preset_to_target (self) -> bool: 
@@ -1575,21 +1617,21 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
         super().__init__ ([])
 
         self._nml = nml 
-
+ 
         # read self from namelist 
 
-        target_types = self._nml._get('target_type', []) 
-        ngeo = len(target_types)
+        ngeo = nml.ngeo_targets
  
         if ngeo == 0: return None
 
-        target_values   = self._nml._get('target_value',        default=[None] * ngeo)
-        weightings      = self._nml._get('weighting',           default=[1.0] * ngeo)
+        target_types    = self._nml._get('target_type',         default=[None]  * ngeo) 
+        target_values   = self._nml._get('target_value',        default=[None]  * ngeo)
+        weightings      = self._nml._get('weighting',           default=[1.0]   * ngeo)
         presets         = self._nml._get('preset_to_target',    default=[False] * ngeo)
 
         for igeo in range (ngeo):
 
-            geo_def = GeoTarget_Definition ()
+            geo_def = GeoTarget_Definition (self)
 
             geo_def.set_optVar    (target_types [igeo])
             geo_def.set_optValue  (target_values [igeo])
@@ -1623,35 +1665,6 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
         self._nml._set ('target_value',      target_values)
         self._nml._set ('weighting',         weightings)
         self._nml._set ('preset_to_target',  presets)
-
-
-    def create_new (self):
-        """
-        Alternate constructor for new geoTarget definition in self.
-        A new GeoTarget_Definition with a not used optVar is returned 
-
-        If all possible optVars are already in used return None
-        """
- 
-        # collect optVars already used 
-        optVars_defined = []
-        for geoTarget_def in self:
-            optVars_defined.append(geoTarget_def.optVar)
-
-        # find an optVar which isn't already used
-        for optVar in GEO_OPT_VARS:
-            if not optVar in optVars_defined: 
-                if optVar == THICKNESS:
-                    optVal = 0.1
-                elif optVar == CAMBER:
-                    optVal = 0.02
-                else: 
-                    optVal = None 
-
-                self.append(GeoTarget_Definition (optVar = optVar, optValue = optVal))
-                return self[-1]
-            
-        return None 
 
 
 #-------------------------------------------------------------------------------
@@ -1710,23 +1723,6 @@ class Nml_Abstract:
 
         toDict (self.nml, key, aVal)
 
-    
-    def write_to_stream (self, aStream: TextIO):
-        """ write the variables of self to sStream"""
-
-        if self.nml:                                    # only nml with data 
-
-            aStream.write (f"&{self.name}\n")           # &namelist
-
-            for varName in self.nml:                    # write all simple variables var = 123.3
-                value = self._get (varName, default=None)
-                if not isinstance(value, list) : 
-                    self._write_entry (aStream, varName, value)
-
-            self._write_arrays  (aStream)               #   op_point(1) = 0.2
-
-            aStream.write (f"/\n")                      # /
-            aStream.write (f"\n")                       # blank line at end 
 
 
     def _write_entry (self, aStream : TextIO, varName, value):
@@ -1826,8 +1822,8 @@ class Nml_info (Nml_Abstract):
     def set_author (self, aVal):                self._set ('author', aVal) 
 
     @property
-    def descriptions (self) -> list :           return self._get('description', default=[])
-    def set_descriptions (self, aList : list):  self._set ('description', [line for line in aList if line]) 
+    def descriptions (self) -> list :           return self._get('description', default=[])[:2]
+    def set_descriptions (self, aList : list):  self._set ('description', [line for line in aList if line][:2]) 
 
     @property
     def descriptions_string (self) -> str:      
@@ -2400,3 +2396,52 @@ class Nml_geometry_targets (Nml_Abstract):
             self._geoTarget_defs = GeoTarget_Definitions (self)
         return self._geoTarget_defs
 
+    @property
+    def thickness (self) -> GeoTarget_Definition | None:
+        """ thickess geo target if defined - else None """
+
+        for geoTarget in self.geoTarget_defs:
+            if geoTarget.optVar == THICKNESS:
+                return geoTarget 
+        return None     
+    
+    @property
+    def camber (self) -> GeoTarget_Definition | None:
+        """ camber geo target if defined - else None """
+
+        for geoTarget in self.geoTarget_defs:
+            if geoTarget.optVar == CAMBER:
+                return geoTarget 
+        return None 
+    
+
+    def activate_thickness (self, on: bool):
+        """ activate / deactivate thickess geo target"""
+
+        if not on and self.thickness:
+            self.thickness._myList = None 
+            self.geoTarget_defs.remove (self.thickness) 
+
+        elif on and not self.thickness:
+            geo_def = GeoTarget_Definition (self.geoTarget_defs)
+            geo_def.set_optVar    (THICKNESS)
+            thickness_seed = self._input_file.airfoil_seed.geo.max_thick
+            geo_def.set_optValue  (thickness_seed)
+
+            self.geoTarget_defs.append(geo_def)
+
+
+    def activate_camber (self, on: bool):
+        """ activate / deactivate camber geo target"""
+
+        if not on and self.camber:
+            self.camber._myList = None 
+            self.geoTarget_defs.remove (self.camber) 
+
+        elif on and not self.camber:
+            geo_def = GeoTarget_Definition (self.geoTarget_defs)
+            geo_def.set_optVar    (CAMBER)
+            thickness_seed = self._input_file.airfoil_seed.geo.max_camb
+            geo_def.set_optValue  (thickness_seed)
+
+            self.geoTarget_defs.append(geo_def)

@@ -116,69 +116,6 @@ def get_airfoil_files_sameDir (initialDir : Airfoil | str | None):
 # ----- widgets -----------
 
 
-
-class Airfoil_Open_Widget (Widget, QWidget):
-    """ 
-    Button - either Text or Icon to open Airfoil with file select 
-
-    When user successfully selected an airfoil file, 'set' is called with 
-    the new <Airfoil> as argument 
-    """
-
-
-    def __init__(self, *args,
-                 set = None,                # will set new airfoil
-                 text = "Open", 
-                 asIcon = False,            # Button as icon 
-                 **kwargs):
-        super().__init__(*args, set=set, **kwargs)
-
-        # build local HBox layout with the guest widget
-
-        l = QHBoxLayout(self)
-        l.setContentsMargins (QMargins(0, 0, 0, 0))
-        l.setSpacing (0)
-        l.setStretch (0,2)
-        if asIcon:
-            widget= ToolButton (l, icon=Icon.OPEN, set=self._open, toolTip="Select airfoil")
-            self._width = widget._width             # self shall have the same fixed width
-        else: 
-            widget = Button    (l, text=text, width=self._width, set=self._open, toolTip="Select airfoil")
-        self.setLayout (l) 
-
-        # normal widget handling 
-
-        self._get_properties ()
-        self._set_Qwidget_static ()
-        self._set_Qwidget ()
-
-        # assign widget to parent layout 
-
-        self._layout_add ()
-
-
-    def _open (self):
-        """ open a new airfoil and load it"""
-
-        filters  = "Airfoil files (*.dat);;Bezier files (*.bez);;Hicks Henne files (*.hicks)"
-
-        if isinstance (self._val, Airfoil):
-            directory = self._val.pathName_abs
-        else:
-            directory = None 
-        newPathFilename, _ = QFileDialog.getOpenFileName(self, filter=filters, directory=directory)
-
-        if newPathFilename:                         # user pressed open
-            airfoil = create_airfoil_from_path (self, newPathFilename)
-            if airfoil is not None: 
-
-                #leave button callback and refresh in a few ms 
-                timer = QTimer()                                
-                timer.singleShot(10, lambda: self._set_value (airfoil))     # delayed emit 
-
-
-
-
 class Airfoil_Select_Open_Widget (Widget, QWidget):
     """ 
     Compound widget to either select or open new airfoil 
@@ -193,6 +130,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     """
 
     _width  = (120, None)
+    _height = 26 
 
     def __init__(self, *args,
                  get = None,                # get current / initial airfoil 
@@ -206,7 +144,10 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                  **kwargs):
         super().__init__(*args, get=get, set=set, **kwargs)
 
-        self._combo_widget = None 
+        self._combo_widget  = None 
+        self._button_widget = None 
+        self._icon_widget   = None 
+
         self._no_files_here = None
         self._initial_dir = initialDir
         self._addEmpty = addEmpty is True 
@@ -234,14 +175,15 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                                                 toolTip=self._toolTip,
                                                 signal=False)
         if withOpen:
+
             # either text button if nothing is there
-            Airfoil_Open_Widget (l, text=textOpen, set=self.set_airfoil, signal=False,
-                                 width = widthOpen,
-                                 hide=lambda: not self.no_files_here())
+            self._button_widget = Button (l, text=textOpen, set=self._open_airfoil, 
+                                                signal=False, width = widthOpen,
+                                                hide=lambda: not self.no_files_here() ) 
             # ... or icon button together with combo box 
-            Airfoil_Open_Widget (l, asIcon=True, set=self.set_airfoil, signal=False,
-                                 hide=self.no_files_here)
-            l.insertStretch (-1)
+            self._icon_widget =   ToolButton (l, icon=Icon.OPEN, set=self._open_airfoil, signal=False,
+                                                hide=self.no_files_here)
+            # l.insertStretch (-1)
 
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
@@ -258,6 +200,8 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
         # normal widget handling 
 
+        self._layout_add ()                                     # put into layout - so it gets parent early
+
         self._get_properties ()
         self._set_Qwidget_static ()
         self._set_Qwidget ()
@@ -266,15 +210,19 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         tip = f"{self._toolTip}: {name}" if self._toolTip else f"{name}"
         self._combo_widget.setToolTip (tip)  
 
-        # assign self to parent layout 
-
-        self._layout_add ()
 
     @override
     def refresh (self, disable=None):
 
         self._no_files_here = None                              # reset cached vlaue 
         super().refresh(disable) 
+
+        if self._combo_widget:
+            self._combo_widget.refresh (disable) 
+        if self._button_widget:
+            self._button_widget.refresh (disable) 
+        if self._icon_widget:
+            self._icon_widget.refresh (disable) 
 
         l : QHBoxLayout = self.layout()
         if self.no_files_here():                                # show only open button
@@ -285,6 +233,26 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             l.setSpacing (1)
             l.setStretch (0,2)
             l.setStretch (2,0)
+
+
+    def _open_airfoil (self):
+        """ open a new airfoil and load it"""
+
+        filters  = "Airfoil files (*.dat);;Bezier files (*.bez);;Hicks Henne files (*.hicks)"
+
+        if isinstance (self._val, Airfoil):
+            directory = self._val.pathName_abs
+        else:
+            directory = None 
+        newPathFilename, _ = QFileDialog.getOpenFileName(self, filter=filters, directory=directory)
+
+        if newPathFilename:                         # user pressed open
+            airfoil = create_airfoil_from_path (self, newPathFilename)
+            if airfoil is not None: 
+
+                #leave button callback and refresh in a few ms 
+                timer = QTimer()                                
+                timer.singleShot(10, lambda: self.set_airfoil (airfoil))     # delayed emit 
 
 
     def no_files_here (self) -> bool:

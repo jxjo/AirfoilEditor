@@ -134,7 +134,7 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
 
 
     def _delete_opPoint_def (self, _):
-        """ shift-clik - delete me opPoint_dev"""
+        """ shift-click - delete me opPoint_dev"""
         self._opPoint_def.delete_me ()
         self._changed ()
 

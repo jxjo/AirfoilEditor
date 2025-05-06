@@ -422,7 +422,17 @@ class Widget:
             - disable: optional overwrite of widgets internal disable state  
         """
 
-        if self._while_setting:                           # avoid circular actions with refresh()
+        # do not refresh if self will be now hidden
+
+        self._hidden = self._get_value (self._hidden_getter, default=self._hidden)
+        self._set_Qwidget_hidden ()
+
+        if self._hidden:
+            return 
+
+        # avoid circular actions with refresh
+
+        if self._while_setting:                          
             logger.debug (str(self) + " - refresh while set callback")
 
             #leave callback and refresh in a few ms 
@@ -500,20 +510,23 @@ class Widget:
         Optional 'id' is used as argument of bound method 'getter'
         'default' is taken, if 'getter' results in None 
         """
-        if isinstance (getter, property):               # getter is a property of obj 
-            o = obj() if callable (obj) else obj
-            if o is not None:
-                val = getter.__get__(o, type(o))
-            else: 
-                val = None 
+        try: 
+            if isinstance (getter, property):               # getter is a property of obj 
+                o = obj() if callable (obj) else obj
+                if o is not None:
+                    val = getter.__get__(o, type(o))
+                else: 
+                    val = None 
 
-        elif callable(getter):                          # getter is a bound method ?
-            if not id is None:                          # an object Id was set to identify object
-                val =  getter(id=self._id) 
-            else:            
-                val =  getter()                         # normal callback
-        else:                                           # ... no - getter is base type 
-            val =  getter 
+            elif callable(getter):                          # getter is a bound method ?
+                if not id is None:                          # an object Id was set to identify object
+                    val =  getter(id=self._id) 
+                else:            
+                    val =  getter()                         # normal callback
+            else:                                           # ... no - getter is base type 
+                val =  getter 
+        except AttributeError:                              # access path of getter could be currently None
+            val = None 
 
         if val is None and default is not None: 
             val = default
@@ -639,7 +652,7 @@ class Widget:
                     self._setter(id=self._id) 
             else:                                   # a method like: def myMth(self, newVal)
                 if self._id is None:                # an id was set to identify object?
-                    self._setter(self._val)            # normal callback
+                    self._setter(self._val)         # normal callback
                 else:            
                     self._setter(self._val, id=self._id) 
 
@@ -688,7 +701,7 @@ class Widget:
             self._layout.addWidget(widget)
 
         # strange (bug?): if layout is on main window the stretching works as expected
-        # on a sub layoutthe widget doesn't stretch if on widget in the column is fixed 
+        # on a sub layout the widget doesn't stretch if on widget in the column is fixed 
         widget.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
 
@@ -696,22 +709,12 @@ class Widget:
 
     def _set_Qwidget (self, refresh=False): 
         """ set value and properties of self Qwidget"""
-        # must be overloaded 
+        # must be overridden 
 
         # minimum for all 
+        self._set_Qwidget_hidden ()
         self._set_Qwidget_disabled ()
         self._set_Qwidget_style ()              # NORMAL, WARNING, etc 
-
-        widget : QWidget = self
-        if self._hidden_getter:
-            # if widget.isHidden() != self._hidden:
-
-                # do not setVisible(True) during app startup as it would result 
-                # in a small dummy window shown...
-                if self._hidden or refresh:
-                    widget.setVisible(not self._hidden)
-                    if not self._hidden: 
-                        logger.debug (f"{self} - setVisible (currently={widget.isVisible()} ")
 
 
     def _set_Qwidget_static (self, widget = None): 
@@ -740,10 +743,27 @@ class Widget:
     def _set_Qwidget_disabled (self):
         """ set self Qwidget according to self._disabled"""
 
-        # can be overlaoded to suppress enable/disable 
+        # can be overridden to suppress enable/disable 
         widget : QWidget = self
         if widget.isEnabled() != (not self._disabled) :
             widget.setDisabled(self._disabled)
+
+
+    def _set_Qwidget_hidden (self):
+        """ set self Qwidget according to self._hidden"""
+
+        # can be overridden to suppress hiden 
+
+        widget : QWidget = self
+
+        if widget.parentWidget() is None:
+            # if self still doesn't have a parent, do not setVisible(True) as this would lead to a ghost window
+            #   but set not visible in any case 
+            if self._hidden:
+                widget.setVisible(False)
+                
+        elif widget.isHidden() != self._hidden :            # use hidden as self could be not visible because of parent
+                widget.setVisible(not self._hidden)
 
 
     def _set_Qwidget_style (self): 
@@ -777,9 +797,9 @@ class Widget:
             color = QColor (aStyle.value[index])
 
             # if it's background color apply alpha
-            if color_role == QPalette.ColorRole.Base or color_role == QPalette.ColorRole.Window:
+            if color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]:
                 if aStyle == style.GOOD:
-                    color.setAlphaF (0.5)
+                    color.setAlphaF (0.4) 
                 else:
                     if self._disabled:
                         color.setAlphaF (0.3)
@@ -838,18 +858,29 @@ class Field_With_Label (Widget):
 
     _height = 26 
 
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        lab = self._label._val if self._label else ""
+        text = f" '{str(self._val)}'" if self._val is not None else ''
+        return f"<{type(self).__name__} {lab}{text} {id(self)}>"
+    
+
+
     def __init__(self, *args, 
-                 lab : str | None = None, 
+                 lab : str | None = None,                   # label of field 
+                 lab_disable : bool = False,                # label will be disabled with field
                  **kwargs):
-        super().__init__(*args, **kwargs)
 
         self._label = None 
+
+        super().__init__(*args, **kwargs)
+
 
         if lab is not None: 
             if not isinstance (self._layout, QGridLayout):
                 raise ValueError (f"{self} Only QGridLayout supported for Field with a Label")
             else: 
-                self._label = Label(self._layout, self._row, self._col, get=lab)
+                self._label = Label(self._layout, self._row, self._col, get=lab, lab_disable=lab_disable)
             
 
     def _layout_add (self, widget=None):
@@ -871,15 +902,26 @@ class Field_With_Label (Widget):
         self.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
 
-    def _set_Qwidget (self, **kwargs): 
+    @override
+    def _set_Qwidget (self, refresh=False): 
         """ set value and properties of self Qwidget"""
-        super()._set_Qwidget ( **kwargs)
+        super()._set_Qwidget (refresh=refresh)
 
-        # overloaded to also hide self label 
-        if self._label and self._hidden_getter:
-            self._label.setVisible(not self._hidden)
+        # overridden to also hide / disable self label 
+        if self._label:
+            self._label._set_Qwidget (refresh=refresh)
 
 
+    @override
+    def _set_Qwidget_hidden (self):
+        """ set self Qwidget according to self._hidden"""
+
+        super()._set_Qwidget_hidden ()
+
+        # overridden to also hide / disable self label 
+        if self._label:
+            self._label._hidden = self._hidden
+            self._label._set_Qwidget_hidden ()
 
 
     def _on_finished(self):
@@ -901,17 +943,22 @@ class Label (Widget, QLabel):
 
     def __init__(self, *args, 
                  styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Base
+                 lab_disable : bool = False,                 # label can be disabled (color) 
                  **kwargs):
+
+        self._label_disable = lab_disable
 
         super().__init__(*args, styleRole=styleRole, **kwargs)
 
+        self._get_properties ()
+
+        self._layout_add ()                                 # put into layout - so it gets parent early
 
         self._set_Qwidget_static ()
-        self._get_properties ()
         self._set_Qwidget ()
 
-        # put into grid / layout 
-        self._layout_add ()
+        self._disabled = False                                 # default for Label 
+        self._disabled_getter = False
 
 
     def _set_Qwidget_style (self): 
@@ -936,8 +983,11 @@ class Label (Widget, QLabel):
 
     def _set_Qwidget_disabled (self):
         """ set self Qwidget according to self._disabled"""
-        # do not disable Label (color ...) 
-        pass
+        if self._label_disable:
+            super()._set_Qwidget_disabled()
+        else: 
+            # do not disable Label (color ...) 
+            pass
 
 
  
@@ -945,15 +995,19 @@ class Field (Field_With_Label, QLineEdit):
     """
     String entry field  
     """
+
+    _height = 24 
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._set_Qwidget_static ()
         self._get_properties ()
-        self._set_Qwidget ()
 
         # put into grid / layout 
         self._layout_add ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # connect signals 
         self.editingFinished.connect(self._on_finished)
@@ -1001,16 +1055,15 @@ class FieldI (Field_With_Label, QSpinBox):
         self._lim_getter = lim
         self._specialText = specialText
 
-        self._set_Qwidget_static ()
         self._get_properties ()
-        self._set_Qwidget ()
 
-        # put into grid / layout 
-        self._layout_add ()
+        self._layout_add ()                                 # put into layout - so it gets parent early
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # connect signals 
         self.editingFinished.connect (self._on_finished)
-        # self.valueChanged.connect    (self._on_finished)
 
 
     def _get_properties (self): 
@@ -1103,11 +1156,12 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self._specialText = specialText
 
         self._get_properties ()
+
+        self._layout_add ()                                 # put into layout - so it gets parent early
+
         self._set_Qwidget_static ()
         self.ensurePolished()
         self._set_Qwidget ()
-
-        self._layout_add ()
 
         # a (new) style isn't apllied when done during __init__ - so do it later 
         if self._palette_normal is not None:            # indicates that a palette was set
@@ -1237,11 +1291,10 @@ class Slider (Widget, QSlider):
             self._slider_min = 0                    # will be translated fore and back 
             self._slider_max = 100             
 
+        self._layout_add ()                                 # put into layout - so it gets parent early
 
         self._set_Qwidget_static ()
         self._set_Qwidget ()
-
-        self._layout_add ()
 
         # connect signals 
         self.valueChanged.connect(self._on_finished)
@@ -1321,22 +1374,23 @@ class Button (Widget, QPushButton):
         - when clicked, 'set' is called without argument 
     """
     def __init__(self, *args,
-                 signal = False,            # default is not to signal change 
+                 signal = False,                                # default is not to signal change 
                  text = None, 
                  button_style = button_style.SECONDARY,
+                 styleRole = QPalette.ColorRole.Button,         # button has different color role 
                  **kwargs):
-        super().__init__(*args, signal=signal,**kwargs)
+        super().__init__(*args, signal=signal, styleRole=styleRole, **kwargs)
 
         self._text = text 
         self._button_style = None 
         self._button_style_getter = button_style
 
         self._get_properties ()
+
+        self._layout_add ()                                 # put into layout - so it gets parent early
+
         self._set_Qwidget_static ()
         self._set_Qwidget ()
-
-        # put into grid / layout 
-        self._layout_add ()
 
         # connect signals 
         self.pressed.connect(self._on_pressed)
@@ -1392,10 +1446,11 @@ class ToolButton (Widget, QToolButton):
         self._icon_name = icon                           # icon name 
 
         self._get_properties ()
+
+        self._layout_add ()                                 # put into layout - so it gets parent early
+
         self._set_Qwidget_static ()
         self._set_Qwidget ()
-
-        self._layout_add ()
 
         self.clicked.connect(self._on_pressed)
 
@@ -1458,11 +1513,12 @@ class CheckBox (Widget, QCheckBox):
         self._text_getter = text 
 
         self._get_properties ()
-        self._set_Qwidget_static ()
-        self._set_Qwidget ()
 
         # put into grid / layout 
         self._layout_add ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # connect signals 
         self.checkStateChanged.connect(self._on_checked)
@@ -1513,7 +1569,7 @@ class ComboBox (Field_With_Label, QComboBox):
         - when clicked, 'set' is called argument with selected text as argument 
     """
         
-    _height = 26 
+    _height = 24 
 
     def __init__(self, *args, 
                  options = [], 
@@ -1524,11 +1580,12 @@ class ComboBox (Field_With_Label, QComboBox):
         self._options = None
 
         self._get_properties ()
-        self._set_Qwidget_static ()
-        self._set_Qwidget ()
 
         # put into grid / layout 
         self._layout_add ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # connect signals 
         self.activated.connect(self._on_selected)
@@ -1674,6 +1731,8 @@ class ComboSpinBox (Field_With_Label, QComboBox):
 
 
     def _on_selected (self):
+      """ slot - comboxbox value choosen """
+      self._refresh_buttons ()
       self._set_value (self.currentText())
 
 

@@ -7,10 +7,13 @@ UI panels
 
 """
 
-from PyQt6.QtWidgets        import QDialog
+import fnmatch   
+from shutil                 import copyfile
+
+from PyQt6.QtWidgets        import QDialog, QFileDialog
 
 from base.widgets           import * 
-from base.panels            import Edit_Panel, Toaster
+from base.panels            import Edit_Panel, Toaster, MessageBox
 
 from airfoil_widgets        import Airfoil_Select_Open_Widget
 
@@ -19,11 +22,7 @@ from xo2_dialogs            import Xo2_Input_File_Dialog, Xo2_Description_Dialog
 from model.airfoil          import Airfoil
 from model.polar_set        import Polar_Definition
 from model.case             import Case_Optimize
-from model.xo2_input        import Input_File
-from model.xo2_input        import Nml_bezier_options, Nml_hicks_henne_options, Nml_camb_thick_options
-from model.xo2_input        import Nml_operating_conditions, OpPoint_Definitions, OpPoint_Definition
-from model.xo2_input        import Nml_info
-from model.xo2_input        import Nml_optimization_options
+from model.xo2_input        import *
 
 
 import logging
@@ -46,7 +45,7 @@ class Panel_Xo2_Abstract (Edit_Panel):
     
     @property
     def case (self) -> Case_Optimize:
-        return self.myApp.case()
+        return self.dataObject
 
     @property
     def input_file (self) -> Input_File:
@@ -55,7 +54,7 @@ class Panel_Xo2_Abstract (Edit_Panel):
     @property
     def mode_optimize (self) -> bool:
         """ panel in optimize_mode or disabled ? - from App """
-        return self.myApp.mode_optimize 
+        return isinstance (self.case, Case_Optimize) 
 
 
     @override
@@ -68,7 +67,7 @@ class Panel_Xo2_Abstract (Edit_Panel):
     @override
     @property
     def shouldBe_visible (self) -> bool:
-        """ overloaded: only visible if geo is not Bezier """
+        """ overloaded: only visible if mode optimize """
         return self.mode_optimize
     
 
@@ -79,7 +78,14 @@ class Panel_Xo2_Abstract (Edit_Panel):
 
         super()._set_panel_layout ()
         for w in self.widgets:
-            w.sig_changed.connect (self.refresh)   
+            w.sig_changed.connect (self._on_widget_changed)   
+
+
+    def _on_widget_changed (self, widget):
+        """ user changed data in widget"""
+        logger.debug (f"{self} {widget} widget changed slot")
+        self.myApp._on_xo2_input_changed ()
+
 
 
 
@@ -88,10 +94,11 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
     name = 'Optimize Mode'
 
-
+    
     @property
-    def airfoil (self) -> Airfoil:
-        return self.myApp.airfoil_org
+    def workingDir (self) -> str:
+        #todo 
+        return self.myApp.workingDir
 
 
     def _init_layout (self): 
@@ -100,12 +107,24 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Field (l,r,c, colSpan=3, width=190, get=lambda: self.airfoil.fileName)
+        ComboBox (l,r,c, colSpan=2, width=160, 
+                        get=lambda:self._input_fileName, set=self._set_input_fileName,
+                        options= lambda: Case_Optimize.input_fileNames_in_dir (self.workingDir),
+                        toolTip="The Xoptfoil2 input file")
+        ToolButton (l,r,c+3, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
+        ToolButton (l,r,c+4, icon=Icon.EDIT, set=self._edit_input_file,
+                    toolTip="Direct editing of the Xoptfoil2 input file")
+
         r += 1
-        ComboSpinBox (l,r,c, colSpan=2, width=160, get=self.airfoil_fileName, 
-                             set=self.set_airfoil_by_fileName,
-                             options=self.airfoil_fileNames,
-                             signal=False)
+        Button   (l,r,c, width=90, text="New Version", set=self._new_version,
+                  toolTip="Create a new version of the existing input file")
+
+        # Field (l,r,c, colSpan=3, width=190, get=lambda: self.airfoil.fileName)
+        # r += 1
+        # ComboSpinBox (l,r,c, colSpan=2, width=160, get=self.airfoil_fileName, 
+        #                      set=self.set_airfoil_by_fileName,
+        #                      options=self.airfoil_fileNames,
+        #                      signal=False)
         r += 1
         SpaceR (l,r)
         l.setRowStretch (r,2)
@@ -114,85 +133,60 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
                         set=lambda : self.myApp.mode_optimize_finished(ok=True), 
                         toolTip="Save current airfoil, optionally modifiy name and leave optimize mode")
         r += 1
-        SpaceR (l,r, height=5, stretch=0)
-        r += 1
         Button (l,r,c,  text="&Cancel",  width=90, 
                         set=lambda : self.myApp.mode_optimize_finished(ok=False),
                         toolTip="Cancel optimization of airfoil")
         r += 1
         SpaceR (l,r, height=5, stretch=0)
-        l.setColumnStretch (3,2)
+        l.setColumnStretch (4,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         return l
 
 
+    @property
+    def _input_fileName (self) -> str:
+        return self.input_file.fileName
 
-    def airfoil_fileName(self) -> list[str]:
-        """ fileName of current airfoil without extension"""
-        return os.path.splitext(self.airfoil.fileName)[0]
+    def _set_input_fileName (self, aFileName : str, workingDir=None):
 
+        if workingDir is None: 
+            workingDir = self.workingDir
 
-    def airfoil_fileNames(self) -> list[str]:
-        """ list of design airfoil fileNames without extension"""
-
-        fileNames = []
-        for airfoil in []: # self.case.airfoil_designs:
-            fileNames.append (os.path.splitext(airfoil.fileName)[0])
-        return fileNames
+        self.myApp.change_case_optimize (aFileName, workingDir)
 
 
-    def set_airfoil_by_fileName (self, fileName : str):
-        """ set new current design airfoil by fileName"""
+    def _new_version (self): 
+        """ create new version of an existing case self.input_file"""
 
-        pass
-        # airfoil = self.case.get_design_by_name (fileName)
-        # self.myApp.set_airfoil (airfoil)
+        new_fileName = Case_Optimize.new_input_fileName_version (self._input_fileName, self.workingDir)
 
-
-
-class Panel_Xo2_Case (Panel_Xo2_Abstract):
-    """ Main panel of optimization"""
-
-    name = 'Case'
-    _width  = (300, 300)
-
-    @override
-    def _add_to_header_layout(self, l_head: QHBoxLayout):
-        """ add Widgets to header layout"""
-
-        l_head.addStretch(1)
-        Button (l_head, text="Run Optimizer", width=100, button_style = button_style.PRIMARY,
-                set=self.myApp.optimize_run, toolTip="Run Optimizer Xoptfoil2")        
-        l_head.addSpacing (23)
+        if new_fileName:
+            copyfile (os.path.join (self.workingDir,self._input_fileName), os.path.join (self.workingDir,new_fileName))
+            self._set_input_fileName (new_fileName)
+            self.refresh()
+        else: 
+            MessageBox.error   (self,'Create new version', f"New Version of {self._input_fileName} could not be created.",
+                                min_width=350)
 
 
-    def _init_layout (self): 
+    def _open_input_file (self):
+        """ open a new airfoil and load it"""
 
-        l = QGridLayout()
-        r,c = 0, 0 
-        Field  (l,r,c,  lab="Input file", 
-                        obj=self.input_file, prop=Input_File.fileName)
-        ToolButton (l,r,c+2, icon=Icon.EDIT, set=self._edit_input_file)
-        r += 1
-        SpaceR (l,r,    height=5, stretch=0)
-        r += 1
-        Label  (l,r,c,  colSpan=2, height=(None,None), style=style.COMMENT,
-                        get=lambda: self.input_file.nml_info.descriptions_string)
-        ToolButton (l,r,c+2, icon=Icon.EDIT, align=ALIGN_TOP,
-                        set=self._edit_description)
-        l.setRowStretch (r,4)
-        r += 1
-        Label  (l,r,c,  style=style.COMMENT, get='Author',
-                        hide=lambda: not self.input_file.nml_info.author)
-        Label  (l,r,c+1,style=style.COMMENT,
-                        get=lambda: self.input_file.nml_info.author,
-                        hide=lambda: not self.input_file.nml_info.author)
-        r += 1
-        l.setRowStretch (r,1)
-        l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (1,3)
-        return l 
+        # build somethinglike "*.inp *.xo2" as filter for the dialog
+        filter_string = ""
+        for extension in Case_Optimize.INPUT_FILE_EXT:
+            filter_string += f" *{extension}" if filter_string else f"*{extension}"
+
+        filters  = f"Xoptfoil2 Input files ({filter_string})"
+
+        newPathFileName, *_ = QFileDialog.getOpenFileName(self, filter=filters, directory=self.workingDir)
+
+        if newPathFileName:                         # user pressed open
+
+            self._set_input_fileName (os.path.basename (newPathFileName), workingDir=os.path.dirname (newPathFileName))
+
+            self.refresh()
 
 
     def _edit_input_file (self):
@@ -205,7 +199,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             Toaster.showMessage (self, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(0, 0, 0, 0),
                                  toast_style=style.HINT)
 
-        dialog = Xo2_Input_File_Dialog (self,self.input_file, dx=200, dy=-900)
+        dialog = Xo2_Input_File_Dialog (self,self.input_file, parentPos=(0.8,0,9), dialogPos=(0,1))
         dialog.exec () 
 
         if dialog.result() == QDialog.DialogCode.Accepted:
@@ -213,38 +207,88 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             Toaster.showMessage (self, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(0, 0, 0, 0),
                                  toast_style=style.GOOD)
             
-            self.myApp.sig_xo2_input_changed.emit()
+            self.myApp._on_xo2_input_changed()
+
+
+
+
+class Panel_Xo2_Case (Panel_Xo2_Abstract):
+    """ Main panel of optimization"""
+
+    name = 'Case'
+    _width  = (350, 350)
+
+    @override
+    def _add_to_header_layout(self, l_head: QHBoxLayout):
+        """ add Widgets to header layout"""
+
+        l_head.addStretch(1)
+        Button (l_head, text="Run Optimizer", width=100, button_style = button_style.PRIMARY,
+                # style=style.GOOD, 
+                set=self.myApp.optimize_run, toolTip="Run Optimizer Xoptfoil2")        
+        l_head.addSpacing (23)
+
+    @property
+    def optimization_options (self) -> Nml_optimization_options:
+        return self.case.input_file.nml_optimization_options
+
+    @property
+    def hicks_henne_options (self) -> Nml_hicks_henne_options:
+        return self.case.input_file.nml_hicks_henne_options
+
+
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        Label  (l,r,c,  colSpan=2, height=(None,None), style=style.COMMENT,
+                        get=lambda: self.input_file.nml_info.descriptions_string)
+        ToolButton (l,r,c+2, icon=Icon.EDIT, align=ALIGN_TOP,
+                        set=self._edit_description)
+        r += 1
+        SpaceR (l,r, stretch=0)
+        # r += 1
+        # Label  (l,r,c,  style=style.COMMENT, get='Author',
+        #                 hide=lambda: not self.input_file.nml_info.author)
+        # Label  (l,r,c+1,style=style.COMMENT,
+        #                 get=lambda: self.input_file.nml_info.author,
+        #                 hide=lambda: not self.input_file.nml_info.author)
+        r += 1
+        ComboBox (l,r,c, lab="Shape functions", lab_disable=True,
+                        get=lambda: self.shape_functions, set=self.set_shape_functions,
+                        options=lambda: self.optimization_options.SHAPE_FUNCTIONS if self.case else [])
+
+        r += 1
+        Label    (l,r,c, get="Seed Airfoil", lab_disable=True)
+        Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, signal=False, 
+                                    textOpen="&Open", widthOpen=90, 
+                                    get=lambda: self.input_file.airfoil_seed,
+                                    set=self.input_file.set_airfoil_seed)
+        r += 1
+        CheckBox (l,r,c+1, text="Smooth Seed",
+                    get=lambda: self.hicks_henne_options.smooth_seed,
+                    set=self.hicks_henne_options.set_smooth_seed,
+                    hide=lambda: not self._show_smooth_seed())
+        r += 1
+        l.setRowStretch (r,1)
+        l.setColumnMinimumWidth (0,90)
+        l.setColumnStretch (1,5)
+        return l 
 
 
     def _edit_description (self):
         """ open text editor to edit Xoptfoil2 input description"""
 
-        dialog = Xo2_Description_Dialog (self,self.input_file.nml_info.descriptions_string, dx=250, dy=-250)
+        dialog = Xo2_Description_Dialog (self,self.input_file.nml_info.descriptions_string, 
+                                         parentPos=(0.8,0,3), dialogPos=(0,1))
         dialog.exec () 
 
         if dialog.result() == QDialog.DialogCode.Accepted:
             descriptions = dialog.new_text.split ("\n")
             self.input_file.nml_info.set_descriptions (descriptions)
             
-            self.myApp.sig_xo2_input_changed.emit()
+            self.myApp._on_xo2_input_changed ()
 
-
-
-class Panel_Xo2_Shape_Functions (Panel_Xo2_Abstract):
-    """ Main panel of optimization"""
-
-    name = 'Shaping'
-    _width  = (230, None)
-
-        
-    @override
-    def _add_to_header_layout(self, l_head: QHBoxLayout):
-        """ add Widgets to header layout"""
-
-        l_head.addStretch(1)
-        ComboBox (l_head, width=100, 
-                get=lambda: self.shape_functions, set=self.set_shape_functions,
-                options=lambda: self.available_shape_functions)
 
     @property
     def shape_functions (self) -> str:
@@ -259,17 +303,126 @@ class Panel_Xo2_Shape_Functions (Panel_Xo2_Abstract):
             self.refresh()
 
 
+    def _show_smooth_seed (self) -> bool:
+
+        shape_functions = self.input_file.nml_optimization_options.shape_functions
+        return shape_functions == Nml_optimization_options.HICKS_HENNE and \
+                not self.input_file.airfoil_seed.isBezierBased
+
+
+class Panel_Xo2_Shape_Bezier (Panel_Xo2_Abstract):
+    """ Edit Bezier options """
+
+    name = 'Bezier Options '
+    _width  = (250, None)
+
+
+    @override
     @property
-    def available_shape_functions (self) -> list[str]:
-        return self.optimization_options.SHAPE_FUNCTIONS if self.case else []
+    def shouldBe_visible (self) -> bool:
+        return self.isBezier
+
+    @property
+    def isBezier (self) -> bool:
+        return super().mode_optimize and self.optimization_options.shape_functions == Nml_optimization_options.BEZIER
 
     @property
     def bezier_options (self) -> Nml_bezier_options:
         return self.case.input_file.nml_bezier_options
 
     @property
+    def optimization_options (self) -> Nml_optimization_options:
+        return self.case.input_file.nml_optimization_options
+
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        Label (l,r,c, get="Bezier control Points", colSpan=4)
+        r += 1
+        FieldI (l,r,c, lab='Upper side', width=50, step=1, lim=(3,10),
+                obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_top)
+        r += 1
+        FieldI (l,r,c, lab='Lower side', width=50, step=1, lim=(3,10),
+                obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_bot)
+        r += 1
+        l.setRowStretch (r,2)
+        r += 1
+        Label (l,r,c, colSpan=4, style=style.COMMENT,
+               get=lambda: f"Will be {self.bezier_options.ndesign_var} design variables")        
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnStretch (4,2)
+
+        return l
+       
+
+
+
+class Panel_Xo2_Shape_Hicks_Henne (Panel_Xo2_Abstract):
+    """ Edit Hicks Henne options """
+
+    name = 'Hicks-Henne Options '
+    _width  = (250, None)
+
+
+    @override
+    @property
+    def shouldBe_visible (self) -> bool:
+        return self.isHicks_Henne
+
+    @property
+    def isHicks_Henne (self) -> bool:
+        return super().mode_optimize and self.optimization_options.shape_functions == Nml_optimization_options.HICKS_HENNE
+
+    @property
     def hicks_henne_options (self) -> Nml_hicks_henne_options:
         return self.case.input_file.nml_hicks_henne_options
+
+    @property
+    def optimization_options (self) -> Nml_optimization_options:
+        return self.case.input_file.nml_optimization_options
+
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        Label (l,r,c, get="Hicks-Henne Functions", colSpan=4)
+        r += 1
+        FieldI (l,r,c, lab='Upper side', width=50, step=1, lim=(0, 8),
+                obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.nfunctions_top)
+        r += 1
+        FieldI (l,r,c, lab='Lower side', width=50, step=1, lim=(0, 8),
+                obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.nfunctions_bot)
+        r += 1
+        l.setRowStretch (r,2)
+        r += 1
+        Label (l,r,c, colSpan=4, style=style.COMMENT,
+               get=lambda: f"Will be {self.hicks_henne_options.ndesign_var} design variables")        
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnStretch (4,2)
+
+        return l
+       
+
+
+
+class Panel_Xo2_Shape_Camb_Thick (Panel_Xo2_Abstract):
+    """ Edit Camb Thick options """
+
+    name = 'Camb-Thick Options '
+    _width  = (250, None)
+
+
+    @override
+    @property
+    def shouldBe_visible (self) -> bool:
+        return self.isCamb_Thick
+
+    @property
+    def isCamb_Thick (self) -> bool:
+        return super().mode_optimize and self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK
 
     @property
     def camb_thick_options (self) -> Nml_camb_thick_options:
@@ -280,183 +433,36 @@ class Panel_Xo2_Shape_Functions (Panel_Xo2_Abstract):
         return self.case.input_file.nml_optimization_options
 
 
-    class Panel_Shape_Function_Def (Edit_Panel):
-        """ Mini sub panel to edit the shape functions properties """
-
-        name = None                                         # suppress header
-
-        _height = (None, None) 
-        _panel_margins = (0, 0, 0, 0)                       # no inset of panel data 
-        _main_margins  = (0, 0, 0, 0)                       # margins of Edit_Panel
-
-        @override
-        def set_background_color (self, **_):
-            # no darker background 
-            pass
-
-        @override
-        @property
-        def _isDisabled (self) -> bool:
-            """ overloaded: only enabled when not running"""
-            parent : Panel_Xo2_Shape_Functions = self._parent
-            return parent.case.isRunning
-
-
-    @property
-    def _panel_bezier_options (self) -> Panel_Shape_Function_Def:
-
-        l = QGridLayout()
-        r,c = 0, 0
-        Label (l,r,c, get="Bezier control Points", colSpan=4)
-        r += 1
-        FieldI (l,r,c, lab='Upper side', width=50, step=1, lim=(3,10),
-                get=lambda: self.bezier_options.ncp_top,
-                set=self.bezier_options.set_ncp_top)
-        r += 1
-        FieldI (l,r,c, lab='Lower side', width=50, step=1, lim=(3,10),
-                get=lambda: self.bezier_options.ncp_bot,
-                set=self.bezier_options.set_ncp_bot)
-        r += 1
-        l.setRowStretch (r,2)
-        l.setColumnMinimumWidth (0,70)
-        l.setColumnStretch (4,2)
-
-        return self.Panel_Shape_Function_Def (parent=self, layout=l, 
-                    hide=lambda: not self.shape_functions == Nml_optimization_options.BEZIER)
-       
-
-    @property
-    def _panel_hicks_henne_options (self) -> Panel_Shape_Function_Def:
-
-        l = QGridLayout()
-        r,c = 0, 0
-        Label (l,r,c, get="Hicks Henne Functions", colSpan=4)
-        r += 1
-        FieldI (l,r,c, lab='Upper side', width=50, step=1, lim=(0, 8),
-                get=lambda: self.hicks_henne_options.nfunctions_top,
-                set=self.hicks_henne_options.set_nfunctions_top)
-        r += 1
-        FieldI (l,r,c, lab='Lower side', width=50, step=1, lim=(0, 8),
-                get=lambda: self.hicks_henne_options.nfunctions_bot,
-                set=self.hicks_henne_options.set_nfunctions_bot)
-        r += 1
-        l.setRowStretch (r,2)
-        l.setColumnMinimumWidth (0,70)
-        l.setColumnStretch (4,2)
-
-        return self.Panel_Shape_Function_Def (parent=self, layout=l,
-                    hide=lambda: not self.shape_functions == Nml_optimization_options.HICKS_HENNE)
-
-
-    @property
-    def _panel_camb_thick_options (self) -> Panel_Shape_Function_Def:
+    def _init_layout (self) -> QGridLayout:
 
         l = QGridLayout()
         r,c = 0, 0
         Label (l,r,c, get="Geometry parameters", colSpan=4)
         r += 1
         CheckBox (l,r,c, text="Thickness",
-                    get=lambda: self.camb_thick_options.thickness,
-                    set=self.camb_thick_options.set_thickness)
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.thickness)
         CheckBox (l,r,c+1, text="... position",
-                    get=lambda: self.camb_thick_options.thickness_pos,
-                    set=self.camb_thick_options.set_thickness_pos)
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.thickness_pos)
         r += 1
         CheckBox (l,r,c, text="Camber",
-                    get=lambda: self.camb_thick_options.camber,
-                    set=self.camb_thick_options.set_camber)
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.camber)
         CheckBox (l,r,c+1, text="... position",
-                    get=lambda: self.camb_thick_options.camber_pos,
-                    set=self.camb_thick_options.set_camber_pos)
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.camber_pos)
         r += 1
         CheckBox (l,r,c, text="LE radius",
-                    get=lambda: self.camb_thick_options.le_radius,
-                    set=self.camb_thick_options.set_le_radius)
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.le_radius)
         CheckBox (l,r,c+1, text="... blend dist",
-                    get=lambda: self.camb_thick_options.le_radius_blend,
-                    set=self.camb_thick_options.set_le_radius_blend)
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.le_radius_blend)
         r += 1
         l.setRowStretch (r,2)
-        l.setColumnMinimumWidth (0,90)
-        l.setColumnMinimumWidth (1,90)
+        r += 1
+        Label (l,r,c, colSpan=4, style=style.COMMENT,
+               get=lambda: f"Will be {self.camb_thick_options.ndesign_var} design variables")        
+        l.setColumnMinimumWidth (0,110)
         l.setColumnStretch (4,2)
 
-        return self.Panel_Shape_Function_Def (parent=self, layout=l,
-                    hide=lambda: not self.shape_functions == Nml_optimization_options.CAMB_THICK)
-
-
-    def _init_layout (self): 
-
-        l = QGridLayout()
-        r,c = 0, 0 
-        l.addWidget (self._panel_bezier_options,      r, c, 1, 3)
-        l.addWidget (self._panel_hicks_henne_options, r, c, 1, 3)
-        l.addWidget (self._panel_camb_thick_options,  r, c, 1, 3)
-
-        r += 1
-        l.setRowStretch (r,2)
-        r += 1
-        Label (l,r,c, get=self._info_design_variables, colSpan=4, style=style.COMMENT)
-        l.setColumnMinimumWidth (0,70)
-        l.setColumnStretch (2,2)
-        return l 
-
-
-    def _info_design_variables (self) -> str:
-
-        if self.optimization_options.shape_functions == Nml_optimization_options.HICKS_HENNE:
-            n = self.hicks_henne_options.ndesign_var
-        elif self.optimization_options.shape_functions == Nml_optimization_options.BEZIER:
-            n = self.bezier_options.ndesign_var
-        elif self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK:
-            n = self.camb_thick_options.ndesign_var
-        else:
-            n = 0 
-
-        return f"Will be {n} design variables"
-
-
-
-
-class Panel_Xo2_Seed_Airfoil (Panel_Xo2_Abstract):
-    """ Define seed airfoil"""
-
-    name = 'Seed Airfoil'
-    _width  = (220, 250)
-
-    @property
-    def hicks_henne_options (self) -> Nml_hicks_henne_options:
-        return self.case.input_file.nml_hicks_henne_options
-    
-
-    def show_smooth_seed (self) -> bool:
-
-        shape_functions = self.input_file.nml_optimization_options.shape_functions
-        return shape_functions == Nml_optimization_options.HICKS_HENNE and \
-                not self.input_file.airfoil_seed.isBezierBased
-
-
-    def _init_layout (self): 
-
-        l = QGridLayout()
-        r,c = 0, 0 
-        Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
-                                    textOpen="&Open", widthOpen=90, 
-                                    get=lambda: self.input_file.airfoil_seed,
-                                    set=self.input_file.set_airfoil_seed)
-        r += 1
-
-        CheckBox (l,r,c, text="Smooth Seed",
-                    get=lambda: self.hicks_henne_options.smooth_seed,
-                    set=self.hicks_henne_options.set_smooth_seed,
-                    hide=lambda: not self.show_smooth_seed())
-
-        r += 1
-        l.setRowStretch (r,2)
-#        l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (1,3)
-        return l 
-
+        return l
+       
 
 
 
@@ -478,11 +484,11 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
 
     @property
     def operating_conditions (self) -> Nml_operating_conditions:
-        return self.case.input_file.nml_operating_conditions
+        return self.input_file.nml_operating_conditions
     
     @property
     def opPoint_defs (self) -> OpPoint_Definitions:
-        return self.case.input_file.opPoint_defs
+        return self.input_file.opPoint_defs
 
     @property
     def polar_defs (self) -> list[Polar_Definition]:
@@ -491,7 +497,7 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
     @property
     def cur_opPoint_def (self) -> OpPoint_Definition:
         """ current, selected opPoint def"""
-        if self._cur_opPoint_def is None: 
+        if not (self._cur_opPoint_def in self.opPoint_defs):                    # in case, case changed 
             self._cur_opPoint_def = self.opPoint_defs [0] if self.opPoint_defs else None
         return self._cur_opPoint_def
 
@@ -499,18 +505,26 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ComboBox (l,r,c, lab="Default Polar", width=130, 
+        ComboBox (l,r,c, lab="Default Polar", lab_disable=True, width=130, 
                 get=lambda: self.opPoint_defs.polar_def_default.name, set=self.set_polar_def,
                 options=lambda: [polar_def.name for polar_def in self.polar_defs])
         r += 1
-        ComboSpinBox (l,r,c, lab="Op Point", width=240,  
-                get=lambda: self.cur_opPoint_def.labelLong,
+        ComboBox (l,r,c, lab="Op Point", lab_disable=True, width=200,  
+                get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
                 set=self.set_cur_opPoint_def_from_label,
                 options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
-        ToolButton (l,r,c+2, icon=Icon.EDIT, set=self._edit_opPoint_def)
+        ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self._edit_opPoint_def,
+                    disable=lambda: not self.cur_opPoint_def)
+        ToolButton (l,r,c+3, icon=Icon.DELETE, set=self._delete_opPoint_def,
+                    disable=lambda: not self.opPoint_defs)
+        ToolButton (l,r,c+4, icon=Icon.ADD, set=self._add_opPoint_def)
 
         r += 1
         SpaceR   (l,r)
+        r += 1
+        CheckBox (l,r,c, text="Dynamic Weighting", colSpan=2,
+                get=lambda: self.operating_conditions.dynamic_weighting, 
+                set=self.operating_conditions.set_dynamic_weighting)
         r += 1
         CheckBox (l,r,c, text="Use Flaps", colSpan=2,
                 get=lambda: self.operating_conditions.use_flap, 
@@ -546,8 +560,112 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
                 self.myApp.sig_opPoint_def_selected.emit(opPoint_def)
                 break
 
+    def _delete_opPoint_def (self):
+        """ delete me opPoint_dev"""
+
+        if not self.opPoint_defs: return 
+
+        # define new current after deletion 
+        if len(self.opPoint_defs) > 1: 
+            if self.cur_opPoint_def.iPoint == len(self.opPoint_defs):
+                new_index = -1
+            elif self.cur_opPoint_def.iPoint > 1:
+                new_index = self.cur_opPoint_def.iPoint - 1
+            else:
+                new_index = 0 
+        else: 
+            new_index = None
+
+        self.cur_opPoint_def.delete_me ()
+
+        # set new current 
+        if new_index is not None: 
+            self._cur_opPoint_def = self.opPoint_defs [new_index]
+        else: 
+            self._cur_opPoint_def = None
+
+        self.refresh ()
+        self.myApp._on_xo2_input_changed()
+        self.myApp.sig_opPoint_def_selected.emit(self.cur_opPoint_def)
+
+
+    def _add_opPoint_def (self):
+        """ add a new opPoint_dev after current """
+
+        self._cur_opPoint_def = self.opPoint_defs.create_after (self.cur_opPoint_def)
+
+        self.refresh ()
+        self.myApp._on_xo2_input_changed()
+        self.myApp.sig_opPoint_def_selected.emit(self.cur_opPoint_def)
+
 
     def _edit_opPoint_def (self):
         """ open dialog to edit current opPoint def"""
-        self.myApp.edit_opPoint_def (self.cur_opPoint_def)
 
+        parentPos=(0.8, 0.2) 
+        dialogPos=(0,1)
+
+        self.myApp.edit_opPoint_def (self, parentPos, dialogPos, self.cur_opPoint_def)
+
+
+
+class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
+    """ Edit geometry target """
+
+    name = 'Geometry Targets'
+    _width  = (230, None)
+
+    @property
+    def geometry_targets (self) -> Nml_geometry_targets:
+        return self.case.input_file.nml_geometry_targets
+
+    @property
+    def thickness (self) -> GeoTarget_Definition | None: 
+        return self.geometry_targets.thickness
+
+    @property
+    def camber (self) -> GeoTarget_Definition | None: 
+        return self.geometry_targets.camber
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        CheckBox    (l,r,c, text="Thickness", colSpan=2, 
+                     get=lambda: self.thickness is not None, set=self.geometry_targets.activate_thickness)
+        FieldF      (l,r,c+2, width=70, unit="%", step=0.2,
+                     get=lambda: self.thickness.optValue, set=lambda x:self.thickness.set_optValue(x), 
+                     hide=lambda: not self.thickness)
+        r += 1
+        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.2, lim=(-10,10), dec=2,
+                     get=lambda: self.thickness.weighting, set=lambda x: self.thickness.set_weighting(x),
+                     hide=lambda: self.thickness is None)
+        Label       (l,r,c+3, style=style.COMMENT, 
+                     get=lambda: self.thickness.weighting_fixed_label,
+                     hide=lambda: self.thickness is None)
+
+        r += 1
+        CheckBox    (l,r,c, text="Camber", colSpan=2, 
+                     get=lambda: self.camber is not None, set=self.geometry_targets.activate_camber)
+        FieldF      (l,r,c+2, width=70, unit="%", step=0.2,
+                     get=lambda: self.camber.optValue, set=lambda x: self.camber.set_optValue(x), 
+                     hide=lambda: not self.camber)
+        r += 1
+        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.2, lim=(-10,10), dec=2,
+                     get=lambda: self.camber.weighting, set=lambda x: self.camber.set_weighting(x),
+                     hide=lambda: self.camber is None)
+        Label       (l,r,c+3, style=style.COMMENT, 
+                     get=lambda: self.camber.weighting_fixed_label,
+                     hide=lambda: self.camber is None)
+        r += 1
+        l.setRowStretch (r,2)
+        r += 1
+        Label (l,r,c, colSpan=4, style=style.COMMENT,
+               get=lambda: f"Will be {len (self.geometry_targets.geoTarget_defs)} design variables",
+               hide=lambda: len (self.geometry_targets.geoTarget_defs )== 0)        
+        l.setColumnMinimumWidth (0,20)
+        l.setColumnMinimumWidth (1,70)
+        l.setColumnStretch (4,2)
+
+        return l
+     

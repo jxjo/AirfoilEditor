@@ -66,7 +66,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     def _on_airfoil_widget_changed (self, widget):
         """ user changed data in widget"""
         logger.debug (f"{self} {widget} widget changed slot")
-        self.myApp.sig_airfoil_changed.emit()
+        self.myApp._on_airfoil_changed ()
 
 
     @property
@@ -99,7 +99,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if mode_modify """
-        return not self.mode_modify and not self.mode_optimize
+        return not (self.mode_modify or self.mode_optimize)
 
     @property
     def _isDisabled (self) -> bool:
@@ -113,20 +113,6 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         pass
 
 
-    def _is_xo2_input_existing (self) -> bool:
-        """ True if a xo2 input file exists for current airfoil"""
-
-        for extension in Case_Optimize.INPUT_FILE_EXT:
-            fileName = os.path.join (self.airfoil().pathName, self.airfoil().fileName_stem + extension)
-            if os.path.isfile (fileName):
-                return True 
-        return False
-
-    
-    def refresh (self):
-        super().refresh()
-
-
     def _init_layout (self): 
 
         l = QGridLayout()
@@ -135,16 +121,13 @@ class Panel_File_View (Panel_Airfoil_Abstract):
                                     textOpen="&Open", widthOpen=90, 
                                     get=self.airfoil, set=self.myApp.set_airfoil)
         r += 1
-        SpaceR (l,r, height=5)
-        r += 1
         Button (l,r,c, text="&Modify", width=90, 
                 set=self.myApp.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel",
                 button_style=button_style.PRIMARY)
-        Button (l,r,c+2, text="&Optimize", width=90, colSpan=2,
-                set=self.myApp.optimize, 
+        Button (l,r,c+2, text="&Optimize ...", width=90, colSpan=2,
+                set=self.myApp.optimize_airfoil, 
                 toolTip="Optimize current airfoil with Xoptfoil2",
-                # hide=lambda: not self._is_xo2_input_existing(),
-                disable=lambda: not self._is_xo2_input_existing() or not Xoptfoil2.ready)
+                disable=lambda: not Xoptfoil2.ready)
         r += 1
         SpaceR (l,r, height=2, stretch=0)
         r += 1
@@ -170,6 +153,14 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
 
     name = 'Modifiy Mode'
 
+    @override
+    def title_text (self) -> str: 
+        """ returns text of title - default self.name"""
+        if self.myApp.airfoil() and self.myApp.airfoil().geo.isBezier:
+             return 'Bezier Mode'
+        else: 
+            return self.name
+    
     @override
     @property
     def shouldBe_visible (self) -> bool:
@@ -871,11 +862,14 @@ class Panel_Airfoils (Edit_Panel):
 
     sig_airfoil_ref_changed      = pyqtSignal(object, object)    # changed reference airfoil 
     sig_airfoils_to_show_changed = pyqtSignal()                  # changed show filter 
+    sig_airfoil_design_selected  = pyqtSignal(Airfoil)           # an airfoil design was selected in the Combobox
 
     _main_margins  = (10, 5, 0, 5)                 # margins of Edit_Panel
 
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, airfoil_designs_fn=None, **kwargs):
+
+        self._airfoil_designs_fn = airfoil_designs_fn
 
         super().__init__(*args, **kwargs)
 
@@ -885,6 +879,17 @@ class Panel_Airfoils (Edit_Panel):
     def airfoils (self) -> list[Airfoil]: 
         return self.dataObject
 
+    @property
+    def airfoil_designs (self) -> list [Airfoil]:
+        """ airfoil designs of case modify or optimize """
+        return self._airfoil_designs_fn() if self._airfoil_designs_fn else []
+
+    @property
+    def airfoil_design (self) -> Airfoil:
+        """ the current design airfoil if available"""
+        for airfoil in self.airfoils:
+            if airfoil.usedAs == usedAs.DESIGN:
+                return airfoil
 
     def _n_REF (self) -> int:
         """ number of reference airfoils"""
@@ -906,7 +911,7 @@ class Panel_Airfoils (Edit_Panel):
     def _init_layout (self): 
 
         l = QGridLayout()
-        self._panel.setLayout (l)
+        # self._panel.setLayout (l)
         r,c = 0, 0 
         iRef = 0
 
@@ -922,7 +927,19 @@ class Panel_Airfoils (Edit_Panel):
                              toolTip=f"Original airfoil {airfoil.fileName}")
                 r += 1
 
-            if airfoil.usedAs in [usedAs.SECOND, usedAs.SEED]:
+            elif airfoil.usedAs == usedAs.DESIGN:                
+                CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
+                if self.airfoil_designs:
+                    ComboBox    (l,r,c+1, width=155, get=lambda: self.airfoil_design.fileName if self.airfoil_design else None,
+                                 set=self._on_airfoil_design_selected,
+                                 options= lambda: [airfoil.fileName for airfoil in self.airfoil_designs],  
+                                 toolTip=f"Select a Design out of list of airfoil designs")
+                else: 
+                    Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
+                                 toolTip=f"{airfoil.usedAs} airfoil {airfoil.fileName}")
+                r += 1
+
+            elif airfoil.usedAs in [usedAs.SECOND, usedAs.SEED, usedAs.FINAL, usedAs.DESIGN]:
                 CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
                 Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
                              toolTip=f"{airfoil.usedAs} airfoil {airfoil.fileName}")
@@ -933,13 +950,15 @@ class Panel_Airfoils (Edit_Panel):
 
         for iair, airfoil in enumerate (self.airfoils):
 
+            if iair == 4: 
+                pass
             if airfoil.usedAs == usedAs.REF:
                 iRef += 1
                 CheckBox   (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
 
                 Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
                                 get=self.airfoil, set=self.set_airfoil, id=iair,
-                                initialDir=self.airfoils[0], addEmpty=False,
+                                initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
                                 toolTip=f"Reference airfoil {iRef}")
 
                 ToolButton (l,r,c+2, icon=Icon.DELETE, set=self.delete_airfoil, id=iair)
@@ -949,7 +968,7 @@ class Panel_Airfoils (Edit_Panel):
         if self._n_REF() < 3:
             Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
                             get=None, set=self.set_airfoil, id=iair+1,
-                            initialDir=self.airfoils[0], addEmpty=True,
+                            initialDir=self.airfoils[-1], addEmpty=True,
                             toolTip=f"New reference airfoil {iRef+1}")
             r +=1
         SpaceR (l,r,stretch=0)
@@ -997,6 +1016,16 @@ class Panel_Airfoils (Edit_Panel):
         # only REF airfoils can be deleted 
         if airfoil.usedAs == usedAs.REF:
             self.sig_airfoil_ref_changed.emit (airfoil, None)
+
+
+    def _on_airfoil_design_selected (self, fileName):
+        """ callback of combobox when an airfoil design was selected"""
+
+        # signal app of new selected current design airfoil 
+        for airfoil in self.airfoil_designs:
+            if airfoil.fileName == fileName:
+                self.sig_airfoil_design_selected.emit(airfoil)
+                break
 
 
     @override

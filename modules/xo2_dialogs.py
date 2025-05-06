@@ -8,6 +8,7 @@ Extra functions (dialogs) to optimize airfoil
 """
 
 from copy                   import copy 
+from shutil                 import copyfile
 
 import pyqtgraph as pg
 
@@ -21,6 +22,7 @@ from base.diagram           import Diagram, Diagram_Item
 from base.artist            import Artist
 
 from airfoil_dialogs        import Polar_Definition_Dialog
+from model.airfoil          import Airfoil
 from model.polar_set        import Polar_Definition
 from model.case             import Case_Optimize
 from model.xo2_controller   import xo2_state, Xo2_Controller
@@ -34,6 +36,106 @@ logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 
+
+class Xo2_Choose_Optimize_Dialog (Dialog):
+    """ Dialog to choose what should be done"""
+
+    _width  = (300, None)
+    _height = (500, None)
+
+    name = "What You want to optimize"
+
+    def __init__ (self, parent, input_fileName : str,  current_airfoil : Airfoil, **kwargs): 
+
+        self._input_fileName  = input_fileName
+        self._current_airfoil = current_airfoil
+        self._workingDir      = None 
+
+        # is there an existung input file for airfoil
+
+        if self._input_fileName is None and self._current_airfoil is not None:
+            self._input_fileName = Case_Optimize.input_fileName_of (self._current_airfoil)
+            self._workingDir     = self._current_airfoil.pathName 
+
+        super().__init__ ( parent, **kwargs)
+
+
+    @property 
+    def input_fileName (self) -> str:
+        return self._input_fileName
+    
+    @property 
+    def workingDir (self) -> str:
+        return self._workingDir
+    
+    @property
+    def current_airfoil (self) -> Airfoil:
+        return self._current_airfoil
+    
+
+    
+    def _init_layout(self) -> QLayout:
+
+        l =  QGridLayout()
+        r,c, = 0,0
+        Label    (l,r,c, height=70, colSpan=3, style=style.COMMENT,
+                  get= "Airfoil optimization is based on <b>Xoptfoil2</b>, which will run in the background.<br>" +
+                       "Xoptfoil2 is controlled via the input file, whoose paramters you may edit subsequently.<br>"
+                       "The input file equals to an optimization Case in the AirfoilEditor.")
+        r += 1
+        Button   (l,r,c, width=100, text="Open Case", set=self.open_case,
+                  hide=lambda: self.input_fileName is None)
+        Label    (l,r,c+2, height=50, 
+                  get=lambda: f"Open input file <b>{self.input_fileName}</b> of airfoil {self.current_airfoil.fileName}" + 
+                              f"<br>change options and run optimization",
+                  hide=lambda: self.input_fileName is None and self.current_airfoil is None )
+        # r +=1
+        # SpaceR   (l,r,stretch=0)
+        r += 1
+        Button   (l,r,c, width=100, text="New Version", set=self.new_version,
+                  hide=lambda: self.input_fileName is None)
+        Label    (l,r,c+2,  height=50, 
+                  get=lambda: f"Create new Version of input file <b>{self.input_fileName}</b>,<br>open it, change options and run optimization",
+                  hide=lambda: self.input_fileName is None)
+        
+        r += 1
+        l.setRowStretch (r,2)
+        l.setColumnMinimumWidth (1,20)
+        l.setColumnStretch (2,2)
+
+        return l 
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+        buttonBox = QDialogButtonBox ( QDialogButtonBox.StandardButton.Cancel)
+
+        buttonBox.rejected.connect  (self.close)
+
+        return buttonBox 
+
+
+    def open_case (self): 
+        """ open existing case self.input_file"""
+        self.accept ()
+
+
+    def new_version (self): 
+        """ create new version of an existing case self.input_file"""
+
+        new_fileName = Case_Optimize.new_input_fileName_version (self.input_fileName, self.workingDir)
+
+        if new_fileName:
+            copyfile (os.path.join (self.workingDir,self.input_fileName), os.path.join (self.workingDir,new_fileName))
+            self._input_fileName = new_fileName
+            self.accept ()
+        else: 
+            MessageBox.error   (self,'Create new version', f"New Version of {self.input_fileName} could not be created.",
+                                min_width=350)
+
+
+
 class Xo2_Run_Dialog (Dialog):
     """ Dialog to run/watch Xoptfoil2"""
 
@@ -42,7 +144,7 @@ class Xo2_Run_Dialog (Dialog):
 
     name = "Run Control"
 
-    sig_finished          = pyqtSignal(Dialog)       # self finished 
+    sig_finished          = pyqtSignal()       
 
 
     class Diagram_Item_Design_Radius (Diagram_Item):
@@ -53,7 +155,7 @@ class Xo2_Run_Dialog (Dialog):
         title       = "Design Radius"
         subtitle    = None                
 
-        min_width   = 100                                   # min size needed - see below 
+        min_width   = 100                                       # min size needed - see below 
         min_height  = 100 
 
         def __init__(self, *args, **kwargs):
@@ -207,18 +309,13 @@ class Xo2_Run_Dialog (Dialog):
 
         # handle button (signals) 
 
-        self._btn_stop.clicked.connect   (self._stop_optimize)
+        self._btn_stop.pressed.connect   (self._stop_optimize)
         self._btn_close.clicked.connect  (self.close)
         self._btn_run.clicked.connect    (self.run_optimize)
 
         # switch panel and buttons on/off
 
         self._set_buttons ()
-
-        # run immidately if ready (and not finished)
-
-        if  (self.case.xo2.state == xo2_state.READY and not self.case.isFinished):
-            self.run_optimize()
 
 
     @property
@@ -516,7 +613,7 @@ class Xo2_Run_Dialog (Dialog):
             self._stop_optimize()
         
         # tell parent including self
-        self.sig_finished.emit (self) 
+        self.sig_finished.emit () 
 
         # normal close 
         super().reject()
@@ -615,7 +712,7 @@ class Xo2_Description_Dialog (Dialog):
     """ a small text editor to edit the &info description"""
 
     _width  = 320
-    _height = 150
+    _height = 110
 
     name = "Description"
 
@@ -723,14 +820,29 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
         self._panel.layout().setContentsMargins (QMargins(10, 5, 10, 5))
 
+        if Widget.light_mode:
+            set_background (self._panel, darker_factor=30)
+            set_background (self       , darker_factor=30)
+        else: 
+            set_background (self._panel, darker_factor=110)
+            set_background (self       , darker_factor=110)
+
     @property
     def opPoint_def (self) ->OpPoint_Definition:
         return self._opPoint_def
 
     def set_opPoint_def (self, opPoint_def : OpPoint_Definition):
+        """ slot for new opPoint def"""
         if isinstance (opPoint_def, OpPoint_Definition):
             self._opPoint_def = opPoint_def
+
+            # update local settings 
+            self.set_show_weighting (not self.opPoint_def.has_default_weighting) 
+            self.set_show_polar     (not self.opPoint_def.has_default_polar) 
+            self.set_show_flap      (not self.opPoint_def.has_default_flap) 
+
             self.refresh()
+ 
  
     @property
     def case (self) -> Case_Optimize:
@@ -780,9 +892,11 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         r += 1
         CheckBox (l,r,c, text="Individual Weighting", colSpan=2,
                     get=lambda: self.show_weighting, set=self.set_show_weighting)
-        FieldF   (l,r,c+2, width=70, step=0.2, lim=(0.01,10), dec=2,
+        FieldF   (l,r,c+2, width=70, step=0.2, lim=(-10,10), dec=2,
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting,
                     hide=lambda: not self.show_weighting)
+        Label    (l,r,c+3, style=style.COMMENT, 
+                    get=lambda: self.opPoint_def.weighting_fixed_label)
         r += 1
         CheckBox (l,r,c, text="Individual Polar", colSpan=2,
                     get=lambda: self.show_polar, set=self.set_show_polar)
@@ -830,10 +944,13 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         self.sig_opPoint_def_changed.emit()
 
 
-    @override
-    def set_background_color (self, **_):
-        """ do not change background """
-        pass
+    # @override
+    # def set_background_color (self, **_):
+    #     """ do not change background """
+    #     if Widget.light_mode:
+    #         self.set_background_color (darker_factor = 80)                  # make it lighter 
+    #     else: 
+    #         self.set_background_color (darker_factor = 110)                 # make it darker
 
     @property
     def show_weighting (self) -> bool:
@@ -900,10 +1017,6 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
     def refresh (self): 
         """ refresh self"""
         self.setWindowTitle (self._titletext())
-
-        self.set_show_weighting (not self.opPoint_def.has_default_weighting) 
-        self.set_show_polar     (not self.opPoint_def.has_default_polar) 
-        self.set_show_flap      (not self.opPoint_def.has_default_flap) 
 
         super().refresh() 
 

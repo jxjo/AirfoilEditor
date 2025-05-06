@@ -506,7 +506,7 @@ class Airfoil_Artist (Artist):
                 # no legend if it is only one airfoil 
 
                 if len(self.airfoils) == 1:
-                    label = None                            # suppress legend 
+                    label = None                                    # suppress legend 
                 else: 
                     label = _label_airfoil (self.airfoils, airfoil)
 
@@ -520,7 +520,9 @@ class Airfoil_Artist (Artist):
                 antialias = False
                 zValue = 1
 
-                if airfoils_with_design:
+                if airfoil.usedAs == usedAs.FINAL:
+                    zValue = 5                                      # final top most 
+                elif airfoils_with_design:
                     if airfoil.usedAsDesign:
                         width = 2
                         antialias = True
@@ -1084,6 +1086,9 @@ class Polar_Artist (Artist):
 
         if self._show_points:
             linewidth=0.5
+        elif airfoil.usedAs == usedAs.FINAL:  
+            linewidth=1.5
+            antialias = True
         elif airfoil.usedAs == usedAs.DESIGN:  
             linewidth=1.5
             antialias = True
@@ -1095,7 +1100,9 @@ class Polar_Artist (Artist):
 
         # NORMAl and DESIGN polar above other polars 
 
-        if airfoil.usedAs == usedAs.DESIGN:
+        if airfoil.usedAs == usedAs.FINAL:
+            zValue = 5
+        elif airfoil.usedAs == usedAs.DESIGN:
             zValue = 3
         elif airfoil.usedAs == usedAs.NORMAL:
             zValue = 2

@@ -7,6 +7,7 @@ import shutil
 import datetime 
 
 from pathlib                import Path
+from typing                 import override
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, GEO_SPLINE, usedAs
 from model.polar_set        import Polar_Definition
@@ -34,12 +35,38 @@ class Case_Abstract:
     Abstract super class of the different 'cases' like optimization, direct design
     """
 
+    DESIGN_DIR_EXT = "_designs"
+    DESIGN_NAME_BASE = "Design"
+
+    @classmethod
+    def design_fileName (cls, iDesign : int, extension : str) -> str:
+        """ returns fileName of design iDesign"""
+
+        return f"{cls.DESIGN_NAME_BASE}{iDesign:4}{extension}"
+
+
+    # ---------------------------------
+
     def __init__(self):
 
         self._airfoil_seed     = None                   
         self._airfoil_final    = None
-        self._airfoil_designs  = None 
+        self._workingDir       = None 
+        self._airfoil_designs  = [] 
 
+    def __repr__(self) -> str:
+        """ nice print string"""
+        return f"<{type(self).__name__} {self.name}>"
+
+    @property
+    def name (self) -> str:
+        # to be overridden 
+        return "no name" 
+
+    @property
+    def workingDir (self) -> str:
+        """working directory where airfoil or input file is located"""
+        return self._workingDir
 
     @property
     def airfoil_seed (self) -> Airfoil: 
@@ -50,27 +77,49 @@ class Case_Abstract:
     def airfoil_final (self) -> Airfoil: 
         """ final airfoil"""
         return self._airfoil_final
+
+    @property
+    def airfoil_designs (self) -> list[Airfoil]: 
+        """ list of airfoil designs - to be overridden"""
+        return self._airfoil_designs     
+
+
+    def initial_airfoil_design (self) -> Airfoil:
+        """ first initial design as the working airfoil """
+
+        # to be overlaoded         
+        return  self.airfoil_designs[-1] if self.airfoil_designs else None 
+
     
 
+    def close (self, remove_designs : bool | None = None):
+        """ shut down activities - to be overridden Design 
+        """
+        pass
+
+
+# -------------------------------------------------------------------
     
 class Case_Direct_Design (Case_Abstract):
     """
     A Direct Design Case: Manual modifications of an airfoil 
     """
 
-    DESIGN_DIR_EXT = "_designs"
-    DESIGN_NAME_BASE = "Design"
-
     def __init__(self, airfoil: Airfoil):
 
         super().__init__()
 
-        self._airfoil_seed = airfoil 
+        self._airfoil_seed = airfoil
+        self._workingDir   = airfoil.pathName 
 
         # create design directory 
         if not os.path.isdir (self.design_dir):
             os.makedirs(self.design_dir)
 
+
+    @property
+    def name (self) -> str:
+        return self._airfoil_seed.fileName
 
     @property
     def design_dir (self) -> str:
@@ -82,17 +131,18 @@ class Case_Direct_Design (Case_Abstract):
         return os.path.join(dir, design_dir_name)
 
 
+    @override
     @property
     def airfoil_designs (self) -> list[Airfoil]: 
         """ list of airfoil designs"""
-        if self._airfoil_designs is None: 
+        if not self._airfoil_designs: 
             reader = Reader_Airfoil_Designs(self.design_dir)
             self._airfoil_designs = reader.read_all(prefix=self.DESIGN_NAME_BASE,
                                                     extension=self.airfoil_seed.fileName_ext)
         return self._airfoil_designs 
       
 
-    def first_working_design (self) -> Airfoil:
+    def initial_airfoil_design (self) -> Airfoil:
         """ 
         returns first design as the working airfoil - either 
             - normalized version of seed airfoil 
@@ -130,7 +180,7 @@ class Case_Direct_Design (Case_Abstract):
 
         # save and append copy to list of designs
 
-        fileName = f"{self.DESIGN_NAME_BASE}{iDesign:4}{airfoil.Extension}"
+        fileName = self.design_fileName (iDesign, airfoil.Extension)
         pathFileName = os.path.join (self.design_dir, fileName)
 
         airfoil_copy = airfoil.asCopy_design (pathFileName=pathFileName)
@@ -237,6 +287,7 @@ class Case_Direct_Design (Case_Abstract):
         return airfoil
 
 
+    @override
     def close (self, remove_designs : bool | None = None):
         """ 
         closes Case - remove design directory 
@@ -265,13 +316,79 @@ class Case_Optimize (Case_Abstract):
 
     INPUT_FILE_EXT = [".inp", ".xo2"]
 
-    def __init__(self, airfoil_or_input_file : Airfoil | str):
+
+    @staticmethod
+    def input_fileNames_in_dir (workingDir :  str | None) -> list[str]: 
+        """ 
+        Returns list of xo2 input file path in directory workingDir
+        All .dat, .bez and .hicks files are collected 
+        """
+
+        if workingDir is None or not os.path.isdir (workingDir): return []
+
+        input_files = []
+        for extension in Case_Optimize.INPUT_FILE_EXT:
+            input_files = input_files + fnmatch.filter(os.listdir(workingDir), f"*{extension}")
+        return sorted (input_files, key=str.casefold)
+
+
+
+    @staticmethod
+    def input_fileName_of (airfoil : Airfoil) -> str:
+        """ returns fileName of xo2 input file belonging to airfoil - or None if not existing"""
+
+        for extension in Case_Optimize.INPUT_FILE_EXT:
+            pathFileName = os.path.join (airfoil.pathName, airfoil.fileName_stem + extension)
+            if os.path.isfile (pathFileName):
+                return airfoil.fileName_stem + extension
+        return None 
+
+
+    @staticmethod
+    def new_input_fileName_version (input_fileName : str, workingDir=None) -> str:
+        """ 
+        returns new fileName of xo2 input file with _vXX appended. 
+        """
+
+        if not input_fileName: 
+            raise ValueError (f"Input_fileName is missing")
+
+        new_fileName = None 
+
+        if os.path.isfile (os.path.join (workingDir, input_fileName)):
+
+            fileName_stem = Path(input_fileName).stem
+            fileName_ext  = os.path.splitext(input_fileName)[1]
+
+            # already a version number appended to fileName?
+            digits =""
+            for i in reversed(range(len(fileName_stem))):
+                if fileName_stem[i].isdigit():
+                    digits = fileName_stem[i] + digits
+                else: 
+                    break
+            if digits and i > 0 and fileName_stem[i] == 'v':
+                new_fileName = input_fileName
+                new_version  = int(digits)
+                # loop until unused version number is found 
+                while os.path.isfile (os.path.join (workingDir, new_fileName)):
+                    new_version +=  1
+                    new_fileName = f"{fileName_stem[:i+1]}{new_version}{fileName_ext}"
+            
+            # no - create first version 
+            if new_fileName is None: 
+                new_fileName = f"{fileName_stem}_v1{fileName_ext}"
+
+        return new_fileName
+
+
+
+    def __init__(self, airfoil_or_input_file : Airfoil | str, workingDir=None):
 
         self._airfoil_seed     = None   
         self._airfoil_final    = None
         self._airfoil_designs  = None 
 
-        self._workingDir       = None
         self._input_file       = None
         self._results          = None
 
@@ -279,22 +396,21 @@ class Case_Optimize (Case_Abstract):
 
         if isinstance (airfoil_or_input_file, Airfoil):
             airfoil : Airfoil = airfoil_or_input_file
-            input_fileName = self._get_input_fileName (airfoil) 
+            input_fileName = self.input_fileName_of (airfoil) 
 
             self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName)
-            self._airfoil_final = airfoil_or_input_file
-            self._airfoil_final.set_usedAs (usedAs.FINAL)
+            self._workingDir    = airfoil.pathName
 
         elif isinstance (airfoil_or_input_file, str):
 
-            fileName : str = airfoil_or_input_file
-            self._input_file    = Input_File (fileName)
+            fileName : str      = airfoil_or_input_file
+            self._input_file    = Input_File (fileName, workingDir=workingDir)
+            self._workingDir    = workingDir
 
         else: 
             raise ValueError (f"{airfoil_or_input_file} not a valid argument")
         
 
-        self._workingDir = airfoil.pathName
 
         # init xo2 controller
 
@@ -305,20 +421,31 @@ class Case_Optimize (Case_Abstract):
         self._results = Xo2_Results (self.workingDir, self.outName)
 
 
-    def _get_input_fileName (self, airfoil : Airfoil) -> str:
-        """ returns fileName of xo2 input file belonging to airfoil - or None if not existing"""
-
-        for extension in Case_Optimize.INPUT_FILE_EXT:
-            pathFileName = os.path.join (airfoil.pathName, airfoil.fileName_stem + extension)
-            if os.path.isfile (pathFileName):
-                return airfoil.fileName_stem + extension
-        return None 
-
-
     @property
-    def workingDir (self) -> str:
-        """working directory where input file is located"""
-        return self._workingDir
+    def name (self) -> str:
+       return self.input_file.fileName
+
+
+    @override
+    @property
+    def airfoil_seed (self) -> Airfoil: 
+        """ seed or initial airfoil"""
+        return self.input_file.airfoil_seed 
+    
+    @override
+    @property
+    def airfoil_final (self) -> Airfoil: 
+        """ final airfoil - get it from xo2 results"""
+        if self.isRunning:
+            return None                                                 # no final during run 
+        else:
+            return self.results.airfoil_final
+
+    @override
+    @property
+    def airfoil_designs (self) -> list [Airfoil]:
+        """ list of airfoil designs"""
+        return self.results.designs_airfoil
 
 
     @property
@@ -371,11 +498,12 @@ class Case_Optimize (Case_Abstract):
 
         try: 
             if os.path.isfile (self.input_file.pathFileName) and \
-               os.path.isfile (self._airfoil_final.pathFileName) and \
-               os.path.isdir  (self.results.resultDir) and self.xo2.isReady:
-                
+               os.path.isdir  (self.results.resultDir) and \
+               self.xo2.isReady and \
+               self.airfoil_final is not None: 
+                                
                 results_dir_dt = datetime.datetime.fromtimestamp(os.path.getmtime(self.results.resultDir))
-                airfoil_dt     = datetime.datetime.fromtimestamp(os.path.getmtime(self._airfoil_final.pathFileName))
+                airfoil_dt     = datetime.datetime.fromtimestamp(os.path.getmtime(self.airfoil_final.pathFileName_abs))
 
                 if airfoil_dt > results_dir_dt:
                     isFinished = True
@@ -401,8 +529,8 @@ class Case_Optimize (Case_Abstract):
             rc = self.xo2.run (self.outName, self.input_file.fileName)
 
             if rc == 0: 
-                # re-init results - remove result_dir as Xoptfoil2 is slow 
-                self._results = Xo2_Results (self.workingDir, self.outName, remove_result_dir=True)
+                # re-init results - remove result_dir and result airfoil as Xoptfoil2 is slow 
+                self._results = Xo2_Results (self.workingDir, self.outName, remove_result_dir=True, remove_airfoil=True)
                 self._results.set_results_could_be_dirty ()
 
 
