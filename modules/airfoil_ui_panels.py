@@ -46,9 +46,10 @@ class Panel_Airfoil_Abstract (Edit_Panel):
 
     def geo (self) -> Geometry:
         return self.airfoil().geo
-    
+
+    @property    
     def case (self) -> Case_Abstract:
-        return self.myApp.case()
+        return self.myApp.case
 
 
     @override
@@ -173,7 +174,7 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
 
     @property
     def case (self) -> Case_Direct_Design:
-        return self.myApp.case()
+        return self.myApp.case
 
 
     def _init_layout (self): 

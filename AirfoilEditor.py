@@ -293,7 +293,7 @@ class App_Main (QMainWindow):
 
         return l_main 
 
-
+    @property
     def case (self) -> Case_Abstract:
         """ design or optimize case holding all design airfoils"""
         return self._case 
@@ -373,8 +373,8 @@ class App_Main (QMainWindow):
     @property
     def workingDir (self) -> str: 
         """ directory we are currently in (equals dir of airfoil)"""
-        if self.case():                                         # case working dir has prio 
-            return self.case().workingDir
+        if self.case:                                         # case working dir has prio 
+            return self.case.workingDir
         elif self._airfoil_org:                                 # modify mode use airfoil org   
             return self._airfoil_org.pathName
         elif self.airfoil():                                     
@@ -442,8 +442,8 @@ class App_Main (QMainWindow):
     @property
     def airfoil_seed (self) -> Airfoil | None:
         """ seed airfoil of optimization"""
-        if self.mode_optimize and self.case():
-            seed =  self.case().airfoil_seed
+        if self.mode_optimize and self.case:
+            seed =  self.case.airfoil_seed
             if not seed.polarSet:
                seed.set_polarSet (Polar_Set (seed, polar_def=self.polar_definitions(), only_active=True))
             return seed
@@ -452,8 +452,8 @@ class App_Main (QMainWindow):
     @property
     def airfoil_final (self) -> Airfoil | None:
         """ final airfoil of optimization"""
-        if self.mode_optimize and self.case():
-            final =  self.case().airfoil_final
+        if self.mode_optimize and self.case:
+            final =  self.case.airfoil_final
             if final and not final.polarSet:
                final.set_polarSet (Polar_Set (final, polar_def=self.polar_definitions(), only_active=True))
             return final
@@ -516,7 +516,7 @@ class App_Main (QMainWindow):
 
         if ok:
             # create new, final airfoil based on actual design and path from airfoil org 
-            new_airfoil = self.case().get_final_from_design (self.airfoil_org, self.airfoil())
+            new_airfoil = self.case.get_final_from_design (self.airfoil_org, self.airfoil())
 
             # dialog to edit name, chose path, ..
 
@@ -535,7 +535,7 @@ class App_Main (QMainWindow):
 
         # close case 
 
-        self.case().close (remove_designs=remove_designs)       # shut down case
+        self.case.close (remove_designs=remove_designs)       # shut down case
         self.set_case (None)                                
 
         self.set_mode_modify (False)  
@@ -557,11 +557,11 @@ class App_Main (QMainWindow):
 
         if ok:
             # be sure input file data is written to file 
-            case: Case_Optimize = self.case()
+            case: Case_Optimize = self.case
             if case.input_file.isChanged:
                 case.input_file.save_nml()
 
-            new_airfoil = self.case().airfoil_final
+            new_airfoil = self.case.airfoil_final
         else: 
             new_airfoil = self._airfoil_org                 # restore original airfoil 
 
@@ -583,7 +583,7 @@ class App_Main (QMainWindow):
         """ change current optimization case to new input file """
 
         # check if changes were made in current case 
-        case: Case_Optimize = self.case()
+        case: Case_Optimize = self.case
         if isinstance (case, Case_Optimize):
             if case.input_file.isChanged:
                 text = f"Save changes made for {case.name}?"
@@ -602,7 +602,7 @@ class App_Main (QMainWindow):
         # set new case 
         self.set_case_optimize (Case_Optimize (input_fileName, workingDir=workingDir))
 
-        self.set_airfoil (self.case().initial_airfoil_design(), silent=True)     # maybe there is already an existing design 
+        self.set_airfoil (self.case.initial_airfoil_design(), silent=True)     # maybe there is already an existing design 
 
         # replace polar definitions with the ones defined by Xo2 input file 
         self.refresh_polar_sets (silent=True)
@@ -652,7 +652,7 @@ class App_Main (QMainWindow):
         self.set_case (Case_Direct_Design (self._airfoil))
 
         self.set_mode_modify (True)       
-        self.set_airfoil (self.case().initial_airfoil_design(), silent=False)
+        self.set_airfoil (self.case.initial_airfoil_design(), silent=False)
 
 
     def optimize_airfoil (self):
@@ -706,7 +706,7 @@ class App_Main (QMainWindow):
         self.set_case (Case_Direct_Design (airfoil_bez))
 
         self.set_mode_modify (True)  
-        self.set_airfoil (self.case().initial_airfoil_design() , silent=False)
+        self.set_airfoil (self.case.initial_airfoil_design() , silent=False)
   
 
 
@@ -793,11 +793,11 @@ class App_Main (QMainWindow):
 
         # be sure input file data is written to file 
 
-        case: Case_Optimize = self.case()
+        case: Case_Optimize = self.case
         saved = case.input_file.save_nml()
 
 
-        diag = Xo2_Run_Dialog (self._file_panel, self.case(), dx=100, dy=-400)
+        diag = Xo2_Run_Dialog (self._file_panel, self.case, dx=100, dy=-400)
 
         diag.sig_finished.connect (self._optimize_run_finished)
 
@@ -846,7 +846,7 @@ class App_Main (QMainWindow):
 
         if self.mode_modify and self.airfoil().usedAsDesign: 
 
-            self.case().add_design(self.airfoil())
+            self.case.add_design(self.airfoil())
 
             self.set_airfoil (self.airfoil())                # new DESIGN - inform diagram       
 
@@ -856,7 +856,7 @@ class App_Main (QMainWindow):
     def _on_xo2_input_changed (self):
         """ slot handle change of xo2 input data"""
 
-        case : Case_Optimize = self.case()
+        case : Case_Optimize = self.case
 
         # polar definitions could have changed - update polarSets of airfoils 
         self.refresh_polar_sets (silent=True)
@@ -886,9 +886,11 @@ class App_Main (QMainWindow):
     def _on_new_xo2_design (self, iDesign):
         """ slot to handle new design during Xoptfoil2 run"""
 
+        if not self.case.airfoil_designs: return 
+
         logger.debug (f"{str(self)} on Xoptfoil2 new design {iDesign}")
 
-        airfoil_design = self.case().airfoil_designs [-1]
+        airfoil_design = self.case.airfoil_designs [-1]
         
         self.set_airfoil (airfoil_design, silent=True)                      # new current airfoil
 
@@ -1051,7 +1053,7 @@ class Watchdog (QThread):
 
         self._case_optimize_fn = None                           # Case_Optimize to watch      
         self._xo2_state        = None                           # last run state of xo2
-        self._xo2_nDesigns       = None                           # last actual steps    
+        self._xo2_nDesigns     = 0                              # last actual steps    
 
 
     def __repr__(self) -> str:
