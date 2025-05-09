@@ -678,7 +678,7 @@ class Bezier_Deviation_Artist (Artist):
 
 
 
-class Hcks_Henne_Artist (Artist):
+class Hicks_Henne_Artist (Artist):
     """Plot and edit airfoils Hicks Henne functions of airfoils  """
 
     @property
@@ -686,7 +686,7 @@ class Hcks_Henne_Artist (Artist):
 
     def _plot (self): 
     
-        airfoil: Airfoil
+        y_factor = 20 
 
         for airfoil in self.airfoils:
             if airfoil.isHicksHenneBased and airfoil.isLoaded:
@@ -694,31 +694,36 @@ class Hcks_Henne_Artist (Artist):
                 color_airfoil = _color_airfoil (self.airfoils, airfoil)
 
                 side : Side_Airfoil_HicksHenne
-                for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
+                for side in [airfoil.geo.upper, airfoil.geo.lower]:     # paint upper on top 
 
                     hh : HicksHenne
                     for ih, hh in enumerate(side.hhs):
 
                         color = color_in_series (color_airfoil,ih, len(side.hhs), delta_hue=0.2)    
-                        pen = pg.mkPen(color, width=0.7)
+                        style = Qt.PenStyle.DashDotDotLine if side.isUpper else Qt.PenStyle.DashLine
+                        pen   = pg.mkPen(color, width=0.7, style=style)
+
+                        if ih == 0:
+                            label = f"Hicks Henne upper x {y_factor}" if side.isUpper else f"Hicks Henne lower x {y_factor}"
+                        else: 
+                            label = None 
 
                         # plot hh function 
                         x = side.x 
-                        y = hh.eval (x) * 10.0 # + delta_y
+                        y = hh.eval (x) * y_factor # + delta_y
 
-                        self._plot_dataItem  (x, y,pen = pen, antialias = False, zValue=1)
+                        self._plot_dataItem  (x, y,pen = pen, antialias = False, zValue=4, name=label)
 
+                        # plot maximum marker 
 
-    #             # plot maximum marker 
-    #             x = hh.location
-    #             y = hh.strength  * 10 + delta_y
-    #             color =self._get_color (p) 
-    #             p = self.ax.plot (x, y, color=color, **ms_point)
-    #             self._add(p)
+                        x = hh.location
+                        y = hh.strength  * y_factor   
 
-    #             p = self.ax.annotate(f'{ih+1}  w{hh.width:.2f}', (x, y), fontsize='small',
-    #                 xytext=(3, 3), textcoords='offset points', color = color)
-    #             self._add(p)
+                        text = f"HH{ih+1}"
+                        anchor = (-0.05,1.05) if side.isUpper else (-0.05,-0.05)
+
+                        self._plot_point (x, y, symbol = '+', color=color, text=text, textColor=color, anchor=anchor,
+                                          zValue=4)
 
  
 

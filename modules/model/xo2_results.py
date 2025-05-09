@@ -1071,7 +1071,7 @@ class Reader_Airfoils_HH (Reader_Abstract):
             airfoil.set_xy (self._seed_x,self._seed_y)
             airfoil.set_pathFileName (os.path.join(self._resultDir, self._seed_name + '.dat'), noCheck=True)
             airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  
-            airfoil.set_usedAs (usedAs.SEED_DESIGN)
+            airfoil.set_usedAs (usedAs.DESIGN)
             self._results.append(airfoil)
 
         # create hicks henne airfoil out of upper and lower hh functions 

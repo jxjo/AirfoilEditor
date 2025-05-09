@@ -59,9 +59,14 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
     def _is_one_airfoil_bezier (self) -> bool: 
         """ is one of airfoils Bezier based? """
-        a : Airfoil
         for a in self.airfoils():
             if a.isBezierBased: return True
+        return False 
+
+    def _is_one_airfoil_hicks_henne (self) -> bool: 
+        """ is one of airfoils Hicks Henne based? """
+        for a in self.airfoils():
+            if a.isHicksHenneBased: return True
         return False 
 
 
@@ -146,7 +151,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.bezier_artist = Bezier_Artist (self, self.airfoils)
         self.bezier_artist.sig_bezier_changed.connect (self.sig_geometry_changed.emit)
 
-        self.hicks_henne_artist = Hcks_Henne_Artist (self, self.airfoils)
+        self.hicks_henne_artist = Hicks_Henne_Artist (self, self.airfoils, show_legend=True)
 
         self.bezier_devi_artist = Bezier_Deviation_Artist (self, self.airfoils, show=False, show_legend=True)
 
@@ -207,6 +212,16 @@ class Diagram_Item_Airfoil (Diagram_Item):
                     get=lambda: self.line_artist.show,
                     set=self.line_artist.set_show) 
             r += 1
+            CheckBox (l,r,c, text="Bezier control points", colSpan=2,
+                    get=lambda: self.bezier_artist.show,
+                    set=self.bezier_artist.set_show,
+                    hide=lambda : not self._is_one_airfoil_bezier()) 
+            r += 1
+            CheckBox (l,r,c, text="Hicks Henne functions", colSpan=2,
+                    get=lambda: self.hicks_henne_artist.show,
+                    set=self.hicks_henne_artist.set_show,
+                    hide=lambda : not self._is_one_airfoil_hicks_henne()) 
+            r += 1
             CheckBox (l,r,c, text="Stretch y axis", 
                     get=lambda: self.stretch_y,
                     set=self.set_stretch_y) 
@@ -214,11 +229,6 @@ class Diagram_Item_Airfoil (Diagram_Item):
                     get=lambda: self.stretch_y_factor,
                     set=self.set_stretch_y_factor,
                     hide=lambda: not self.stretch_y) 
-            r += 1
-            CheckBox (l,r,c, text="Bezier control points", colSpan=2,
-                    get=lambda: self.bezier_artist.show,
-                    set=self.bezier_artist.set_show,
-                    hide=lambda : not self._is_one_airfoil_bezier()) 
             r += 1
             CheckBox (l,r,c, text="Deviation of Design", colSpan=2,
                     get=lambda: self.bezier_devi_artist.show,
