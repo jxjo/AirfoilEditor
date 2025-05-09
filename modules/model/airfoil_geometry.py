@@ -1488,7 +1488,7 @@ class Side_Airfoil_HicksHenne (Line):
     def y (self)  -> np.ndarray: 
         # overloaded  - sum up hicks henne functions to seed_y
 
-        if self._y is None: 
+        if isinstance(self._y, np.ndarray) and not self._y.any(): 
             self._y = self._seed_y
             hh : HicksHenne
 
@@ -3089,7 +3089,7 @@ class Geometry_HicksHenne (Geometry):
             iLe = int(np.argmin (self._seed_x))
             upper_x = np.flip (self._seed_x [0: iLe + 1])
             upper_y = np.flip (self._seed_y [0: iLe + 1])
-            self._upper = Side_Airfoil_HicksHenne (upper_x, upper_y, [], type=Line.Type.UPPER)
+            self._upper = Side_Airfoil_HicksHenne (upper_x, upper_y, [], linetype=Line.Type.UPPER)
         return self._upper 
             
     @property
@@ -3100,7 +3100,7 @@ class Geometry_HicksHenne (Geometry):
             iLe = int(np.argmin (self._seed_x))
             lower_x = self._seed_x [iLe:]
             lower_y = self._seed_y [iLe:]
-            self._lower = Side_Airfoil_HicksHenne (lower_x, lower_y, [], type=Line.Type.LOWER)
+            self._lower = Side_Airfoil_HicksHenne (lower_x, lower_y, [], linetype=Line.Type.LOWER)
         return self._lower 
             
     @property

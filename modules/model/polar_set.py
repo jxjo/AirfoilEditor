@@ -44,7 +44,8 @@ from base.common_utils      import *
 from base.math_util         import * 
 from base.spline            import Spline1D, Spline2D
 
-from model.airfoil          import Airfoil, GEO_BASIC, GEO_SPLINE, usedAs
+from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
+from model.airfoil          import GEO_BASIC, GEO_SPLINE, usedAs
 from model.xo2_driver       import Worker, file_in_use   
 
 
@@ -369,21 +370,22 @@ class Polar_Set:
     def airfoil (self) -> Airfoil: return self._airfoil
 
     @property
-    def airfoil_abs_pathFileName (self):
+    def airfoil_abs_pathFileName (self) -> str:
         """ returns absolute path of airfoil"""
         abs_path = None
         if self.airfoil:
-            pathFileName = self.airfoil.pathFileName  
-            if os.path.isabs (pathFileName):
-                abs_path = pathFileName
-            else:
-                abs_path = os.path.join (self._airfoil.workingDir, pathFileName)
+            abs_path = self.airfoil.pathFileName_abs
 
-        # in case of Bezier we'll write only the .bez file 
-        if self.airfoil.isBezierBased:
-            abs_path = os.path.splitext(abs_path)[0] + ".bez"
+            # in case of Bezier we'll write only the .bez file 
+            if self.airfoil.isBezierBased:
+                abs_path = os.path.splitext(abs_path)[0] + Airfoil_Bezier.Extension
+
+            # in case of hicks henne .dat is used 
+            elif self.airfoil.isHicksHenneBased:
+                abs_path = os.path.splitext(abs_path)[0] + Airfoil.Extension
 
         return abs_path
+
 
     def airfoil_ensure_being_saved (self):
         """ check and ensure that airfoil is saved to file (Worker needs it)"""
@@ -395,7 +397,7 @@ class Polar_Set:
                 self.airfoil.save(onlyShapeFile=True)
             else: 
                 self.airfoil.save()
-            logging.debug (f'Airfoil {self.airfoil} saved for polar generation') 
+            logging.debug (f'Airfoil {self.airfoil_abs_pathFileName} saved for polar generation') 
 
 
     @property

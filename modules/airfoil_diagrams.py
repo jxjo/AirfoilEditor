@@ -65,11 +65,11 @@ class Diagram_Item_Airfoil (Diagram_Item):
         return False 
 
 
-    def _is_one_design (self) -> bool: 
+    def _is_design_and_bezier (self) -> bool: 
         """ is one airfoil used as design ?"""
 
         for a in self.airfoils():
-            if a.usedAsDesign:
+            if a.usedAsDesign and a.isBezierBased:
                 return True 
         return False
 
@@ -146,6 +146,8 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.bezier_artist = Bezier_Artist (self, self.airfoils)
         self.bezier_artist.sig_bezier_changed.connect (self.sig_geometry_changed.emit)
 
+        self.hicks_henne_artist = Hcks_Henne_Artist (self, self.airfoils)
+
         self.bezier_devi_artist = Bezier_Deviation_Artist (self, self.airfoils, show=False, show_legend=True)
 
 
@@ -174,7 +176,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.line_artist.refresh() 
 
         # switch off deviation artist if not design
-        if not self._is_one_design():
+        if not self._is_design_and_bezier():
             self.bezier_devi_artist.set_show(False)
         else: 
             self.bezier_devi_artist.refresh()
@@ -185,6 +187,10 @@ class Diagram_Item_Airfoil (Diagram_Item):
             self.bezier_artist.set_show (True)
         else: 
             self.bezier_artist.refresh() 
+
+        # show Hicks Henne shape functions 
+        self.hicks_henne_artist.refresh()
+
 
     @property
     def section_panel (self) -> Edit_Panel:
@@ -217,7 +223,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             CheckBox (l,r,c, text="Deviation of Design", colSpan=2,
                     get=lambda: self.bezier_devi_artist.show,
                     set=self.bezier_devi_artist.set_show,
-                    hide=lambda : not self._is_one_design()) 
+                    hide=lambda : not self._is_design_and_bezier()) 
             r += 1
             l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)

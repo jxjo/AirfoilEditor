@@ -2280,11 +2280,17 @@ class Nml_curvature (Nml_Abstract):
 
     @property
     def max_curv_reverse_top (self) -> int:     return self._get('max_curv_reverse_top', default=0) 
-    def set_max_curv_reverse_top (self, aVal:int): self._set('max_curv_reverse_top', clip (int(aVal), 0, 5))
+    def set_max_curv_reverse_top (self, aVal: int | bool):
+        if isinstance (aVal, bool):
+            aVal = 1 if aVal else 0
+        self._set('max_curv_reverse_top', clip (int(aVal), 0, 5))
 
     @property
     def max_curv_reverse_bot (self) -> int:     return self._get('max_curv_reverse_bot', default=0) 
-    def set_max_curv_reverse_bot (self, aVal:int): self._set('max_curv_reverse_bot', clip (int(aVal), 0, 5))
+    def set_max_curv_reverse_bot (self, aVal: int | bool): 
+        if isinstance (aVal, bool):
+            aVal = 1 if aVal else 0
+        self._set('max_curv_reverse_bot', clip (int(aVal), 0, 5))
 
     @property
     def curv_threshold (self) -> float:         return self._get('curv_threshold', default=0.1) 

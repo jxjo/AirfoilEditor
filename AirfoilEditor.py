@@ -179,7 +179,7 @@ class App_Main (QMainWindow):
         self._file_panel    = Container_Panel (title="File panel", width=250)
         self._diagram       = Diagram_Airfoil_Polar (self, self.airfoils, 
                                                      polar_defs_fn = self.polar_definitions,
-                                                     case_fn = self.case, 
+                                                     case_fn = lambda: self.case, 
                                                      diagram_settings= Settings().get('diagram_settings', []))
 
         l_main = self._init_layout() 
@@ -245,12 +245,13 @@ class App_Main (QMainWindow):
         #                 | Geometry  | Coordinates | ... >| 
 
         l_xo2 = QHBoxLayout()        
-        l_xo2.addWidget (Panel_Xo2_Case                    (self, self.case))
-        l_xo2.addWidget (Panel_Xo2_Shape_Bezier            (self, self.case))
-        l_xo2.addWidget (Panel_Xo2_Shape_Hicks_Henne       (self, self.case))
-        l_xo2.addWidget (Panel_Xo2_Shape_Camb_Thick        (self, self.case))
-        l_xo2.addWidget (Panel_Xo2_Operating_Conditions    (self, self.case))
-        l_xo2.addWidget (Panel_Xo2_Geometry_Targets        (self, self.case))
+        l_xo2.addWidget (Panel_Xo2_Case                    (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Shape_Bezier            (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Shape_Hicks_Henne       (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Shape_Camb_Thick        (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case))
         
         l_xo2.setContentsMargins (QMargins(0, 0, 0, 0))
         self._xo2_panel.setLayout (l_xo2)
@@ -266,7 +267,7 @@ class App_Main (QMainWindow):
 
         l_file = QHBoxLayout()
         l_file.addWidget (Panel_File_Modify     (self, self.airfoil))
-        l_file.addWidget (Panel_File_Optimize   (self, self.case))
+        l_file.addWidget (Panel_File_Optimize   (self, lambda: self.case))
         l_file.addWidget (Panel_File_View       (self, self.airfoil))
         l_file.setContentsMargins (QMargins(0, 0, 0, 0))
         self._file_panel.setLayout (l_file)
@@ -613,6 +614,9 @@ class App_Main (QMainWindow):
 
     def refresh(self):
         """ refreshes all child panels of edit_panel """
+
+        logger.debug (f"{self} refresh main panels")
+
         self._xo2_panel.refresh()
         self._data_panel.refresh()
         self._file_panel.refresh()
@@ -630,8 +634,7 @@ class App_Main (QMainWindow):
             # check changes to avoid unnecessary refresh
             if not new_polarSet.is_equal_to (airfoil.polarSet):
                 changed = True 
-
-            airfoil.set_polarSet (new_polarSet)
+                airfoil.set_polarSet (new_polarSet)
 
         if not silent and changed: 
             self._xo2_panel.refresh()
@@ -678,6 +681,8 @@ class App_Main (QMainWindow):
 
             if rc == QDialog.DialogCode.Accepted:
                 case = Case_Optimize (diag.input_fileName, workingDir=diag.workingDir)
+            else:
+                return
 
         self.set_case_optimize (case, silent=True)    
 
@@ -803,10 +808,10 @@ class App_Main (QMainWindow):
 
         # connect watchdog of xo2 to dialog 
 
-        self._watchdog.set_case_optimize (self.case)
+        self._watchdog.set_case_optimize (lambda: self.case)
+
         self._watchdog.sig_xo2_new_state.connect        (self._data_panel.refresh)
         self._watchdog.sig_xo2_new_state.connect        (self._file_panel.refresh)
-
         self._watchdog.sig_xo2_new_state.connect        (diag.on_results)
         self._watchdog.sig_xo2_new_design.connect       (diag.on_results)
         self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
@@ -856,13 +861,14 @@ class App_Main (QMainWindow):
     def _on_xo2_input_changed (self):
         """ slot handle change of xo2 input data"""
 
+        logger.debug (f"{self} on_xo2_input_changed")
+
+        # write back opPoint definitions to namelist for change detection (save)
         case : Case_Optimize = self.case
+        case.input_file.opPoint_defs.set_nml ()
 
         # polar definitions could have changed - update polarSets of airfoils 
         self.refresh_polar_sets (silent=True)
-
-        # write back opPoint definitions to namelist for change detection (save)
-        case.input_file.opPoint_defs.set_nml ()
 
         # also refresh opPoint definition dialog if open 
         if self._xo2_opPoint_def_dialog:
@@ -870,8 +876,6 @@ class App_Main (QMainWindow):
 
         self.refresh()
         self.sig_xo2_input_changed.emit()                                   # inform diagram 
-
-        logger.debug (f"{self} on_xo2_input_changed")
 
 
     def _on_new_xo2_state (self):

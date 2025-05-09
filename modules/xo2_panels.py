@@ -216,7 +216,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
     """ Main panel of optimization"""
 
     name = 'Case'
-    _width  = (350, 350)
+    _width  = (300, None)
 
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
@@ -314,7 +314,7 @@ class Panel_Xo2_Shape_Bezier (Panel_Xo2_Abstract):
     """ Edit Bezier options """
 
     name = 'Bezier Options '
-    _width  = (250, None)
+    _width  = (210, None)
 
 
     @override
@@ -363,7 +363,7 @@ class Panel_Xo2_Shape_Hicks_Henne (Panel_Xo2_Abstract):
     """ Edit Hicks Henne options """
 
     name = 'Hicks-Henne Options '
-    _width  = (250, None)
+    _width  = (210, None)
 
 
     @override
@@ -412,7 +412,7 @@ class Panel_Xo2_Shape_Camb_Thick (Panel_Xo2_Abstract):
     """ Edit Camb Thick options """
 
     name = 'Camb-Thick Options '
-    _width  = (250, None)
+    _width  = (210, None)
 
 
     @override
@@ -458,7 +458,7 @@ class Panel_Xo2_Shape_Camb_Thick (Panel_Xo2_Abstract):
         r += 1
         Label (l,r,c, colSpan=4, style=style.COMMENT,
                get=lambda: f"Will be {self.camb_thick_options.ndesign_var} design variables")        
-        l.setColumnMinimumWidth (0,110)
+        l.setColumnMinimumWidth (0,90)
         l.setColumnStretch (4,2)
 
         return l
@@ -470,7 +470,7 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
     """ Define seed airfoil"""
 
     name = 'Operating Conditions'
-    _width  = (450, None)
+    _width  = (320, None)
 
     def __init__ (self, *args, **kwargs):
 
@@ -505,28 +505,27 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ComboBox (l,r,c, lab="Default Polar", lab_disable=True, width=130, 
+        ComboBox (l,r,c, lab="Default Polar", lab_disable=True, width=130, colSpan=4,
                 get=lambda: self.opPoint_defs.polar_def_default.name, set=self.set_polar_def,
                 options=lambda: [polar_def.name for polar_def in self.polar_defs])
         r += 1
-        ComboBox (l,r,c, lab="Op Point", lab_disable=True, width=200,  
+        ComboBox (l,r,c, lab="Op Point", lab_disable=True, width=200, colSpan=4,
                 get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
                 set=self.set_cur_opPoint_def_from_label,
                 options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
-        ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self._edit_opPoint_def,
+        r += 1
+        ToolButton (l,r,c+1, icon=Icon.EDIT,   set=self._edit_opPoint_def,
                     disable=lambda: not self.cur_opPoint_def)
-        ToolButton (l,r,c+3, icon=Icon.DELETE, set=self._delete_opPoint_def,
+        ToolButton (l,r,c+2, icon=Icon.DELETE, set=self._delete_opPoint_def,
                     disable=lambda: not self.opPoint_defs)
-        ToolButton (l,r,c+4, icon=Icon.ADD, set=self._add_opPoint_def)
+        ToolButton (l,r,c+3, icon=Icon.ADD, set=self._add_opPoint_def)
 
         r += 1
-        SpaceR   (l,r)
-        r += 1
-        CheckBox (l,r,c, text="Dynamic Weighting", colSpan=2,
+        CheckBox (l,r,c, text="Dynamic Weighting", colSpan=4,
                 get=lambda: self.operating_conditions.dynamic_weighting, 
                 set=self.operating_conditions.set_dynamic_weighting)
         r += 1
-        CheckBox (l,r,c, text="Use Flaps", colSpan=2,
+        CheckBox (l,r,c, text="Use Flaps", colSpan=4,
                 get=lambda: self.operating_conditions.use_flap, 
                 set=self.operating_conditions.set_use_flap)
         r += 1
@@ -534,8 +533,9 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         l.setRowStretch (r,3)
         l.setColumnMinimumWidth (0,80)
         # l.setColumnStretch (2,1)
-        l.setColumnStretch (5,3)
-        return l 
+        l.setColumnStretch (4,2)
+
+        return l
 
 
     def set_polar_def (self, polar_def_str: str):
@@ -613,7 +613,7 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
     """ Edit geometry target """
 
     name = 'Geometry Targets'
-    _width  = (230, None)
+    _width  = (200, 200)
 
     @property
     def geometry_targets (self) -> Nml_geometry_targets:
@@ -666,6 +666,51 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
         l.setColumnMinimumWidth (0,20)
         l.setColumnMinimumWidth (1,70)
         l.setColumnStretch (4,2)
+
+        return l
+
+
+
+class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
+    """ Edit curvature paramters """
+
+    name = 'Curvature'
+    _width  = (200, 200)
+
+    @property
+    def curvature (self) -> Nml_curvature:
+        return self.case.input_file.nml_curvature
+
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        CheckBox    (l,r,c, text="Check curvature ", 
+                     get=lambda: self.curvature.check_curvature,
+                     set=self.curvature.set_check_curvature)
+        r += 1
+        Label       (l,r,c, style=style.COMMENT, 
+                     get="Allow reversal on ...",
+                     hide=lambda: not self.curvature.check_curvature)
+        r += 1
+        CheckBox    (l,r,c, text="Top side (reflexed)", 
+                     get=lambda: self.curvature.max_curv_reverse_top == 1,
+                     set=self.curvature.set_max_curv_reverse_top,
+                     hide=lambda: not self.curvature.check_curvature)
+        r += 1
+        CheckBox    (l,r,c, text="Bot side (rearloading)",  
+                     get=lambda: self.curvature.max_curv_reverse_bot == 1,
+                     set=self.curvature.set_max_curv_reverse_bot,
+                     hide=lambda: not self.curvature.check_curvature)
+        r += 1
+        Button      (l,r,c, text="More...",  width=60,
+                     get=lambda: None,
+                     set=None,
+                     hide=lambda: not self.curvature.check_curvature)
+        r += 1
+        l.setRowStretch (r,2)
+        l.setColumnStretch (0,2)
 
         return l
      

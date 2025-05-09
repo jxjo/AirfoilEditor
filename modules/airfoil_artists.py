@@ -13,10 +13,10 @@ from typing                     import Callable
 from base.math_util             import derivative1
 from base.artist                import *
 from base.common_utils          import *
-from base.spline                import Bezier
+from base.spline                import Bezier, HicksHenne
 
 from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry
-from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Geometry_Bezier
+from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
 from model.polar_set            import * 
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
@@ -609,50 +609,6 @@ class Bezier_Artist (Artist):
                         sc.sigMouseClicked.connect (p.scene_clicked)
 
 
-    # def draw_hicksHenne (self, airfoil: Airfoil_Bezier):
-    #     """ draw hicks henne functions of airfoil """
-
-    #     linewidth   = 1
-    #     linestyle   = ':'
-
-    #     side : Side_Airfoil_HicksHenne
-
-    #     for side in [airfoil.geo.upper, airfoil.geo.lower]:
-    #     # side = airfoil.geo.upper
-
-    #         if side.name == UPPER:
-    #             delta_y =  0.1
-    #         else:
-    #             delta_y = -0.1
-
-    #         hh : HicksHenne
-    #         for ih, hh in enumerate(side.hhs):
-
-    #             # plot hh function 
-    #             x = side.x 
-    #             y = hh.eval (x) 
-    #             p = self.ax.plot (x,y * 10 + delta_y, linestyle, linewidth=linewidth , alpha=1) 
-    #             self._add(p)
-
-    #             # plot maximum marker 
-    #             x = hh.location
-    #             y = hh.strength  * 10 + delta_y
-    #             color =self._get_color (p) 
-    #             p = self.ax.plot (x, y, color=color, **ms_point)
-    #             self._add(p)
-
-    #             p = self.ax.annotate(f'{ih+1}  w{hh.width:.2f}', (x, y), fontsize='small',
-    #                 xytext=(3, 3), textcoords='offset points', color = color)
-    #             self._add(p)
-
-    #         # print info text 
-
-    #         if self.show_title:    
-    #             p = _plot_side_title (self.ax, side)
-    #             self._add(p)
-
-
-
 
 class Bezier_Deviation_Artist (Artist):
     """Plot deviation of Bezier curves to target airfoil """
@@ -718,6 +674,53 @@ class Bezier_Deviation_Artist (Artist):
             if len(x_dbl):
                 self._plot_dataItem  (x_dbl, y_dbl, pen=pg.mkPen(color, width=3), name=label, 
                                         antialias=False, zValue=1, connect='pairs')    
+
+
+
+
+class Hcks_Henne_Artist (Artist):
+    """Plot and edit airfoils Hicks Henne functions of airfoils  """
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+    def _plot (self): 
+    
+        airfoil: Airfoil
+
+        for airfoil in self.airfoils:
+            if airfoil.isHicksHenneBased and airfoil.isLoaded:
+
+                color_airfoil = _color_airfoil (self.airfoils, airfoil)
+
+                side : Side_Airfoil_HicksHenne
+                for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
+
+                    hh : HicksHenne
+                    for ih, hh in enumerate(side.hhs):
+
+                        color = color_in_series (color_airfoil,ih, len(side.hhs), delta_hue=0.2)    
+                        pen = pg.mkPen(color, width=0.7)
+
+                        # plot hh function 
+                        x = side.x 
+                        y = hh.eval (x) * 10.0 # + delta_y
+
+                        self._plot_dataItem  (x, y,pen = pen, antialias = False, zValue=1)
+
+
+    #             # plot maximum marker 
+    #             x = hh.location
+    #             y = hh.strength  * 10 + delta_y
+    #             color =self._get_color (p) 
+    #             p = self.ax.plot (x, y, color=color, **ms_point)
+    #             self._add(p)
+
+    #             p = self.ax.annotate(f'{ih+1}  w{hh.width:.2f}', (x, y), fontsize='small',
+    #                 xytext=(3, 3), textcoords='offset points', color = color)
+    #             self._add(p)
+
+ 
 
 
 
