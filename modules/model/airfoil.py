@@ -232,7 +232,7 @@ class Airfoil:
             self.set_fileName (fileName_stem + mod_string + fileName_ext)
 
         self.set_isModified (True)
-        logging.debug (f"{self} - geometry changed: {modifications} ")
+        logger.debug (f"{self} - geometry changed: {modifications} ")
 
 
     # ----------  Properties ---------------
@@ -587,7 +587,7 @@ class Airfoil:
                     xval = float(splitline[0].strip())
                     yval = float(splitline[1].strip())
                     if xval == xvalPrev and yval == yvalPrev:   # avoid duplicate, dirty coordinates
-                        logging.warning ("Airfoil '%s' has duplicate coordinates - skipped." % self._name)
+                        logger.warning ("Airfoil '%s' has duplicate coordinates - skipped." % self._name)
                     else: 
                         x.append (xval)
                         y.append (yval) 
@@ -1027,13 +1027,13 @@ class Airfoil_Bezier(Airfoil):
                             px.append (float(splitline[0].strip()))
                             py.append (float(splitline[1].strip()))
         except ValueError as e:
-            logging.error ("While reading Bezier file '%s': %s " %(fromPath,e )) 
+            logger.error ("While reading Bezier file '%s': %s " %(fromPath,e )) 
             return  
          
         self._name = new_name
         self._isLoaded = True 
 
-        logging.debug (f"Bezier definition for {self.name} loaded")
+        logger.debug (f"Bezier definition for {self.name} loaded")
 
         return   
 
@@ -1222,9 +1222,9 @@ class Airfoil_Hicks_Henne(Airfoil):
                 self._geo.lower.set_hhs (bot_hhs)
 
                 self._isLoaded = True 
-                logging.debug (f"Hicks Henne definition for {self.name} loaded")
+                logger.debug (f"Hicks Henne definition for {self.name} loaded")
             else: 
-                logging.error (f"Hicks Henne seed airfoil {seed_name} couldn't be loaded ")
+                logger.error (f"Hicks Henne seed airfoil {seed_name} couldn't be loaded ")
         else: 
             raise ValueError (f"Hicks Henne seed airfoil data missing for {name}")
 
@@ -1307,7 +1307,7 @@ class Airfoil_Hicks_Henne(Airfoil):
                         width    = float(splitline[2].strip())
                         hhs.append (HicksHenne (strength, location, width ))
         except ValueError as e:
-            logging.error ("While reading Hicks Henne file '%s': %s " %(fromPath,e ))   
+            logger.error ("While reading Hicks Henne file '%s': %s " %(fromPath,e ))   
          
         return name, seed_name, x, y, top_hhs, bot_hhs   
 

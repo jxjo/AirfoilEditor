@@ -111,12 +111,12 @@ class Xo2_Controller:
             either: RUNNING, READY, NOT_READY, STOPPING  """     
 
      
-        if self.isRun_failed:
-            state = xo2_state.RUN_ERROR
-        elif self.isStop_requested:
+        if self.isStop_requested:
             state = xo2_state.STOPPING
         elif self.isRunning:
             state = xo2_state.RUNNING
+        elif self.isRun_failed:
+            state = xo2_state.RUN_ERROR
         elif not self.xoptfoil2.ready:
             state = xo2_state.NOT_READY
         else:

@@ -16,6 +16,7 @@ from model.airfoil          import Airfoil
 from model.polar_set        import *
 from model.case             import Case_Abstract, Case_Optimize
 from model.xo2_driver       import Worker, Xoptfoil2
+from model.xo2_results      import OpPoint_Result
 
 from airfoil_artists        import *
 from airfoil_ui_panels      import Panel_Polar_Defs, Panel_Airfoils 
@@ -42,7 +43,9 @@ class Diagram_Item_Airfoil (Diagram_Item):
     sig_geometry_changed         = pyqtSignal()          # airfoil data changed in a diagram 
 
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, case_fn=None, **kwargs):
+
+        self._case_fn   = case_fn 
 
         self._stretch_y         = False                 # show y stretched 
         self._stretch_y_factor  = 3                     # factor to stretch 
@@ -99,6 +102,33 @@ class Diagram_Item_Airfoil (Diagram_Item):
         logger.debug (f"{str(self)} _on_blend_airfoil")
 
 
+    @property 
+    def case (self) -> Case_Abstract:
+        """ actual case (Direct Design or Optimize)"""
+        return self._case_fn() if self._case_fn else None
+
+
+    @property
+    def design_airfoil (self) -> Airfoil:
+        """ design airfoil if it is available"""
+        for airfoil in self.airfoils():
+            if airfoil.usedAsDesign: return airfoil
+
+
+    @property 
+    def design_opPoints (self) -> OpPoint_Result:
+        """ opPoint result belonging to current design airfoil"""
+
+        case : Case_Optimize = self.case
+        designs_opPoints = case.results.designs_opPoints if isinstance (case, Case_Optimize) else []
+
+        try: 
+            i = self.case.airfoil_designs.index (self.design_airfoil)
+            return designs_opPoints[i]
+        except:
+            pass
+
+
     @property
     def stretch_y (self) -> bool:
         """ show y axis stretched"""
@@ -151,9 +181,13 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.bezier_artist = Bezier_Artist (self, self.airfoils)
         self.bezier_artist.sig_bezier_changed.connect (self.sig_geometry_changed.emit)
 
-        self.hicks_henne_artist = Hicks_Henne_Artist (self, self.airfoils, show_legend=True)
+        self.hicks_henne_artist = Hicks_Henne_Artist (self, self.airfoils, show_legend=True, show=False)
 
         self.bezier_devi_artist = Bezier_Deviation_Artist (self, self.airfoils, show=False, show_legend=True)
+
+        a  = Xo2_Transition_Artist (self, lambda: self.design_airfoil, show=False,
+                                    opPoints_result_fn=lambda: self.design_opPoints)
+        self._add_artist (a)
 
 
     @override
@@ -195,6 +229,9 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         # show Hicks Henne shape functions 
         self.hicks_henne_artist.refresh()
+
+        # the other artists
+        super().refresh_artists()
 
 
     @property
@@ -575,7 +612,7 @@ class Diagram_Item_Polars (Diagram_Item):
     def airfoils (self) -> list[Airfoil]: 
         return self._getter()
     
-
+    @property
     def opPoint_defs (self) -> list:
         """ Xo2 opPoint definitions"""
 
@@ -584,11 +621,44 @@ class Diagram_Item_Polars (Diagram_Item):
         else:
             return [] 
 
-    def designs_opPoints (self) -> list [list]:
-        """ designs of opPoints result"""
+
+    @property
+    def design_airfoil (self) -> Airfoil:
+        """ current design airfoil if it is available"""
+        for airfoil in self.airfoils():
+            if airfoil.usedAsDesign: return airfoil
+
+
+    @property 
+    def design_opPoints (self) -> list[OpPoint_Result]:
+        """ opPoint result belonging to current design airfoil"""
 
         case : Case_Optimize = self.case
-        return case.results.designs_opPoints
+        designs_opPoints = case.results.designs_opPoints if isinstance (case, Case_Optimize) else []
+
+        try: 
+            i = self.case.airfoil_designs.index (self.design_airfoil)
+            return designs_opPoints[i]
+        except:
+            pass
+
+
+    @property 
+    def prev_design_opPoints  (self) -> list[OpPoint_Result]:
+        """ opPoint result belonging to previous of current design airfoil"""
+
+        case : Case_Optimize = self.case
+
+        if not case.isRunning: return []
+
+        designs_opPoints = case.results.designs_opPoints if case else []
+
+        try: 
+            i = self.case.airfoil_designs.index (self.design_airfoil)
+            return designs_opPoints[i-1]
+        except:
+            return []
+
 
     def optimize_isReady (self) -> bool:
         """ True if optimizer is ready """
@@ -710,17 +780,20 @@ class Diagram_Item_Polars (Diagram_Item):
         a = Polar_Artist              (self, self.airfoils,     xyVars=self._xyVars, show_legend=True)
         self._add_artist (a)
 
-        a = Xo2_OpPoint_Defs_Artist   (self, self.opPoint_defs, 
-                                       isReady_fn=self.optimize_isReady, xyVars=self._xyVars, show=False)
+        a = Xo2_OpPoint_Defs_Artist   (self, lambda: self.opPoint_defs, 
+                                       isReady_fn=self.optimize_isReady,
+                                       xyVars=self._xyVars, show=False)
         a.sig_opPoint_def_changed.connect  (self.sig_opPoint_def_changed.emit)
         a.sig_opPoint_def_selected.connect (self.sig_opPoint_def_selected.emit)
         a.sig_opPoint_def_dblClick.connect (self.sig_opPoint_def_dblClick.emit)
         self._add_artist (a)
 
-        a = Xo2_OpPoint_Artist        (self, self.designs_opPoints, 
-                                       opPoint_defs_fn = self.opPoint_defs, xyVars=self._xyVars, show=False)
+        a = Xo2_OpPoint_Artist        (self, self.airfoils, show=False,
+                                       opPoint_results_fn = lambda: self.design_opPoints,
+                                       prev_opPoint_results_fn = lambda: self.prev_design_opPoints,
+                                       opPoint_defs_fn    = lambda: self.opPoint_defs, 
+                                       xyVars=self._xyVars)
         self._add_artist (a)
-
 
 
     @override
@@ -784,7 +857,7 @@ class Diagram_Airfoil_Polar (Diagram):
     sig_airfoil_changed         = pyqtSignal()                  # airfoil data changed in a diagram 
     sig_new_airfoil_ref1        = pyqtSignal(object)            # new ref1 airfoil  
     sig_airfoil_ref_changed     = pyqtSignal(object, object)    # changed reference airfoil 
-    sig_airfoil_design_selected = pyqtSignal(Airfoil)           # a airfoil design was slected in ComboBox 
+    sig_airfoil_design_selected = pyqtSignal(int)               # a airfoil design iDesign was selected in ComboBox 
     sig_polar_def_changed       = pyqtSignal()                  # polar definition changed  
 
     sig_opPoint_def_selected    = pyqtSignal(object)            # opPoint definition selected  
@@ -794,10 +867,12 @@ class Diagram_Airfoil_Polar (Diagram):
 
     def __init__(self, *args, polar_defs_fn= None, case_fn=None, diagram_settings=[], **kwargs):
 
-        self._polar_panel   = None 
-        self._polar_defs_fn = polar_defs_fn 
-        self._case_fn       = case_fn 
-        self._diagram_settings = diagram_settings
+        self._polar_defs_fn     = polar_defs_fn 
+        self._case_fn           = case_fn 
+        self._diagram_settings  = diagram_settings
+
+        self._polar_panel       = None 
+        self._optimization_panel= None 
 
         self._show_polar_points = False             # show polars operating points 
 
@@ -823,30 +898,6 @@ class Diagram_Airfoil_Polar (Diagram):
             l.append (item_dict)
         return l
 
-
-    def _get_items (self, item_classes : Type[Diagram_Item] | list[type[Diagram_Item]]) -> list[Diagram_Item]:
-        """get Diagram Items of self having class name(s)
-
-        Args:
-            items: class or list of class of Diagram Items to retrieve
-        Returns:
-            List of Item with this classes
-        """
-        look_for = [item_classes] if not isinstance (item_classes,list) else item_classes
-        result = []
-        for item in self.diagram_items:
-            if item.__class__ in look_for:
-                result.append(item)
-        return result 
-
-
-    def _get_first_item (self, item_class : Type[Diagram_Item]) -> list[Diagram_Item]:
-        """get Diagram Items of self having class name(s)"""
-        items = self._get_items (item_class)
-        if items:
-            return items [0]
-        else: 
-            return None
 
 
     def _hide_item_welcome (self):
@@ -911,6 +962,12 @@ class Diagram_Airfoil_Polar (Diagram):
         """ list of airfoil designs in mode modify and optimize"""
         return self.case.airfoil_designs if self.case else []
     
+    @property
+    def airfoil_design (self) -> Airfoil:
+        """ design airfoil if it is in airfoils"""
+        for airfoil in self.airfoils():
+            if airfoil.usedAsDesign: return airfoil 
+
 
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
@@ -923,7 +980,7 @@ class Diagram_Airfoil_Polar (Diagram):
             self._add_item (item, r, 0, colspan=2)
             r += 1
 
-        item = Diagram_Item_Airfoil (self, getter=self.airfoils)
+        item = Diagram_Item_Airfoil (self, getter=self.airfoils, case_fn=self._case_fn)
         self._add_item (item, r, 0, colspan=2)
  
         item.sig_geometry_changed.connect (self._on_geometry_changed)
@@ -963,8 +1020,11 @@ class Diagram_Airfoil_Polar (Diagram):
 
         # airfoils panel 
 
-        if self.section_panel is not None: 
-            layout.addWidget (self.section_panel,stretch=0)
+        layout.addWidget (self.section_panel,stretch=0)
+
+        # optimization panel 
+
+        layout.addWidget (self.optimization_panel,stretch=0)
 
         # diagram items panel
 
@@ -993,7 +1053,7 @@ class Diagram_Airfoil_Polar (Diagram):
         if self._section_panel is None:
         
             p = Panel_Airfoils (self, getter=self.all_airfoils, airfoil_designs_fn=lambda: self.airfoil_designs,
-                                height=(135,None))
+                                height=(None,None))
             
             p.sig_airfoil_ref_changed.connect (self.sig_airfoil_ref_changed.emit)
             p.sig_airfoils_to_show_changed.connect (self._on_show_airfoil_changed)
@@ -1002,6 +1062,35 @@ class Diagram_Airfoil_Polar (Diagram):
             self._section_panel = p 
 
         return self._section_panel 
+
+
+    @property
+    def optimization_panel (self) -> Edit_Panel:
+        """ common options in mode_optimization """
+
+        if self._optimization_panel is None:
+        
+            l = QGridLayout()
+            r,c = 0, 0
+
+            CheckBox (l,r,c, text="Op Point Definitions", colSpan=6,
+                            get=lambda: self.show_xo2_opPoint_def, set=self.set_show_xo2_opPoint_def,
+                            hide=lambda: not self.mode_optimize) 
+            r += 1
+            CheckBox (l,r,c, text="Op Point Results", colSpan=6,
+                            get=lambda: self.show_xo2_opPoint_result, set=self.set_show_xo2_opPoint_result,
+                            disable= lambda: not self.mode_optimize_with_results,
+                            hide=lambda: not self.mode_optimize) 
+
+            if Xoptfoil2.ready:
+                r += 1
+                Label  (l,r,c, colSpan=6, get=f"Powered by {Xoptfoil2.name} {Xoptfoil2.version}", 
+                        style=style.COMMENT, fontSize=size.SMALL)
+
+            self._optimization_panel = Edit_Panel (title="Optimization", layout=l, switchable=False, height=(100,None),
+                                                   hide=lambda: not self.mode_optimize)
+
+        return self._optimization_panel 
 
 
     @property 
@@ -1022,8 +1111,8 @@ class Diagram_Airfoil_Polar (Diagram):
         """ show opPoint definitions"""
         return self._get_artist (Xo2_OpPoint_Defs_Artist)[0].show
 
-    def set_show_xo2_opPoint_def (self, aBool : bool):
-        self._show_artist (Xo2_OpPoint_Defs_Artist, aBool)
+    def set_show_xo2_opPoint_def (self, aBool : bool, refresh=True):
+        self._show_artist (Xo2_OpPoint_Defs_Artist, aBool, refresh=refresh)
 
 
     @property 
@@ -1031,8 +1120,9 @@ class Diagram_Airfoil_Polar (Diagram):
         """ show opPoint result"""
         return self._get_artist (Xo2_OpPoint_Artist)[0].show
 
-    def set_show_xo2_opPoint_result (self, aBool : bool):
-        self._show_artist (Xo2_OpPoint_Artist, aBool)
+    def set_show_xo2_opPoint_result (self, aBool : bool, refresh=True):
+        self._show_artist (Xo2_OpPoint_Artist, aBool, refresh=refresh)
+        self._show_artist (Xo2_Transition_Artist, aBool, refresh=refresh)
 
 
     @property
@@ -1044,12 +1134,13 @@ class Diagram_Airfoil_Polar (Diagram):
             l = QGridLayout()
             r,c = 0, 0
 
-            Label (l,r,c, colSpan=4, get="Polar definitions") 
+            Label (l,r,c, colSpan=5, 
+                   get=lambda: "Polar definitions" if not self.mode_optimize else  "Polar definitions of Optimization") 
             r += 1
 
             # helper panel for polar definitions 
 
-            p = Panel_Polar_Defs (self, lambda: self.polar_defs, height=(50,None),)
+            p = Panel_Polar_Defs (self, lambda: self.polar_defs, mode_optimize_fn=lambda: self.mode_optimize, height=(40,None),)
 
             p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
 
@@ -1078,7 +1169,6 @@ class Diagram_Airfoil_Polar (Diagram):
                     ComboBox    (l,r,c+4, width=60, obj=item, prop=Diagram_Item_Polars.xVar, options=var.values)
                     SpaceC      (l,c+5)
                     r += 1
-
             else: 
                 SpaceR (l,r, height=10) 
                 r += 1
@@ -1091,29 +1181,10 @@ class Diagram_Airfoil_Polar (Diagram):
                 lab = Label (l,r,c, colSpan=6, get=Worker.ready_msg, style=style.COMMENT, height=(None,100)) 
                 lab.setWordWrap(True)
 
-            # additional options for optimization  
-
-            if Xoptfoil2.ready:
-                r += 1
-                SpaceR (l,r, height=5, stretch=0) 
-                r += 1
-                Label (l,r,c, get="Optimization options", colSpan=6, hide=lambda: not self.mode_optimize) 
-                r += 1
-                CheckBox (l,r,c, text="Op Point Definitions", colSpan=6,
-                                get=lambda: self.show_xo2_opPoint_def, set=self.set_show_xo2_opPoint_def,
-                                hide=lambda: not self.mode_optimize) 
-                r += 1
-                CheckBox (l,r,c, text="Op Point Results", colSpan=6,
-                                get=lambda: self.show_xo2_opPoint_result, set=self.set_show_xo2_opPoint_result,
-                                disable= lambda: not self.mode_optimize_with_results,
-                                hide=lambda: not self.mode_optimize) 
-
             if Worker.ready:
                 r += 1
-                pgm =  f"{Worker.name} and {Xoptfoil2.name}" if Xoptfoil2.ready else f"{Worker.name}"
-                Label  (l,r,c, colSpan=6, get=f"Powered by {pgm} {Worker.version}", 
+                Label  (l,r,c, colSpan=6, get=f"Powered by {Worker.name} {Worker.version}", 
                         style=style.COMMENT, fontSize=size.SMALL)
-
 
             self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(250,None),
                                               switchable=True, switched_on=False, on_switched=self._on_polars_switched)
@@ -1218,26 +1289,28 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on new case optimize")
 
-        # master refresh
         self.refresh (also_viewRange=True)
 
 
     def on_mode_optimize (self, aBool):
         """ slot when entering / leaving mode optimze """
         if aBool: 
-           # switch on view polars 
-            self.polar_panel.set_switched_on (True)
-            self.set_show_xo2_opPoint_def (True)
-            item_airfoil : Diagram_Item_Airfoil = self._get_first_item (Diagram_Item_Airfoil)
-            if item_airfoil: 
-                item_airfoil.section_panel.set_switched_on (False)
+            self.polar_panel.set_switched_on (True)                         # switch on view polars 
+            self._show_section_and_item (Diagram_Item_Airfoil, False)       # switch of view airfoils 
+            self.set_show_xo2_opPoint_def (True, refresh=False)
+            self.set_show_xo2_opPoint_result (True,  refresh=False)
         else:
-            self.set_show_xo2_opPoint_def (False)
-            item_airfoil : Diagram_Item_Airfoil = self._get_first_item (Diagram_Item_Airfoil)
-            if item_airfoil: 
-                item_airfoil.section_panel.set_switched_on (True)
+            self._show_section_and_item (Diagram_Item_Airfoil, True)        # switch on airfoil 
 
         self.refresh(also_viewRange=False)
+
+
+    def on_opPoint_def_selected (self, opPoint_def : OpPoint_Definition):
+        """ slot opPoint def selected - highlight current"""
+        artist : Xo2_OpPoint_Defs_Artist
+        for artist in self._get_artist (Xo2_OpPoint_Defs_Artist):
+            artist.highlight_current (opPoint_def)
+
 
     # --- private slots ---------------------------------------------------
 

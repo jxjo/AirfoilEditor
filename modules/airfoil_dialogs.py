@@ -1073,16 +1073,21 @@ class Matcher (QThread):
 class Polar_Definition_Dialog (Dialog):
     """ Dialog to edit a single polar definition"""
 
-    _width  = 470
+    _width  = 450
     _height = 240
 
     name = "Edit Polar Definition"
 
-    def __init__ (self, parent : QWidget, polar_def : Polar_Definition, **kwargs): 
+    def __init__ (self, parent : QWidget, polar_def : Polar_Definition, 
+                  small_mode = False, 
+                  **kwargs): 
 
-        self._polar_def = polar_def
+        self._polar_def  = polar_def
+        self._small_mode = small_mode
 
-        self.has_been_chnaged = False
+        if small_mode:
+            self._height = 160
+            self._width  = 420
 
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
@@ -1096,46 +1101,47 @@ class Polar_Definition_Dialog (Dialog):
 
         l = QGridLayout()
         r,c = 0,0 
-        SpaceR (l, r, stretch=0, height=20) 
+        SpaceR (l, r, stretch=1) 
         r += 1 
         FieldF (l,r,c, lab="Re number", width=60, step=10, lim=(1, 5000), unit="k", dec=0,
                         obj=self.polar_def, prop=Polar_Definition.re_asK)
         l.setColumnMinimumWidth (c,80)
         c += 2
-        SpaceC  (l,c)
+        SpaceC  (l,c, width=10)
         c += 1
         FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=1,
                         obj=self.polar_def, prop=Polar_Definition.ma)
         l.setColumnMinimumWidth (c,40)
         c += 2
-        SpaceC  (l,c)
+        SpaceC  (l,c, width=10)
         c += 1
         FieldF (l,r,c, lab="Ncrit", width=60, step=1, lim=(1, 20), dec=1,
                         obj=self.polar_def, prop=Polar_Definition.ncrit)
         l.setColumnMinimumWidth (c,40)
         c += 2
-        SpaceC  (l,c, stretch=5)
+        SpaceC  (l,c, width=10, stretch=5)
 
         c = 0 
         r += 1
         Label  (l,r,c, get="Polar type")
         ComboBox (l,r,c+1,  width=60, options=polarType.values(),
                         obj=self.polar_def, prop=Polar_Definition.type)
-        r += 1
-        SpaceR (l, r, stretch=0, height=20) 
-        r += 1 
-        CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
-                        get=self.polar_def.autoRange)
-        r += 1
-        FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
-                        obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                        hide = lambda: self.polar_def.specVar != var.ALPHA)
-        FieldF (l,r,c, lab=f"Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
-                        obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                        hide = lambda: self.polar_def.specVar != var.CL)
-        Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
-                        get="The smaller the value, the more time is needed")
-
+        
+        if not self._small_mode:
+            r += 1
+            SpaceR (l, r, stretch=0, height=20) 
+            r += 1 
+            CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
+                            get=self.polar_def.autoRange)
+            r += 1
+            FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
+                            obj=self.polar_def, prop=Polar_Definition.valRange_step,
+                            hide = lambda: self.polar_def.specVar != var.ALPHA)
+            FieldF (l,r,c, lab=f"Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
+                            obj=self.polar_def, prop=Polar_Definition.valRange_step,
+                            hide = lambda: self.polar_def.specVar != var.CL)
+            Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
+                            get="The smaller the value, the more time is needed")
         r += 1
         SpaceR (l, r, height=5) 
 
@@ -1145,10 +1151,7 @@ class Polar_Definition_Dialog (Dialog):
     @override
     def _on_widget_changed (self):
         """ slot a input field changed - repanel and refresh"""
-
         self.refresh()
-
-        self.has_been_chnaged = True              # for change detection 
 
 
     @override

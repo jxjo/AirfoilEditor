@@ -53,7 +53,7 @@ from airfoil_diagrams       import *
 from airfoil_dialogs        import Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog
 from airfoil_ui_panels      import * 
 
-from xo2_dialogs            import Xo2_Run_Dialog, Xo2_Choose_Optimize_Dialog
+from xo2_dialogs            import Xo2_Run_Dialog, Xo2_Choose_Optimize_Dialog, Xo2_OpPoint_Def_Dialog
 from xo2_panels             import *
 
 import logging
@@ -205,7 +205,7 @@ class App_Main (QMainWindow):
         self._diagram.sig_airfoil_changed.connect           (self._on_airfoil_changed)
         self._diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
         self._diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
-        self._diagram.sig_airfoil_design_selected.connect   (self.set_airfoil)
+        self._diagram.sig_airfoil_design_selected.connect   (self._on_airfoil_design_selected)
         self._diagram.sig_opPoint_def_selected.connect      (self.sig_opPoint_def_selected.emit)    # inform dialog 
         self._diagram.sig_opPoint_def_changed.connect       (self.sig_opPoint_def_changed.emit)     # inform dialog 
         self._diagram.sig_opPoint_def_changed.connect       (self._on_xo2_input_changed)            # save to nml
@@ -227,6 +227,7 @@ class App_Main (QMainWindow):
         self.sig_xo2_new_state.connect          (self._diagram.on_new_xo2_state)
         self.sig_xo2_input_changed.connect      (self._diagram.on_new_xo2_state)
         self.sig_new_case_optimize.connect      (self._diagram.on_new_case_optimize)
+        self.sig_opPoint_def_selected.connect   (self._diagram.on_opPoint_def_selected)
 
         self.sig_enter_blend.connect            (self._diagram.on_blend_airfoil)
         self.sig_enter_panelling.connect        (self._diagram.on_enter_panelling)
@@ -246,12 +247,11 @@ class App_Main (QMainWindow):
 
         l_xo2 = QHBoxLayout()        
         l_xo2.addWidget (Panel_Xo2_Case                    (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Shape_Bezier            (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Shape_Hicks_Henne       (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Shape_Camb_Thick        (self, lambda: self.case))
         l_xo2.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case))
         l_xo2.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case))
         l_xo2.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case))
+        l_xo2.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case))
         
         l_xo2.setContentsMargins (QMargins(0, 0, 0, 0))
         self._xo2_panel.setLayout (l_xo2)
@@ -574,7 +574,6 @@ class App_Main (QMainWindow):
         self.set_case (None)  
         self.set_mode_optimize (False) 
         self.set_airfoil (new_airfoil, silent=True)         # refresh will be don later 
-   
 
         self.refresh()  
         self.sig_mode_optimize.emit(False)                  # signal leave mode optimize for diagram
@@ -603,13 +602,16 @@ class App_Main (QMainWindow):
         # set new case 
         self.set_case_optimize (Case_Optimize (input_fileName, workingDir=workingDir))
 
-        self.set_airfoil (self.case.initial_airfoil_design(), silent=True)     # maybe there is already an existing design 
+        self.set_airfoil (self.case.initial_airfoil_design(), silent=True)      # maybe there is already an existing design 
 
         # replace polar definitions with the ones defined by Xo2 input file 
         self.refresh_polar_sets (silent=True)
 
         self.refresh()  
-        self.sig_new_case_optimize.emit()                                   # signal for diagram
+        self.sig_new_case_optimize.emit()                                       # signal for diagram
+        if self.case.input_file.opPoint_defs:                                   # set current opPoint_def 
+            self.sig_opPoint_def_selected.emit (self.case.input_file.opPoint_defs[0])
+
 
 
     def refresh(self):
@@ -696,7 +698,8 @@ class App_Main (QMainWindow):
 
             self.refresh()  
             self.sig_mode_optimize.emit(True)                               # signal enter / leave mode optimize for diagram
-
+            if self.case.input_file.opPoint_defs:                           # set current opPoint_def 
+                self.sig_opPoint_def_selected.emit (self.case.input_file.opPoint_defs[0])
 
 
     def new_as_Bezier (self):
@@ -760,7 +763,7 @@ class App_Main (QMainWindow):
 
         if self._xo2_opPoint_def_dialog is None:
 
-            diag = Xo2_OpPoint_Def_Dialog (parent, self.case, opPoint_def, parentPos=parentPos, dialogPos=dialogPos) 
+            diag = Xo2_OpPoint_Def_Dialog (parent, lambda: self.case, opPoint_def, parentPos=parentPos, dialogPos=dialogPos) 
 
             # connect to selected signals from panel and diagram 
             self.sig_opPoint_def_selected.connect (diag.set_opPoint_def)
@@ -820,7 +823,6 @@ class App_Main (QMainWindow):
 
         if  (case.xo2.isReady and not case.isFinished):
             diag.run_optimize()                             # run xo2 
-            diag.refresh()                                  # ensure the right panel when shown 
 
         diag.show()
 
@@ -876,6 +878,18 @@ class App_Main (QMainWindow):
 
         self.refresh()
         self.sig_xo2_input_changed.emit()                                   # inform diagram 
+
+
+    def _on_airfoil_design_selected (self, iDesign):
+        """ slot to handle selection of new design airfoil in diagram """
+
+        logger.debug (f"{str(self)} on airfoil design selected")
+    
+        try: 
+            airfoil = self.case.airfoil_designs [iDesign]
+            self.set_airfoil (airfoil)
+        except: 
+            pass
 
 
     def _on_new_xo2_state (self):
@@ -1057,6 +1071,7 @@ class Watchdog (QThread):
 
         self._case_optimize_fn = None                           # Case_Optimize to watch      
         self._xo2_state        = None                           # last run state of xo2
+        self._xo2_id           = None                           # instance id of xo2 for change detection
         self._xo2_nDesigns     = 0                              # last actual steps    
 
 
@@ -1071,6 +1086,14 @@ class Watchdog (QThread):
         if self._case_optimize_fn:
 
             case : Case_Optimize = self._case_optimize_fn ()
+
+            # reset saved xo2 state for state change detection if there is new xo2 instance  
+
+            if id(case.xo2) != self._xo2_id:
+                self._xo2_id = id(case.xo2)
+                self._xo2_state = None
+
+            # detect state change of new design
 
             if case.xo2.state != self._xo2_state:
 

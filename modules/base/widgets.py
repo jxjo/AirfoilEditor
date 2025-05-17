@@ -23,7 +23,7 @@ from PyQt6.QtWidgets    import (
                             QApplication, QWidget, QPushButton, 
                             QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
                             QLabel, QToolButton, QCheckBox,
-                            QSpinBox, QComboBox, QSlider, 
+                            QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
                             QSizePolicy)
 from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon
 
@@ -306,9 +306,9 @@ class Widget:
 
         if isinstance (prop, property) and obj is not None: 
             self._obj    = obj
+            self._prop   = prop  
             self._getter = self._get_getter_of_property (obj, prop)  # function out of property                                    # property
             self._setter = self._get_setter_of_property (obj, prop)  # function out of property 
-            self._prop   = prop if self._getter else None
         else:
             self._obj    = None 
             self._prop   = None 
@@ -321,18 +321,17 @@ class Widget:
 
         # handle disable / hide  
 
+        self._disable_in_refresh = False                           # temp overwrite in refresh 
+        self._disabled_getter = None
         if isinstance(disable, bool):
             self._disabled   = disable                     
-            self._disabled_getter = bool(disable)
         elif callable (disable):
             self._disabled   = None                          
             self._disabled_getter = disable
         else: 
-            self._disabled   = False                        # default values 
-            self._disabled_getter = None
+            self._disabled   = False                                # default values 
 
-        if self._setter is None and self._disabled == False: 
-            self._disabled_getter = True
+        if self._setter is None and self._prop is None and disable is None: 
             self._disabled = True  
 
         self._hidden   = False                          
@@ -416,7 +415,7 @@ class Widget:
 
     #---  public methods 
 
-    def refresh (self, disable : bool|None = None):
+    def refresh (self, disable : bool|None = False):
         """
         Refesh self by re-reading the 'getter' path 
             - disable: optional overwrite of widgets internal disable state  
@@ -429,7 +428,7 @@ class Widget:
 
         if self._hidden:
             return 
-
+        
         # avoid circular actions with refresh
 
         if self._while_setting:                          
@@ -441,6 +440,11 @@ class Widget:
         
         else: 
 
+            # optionally overwrite disabled in refresh 
+
+            if isinstance (disable, bool):
+                self._disable_in_refresh = disable 
+
             # In case of using 'property' for get/set:
             #   the object could have been changed (e.g. subclass like Geometry_Bezier)
             if self._obj is not None and self._prop is not None:            
@@ -448,13 +452,6 @@ class Widget:
                 self._setter = self._get_setter_of_property (self._obj, self._prop)  
 
             self._get_properties ()
-
-            # overwrite self disable state 
-            if disable == True: 
-                self._disabled = True 
-            else: 
-                # extra get_value with default False
-                self._disabled  = self._get_value (self._disabled_getter, default=False)
 
             # logger.debug (f"{self} - refresh (disable={disable} -> {self._disabled})")
 
@@ -476,11 +473,8 @@ class Widget:
             self._disabled = True 
             self._set_Qwidget_disabled () 
         else: 
-            if self._disabled_getter == True: 
-                pass                        # disable is fixed 
-            else:
-                self._disabled = False
-                self._set_Qwidget_disabled () 
+            self._disabled = False
+            self._set_Qwidget_disabled () 
 
 
 
@@ -493,7 +487,7 @@ class Widget:
             - fixed values 
             - property (only for self._val)
         """
-        # should be overloaded for additional properties 
+        # should be overridden for additional properties 
 
         self._val       = self._get_value (self._getter, obj=self._obj, id= self._id)
 
@@ -610,7 +604,7 @@ class Widget:
 
         have_called = self._set_value_callback ()
 
-        if have_called: 
+        if have_called and self._signal: 
             self._emit_change () 
 
         self._while_setting = False                
@@ -663,8 +657,6 @@ class Widget:
 
     def _emit_change (self):
         """ emit change signal""" 
-
-        if not self._signal: return 
 
         if isinstance(self._setter, types.FunctionType):
             qualname  = self._setter.__qualname__
@@ -744,9 +736,11 @@ class Widget:
         """ set self Qwidget according to self._disabled"""
 
         # can be overridden to suppress enable/disable 
+        disable = self._disabled or self._disable_in_refresh
+
         widget : QWidget = self
-        if widget.isEnabled() != (not self._disabled) :
-            widget.setDisabled(self._disabled)
+        if widget.isEnabled() != (not disable) :
+            widget.setDisabled(disable)
 
 
     def _set_Qwidget_hidden (self):
@@ -868,19 +862,23 @@ class Field_With_Label (Widget):
 
     def __init__(self, *args, 
                  lab : str | None = None,                   # label of field 
+                 disable : bool | None = None,
                  lab_disable : bool = False,                # label will be disabled with field
+                 toolTip : str|None = None,
                  **kwargs):
 
         self._label = None 
 
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, disable=disable, toolTip=toolTip, **kwargs)
 
 
         if lab is not None: 
             if not isinstance (self._layout, QGridLayout):
                 raise ValueError (f"{self} Only QGridLayout supported for Field with a Label")
             else: 
-                self._label = Label(self._layout, self._row, self._col, get=lab, lab_disable=lab_disable)
+                self._label = Label(self._layout, self._row, self._col, get=lab, 
+                                    disable=disable, lab_disable=lab_disable,
+                                    toolTip=toolTip)
             
 
     def _layout_add (self, widget=None):
@@ -943,12 +941,14 @@ class Label (Widget, QLabel):
 
     def __init__(self, *args, 
                  styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Base
+                 disable = False,                            # labels are typically not disabled 
                  lab_disable : bool = False,                 # label can be disabled (color) 
                  **kwargs):
 
+        # special disable handling for Label as typically it is not disabled 
         self._label_disable = lab_disable
 
-        super().__init__(*args, styleRole=styleRole, **kwargs)
+        super().__init__(*args, styleRole=styleRole, disable=disable,**kwargs)
 
         self._get_properties ()
 
@@ -956,9 +956,8 @@ class Label (Widget, QLabel):
 
         self._set_Qwidget_static ()
         self._set_Qwidget ()
+       # self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
 
-        self._disabled = False                                 # default for Label 
-        self._disabled_getter = False
 
 
     def _set_Qwidget_style (self): 
@@ -1734,6 +1733,71 @@ class ComboSpinBox (Field_With_Label, QComboBox):
       """ slot - comboxbox value choosen """
       self._refresh_buttons ()
       self._set_value (self.currentText())
+
+
+class ListBox (Field_With_Label, QListWidget):
+    """
+    ComboBox  
+        - values list via 'options' (bound method or list)
+        - when clicked, 'set' is called argument with selected text as argument 
+    """
+        
+    _height = 72 
+
+    def __init__(self, *args, 
+                 options = [], 
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._options_getter = options
+        self._options : list = None
+
+        self._get_properties ()
+
+        # put into grid / layout 
+        self._layout_add ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
+
+        # connect signals 
+        # self.itemActivated.connect(self._on_selected)
+        self.itemClicked.connect(self._on_selected)
+
+
+    @override
+    def _get_properties (self): 
+
+        super()._get_properties ()
+
+        self._options = self._get_value (self._options_getter)
+        self._val = str(self._val) if self._val is not None else None
+
+
+    @override
+    def _set_Qwidget (self, **kwargs):
+        """ set value and properties of self Qwidget"""
+
+        super()._set_Qwidget (**kwargs)
+
+        # set items of listbox 
+
+        self.clear()                                
+        for item_text in self._options:
+             item = QListWidgetItem (item_text, self)
+             #item.setSizeHint (QSize (item.sizeHint().width(), 30))
+             item.setSizeHint (QSize (0, 22))
+
+        # set current item 
+        try: 
+            irow = self._options.index (self._val)
+        except: 
+            irow = 0 
+        self.setCurrentRow (irow)
+
+
+    def _on_selected (self, aItem : QListWidgetItem):
+      self._set_value (aItem.text())
 
 
 

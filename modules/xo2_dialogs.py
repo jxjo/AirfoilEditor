@@ -27,7 +27,11 @@ from model.polar_set        import Polar_Definition
 from model.case             import Case_Optimize
 from model.xo2_controller   import xo2_state, Xo2_Controller
 from model.xo2_results      import Xo2_Results
-from model.xo2_input        import Input_File, OpPoint_Definition, OpPoint_Definitions
+
+from model.xo2_input        import Input_File, OpPoint_Definition, OpPoint_Definitions 
+from model.xo2_input        import Nml_Abstract, Nml_particle_swarm_options, Nml_xfoil_run_options, Nml_paneling_options
+from model.xo2_input        import Nml_hicks_henne_options, Nml_bezier_options, Nml_camb_thick_options, Nml_constraints
+
 from model.xo2_input        import SPEC_TYPES, SPEC_ALLOWED, OPT_ALLOWED, var
 from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist
 
@@ -293,6 +297,7 @@ class Xo2_Run_Dialog (Dialog):
         self._panel_ready    : Edit_Panel = None
         self._panel_stopping : Edit_Panel = None
         self._panel_finished : Edit_Panel = None
+        self._panel_error    : Edit_Panel = None
         self._diagram        : Diagram    = None
         
         self._btn_stop   : QPushButton = None
@@ -344,6 +349,12 @@ class Xo2_Run_Dialog (Dialog):
     def run_optimize (self): 
         """ run optimizer"""
 
+        # reset current xo2 controller if there was an error 
+        if self.case.xo2.isRun_failed:
+            self.case.xo2_reset()
+
+        # now run if ready
+
         if self.case.xo2.isReady:
 
             self._last_improvement = 0.0
@@ -351,7 +362,7 @@ class Xo2_Run_Dialog (Dialog):
 
             self.case.run()
 
-            self._set_buttons ()              # after to get running state 
+        self.refresh ()              # after to get running state 
 
 
     def on_results (self):
@@ -451,6 +462,27 @@ class Xo2_Run_Dialog (Dialog):
 
 
     @property
+    def panel_error (self) -> Edit_Panel:
+        """ error occured """
+
+        if self._panel_error is None: 
+
+            l = QGridLayout()
+            r = 0
+            SpaceR (l, r, stretch=0, height=5) 
+            r += 1
+            Label  (l,r,0,  get=lambda: f"{self.case.xo2.run_errortext}")
+            r += 1
+            SpaceR (l, r) 
+
+            self._panel_error = Edit_Panel (title="Error occured", layout=l, height=(None,None),
+                                            hide=lambda: not self.case.xo2.state == xo2_state.RUN_ERROR) 
+            self._panel_error.set_background_color (color='red', alpha=0.3)
+
+        return self._panel_error
+
+
+    @property
     def panel_finished (self) -> Edit_Panel:
         """ shows info during Xo2 run"""
 
@@ -494,6 +526,7 @@ class Xo2_Run_Dialog (Dialog):
         l_cont.addWidget (self.panel_running)
         l_cont.addWidget (self.panel_stopping)
         l_cont.addWidget (self.panel_finished)
+        l_cont.addWidget (self.panel_error)
         l_cont.setContentsMargins (QMargins(0, 0, 0, 0))
         self._panel_container.setLayout (l_cont) 
 
@@ -569,6 +602,12 @@ class Xo2_Run_Dialog (Dialog):
 
             self._btn_stop.setVisible (True) 
             self._btn_stop.setDisabled (True)
+
+        elif state == xo2_state.RUN_ERROR:
+
+            self._btn_close.setVisible (True) 
+            self._btn_run.setVisible (True) 
+            self._btn_run.setFocus ()
 
         else: 
 
@@ -971,12 +1010,17 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
     def set_show_polar (self, aBool : bool):
         self._show_polar = aBool 
         if not aBool:
+            # remove individual polar definition
             self.opPoint_def.set_re(None)                    # will set to default 
             self.opPoint_def.set_ma(None)                    
-            self.opPoint_def.set_ncrit(None)                    
+            self.opPoint_def.set_ncrit(None)     
+        elif not self.polar_defs_without_default:
+            # if there are now other polar defs open dialog directly 
+            self.new_polar_def ()             
+
 
     def set_polar_def_by_name (self, aStr : str):
-        """ for Combox - set new polar_def by name string """
+        """ for Combobox - set new polar_def by name string """
         for polar_def in self.polar_defs_without_default:
             if polar_def.name == aStr: 
                 self.opPoint_def.set_polar_def (polar_def)
@@ -992,7 +1036,8 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         else:
             new_polar_def = self.opPoint_def.polar_def
         
-        diag = Polar_Definition_Dialog (self, new_polar_def, parentPos=(0,0.5), dialogPos=(1,0.5))
+        diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, parentPos=(0.9, 0.5), dialogPos=(0, 0.5))
+        diag.setWindowTitle (f"Individual Polar of Op Point {self.opPoint_def.iPoint}")
         diag.exec()
 
         self.opPoint_def.set_polar_def (new_polar_def)
@@ -1031,3 +1076,382 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
 
 
+class Xo2_Abstract_Options_Dialog (Dialog):
+    """ Super class dialog to edit options of namelist group """
+
+    _width  = (300, None)
+    _height = (320, None)
+
+    name = "my xo2 Options"
+
+    def __init__ (self, *args, **kwargs): 
+
+        self._btn_default : QPushButton = None 
+        self._btn_close   : QPushButton = None 
+
+        super().__init__ (*args, **kwargs)  
+
+    @override
+    def _button_box (self) -> QDialogButtonBox:
+
+        buttonBox = QDialogButtonBox (QDialogButtonBox.StandardButton.Close) #  | QDialogButtonBox.StandardButton.Cancel)
+
+        self._close_btn   = buttonBox.button(QDialogButtonBox.StandardButton.Close)
+
+        self._default_btn = QPushButton ("Default", parent=self)
+        self._default_btn.setFixedWidth (80)
+        self._default_btn.setToolTip    ("Reset to default values")
+        buttonBox.addButton (self._default_btn, QDialogButtonBox.ButtonRole.ActionRole)
+
+        # connect dialog buttons
+        self._close_btn.clicked.connect  (self.close)
+        self._default_btn.clicked.connect  (self.set_default_values)
+
+        return buttonBox 
+
+
+    def set_default_values (self):
+        """ reset self to default values"""
+        nml : Nml_Abstract = self.dataObject
+        nml.set_to_default ()
+
+        self.refresh()
+
+
+
+class Xo2_Particle_Swarm_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist Particle_Swarm_Options"""
+
+    _width  = (300, None)
+    _height = (320, None)
+
+    name = "Particle Swarm Options"
+
+    @property
+    def particle_swarm_options (self) -> Nml_particle_swarm_options:
+        return self.dataObject
+
+
+    def _init_layout(self) -> QLayout:
+
+        l =  QGridLayout()
+        r,c, = 0,0
+        r += 1
+        SpaceR      (l,r, height=5)
+        r += 1
+        ComboBox    (l,r,c, lab="Convergence", width=120,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.convergence_profile, 
+                    options=Nml_particle_swarm_options.POSSIBLE_PROFILES,
+                    toolTip="Determines how quickly the swarm attempts to converge")
+        r += 1
+        SpaceR      (l,r)
+        r += 1
+        FieldI      (l,r,c, lab="Population", width=70, lim=(5,100), step=5,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.pop,
+                    toolTip="swarm population - number of particles") 
+        r += 1
+        FieldI      (l,r,c, lab="Max. Iterations", width=70, lim=(1,9999), step=100,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.max_iterations, 
+                    toolTip="max number of iterations") 
+        r += 1
+        FieldI      (l,r,c, lab="Max. Retries", width=70, lim=(0,5), step=1,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.max_retries, 
+                    toolTip="number of retries of a particle when it violates the geometry") 
+        r += 1
+        FieldI      (l,r,c, lab="Init. Attempts", width=70, lim=(10,9999), step=1000,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.init_attempts, 
+                    toolTip="number of trials to get an initial, valid design") 
+        r += 1
+        FieldF      (l,r,c, lab="Min. Radius", width=70, dec=4, lim=(0.00001,0.1), step=0.01,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.min_radius, 
+                    toolTip="design radius when optimization shall be finished") 
+        r += 1
+        FieldF      (l,r,c, lab="Max. Speed", width=70, dec=2, lim=(0.01,0.7), step=0.1,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.max_speed, 
+                    toolTip="max speed of a particle in solution space 0..1") 
+
+        r += 1
+        l.setRowStretch (r,5)
+        l.setColumnMinimumWidth (0,100)
+        l.setColumnStretch (5,2)
+
+        return l
+
+
+
+class Xo2_Xfoil_Run_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist Xfoil_Run_Options"""
+
+    _width  = (280, None)
+    _height = (320, None)
+
+    name = "Xfoil Options"
+
+    @property
+    def xfoil_run_options (self) -> Nml_xfoil_run_options:
+        return self.dataObject
+
+
+    def _init_layout(self) -> QLayout:
+
+        l =  QGridLayout()
+        r,c, = 0,0
+        r += 1
+        SpaceR      (l,r, height=5)
+        r += 1
+        FieldF      (l,r,c, lab="Ncrit", width=70, dec=1, lim=(1,20), step=1,
+                    obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.ncrit,
+                    toolTip="ncrit default value to control laminar-turbulent transition") 
+        r += 1
+        FieldF      (l,r,c, lab="xtrip top", width=70, dec=2, lim=(0,1), step=0.02,
+                    obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.xtript,
+                    toolTip="forced transition point 0..1 - top side") 
+        r += 1
+        FieldF      (l,r,c, lab="xtrip bottom", width=70, dec=2, lim=(0,1), step=0.02,
+                    obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.xtripb,
+                    toolTip="forced transition point 0..1 - bottom side") 
+        r += 1
+        FieldI      (l,r,c, lab="bl max iterations", width=70, lim=(1,100), step=10,
+                    obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.bl_maxit,
+                    toolTip="max viscous iterations to achieve convergence") 
+        r += 1
+        FieldF      (l,r,c, lab="vaccel", width=70, dec=3, lim=(0,0.1), step=0.001,
+                    obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.vaccel,
+                    toolTip="xfoil vaccel parameter to influence convergence of the viscous loop") 
+        r += 1
+        CheckBox   (l,r,c, text="Fix unconverged Op Point", colSpan=3,  
+                    obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.fix_unconverged,
+                    toolTip="Retry an unconverged Op Point with bl initialization and slightly differen Re number") 
+        r += 1
+        CheckBox   (l,r,c, text="Reinitialize boundary layer", colSpan=3, 
+                    obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.reinitialize,
+                    toolTip="re-init boundary layer for each Op Point") 
+
+        r += 1
+        l.setRowStretch (r,5)
+        l.setColumnMinimumWidth (0,100)
+        l.setColumnStretch (5,2)
+
+        return l
+
+
+
+class Xo2_Paneling_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist paneling_options"""
+
+    _width  = (280, None)
+    _height = (320, None)
+
+    name = "Paneling Options"
+
+    @property
+    def xfoil_run_options (self) -> Nml_paneling_options:
+        return self.dataObject
+
+
+    def _init_layout(self) -> QLayout:
+
+        l =  QGridLayout()
+        r,c, = 0,0
+        r += 1
+        SpaceR      (l,r, height=5)
+        r += 1
+        FieldI      (l,r,c, lab="No of panels", width=70, lim=(10,400), step=10,
+                    obj=self.xfoil_run_options, prop=Nml_paneling_options.npan,
+                    toolTip="Number of panels of airfoil designs and final airfoil") 
+        r += 1
+        FieldF      (l,r,c, lab="LE bunch", width=70, dec=2, lim=(0,1), step=0.02,
+                    obj=self.xfoil_run_options, prop=Nml_paneling_options.le_bunch,
+                    toolTip="panel bunch at leading edge") 
+        r += 1
+        FieldF      (l,r,c, lab="TE bunch", width=70, dec=2, lim=(0,1), step=0.02,
+                    obj=self.xfoil_run_options, prop=Nml_paneling_options.te_bunch,
+                    toolTip="panel bunch at trailing edge") 
+        r += 1
+        l.setRowStretch (r,5)
+        l.setColumnMinimumWidth (0,100)
+        l.setColumnStretch (5,2)
+
+        return l
+
+
+
+class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist hicks_henne_options"""
+
+    _width  = (260, None)
+    _height = (260, None)
+
+    name = "Hicks-Henne Options"
+
+    @property
+    def hicks_henne_options (self) -> Nml_hicks_henne_options:
+        return self.dataObject
+
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        Label       (l,r,c, get="Hicks-Henne Functions on ...", style=style.COMMENT, colSpan=4)
+        r += 1
+        FieldI      (l,r,c, lab='Top side', width=50, step=1, lim=(0, 8),
+                     obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.nfunctions_top,
+                     toolTip="Number of Hicks-Henne functions") 
+        r += 1
+        FieldI      (l,r,c, lab='Bottom side', width=50, step=1, lim=(0, 8),
+                     obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.nfunctions_bot,
+                     toolTip="Number of Hicks-Henne functions") 
+        r += 1
+        SpaceR      (l,r)
+        r += 1
+        CheckBox    (l,r,c, text="Smooth Seed",
+                     obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.smooth_seed,
+                     disable=lambda: self.hicks_henne_options._input_file.airfoil_seed.isBezierBased,
+                     toolTip="Create a Bezier based airfoil from seed airfoil prior to optimization")                        
+        r += 1
+        l.setRowStretch (r,2)
+        r += 1
+        Label (l,r,c, colSpan=4, style=style.COMMENT,
+               get=lambda: f"Will be {self.hicks_henne_options.ndesign_var} design variables")        
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnStretch (4,2)
+
+        return l
+
+
+
+class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist bezier_options"""
+
+    _width  = (260, None)
+    _height = (220, None)
+
+    name = "Bezier Options"
+
+    @property
+    def bezier_options (self) -> Nml_bezier_options:
+        return self.dataObject
+
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        Label (l,r,c, get="Bezier control points on ...", style=style.COMMENT, colSpan=4)
+        r += 1
+        FieldI (l,r,c, lab='Top side', width=50, step=1, lim=(3,10),
+                obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_top,
+                toolTip="Number of Bezier control points") 
+        r += 1
+        FieldI (l,r,c, lab='Bottom side', width=50, step=1, lim=(3,10),
+                obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_bot,
+                toolTip="Number of Bezier control points") 
+        r += 1
+        l.setRowStretch (r,2)
+        r += 1
+        Label (l,r,c, colSpan=4, style=style.COMMENT,
+               get=lambda: f"Will be {self.bezier_options.ndesign_var} design variables")        
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnStretch (4,2)
+
+        return l
+
+
+class Xo2_Camb_Thick_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist camb_thick_options"""
+
+    _width  = (260, None)
+    _height = (240, None)
+
+    name = "Camb-Thick Options"
+
+    @property
+    def camb_thick_options (self) -> Nml_camb_thick_options:
+        return self.dataObject
+
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        Label (l,r,c, get="Geometry parameters to optimize", style=style.COMMENT, colSpan=4)
+        r += 1
+        CheckBox (l,r,c, text="Thickness",
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.thickness,
+                    toolTip="Maximum thickness of the airfoil") 
+        CheckBox (l,r,c+1, text="... position",
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.thickness_pos,
+                    toolTip="Position of maximum thickness of the airfoil") 
+        r += 1
+        CheckBox (l,r,c, text="Camber",
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.camber,
+                    toolTip="Maximum camber of the airfoil") 
+        CheckBox (l,r,c+1, text="... position",
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.camber_pos,
+                    toolTip="Position of maximum camber of the airfoil") 
+        r += 1
+        CheckBox (l,r,c, text="LE radius",
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.le_radius,
+                    toolTip="Leading edge radius of the airfoil") 
+        CheckBox (l,r,c+1, text="... blend distance",
+                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.le_radius_blend,
+                    toolTip="How much will a change of the rdius influence the whole airfoil") 
+        r += 1
+        l.setRowStretch (r,2)
+        r += 1
+        Label (l,r,c, colSpan=4, style=style.COMMENT,
+               get=lambda: f"Will be {self.camb_thick_options.ndesign_var} design variables")        
+        l.setColumnMinimumWidth (0,110)
+        l.setColumnStretch (4,2)
+
+        return l
+
+
+
+class Xo2_Constraints_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist constraints"""
+
+    _width  = (280, None)
+    _height = (200, None)
+
+    name = "Constraints"
+
+    @property
+    def constraints (self) -> Nml_constraints:
+        return self.dataObject
+
+
+    def _init_layout(self) -> QLayout:
+
+        l =  QGridLayout()
+        r,c, = 0,0
+        r += 1
+        SpaceR      (l,r, height=5)
+        r += 1
+        CheckBox    (l,r,c, text="Check Geometry", colSpan=2, 
+                     obj=lambda: self.constraints, prop=Nml_constraints.check_geometry,
+                     toolTip="Check geometry constraints during optimization")                        
+        r += 1
+        SpaceR      (l,r, height=10)
+        r += 1
+        CheckBox    (l,r,c, text="Symmetrical Airfoil", colSpan=2,
+                     obj=lambda: self.constraints, prop=Nml_constraints.symmetrical,
+                     disable=lambda: not self.constraints.check_geometry,
+                     toolTip="Airfoil is forced to be symmetrical")                        
+        r += 1
+        FieldF      (l,r,c, lab="Min TE angle", width=70, dec=1, lim=(0.1,20), step=0.02, unit='°',
+                     obj=self.constraints, prop=Nml_constraints.min_te_angle, lab_disable=True,
+                     disable=lambda: not self.constraints.check_geometry,
+                     toolTip="Minimum opening angle at trailing edge ") 
+        r += 1
+        l.setRowStretch (r,5)
+        l.setColumnMinimumWidth (0,100)
+        l.setColumnStretch (5,2)
+
+        return l
+
+    @override
+    def _on_widget_changed (self,*_):
+        """ slot for change of widgets"""
+        self.refresh()

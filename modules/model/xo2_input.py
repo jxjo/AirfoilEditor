@@ -409,7 +409,7 @@ class Input_File:
                 Nml_info (self).write_to_stream (nml_stream)
                 nml = nml_file.pop('info', None)
 
-            # afterwadrs all other namelist
+            # afterwards all other namelist
             for namelist_name in nml_file:
                 try: 
                     nml_class = globals()['Nml_'+ namelist_name]
@@ -834,7 +834,7 @@ class OpPoint_Definition:
         """ optimize this flap angle flap angle """
         return self._flap_optimize is True
     def set_flap_optimize (self, aVal : bool): 
-        self._flap_optimize = aVal == True
+        self._flap_optimize = aVal
     
     @property
     def has_default_flap (self) -> bool:
@@ -1658,13 +1658,20 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
             weightings.append (geo_def._weighting)                                          # raw value (None for default)
             presets.append (geo_def.preset_to_target if geo_def.preset_to_target else None) # False is default
 
-        self._nml._set ('ngeo_targets', len(self)) 
+        self._nml._set ('ngeo_targets', len(self) if self else None) 
 
-        # f90nml wants op point values as list 
-        self._nml._set ('target_type',       target_types)
-        self._nml._set ('target_value',      target_values)
-        self._nml._set ('weighting',         weightings)
-        self._nml._set ('preset_to_target',  presets)
+        # f90nml wants op point values as list
+        if target_types: 
+            self._nml._set ('target_type',       target_types)
+            self._nml._set ('target_value',      target_values)
+            self._nml._set ('weighting',         weightings)
+            self._nml._set ('preset_to_target',  presets)
+        else: 
+            # remove empty dict items 
+            self._nml.nml.pop ('target_type', None)
+            self._nml.nml.pop ('target_value', None)
+            self._nml.nml.pop ('weighting', None)
+            self._nml.nml.pop ('preset_to_target', None)
 
 
 #-------------------------------------------------------------------------------
@@ -1695,12 +1702,22 @@ class Nml_Abstract:
 
         return fromDict (self._input_file.nml_file,self.name, default={})
 
+    @property
+    def label_long (self) -> str:
+        """ qualified label for self"""
+        # to be overridden
+        return ""
+
 
     def _get (self, key: str, default=None):
         """ returns a namelist entry in self having 'key'"""
 
         try: 
             entry = self.nml[key]
+
+            if default == entry:                                    # clean up namelist from default entries 
+                del self.nml[key]
+
         except: 
             entry = default
 
@@ -1763,6 +1780,19 @@ class Nml_Abstract:
 
             aStream.write (f"/\n")                      # /
             aStream.write (f"\n")                       # blank line at end 
+
+    @property
+    def isDefault (self) -> bool:
+       """ True if no options are set"""
+       return not bool (self.nml) 
+
+
+    def set_to_default (self):
+        """ resets self to default values """
+
+        # just remove complete namelist group 
+        nml : dict = self._input_file.nml_file
+        nml.pop (self.name, None) 
 
 
 # --------- Concrete subclasses ------------------------------------
@@ -1867,7 +1897,6 @@ class Nml_optimization_options (Nml_Abstract):
     def set_shape_functions (self, aShape):     
         if aShape in self.SHAPE_FUNCTIONS:  
             self._set('shape_functions', aShape)
-        
 
 
 class Nml_hicks_henne_options (Nml_Abstract):
@@ -1879,6 +1908,10 @@ class Nml_hicks_henne_options (Nml_Abstract):
         smooth_seed      = .false.                     ! smooth (match bezier) of seed airfoil prior to optimization
     """
     name = "hicks_henne_options"
+
+    @property
+    def label_long (self) -> str:
+        return f"Hicks-Henne  ({self.nfunctions_top} top, {self.nfunctions_bot} bot)"
 
     @property
     def nfunctions_top (self) -> int:           return self._get ('nfunctions_top', default=3) 
@@ -1894,7 +1927,7 @@ class Nml_hicks_henne_options (Nml_Abstract):
 
     @property
     def smooth_seed (self) -> bool:             return self._get ('smooth_seed', default=False) 
-    def set_smooth_seed (self, aVal : bool):    self._set('initial_perturb', aVal is True) 
+    def set_smooth_seed (self, aVal : bool):    self._set('smooth_seed', aVal is True) 
 
     @property
     def ndesign_var (self) -> int:
@@ -1912,6 +1945,10 @@ class Nml_bezier_options (Nml_Abstract):
     """
     name = "bezier_options"
 
+    @property
+    def label_long (self) -> str:
+        return f"Bezier  ({self.ncp_top} top, {self.ncp_bot} bot)"
+    
     @property
     def ncp_top (self) -> int:                  return self._get ('ncp_top', default=5) 
     def set_ncp_top (self, aVal : int):         self._set ('ncp_top', clip (int(aVal), 3, 10) )
@@ -1942,6 +1979,10 @@ class Nml_camb_thick_options (Nml_Abstract):
         initial_perturb  = 0.1d0                       ! max. perturb when creating initial designs     
     """
     name = "camb_thick_options"
+
+    @property
+    def label_long (self) -> str:
+        return f"Camb-Thick{"  (adapted)" if self.nml else ""}"
 
     @property
     def thickness (self) -> bool:               return self._get('thickness', default=True) 
@@ -2150,6 +2191,7 @@ class Nml_paneling_options (Nml_Abstract):
     
     @property
     def npan (self) -> int:                     return self.npoint - 1 
+    def set_npan (self, aVal : int):            self.set_npoint (aVal + 1)
     
     @property
     def le_bunch (self) -> float:               return self._get('le_bunch', default=0.86) 
@@ -2242,7 +2284,7 @@ class Nml_xfoil_run_options (Nml_Abstract):
 
     @property
     def vaccel (self) -> float:                 return self._get('vaccel', default=0.005) 
-    def set_vaccel (self, aVal : float):        self._set('vaccel', clip (aVal, 0.01, 0.1))
+    def set_vaccel (self, aVal : float):        self._set('vaccel', clip (aVal, 0.0, 0.1))
 
     @property
     def fix_unconverged (self) -> bool:         return self._get('fix_unconverged', default=True) 
@@ -2393,7 +2435,8 @@ class Nml_geometry_targets (Nml_Abstract):
 
     @property
     def ngeo_targets (self) -> int:             return self._get('ngeo_targets', default=0) 
-    def set_ngeo_targets (self, aVal):          self._set ('ngeo_targets', clip (int(aVal), 0, 3)) 
+    def set_ngeo_targets (self, aVal):          
+        self._set ('ngeo_targets', clip (int(aVal), 0, 3)) 
 
     @property
     def geoTarget_defs (self) -> GeoTarget_Definitions:

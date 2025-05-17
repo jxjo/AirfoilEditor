@@ -219,7 +219,13 @@ class X_Program:
 
                 if self._returncode:
                     logger.error (f"==> {self.name} returncode: {self._returncode} - {'\n'.join (self._pipe_error_lines)}")
-                logger.debug (f"==> {self.name} finished {'\n'.join (self._pipe_out_lines)}")
+
+                    # put minimum info in error_lines if it isn't standard error return code of Xoptfoil
+                    if self._returncode > 1: 
+                        self._pipe_error_lines = [f"Process error: {self._returncode}"]
+
+                else: 
+                    logger.debug (f"==> {self.name} finished {'\n'.join (self._pipe_out_lines)}")
                  
                 self._popen = None              # close down process instance 
 
@@ -257,14 +263,20 @@ class X_Program:
 
         text = None
         line : str
+
         if self._pipe_error_lines:
             for line in self._pipe_error_lines:
                 _,_,text = line.partition ("Error: ")
                 if text: return text 
+
+            # if process was aborted no piped error text from xoptfoil2 - but a minimum message 
+            return self._pipe_error_lines[0]
+
         if self._pipe_out_lines:
             for line in self._pipe_out_lines:
                 _,_,text = line.partition ("Error: ")
                 if text: return text 
+
         return text
 
 
@@ -762,6 +774,43 @@ class Worker (X_Program):
 
 
 
+    def set_flap (self, airfoil_pathFileName, 
+                        x_flap : float = 0.75,
+                        y_flap : float = 0.0,
+                        y_flap_spec : str = 'y/c',
+                        flap_angle : float | list = 0.0) -> int:
+        """ 
+        Set flap for airfoilPathFileName in directory of airfoil.
+
+        Returncode = 0 if successfully (sync)
+        """ 
+
+        if not os.path.isfile(airfoil_pathFileName): 
+            name = airfoil_pathFileName if len(airfoil_pathFileName) <= 40 else "..." + airfoil_pathFileName[-35:]
+            raise ValueError (f"Airfoil '{name}' does not exist")
+
+        # a temporary input file for polar generation is created
+
+        self._tmp_inpFile = self._generate_polar_inputFile (airfoil_pathFileName, 
+                                    x_flap, y_flap, y_flap_spec, flap_angle)         
+        if not self._tmp_inpFile:
+            raise RuntimeError (f"{self.name} setting flap failed: Couldn't create input file")
+
+        # build args for worker 
+
+        args, workingDir = self._build_worker_args ('flap',airfoil1=airfoil_pathFileName, inputfile=self._tmp_inpFile)
+
+        # .execute  sync
+
+        rc = self._execute (args, capture_output=True, workingDir=workingDir)
+
+        self.remove_tmp_file (self._tmp_inpFile)         
+        
+        if rc: 
+            raise RuntimeError (f"Worker polar generation failed for {airfoil_pathFileName}")
+        return rc    
+
+
     def clean_workingDir (self, workingDir):
         """ 
         deletes temporary (older) files Worker creates in workingDir
@@ -824,7 +873,7 @@ class Worker (X_Program):
                                   reNumbers : list[float], maNumbers : list[float],
                                   polarType : int, ncrit : float,  
                                   autoRange : bool, spec_al: bool, valRange: list[float], 
-                                  nPoints = None):
+                                  nPoints = None) -> str:
         """ Generate a temporary polar input file for worker like this 
 
         &polar_generation
@@ -839,7 +888,8 @@ class Worker (X_Program):
         &xfoil_run_options
             ncrit = 7.0
         /
-        :return: pathFilename of input file  """
+        Returns: 
+            pathFilename of input file  """
 
         tmpFilePath = None
 
@@ -872,6 +922,47 @@ class Worker (X_Program):
                 tmp.write ("&paneling_options\n")
                 tmp.write (f"  npoint = {int(nPoints)}\n")  
                 tmp.write ("/\n")
+
+            tmpFilePath = tmp.name
+
+        return tmpFilePath              
+
+
+
+    def _generate_flap_inputFile (self, airfoilPathFileName,
+                                  x_flap : float = 0.75,
+                                  y_flap : float = 0.0,
+                                  y_flap_spec : str = 'y/c',
+                                  flap_angle : float | list = 0.0, 
+                                  ) -> str:
+        """ Generate a temporary polar input file for worker like this 
+
+        &operating_conditions                              ! options to describe the optimization task
+            x_flap                 = 0.75                  ! chord position of flap 
+            y_flap                 = 0.0                   ! vertical hinge position 
+            y_flap_spec            = 'y/c'                 ! ... in chord unit or 'y/t' relative to height
+            flap_angle             = 0.0                   ! list of flap angles to be applied        
+        /
+
+        Returns: 
+            pathFilename of input file  """
+
+        tmpFilePath = None
+
+        airfoilPath, airfoilFileName = os.path.split(airfoilPathFileName)
+
+        flap_angles = flap_angle if isinstance (flap_angle, list) else [flap_angle]
+        y_flap_spec = 'y/t' if y_flap_spec == 'y/t' else 'y/c'
+
+        # create tmp input file 
+
+        with NamedTemporaryFile(mode="w", delete=False, dir=airfoilPath, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
+
+            tmp.write ("&operating_conditions\n")
+            tmp.write (f"  x_flap = {x_flap:.2f}\n")  
+            tmp.write (f"  y_flap = {y_flap:.2f}\n")  
+            tmp.write (f"  y_flap_spec = {y_flap_spec}\n")  
+            tmp.write (f"  flap_angle = {flap_angles}\n")  
 
             tmpFilePath = tmp.name
 

@@ -13,9 +13,12 @@ from typing                     import Callable
 from base.artist                import *
 from base.common_utils          import *
 
+from model.airfoil              import Line
 from model.polar_set            import * 
 from model.xo2_input            import OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN
 from model.xo2_results          import OpPoint_Result, Xo2_Results, Optimization_History_Entry
+
+from airfoil_artists            import _color_airfoil
 
 from PyQt6.QtGui                import QColor, QBrush, QPen, QPainterPath, QTransform
 from PyQt6.QtCore               import pyqtSignal
@@ -95,11 +98,12 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
 
         self._callback_selected = on_selected
         self._callback_dblClick = on_dblClick
+        self._highlight_item    = None                       
 
         brush = QColor ("black")
         brush.setAlphaF (0.3) 
 
-        size = _size_opPoint (opPoint_def.weighting, normal_size = 9)
+        size = _size_opPoint (opPoint_def.weighting, normal_size = 11)
 
         super().__init__(self._point_xy(), movable=movable, label_anchor = (0, 0.5),
                             color=self.COLOR, brush=brush,
@@ -171,7 +175,11 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
     def _moving (self, _):
         """ slot -point is moved"""
         self._opPoint_def.set_xyValues_for_xyVars (self._xyVars, (self.x,self.y))
+
         self.setPos (self._point_xy())                      # ... if we run against limits 
+
+        self.refresh_highlight()
+
 
     @override
     def label_static (self, *_) -> str:
@@ -189,6 +197,23 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
 
         # callback / emit signal delayed so we leave the scope of Graphics 
         QTimer() .singleShot(10, lambda: self._callback_changed (self._opPoint_def))   
+
+
+    def set_highlight_item (self, aItem: pg.ScatterPlotItem):
+        """ a point item used to highlight current"""
+
+        self._highlight_item = aItem
+        self.refresh_highlight ()
+
+
+    def refresh_highlight (self): 
+        """ refesh highlight item position"""
+
+        if isinstance (self._highlight_item, pg.ScatterPlotItem):
+
+            self._highlight_item.setData ([self.pos()[0]], [self.pos()[1]])
+
+
 
 
 # -------- Artists ------------------------
@@ -209,6 +234,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
         self._xyVars = xyVars                               # definition of x,y axis
         self._isReady_fn = isReady_fn
+        self._highlight_item = None                         # additional item to highlight current
 
 
     @property
@@ -228,6 +254,34 @@ class Xo2_OpPoint_Defs_Artist (Artist):
         """ True if optimier is ready - definitions can be changed"""
         return self._isReady_fn() if callable (self._isReady_fn) else False
 
+
+    def highlight_current (self, cur_opPoint_def : OpPoint_Definition):
+        """ highlight current opPoint_def"""
+
+        highlighted = False
+
+        # set highlight item into Movable_Xo2_OpPoint_Def which is current 
+        for item in self._plots:
+            if isinstance (item, Movable_Xo2_OpPoint_Def):
+                if item._opPoint_def == cur_opPoint_def:
+
+                    self._remove_plot (self._highlight_item)
+                    brushColor = Movable_Xo2_OpPoint_Def.COLOR
+                    self._highlight_item = self._plot_point (0.02,0.2, color="black", size=60, brushColor=brushColor, brushAlpha=0.3)
+
+                    item.set_highlight_item (self._highlight_item)
+
+                    highlighted = True 
+                else: 
+                   item.set_highlight_item (None)                   # remove highlighter from other points
+
+        # if current opPoint def is not in self - remove highlighter
+        if not highlighted and self._highlight_item:
+            self._remove_plot (self._highlight_item)
+            self._highlight_item = None
+
+
+
     def _plot (self): 
 
         for opPoint_def in self.opPoint_defs:
@@ -245,6 +299,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
                                                 on_selected=self.sig_opPoint_def_selected.emit)
                 self._add (pt) 
 
+
         # make scene clickable to add wing section - delayed as during init scene is not yet available
 
         QTimer().singleShot (10, self._connect_scene_mouseClick)
@@ -254,7 +309,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
     def show_help_message (self):
         """ show mouse helper message"""
-        msg = "OpPoint: double-click to edit, shift-click to remove, ctrl-click to add"
+        msg = "OpPoint: click to select,  double-click to edit,  shift-click to remove,  ctrl-click to add"
         self.set_help_message (msg)
 
 
@@ -309,18 +364,19 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
 
 class Xo2_OpPoint_Artist (Artist):
-    """ Plot Xoptfoil2 operating point result """
-
-    sig_opPoint_def_changed     = pyqtSignal()              # opPoint_def changed changed 
-
+    """ Plot Xoptfoil2 operating point results """
 
     def __init__ (self, *args, 
                   opPoint_defs_fn : Callable = None,
+                  opPoint_results_fn : Callable = None,
+                  prev_opPoint_results_fn : Callable = None,
                   xyVars = (var.CD, var.CL), 
                   **kwargs):
 
-        self._xyVars = xyVars                               # definition of x,y axis
-        self._opPoint_defs_fn = opPoint_defs_fn             # method to get opPoint definitions
+        self._xyVars = xyVars                                       # definition of x,y axis
+        self._opPoint_defs_fn = opPoint_defs_fn                     # method to get opPoint definitions
+        self._opPoint_results_fn = opPoint_results_fn               # method to get opPoint results
+        self._prev_opPoint_results_fn = prev_opPoint_results_fn     # method to get previous opPoint results 
 
         super().__init__ (*args, **kwargs)
 
@@ -331,45 +387,25 @@ class Xo2_OpPoint_Artist (Artist):
         self._xyVars = xyVars 
         self.refresh()
 
-    @property
-    def iDesign (self) -> int:
-        """ current Design index"""
-        return -1
-
-    @property
-    def designs_opPoints (self) -> list [list]:
-        """ designs list of opPoints list"""
-        return self.data_list
-
-    @property
-    def opPoints (self) -> list[OpPoint_Result]:
-        """ opPoints of current Design """
-        return self.designs_opPoints [self.iDesign] if self.designs_opPoints else []
-
-    @property
-    def prev_opPoints (self) -> list[OpPoint_Result]:
-        """ opPoints of previous Design """
-        try: 
-            return self.designs_opPoints [self.iDesign - 1]
-        except: 
-            return [None] * len (self.opPoints) 
-
-    @property
-    def opPoint_defs (self) -> OpPoint_Definitions: 
-        return self._opPoint_defs_fn () if callable (self._opPoint_defs_fn) else []
-
 
     def _plot (self): 
         """ plot all opPoints"""
 
-        for iop, opPoint in enumerate (self.opPoints):
+        opPoints :      list[OpPoint_Result] = self._opPoint_results_fn() 
+        if not opPoints: return 
 
+        opPoint_defs :  list[OpPoint_Definition] = self._opPoint_defs_fn() 
+        prev_opPoints : list[OpPoint_Result] = self._prev_opPoint_results_fn() 
+       
+        for iop, opPoint in enumerate (opPoints):
+
+            prev_opPoint = prev_opPoints[iop] if prev_opPoints else None
             x = opPoint.get_value (self.xyVars[0])
             y = opPoint.get_value (self.xyVars[1])
 
-            color  = self._opPoint_color  (opPoint, self.opPoint_defs[iop])
-            symbol = self._opPoint_symbol (opPoint, self.prev_opPoints[iop])
-            size   = _size_opPoint (opPoint.weighting)
+            color  = self._opPoint_color  (opPoint, opPoint_defs[iop])
+            symbol = self._opPoint_symbol (opPoint, prev_opPoint)
+            size   = _size_opPoint (opPoint.weighting, normal_size = 11)
 
             self._plot_point (x,y, color=color, size=size, symbol=symbol, zValue=20)
 
@@ -512,3 +548,78 @@ class Xo2_Improvement_Artist (Artist):
             x = len(improvement_list) - 1
             y = improvement_list[-1]
             self._plot_point (x,y, size=5, color=COLOR_GOOD)
+
+
+
+
+class Xo2_Transition_Artist (Artist):
+    """ Plot Xoptfoil2 point of transition on design airfoil """
+
+    def __init__ (self, *args, 
+                  opPoints_result_fn : Callable = None,
+                  **kwargs):
+
+        self._opPoints_result_fn = opPoints_result_fn                  # method to get opPoints of designs
+
+        super().__init__ (*args, **kwargs)
+
+
+    @property
+    def prev_opPoints (self) -> list[OpPoint_Result]:
+        """ opPoints of previous Design """
+        try: 
+            return self.designs_opPoints [self.iDesign - 1]
+        except: 
+            return [None] * len (self.opPoints) 
+
+
+    def _plot (self): 
+        """ plot all opPoints"""
+
+        airfoil : Airfoil = self.data_object
+        opPoints_result : list[OpPoint_Result ]= self._opPoints_result_fn() 
+
+        if not opPoints_result or not airfoil: return 
+
+        side : Line
+        for side in [airfoil.geo.lower, airfoil.geo.upper]:     
+
+            for iop, opPoint in enumerate (opPoints_result):
+
+                x = opPoint.xtrt if side.isUpper else opPoint.xtrb
+                y = side.yFn (x) 
+
+                color  = _color_airfoil ([], airfoil) 
+                symbol = '|' # self._opPoint_symbol (opPoint, self.prev_opPoints[iop])
+                text   = f"{iop+1}"
+                anchor = (0.5, 1.1) if side.isUpper else (0.5, -0.1)
+                fill   = QColor ("black")
+                fill.setAlphaF (0.7) 
+
+                y      = y + 0.005 if side.isUpper else y - 0.005
+
+                self._plot_point (x,y, color=color, symbol=symbol, text=text, anchor=anchor, textFill=fill)
+
+        
+    def _transition_symbol (self, opPoint : OpPoint_Result, prev_opPoint : OpPoint_Result | None ):
+        """ a triangle in the direction of value change """
+
+        if prev_opPoint is None: return 'o'
+
+        x = opPoint.get_value (self.xyVars[0])
+        y = opPoint.get_value (self.xyVars[1])
+        prev_x = prev_opPoint.get_value (self.xyVars[0])
+        prev_y = prev_opPoint.get_value (self.xyVars[1])
+
+        if prev_x > x:
+            symbol = 't3'               # triangle to left
+        elif prev_x < x:
+            symbol = 't2'               # triangle to right
+        elif prev_y > y:
+            symbol = 't'                # triangle to down
+        elif prev_y < y:
+            symbol = 't1'               # triangle to up
+        else: 
+            symbol = 'o'
+        return symbol
+

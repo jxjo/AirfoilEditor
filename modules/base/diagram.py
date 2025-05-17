@@ -108,6 +108,37 @@ class Diagram (QWidget):
         return obj if isinstance (obj, list) else [obj]
 
 
+    def _get_items (self, item_classes : Type['Diagram_Item'] | list[type['Diagram_Item']]) -> list['Diagram_Item']:
+        """get Diagram Items of self having class name(s)
+
+        Args:
+            items: class or list of class of Diagram Items to retrieve
+        Returns:
+            List of Item with this classes
+        """
+        look_for = [item_classes] if not isinstance (item_classes,list) else item_classes
+        result = []
+        for item in self.diagram_items:
+            if item.__class__ in look_for:
+                result.append(item)
+        return result 
+
+
+    def _get_first_item (self, item_class : Type['Diagram_Item']) -> list['Diagram_Item']:
+        """get Diagram Items of self having class name(s)"""
+        items = self._get_items (item_class)
+        if items:
+            return items [0]
+        else: 
+            return None
+        
+
+    def _show_section_and_item (self, item_class : Type['Diagram_Item'], show = True) -> list['Diagram_Item']:
+        """show view_panel section and the diagram item """
+        for item in self._get_items (item_class):
+            item.section_panel.set_switched_on (show)
+
+
     def _get_artist (self, artists : Type[Artist] | list[type[Artist]]) -> list[Artist]:
         """get artists of all my items having class name(s)
 
@@ -122,11 +153,11 @@ class Diagram (QWidget):
         return result 
 
 
-    def _show_artist (self, artist_class : Type[Artist], show : bool = True):
+    def _show_artist (self, artist_class : Type[Artist], show = True, refresh = True):
         """show on/off of artist having artist_class name """
 
         for item in self.diagram_items:
-            item._show_artist (artist_class, show)
+            item._show_artist (artist_class, show, refresh=refresh)
 
 
     @property
@@ -389,12 +420,12 @@ class Diagram_Item (pg.PlotItem):
         return result 
 
 
-    def _show_artist (self, artist_class : Type[Artist], show : bool = True):
+    def _show_artist (self, artist_class : Type[Artist], show : bool = True, refresh=True):
         """show on/off of artist having artist_class name """
 
         # logger.debug (f"{self} show artists: {show} - is visible: {self.isVisible()}")
         for artist in self._get_artist (artist_class):
-            artist.set_show (show)            
+            artist.set_show (show, refresh=refresh)            
 
 
     def _on_help_message (self, aArtist :Artist | None, aMessage: str | None):

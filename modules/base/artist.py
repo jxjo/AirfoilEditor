@@ -979,6 +979,23 @@ class Artist(QObject):
         self._plots = []
 
 
+    def _remove_plot (self, p):
+        """ remove a single plots from GraphicsView """
+
+        if p in self._plots:
+
+            if isinstance (p, pg.LabelItem):
+                # in case of LabelItem, p is added directly to the scene via setParentItem
+                self._pi.scene().removeItem (p)
+            else: 
+                # normal case - p is an item of PlotItem 
+                self._pi.removeItem (p)
+
+            self._plots.remove (p)
+
+
+
+
     def _add_legend_items (self):
         """ add legend items of self """
         if self._pi.legend is not None:

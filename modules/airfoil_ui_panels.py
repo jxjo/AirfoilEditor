@@ -758,7 +758,23 @@ class Panel_Polar_Defs (Edit_Panel):
 
     sig_polar_def_changed = pyqtSignal()                # polar definition changed 
 
+
+    def __init__(self, *args, mode_optimize_fn=None, **kwargs):
+
+        self._mode_optimize_fn = mode_optimize_fn
+
+        super().__init__(*args, **kwargs)
+
     # ---------------------------------------------
+
+    @property
+    def mode_optimize (self) -> bool:
+        """ in mode optimize a different layout is active """
+        if callable (self._mode_optimize_fn):
+            return self._mode_optimize_fn()
+        else: 
+            return False
+
 
     @property
     def polar_defs (self) -> list[Polar_Definition]: 
@@ -772,16 +788,18 @@ class Panel_Polar_Defs (Edit_Panel):
         for idef, polar_def in enumerate (self.polar_defs):
 
             #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
-            w = CheckBox   (l,r,c  , width=20,  get=lambda p=polar_def: p.active, set=polar_def.set_active)
+            w = CheckBox   (l,r,c  , width=20,  get=lambda p=polar_def: p.active, set=polar_def.set_active,
+                            disable=lambda: self.mode_optimize)
             w.sig_changed.connect (self._on_polar_def_changed)
             Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name)
 
-            ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self.edit_polar_def,   id=idef)
+            ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self.edit_polar_def,   id=idef,
+                        hide=lambda: self.mode_optimize)
             ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_polar_def, id=idef,
-                        hide=lambda: len(self.polar_defs) <= 1)
+                        hide=lambda: (len(self.polar_defs) <= 1) or self.mode_optimize)
             r += 1
 
-        if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS:
+        if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS and (not self.mode_optimize):
             ToolButton (l,r,c+1, icon=Icon.ADD,   set=self.add_polar_def)
 
         l.setColumnStretch (c+1,2)
@@ -863,7 +881,7 @@ class Panel_Airfoils (Edit_Panel):
 
     sig_airfoil_ref_changed      = pyqtSignal(object, object)    # changed reference airfoil 
     sig_airfoils_to_show_changed = pyqtSignal()                  # changed show filter 
-    sig_airfoil_design_selected  = pyqtSignal(Airfoil)           # an airfoil design was selected in the Combobox
+    sig_airfoil_design_selected  = pyqtSignal(int)               # an airfoil design iDesign was selected in the Combobox
 
     _main_margins  = (10, 5, 0, 5)                 # margins of Edit_Panel
 
@@ -871,6 +889,7 @@ class Panel_Airfoils (Edit_Panel):
     def __init__(self, *args, airfoil_designs_fn=None, **kwargs):
 
         self._airfoil_designs_fn = airfoil_designs_fn
+        self._show_reference_airfoils = None                    # will be set in init_layout
 
         super().__init__(*args, **kwargs)
 
@@ -892,6 +911,21 @@ class Panel_Airfoils (Edit_Panel):
             if airfoil.usedAs == usedAs.DESIGN:
                 return airfoil
 
+    @property 
+    def show_reference_airfoils (self) -> bool: 
+        return self._show_reference_airfoils
+    
+    def set_show_reference_airfoils (self, show : bool): 
+
+        self._show_reference_airfoils = show 
+        if not show:
+            for iair, airfoil in enumerate (self.airfoils):
+                if airfoil.usedAs == usedAs.REF:
+                    self.set_show_airfoil (show, iair)
+
+        self.refresh()
+        
+
     def _n_REF (self) -> int:
         """ number of reference airfoils"""
         n = 0 
@@ -911,8 +945,11 @@ class Panel_Airfoils (Edit_Panel):
     @override
     def _init_layout (self): 
 
+        # switch on reference airfoils if there is one 
+        if self._show_reference_airfoils is None: 
+            self._show_reference_airfoils = self._n_REF() > 0
+
         l = QGridLayout()
-        # self._panel.setLayout (l)
         r,c = 0, 0 
         iRef = 0
 
@@ -920,16 +957,15 @@ class Panel_Airfoils (Edit_Panel):
 
             #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
 
-
             if airfoil.usedAs == usedAs.NORMAL :
-                CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
+                CheckBox    (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
                              disable=lambda: self._DESIGN_in_list())
                 Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
                              toolTip=f"Original airfoil {airfoil.fileName}")
                 r += 1
 
             elif airfoil.usedAs == usedAs.DESIGN:                
-                CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
+                CheckBox    (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
                 if self.airfoil_designs:
                     ComboBox    (l,r,c+1, width=155, get=lambda: self.airfoil_design.fileName if self.airfoil_design else None,
                                  set=self._on_airfoil_design_selected,
@@ -946,35 +982,39 @@ class Panel_Airfoils (Edit_Panel):
                              toolTip=f"{airfoil.usedAs} airfoil {airfoil.fileName}")
                 r += 1
 
-        Label (l,r,c, colSpan=4, get="Reference airfoils") 
-        r += 1
+        CheckBox (l,r,c, colSpan=4, text="Reference airfoils", 
+                  get=lambda: self.show_reference_airfoils,
+                  set=self.set_show_reference_airfoils) 
+        
+        if self.show_reference_airfoils:
 
-        for iair, airfoil in enumerate (self.airfoils):
+            r += 1
+            for iair, airfoil in enumerate (self.airfoils):
 
-            if iair == 4: 
-                pass
-            if airfoil.usedAs == usedAs.REF:
-                iRef += 1
-                CheckBox   (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
+                if iair == 4: 
+                    pass
+                if airfoil.usedAs == usedAs.REF:
+                    iRef += 1
+                    CheckBox   (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
 
+                    Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
+                                    get=self.airfoil, set=self.set_airfoil, id=iair,
+                                    initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
+                                    toolTip=f"Reference airfoil {iRef}")
+
+                    ToolButton (l,r,c+2, icon=Icon.DELETE, set=self.delete_airfoil, id=iair)
+                    r += 1
+
+            # add new reference as long as < max REF airfoils 
+            if self._n_REF() < 3:
                 Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
-                                get=self.airfoil, set=self.set_airfoil, id=iair,
-                                initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
-                                toolTip=f"Reference airfoil {iRef}")
+                                get=None, set=self.set_airfoil, id=iair+1,
+                                initialDir=self.airfoils[-1], addEmpty=True,
+                                toolTip=f"New reference airfoil {iRef+1}")
+                r +=1
+            SpaceR (l,r,stretch=0)
 
-                ToolButton (l,r,c+2, icon=Icon.DELETE, set=self.delete_airfoil, id=iair)
-                r += 1
-
-        # add new reference as long as < max REF airfoils 
-        if self._n_REF() < 3:
-            Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
-                            get=None, set=self.set_airfoil, id=iair+1,
-                            initialDir=self.airfoils[-1], addEmpty=True,
-                            toolTip=f"New reference airfoil {iRef+1}")
-            r +=1
-        SpaceR (l,r,stretch=0)
-
-        l.setColumnMinimumWidth (c  ,ToolButton._width)
+        l.setColumnMinimumWidth (c  ,18)
         l.setColumnMinimumWidth (c+2,ToolButton._width)
         l.setColumnStretch (c+1,2)
 
@@ -1023,9 +1063,9 @@ class Panel_Airfoils (Edit_Panel):
         """ callback of combobox when an airfoil design was selected"""
 
         # signal app of new selected current design airfoil 
-        for airfoil in self.airfoil_designs:
+        for iDesign, airfoil in enumerate (self.airfoil_designs):
             if airfoil.fileName == fileName:
-                self.sig_airfoil_design_selected.emit(airfoil)
+                self.sig_airfoil_design_selected.emit (iDesign)
                 break
 
 

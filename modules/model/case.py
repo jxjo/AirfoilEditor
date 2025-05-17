@@ -471,6 +471,12 @@ class Case_Optimize (Case_Abstract):
 
         return self._xo2
     
+    def xo2_reset (self):
+        """ reset Xoptfoil2 (controller) instance """
+
+        # remove current, stateful xo2 controller 
+        self._xo2 = Xo2_Controller (self.workingDir)
+
 
     @property
     def outName (self) -> str:
