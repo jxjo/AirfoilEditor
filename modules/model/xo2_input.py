@@ -533,7 +533,7 @@ class OpPoint_Definition:
 
         specText = f"{self.specVar} {valstr}: " 
 
-        iPoint = f"{self.iPoint}  "
+        iPoint = f"{self.iPoint}:  "
 
         # add re and ncrit if defined for opPoint 
 
@@ -552,7 +552,11 @@ class OpPoint_Definition:
         """ short label like 'target-cd: .00123' or 'Min-cd' 
             if fix=True 0-decimals are not cutted """
 
+
         if self.optType == OPT_TARGET:
+
+            if optValue is None: 
+                return ""
 
             if optVar == var.CL:
                 valstr = f"{optValue:4.2f}"
@@ -699,7 +703,7 @@ class OpPoint_Definition:
         # only possible for target-cd and target-glide 
         if self.isTarget_type and not self.optVar == var.CM:
             # a negative target value is taken as factor by Xoptfoil2 
-            if self._optValue < 0.0: 
+            if self._optValue is not None and self._optValue < 0.0: 
                 isFactor = True
         return isFactor 
     
@@ -1721,6 +1725,10 @@ class Nml_Abstract:
         except: 
             entry = default
 
+        if isinstance (entry, list):
+            # create a copy so dict won't be changed 
+            entry = entry [:]
+
         # f90nml gets arrays only up to highest index defined in namelist
         # --> fill up with default values
         if isinstance (entry, list) and isinstance(default, list):
@@ -1734,11 +1742,22 @@ class Nml_Abstract:
     def _set (self, key: str, aVal): 
         """ sets a namelist entry in self having key"""
 
+        if isinstance (aVal, list):
+            none_val = aVal.count(None) == len(aVal)
+        else:
+            none_val = aVal is None 
+
         # create namelist group if it doesn't exist up to now 
         if not (self.name in self._input_file.nml_file):
-            self._input_file.nml_file [self.name] = self.nml
+            if none_val:
+                return                                      # do nothing = default 
+            else: 
+                self._input_file.nml_file [self.name] = self.nml
 
-        toDict (self.nml, key, aVal)
+        if not none_val:
+            toDict (self.nml, key, aVal)                    # set entry 
+        else: 
+            self.nml.pop (key, None)                        # remove existing entry = default 
 
 
 

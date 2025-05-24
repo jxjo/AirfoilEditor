@@ -22,7 +22,7 @@ from base.math_util         import nelder_mead, derivative1
 from base.widgets           import * 
 from base.panels            import Dialog
 
-from model.airfoil          import Airfoil
+from model.airfoil          import Airfoil, Flapper
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
 from model.polar_set        import Polar_Definition, polarType, var
@@ -274,10 +274,6 @@ class Blend_Airfoil_Dialog (Dialog):
         return buttonBox 
 
 
-
-# ----- repanel dialog helper window  -----------
-
-
 class Repanel_Airfoil_Dialog (Dialog):
     """ Dialog to repanel an airfoil"""
 
@@ -386,6 +382,94 @@ class Repanel_Airfoil_Dialog (Dialog):
         buttonBox.rejected.connect(self.close)
 
         return buttonBox 
+
+
+
+class Flap_Airfoil_Dialog (Dialog):
+    """ Dialog to set flap of airfoil"""
+
+    _width  = 320
+    _height = 190
+
+    name = "Set Flap"
+
+    sig_new_flap_settings    = pyqtSignal ()
+
+
+    def __init__ (self, parent : QWidget, 
+                  airfoil : Airfoil, **kwargs): 
+
+        self._airfoil = airfoil
+        self._has_been_flapped = False
+
+        super().__init__ (parent, **kwargs)
+
+
+    @property
+    def flapper (self) -> Flapper:
+        return self._airfoil.flapper
+
+    @property
+    def has_been_flapped (self) -> bool:
+        """ True if flap was set in this dialog """
+        return self._has_been_flapped and self.flapper.flap_angle != 0.0  
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
+                        obj=self.flapper, prop=Flapper.x_flap)
+        Slider  (l,r,c+3, colSpan=2, width=120, # align=Qt.AlignmentFlag.AlignHCenter,
+                        lim=(0.0, 1), dec=2, # step=10,
+                        obj=self.flapper, prop=Flapper.x_flap)
+        r += 1
+        FieldF  (l,r,c, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
+                        obj=self.flapper, prop=Flapper.y_flap)
+        Label   (l,r,c+3, get="of thickness")
+        r += 1
+        SpaceR (l, r, stretch=1, height=10) 
+        r += 1
+        FieldF  (l,r,c, lab="Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
+                        obj=self.flapper, prop=Flapper.flap_angle)
+        Slider  (l,r,c+3, colSpan=2, width=120, # align=Qt.AlignmentFlag.AlignHCenter,
+                        lim=(-20,20), dec=2, # step=10,
+                        obj=self.flapper, prop=Flapper.flap_angle)
+
+        r += 1
+        l.setRowStretch (r,2)
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,50)
+        l.setColumnStretch (5,2)   
+
+        return l
+
+
+    @override
+    def _on_widget_changed (self):
+        """ slot a input field changed - repanel and refresh"""
+
+        self.refresh()
+        self.flapper.set_flap()
+
+        self._has_been_flapped = True                   # for change detection 
+        self.sig_new_flap_settings.emit()               # inform parent -> diagram update
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
 
 
 # ----- Match a Bezier curve to a Side of an airfoil  -----------

@@ -28,9 +28,7 @@ from model.case             import Case_Optimize
 from model.xo2_controller   import xo2_state, Xo2_Controller
 from model.xo2_results      import Xo2_Results
 
-from model.xo2_input        import Input_File, OpPoint_Definition, OpPoint_Definitions 
-from model.xo2_input        import Nml_Abstract, Nml_particle_swarm_options, Nml_xfoil_run_options, Nml_paneling_options
-from model.xo2_input        import Nml_hicks_henne_options, Nml_bezier_options, Nml_camb_thick_options, Nml_constraints
+from model.xo2_input        import *
 
 from model.xo2_input        import SPEC_TYPES, SPEC_ALLOWED, OPT_ALLOWED, var
 from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist
@@ -196,7 +194,6 @@ class Xo2_Run_Dialog (Dialog):
 
 
 
-
     class Diagram_Item_Improvement (Diagram_Item):
         """ 
         Diagram (Plot) Item to plot improvement during optimization
@@ -241,8 +238,6 @@ class Xo2_Run_Dialog (Dialog):
             self.viewBox.setDefaultPadding (0.0)
 
 
-    # --------------------------------------------------------
-
 
     class Diagram_Progress (Diagram):
         """ Diagram with design radus and improvement development  """
@@ -274,6 +269,7 @@ class Xo2_Run_Dialog (Dialog):
         def create_view_panel (self):
             """ no view_panel"""
             pass
+
 
     # -------------------------------------------------------------------------
 
@@ -471,7 +467,9 @@ class Xo2_Run_Dialog (Dialog):
             r = 0
             SpaceR (l, r, stretch=0, height=5) 
             r += 1
-            Label  (l,r,0,  get=lambda: f"{self.case.xo2.run_errortext}")
+            label = Label  (l,r,0,  get=lambda: f"{self.case.xo2.run_errortext}", height=(60,None))
+            label.setWordWrap(True)
+            # l.setRowStretch (r,5)
             r += 1
             SpaceR (l, r) 
 
@@ -823,7 +821,7 @@ class Xo2_Description_Dialog (Dialog):
 class Xo2_OpPoint_Def_Dialog (Dialog):
     """ Dialog to view / edit a single opPoint definition """
 
-    _width  = (300, None)
+    _width  = (320, None)
     _height = (210, 210)
 
     name = "OpPoint Deinition"
@@ -942,7 +940,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         ToolButton (l,r,c+1, icon=Icon.EDIT, align=ALIGN_RIGHT,  set=self.new_polar_def,
                     hide=lambda: not self.show_polar)
 
-        ComboBox (l,r,c+2, width=130, 
+        ComboBox (l,r,c+2, colSpan=2, # width=130,
                     get=lambda: self.opPoint_def.polar_def.name if self.opPoint_def.polar_def else None,
                     set=self.set_polar_def_by_name,
                     options=lambda: [polar_def.name for polar_def in self.polar_defs_without_default],
@@ -962,7 +960,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         r += 1
         l.setRowStretch (r,5)
         l.setColumnMinimumWidth (0,40)
-        l.setColumnStretch (5,2)
+        l.setColumnStretch (3,2)
 
         return l
 
@@ -1455,3 +1453,114 @@ class Xo2_Constraints_Dialog (Xo2_Abstract_Options_Dialog):
     def _on_widget_changed (self,*_):
         """ slot for change of widgets"""
         self.refresh()
+
+
+
+
+class Xo2_Curvature_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit namelist curvature"""
+
+    _width  = (370, None)
+    _height = (390, None)
+
+    name = "Curvature"
+
+    def __init__ (self, *args, shape_functions=None, **kwargs): 
+
+        self._shape_functions = shape_functions
+
+        if shape_functions != Nml_optimization_options.HICKS_HENNE and \
+           shape_functions != Nml_optimization_options.BEZIER:
+            raise ValueError (f"shape function {shape_functions} not supported")
+
+        s = "Bezier" if shape_functions == Nml_optimization_options.BEZIER else "Hicks-Henne"
+        self.name = f"{self.name} options for {s}"
+
+        super().__init__ (*args, **kwargs)  
+
+
+    @property
+    def curvature (self) -> Nml_curvature:
+        return self.dataObject
+
+    @property 
+    def shape_functions (self) -> str:
+        return self._shape_functions
+
+
+    def _init_layout(self) -> QLayout:
+
+        l =  QGridLayout()
+        r,c, = 0,0
+        r += 1
+        SpaceR      (l,r, height=5, stretch=0)
+        r += 1
+        CheckBox    (l,r,c, text="Auto Curvature", colSpan=4, 
+                     obj=self.curvature, prop=Nml_curvature.auto_curvature,
+                     toolTip="Try to set best curvature specifications based on seed airfoil")                        
+        r += 1
+        SpaceR      (l,r, height=5, stretch=0)
+
+        r += 1
+        Label       (l,r,c, get="Maximum number of reversals on ...", style=style.COMMENT, colSpan=4)
+        r += 1
+        FieldI      (l,r,c, lab='Top side', width=50, step=1, lim=(0,10),
+                     obj=self.curvature, prop=Nml_curvature.max_curv_reverse_top,
+                     toolTip="Maximum number of curvature reversals") 
+        FieldF      (l,r,c+2, lab=" ... using Threshold  ", width=60, dec=2, lim=(0.01,1), step=0.01, rowSpan=2,
+                     align=Qt.AlignmentFlag.AlignVCenter,
+                     obj=self.curvature, prop=Nml_curvature.curv_threshold,
+                     disable=lambda: self.curvature.auto_curvature,
+                     toolTip="Threshold to detect reversals") 
+        r += 1
+        FieldI      (l,r,c, lab='Bottom side', width=50, step=1, lim=(0,10),
+                     obj=self.curvature, prop=Nml_curvature.max_curv_reverse_bot,
+                     toolTip="Maximum number of curvature reversals") 
+
+        r += 1
+        SpaceR      (l,r, height=5, stretch=0)
+
+        if self.shape_functions == Nml_optimization_options.HICKS_HENNE:
+            r += 1
+            Label       (l,r,c, get="Maximum number of spikes on ...", style=style.COMMENT, colSpan=4)
+            r += 1
+            FieldI      (l,r,c, lab='Top side', width=50, step=1, lim=(0,10),
+                         obj=self.curvature, prop=Nml_curvature.max_spikes_top,
+                         disable=lambda: self.curvature.auto_curvature,
+                         toolTip="Maximum number of curvature spikes") 
+            FieldF      (l,r,c+2, lab=" ... using Threshold  ", width=60, dec=2, lim=(0.01,1), step=0.01, rowSpan=2,
+                         align=Qt.AlignmentFlag.AlignVCenter,
+                         obj=self.curvature, prop=Nml_curvature.spike_threshold,
+                         disable=lambda: self.curvature.auto_curvature,
+                         toolTip="Threshold to detect spikes") 
+            r += 1
+            FieldI      (l,r,c, lab='Bottom side', width=50, step=1, lim=(0,10),
+                         obj=self.curvature, prop=Nml_curvature.max_spikes_bot,
+                         disable=lambda: self.curvature.auto_curvature,
+                         toolTip="Maximum number of curvature spikes") 
+        r += 1
+        SpaceR      (l,r, height=5, stretch=0)
+        r += 1
+        Label       (l,r,c, get="Curvature control at LE and TE  ...", style=style.COMMENT, colSpan=4)
+        r += 1
+        FieldF      (l,r,c, lab="Max at TE", width=60, dec=2, lim=(0.01,50), step=0.1, 
+                     obj=self.curvature, prop=Nml_curvature.max_te_curvature,
+                     disable=lambda: self.curvature.auto_curvature,
+                     toolTip="Maximum curvature at trailing edge") 
+
+        if self.shape_functions == Nml_optimization_options.BEZIER:
+            r += 1
+            FieldF      (l,r,c, lab='Max diff at LE', width=60, step=1, lim=(0.1,50), dec=1, 
+                         obj=self.curvature, prop=Nml_curvature.max_le_curvature_diff,
+                         toolTip="Maximum difference of curvature of top and bottom side at leading edge") 
+
+        r += 1
+        l.setRowStretch (r,5)
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnStretch (5,2)
+
+        return l
+
+    @override
+    def _on_widget_changed (self):
+        self.refresh(9)

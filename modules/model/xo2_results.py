@@ -289,7 +289,7 @@ class Optimization_History_Entry:
     """
     def __init__(self):
         """
-        New entry in the optimization hostory with Xoptfoil2 data 
+        New entry in the optimization history with Xoptfoil2 data 
         """
 
         self.step           = 0                # step number in optimization 

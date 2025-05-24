@@ -55,6 +55,7 @@ import time
 from enum               import Enum
 from typing             import override
 from copy               import deepcopy
+from math               import isclose
 
 from base.math_util    import * 
 from base.spline import Spline1D, Spline2D, Bezier
@@ -393,6 +394,7 @@ class Curvature_Abstract:
         self._upper    = None                   # upper side curvature as Side_Airfoil
         self._lower    = None                   # lower side curvature as Side_Airfoil
         self._iLe      = None                   # index of le in curvature array
+        self._flap_kink_x = None                # x position of a curvature flap kink  
 
         logger.debug (f"{self} new ")
 
@@ -498,6 +500,67 @@ class Curvature_Abstract:
     def at_lower_te (self) -> float: 
         """ value of curvature at lower TE  """
         return float(self.lower.y[-1])
+
+    @property
+    def has_flap_kink (self) -> bool:
+        """ True if curvature has (probably) flap kink (peek on upper and lower side)"""
+
+        if self._flap_kink_x is None: 
+            x_pos = self._find_flap_kink()
+            self._flap_kink_x = x_pos if x_pos else -1
+        return self._flap_kink_x > 0 
+
+
+    @property
+    def flap_kink_at (self) -> float:
+        """ x position of a flap kink or None"""
+
+        if self._flap_kink_x is None: 
+            x_pos = self._find_flap_kink()
+            self._flap_kink_x = x_pos if x_pos else -1
+        return self._flap_kink_x if self._flap_kink_x > 0 else None  
+
+
+    def _find_flap_kink (self) -> float:
+        """ 
+        check for a flap kink which leads to a peak of curvature at upper
+        and opposite lower side. 
+        Returns x value of the kink if there is one - else None
+        """
+
+        # get curvature needles on upper and lower side using high threshold  
+
+        needles_upper = self.upper.needles (xStart=0.3, xEnd=0.9, threshold=1.0)
+
+        if len(needles_upper) > 0:
+            needles_lower = self.lower.needles (xStart=0.3, xEnd=0.9, threshold=1.0)
+            if len(needles_lower) == 0:
+                return None 
+        else: 
+            return None    
+
+        # get largest needle
+
+        upper_y_max = 0 
+        for needle in needles_upper: 
+            y = abs (needle[1])
+            if y > upper_y_max:
+                upper_x_max = needle[0]
+                upper_y_max = y
+
+        # get largest needle
+        
+        lower_y_max = 0 
+        for needle in needles_lower: 
+            y = abs (needle[1])
+            if y > lower_y_max:
+                lower_x_max = needle[0]
+                lower_y_max = y
+
+        if isclose (upper_x_max, lower_x_max, abs_tol=0.015):
+            # print ("upper ", upper_x_max, upper_y_max)
+            # print ("lower ", lower_x_max, lower_y_max)
+            return (upper_x_max + lower_x_max) / 2
 
 
 
@@ -815,12 +878,16 @@ class Line:
         """ number of reversals """
         return len(self.reversals())
 
-    def reversals (self, xStart= 0.1):
+
+    def reversals (self, xStart= 0.1, xEnd=1.0, threshold=None) -> list [tuple]:
         """ 
         returns a list of reversals (change of y sign)
         A reversal is a tuple (x,y) indicating the reversal on self. 
         Reversal detect starts at xStart - to exclude turbulent leading area... 
         """
+
+        if threshold is None: threshold = self.threshold
+
         # algorithm from Xoptfoil where a change of sign of y[i] is detected 
         reversals = []
         x = self.x
@@ -828,17 +895,38 @@ class Line:
 
         if not np.any (y < 0.0): return reversals       # early fail if all are positive       
 
-        iToDetect = np.nonzero (x >= xStart)[0]
+        iToDetect = np.where ((x >= xStart) & (x <= xEnd))[0]
 
         yold    = y[iToDetect[0]]
         for i in iToDetect:
-            if abs(y[i]) >= self.threshold:             # outside threshold range
+            if abs(y[i]) >= threshold:                  # outside threshold range
                 if (y[i] * yold < 0.0):                 # yes - changed + - 
                     reversals.append((round(x[i],7),round(y[i],7))) 
                 yold = y[i]
         return reversals 
     
 
+    def needles (self, xStart= 0.1, xEnd=1.0, threshold=1.0) -> list [tuple]:
+        """ 
+        returns a list of needles which are single peaks above threshold
+        A needle is a tuple (x,y). Detetction is between xStart und xEnd.
+        """
+
+        needles = []
+        x = self.x
+        y = self.y
+
+        iToDetect = np.where ((x >= xStart) & (x <= xEnd))[0]
+
+        if len(iToDetect) < 3: return needles
+
+        for i in iToDetect [1:-2]:
+            if y[i] >= threshold and y[i-1] < threshold and y[i+1] < threshold:              
+                needles.append((x[i], y[i])) 
+            elif y[i] <= -threshold and y[i-1] > -threshold and y[i+1] > -threshold:              
+                needles.append((x[i], y[i])) 
+        return needles 
+    
 
     def set_highpoint (self, target : tuple|JPoint) -> tuple: 
         """ 
@@ -1530,6 +1618,7 @@ class Geometry ():
     MOD_TE_GAP          = "te_gap"
     MOD_LE_RADIUS       = "le_radius"
     MOD_BLEND           = "blend"
+    MOD_FLAP            = "flap"
 
 
     EPSILON_LE_CLOSE =  1e-6                    # max norm2 distance of le_real 
@@ -1729,6 +1818,35 @@ class Geometry ():
         return False 
 
     @property
+    def isProbablyFlapped (self) -> bool:
+        """ true if self is probably flapped"""
+        if self.isNormalized: return False 
+        if round((self.y[0] + self.y[-1]),4) == 0.0: return False   # te is symmetric around y=0
+        return True
+
+    @property
+    def isFlapped (self) -> bool:
+        """ true if self is flapped (has kink in curvature)"""
+        return self.isProbablyFlapped and self.curvature.has_flap_kink
+
+    @property
+    def flap_angle_estimated (self) -> float:
+        """ returns an estimation of flap angle in degrees if self is flapped""" 
+        angle = 0.0 
+
+        if not self.isProbablyFlapped: return angle 
+
+        x_pos = self.curvature.flap_kink_at
+        if x_pos:                                                   # calc angle from deflection of TE
+            te_y = (self.y[0] + self.y[-1]) / 2
+            te_x = (self.x[0] + self.x[-1]) / 2
+            angle_rad = math.atan (te_y / (te_x-x_pos))             
+            angle = - math.degrees (angle_rad)                      # flap down is positive 
+
+        return round (angle,1) 
+
+
+    @property
     def le (self) -> tuple: 
         """ coordinates of le defined by the smallest x-value (iLe)"""
         return round(self.x[self.iLe],7), round(self.y[self.iLe],7)      
@@ -1899,6 +2017,7 @@ class Geometry ():
                 Line.Type.CAMBER     : self.camber}
 
 
+
     def set_te_gap (self, newGap, xBlend = 0.8, moving=False):
         """ set te gap - must be / will be normalized .
 
@@ -1996,6 +2115,23 @@ class Geometry ():
             srfac = (abs (factor)) ** 0.5 
             tfac = 1.0 - (1.0 - srfac) * np.exp(-arg)
             self.thickness.y [i] = self.thickness.y [i] * tfac
+
+
+
+    def set_flapped_data (self, x : np.ndarray, y : np.ndarray, flap_angle : float):
+        """ set flapped x,y data - update geometry 
+
+        Args: 
+            x,y:  coordinates of flapped airfoil 
+            flap_angle: flap angle of x,y data 
+        """
+
+        try: 
+            self._set_xy (x, y)
+            self._changed (Geometry.MOD_FLAP, round(flap_angle, 1))   # finalize (parent) airfoil 
+        except GeometryException:
+            self._clear_xy()
+    
 
  
     def set_max_thick (self, val : float): 
@@ -2170,6 +2306,7 @@ class Geometry ():
         yn = self._y - yLe
 
         # Rotate the airfoil so chord is on x-axis 
+
         angle = np.arctan2 ((yn[0] + yn[-1])/ 2.0, (xn[0] + xn[-1])/ 2.0) 
         cosa  = np.cos (-angle) 
         sina  = np.sin (-angle) 
@@ -2179,11 +2316,32 @@ class Geometry ():
             yni = yn[i]
             xn[i] = xni * cosa - yni * sina
             yn[i] = xni * sina + yni * cosa
-         
+
+        # sanity - with higher angles (flapped) there could be a new LE 
+
+        ile = np.argmin (xn)
+
+        if ile != self.iLe:
+
+            # yes - LE changed - move and rotate once again 
+            xLe, yLe = xn[ile], yn[ile]
+            xn = xn - xLe
+            yn = yn - yLe
+
+            angle = np.arctan2 ((yn[0] + yn[-1])/ 2.0, (xn[0] + xn[-1])/ 2.0) 
+            cosa  = np.cos (-angle) 
+            sina  = np.sin (-angle) 
+
+            for i in range (len(xn)):
+                xni = xn[i]
+                yni = yn[i]
+                xn[i] = xni * cosa - yni * sina
+                yn[i] = xni * sina + yni * cosa
+
         # Scale airfoil so that it has a length of 1 
         #  - there are mal formed airfoils with different TE on upper and lower
         #    scale both to 1.0  
-        ile = np.argmin (xn)
+
         if xn[0] != 1.0 or xn[-1] != 1.0: 
             scale_upper = 1.0 / xn[0]
             scale_lower = 1.0 / xn[-1]
@@ -2884,9 +3042,6 @@ class Geometry_Bezier (Geometry):
 
     def finished_change_of (self, aSide : Side_Airfoil_Bezier):
         """ confirm Bezier changes for aSide - update geometry"""
-
-        if aSide.isUpper:                                   # ensure te is symmetrical 
-            self.lower.set_te_gap (- aSide.te_gap)
 
         self._reset()
 

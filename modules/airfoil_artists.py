@@ -15,7 +15,7 @@ from base.artist                import *
 from base.common_utils          import *
 from base.spline                import Bezier, HicksHenne
 
-from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry
+from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flapper
 from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
 from model.polar_set            import * 
 
@@ -566,6 +566,67 @@ class Airfoil_Artist (Artist):
                         text="LE spline"
                     self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
                                       text=text,anchor=(0.5,1) )
+
+
+
+
+class Flap_Artist (Artist):
+    """Plot the flapped airfoil based on Flapper data  """
+
+
+    def __init__ (self, *args, 
+                  **kwargs):
+
+        super().__init__ (*args, **kwargs)
+
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+    @property
+    def design_airfoil (self) -> Airfoil:
+        for airfoil in self.airfoils:
+            if airfoil.usedAsDesign:
+                return airfoil 
+    
+    @property
+    def flapper (self) -> Flapper:
+        return self.design_airfoil.flapper if self.design_airfoil else None 
+
+    def _plot (self): 
+    
+        if self.flapper is None or self.flapper.airfoil_flapped is None: return 
+
+        airfoil_flapped = self.flapper.airfoil_flapped
+
+        # plot flapped airfoil 
+
+        color = _color_airfoil ([], self.design_airfoil)
+        pen   = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+        label = f"{self.design_airfoil.name_to_show} flapped"
+
+
+        self._plot_dataItem  (airfoil_flapped.x, airfoil_flapped.y, name=label, pen = pen, 
+                                antialias = False, zValue=1)
+
+        # plot hinge point 
+
+        x = self.flapper.x_flap
+
+        y_base = self.design_airfoil.geo.lower.yFn(x)
+        thick  = self.design_airfoil.geo.thickness.yFn(x)
+        y = y_base + self.flapper.y_flap * thick 
+
+        self._plot_point (x,y, color=color, size=10,text=f"Hinge {self.flapper.x_flap:.1%}" )
+
+        # plot flap angle 
+
+        x = (1.0 + airfoil_flapped.x[0]) / 2
+        y = airfoil_flapped.y[0] / 2
+
+        self._plot_point (x,y, size=0,text=f"{self.flapper.flap_angle:.1f}°", anchor=(-0.1, 0.5))
+
+
 
 
 

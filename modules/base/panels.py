@@ -439,7 +439,7 @@ class Edit_Panel (Panel_Abstract):
 
         if not self._initial_layout:
 
-            if self._panel.layout():
+            if self._panel.layout() is not None:
                 self._clear_existing_panel_layout ()
 
             if self.shouldBe_visible:
@@ -538,10 +538,15 @@ class MessageBox (QMessageBox):
                 min_width = min_width if min_width is not None else self._min_width
                 # set minimum width of last column (which should be text) 
                 layout.setColumnMinimumWidth (cols-1,min_width)
+                layout.setColumnStretch (cols-1,3)
                 # set minimum width of first column (which should be icon) 
                 layout.setColumnMinimumWidth (0,60)
                 item = layout.itemAtPosition (0,1)
                 item.setAlignment (Qt.AlignmentFlag.AlignVCenter )
+
+                # increase right margin 
+                left, top, right, bottom = layout.getContentsMargins()
+                layout.setContentsMargins (left, top, right+20, bottom)
 
             rows = layout.columnCount()
             if rows > 1:
@@ -568,6 +573,19 @@ class MessageBox (QMessageBox):
 
         msg = MessageBox (parent, title, text, Icon (Icon.ERROR), min_width=min_width, min_height= min_height)
         msg.exec()
+
+
+    @staticmethod
+    def confirm (parent: object, title : str, text : str, min_width=None):
+        """ confirmation with Ok and Cancel"""
+
+        msg = MessageBox (parent, title, text, Icon (Icon.INFO), min_width=min_width)
+
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok | 
+                               QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton  (QMessageBox.StandardButton.Ok)
+
+        return msg.exec()
 
 
     @staticmethod
@@ -601,6 +619,8 @@ class Toaster (QFrame):
         super (Toaster, self).__init__(*args, **kwargs)
         QHBoxLayout(self)
 
+        self.label = None
+
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
         #                 border: 1px solid blue;
@@ -614,6 +634,7 @@ class Toaster (QFrame):
         # alternatively:
 
         self.setAutoFillBackground(True)
+        # set_background (self, color="red")
         # self.setFrameShape(self.Box)
 
         self.timer = QTimer(singleShot=True, timeout=self.hide)
@@ -636,7 +657,8 @@ class Toaster (QFrame):
         self.opacityAni.finished.connect(self.checkClosed)
 
         self.corner = Qt.Corner.TopLeftCorner
-        self.margin = 10
+        self.margin = QMargins(10, 10, 10, 10)
+
 
     def checkClosed(self):
         # if we have been fading out, we're closing the notification
@@ -664,21 +686,24 @@ class Toaster (QFrame):
 
     def eventFilter(self, source, event : QEvent):
         if source == self.parent() and event.type() == QEvent.Type.Resize:
+
             self.opacityAni.stop()
+
             parentRect : QRectF = self.parent().rect()
             geo = self.geometry()
-            if self.corner == Qt.Corner.TopLeftCorner:
-                geo.moveTopLeft(
-                    parentRect.topLeft() + QPoint(self.margin, self.margin))
-            elif self.corner == Qt.Corner.TopRightCorner:
-                geo.moveTopRight(
-                    parentRect.topRight() + QPoint(-self.margin, self.margin))
-            elif self.corner == Qt.Corner.BottomRightCorner:
-                geo.moveBottomRight(
-                    parentRect.bottomRight() + QPoint(-self.margin, -self.margin))
+
+            corner = self.corner
+            margin = self.margin
+
+            if corner == Qt.Corner.TopLeftCorner:
+                geo.moveTopLeft(parentRect.topLeft() + QPoint(margin.left(), margin.top()))
+            elif corner == Qt.Corner.TopRightCorner:
+                geo.moveTopRight(parentRect.topRight() + QPoint(-margin.right(), margin.top()))
+            elif corner == Qt.Corner.BottomRightCorner:
+                geo.moveBottomRight(parentRect.bottomRight() + QPoint(-margin.right(), -margin.bottom()))
             else:
-                geo.moveBottomLeft(
-                    parentRect.bottomLeft() + QPoint(self.margin, -self.margin))
+                geo.moveBottomLeft(parentRect.bottomLeft() + QPoint(margin.left(), -margin.bottom()))
+
             self.setGeometry(geo)
             self.restore()
             self.timer.start()
@@ -740,9 +765,9 @@ class Toaster (QFrame):
 
         self.label = QLabel(message)
         self.layout().addWidget(self.label)
-        self.layout().setContentsMargins (QMargins(10, 5, 10, 5))
+        self.layout().setContentsMargins (QMargins(40, 5, 40, 5))
 
-        # set background style 
+        # set background color style 
 
         if toast_style in [style.WARNING, style.ERROR, style.COMMENT, style.GOOD, style.HINT]:
 
@@ -753,9 +778,13 @@ class Toaster (QFrame):
                 index = Widget.DARK_INDEX
             color = QColor (toast_style.value[index])
 
-            color.setAlphaF (0.3)
+            # adapt color 
 
-            # palette.setColor(self.backgroundRole(), color)
+            h,s,l,a = color.getHsl()
+            s = int(s*0.8)                                  # less saturation (more gray) 
+            l = int(l*1.4)                                  # lighter 
+            color.setHsl (h, s, l, a)
+
             palette.setColor(QPalette.ColorRole.Window, color)
             self.setPalette(palette)
 
@@ -776,17 +805,13 @@ class Toaster (QFrame):
         # now the widget should have the correct size hints, let's move it to the right place
         
         if corner == Qt.Corner.TopLeftCorner:
-            geo.moveTopLeft(
-                parentRect.topLeft() + QPoint(margin.left(), margin.top()))
+            geo.moveTopLeft(parentRect.topLeft() + QPoint(margin.left(), margin.top()))
         elif corner == Qt.Corner.TopRightCorner:
-            geo.moveTopRight(
-                parentRect.topRight() + QPoint(-margin.right(), margin.top()))
+            geo.moveTopRight(parentRect.topRight() + QPoint(-margin.right(), margin.top()))
         elif corner == Qt.Corner.BottomRightCorner:
-            geo.moveBottomRight(
-                parentRect.bottomRight() + QPoint(-margin.right(), -margin.bottom()))
+            geo.moveBottomRight(parentRect.bottomRight() + QPoint(-margin.right(), -margin.bottom()))
         else:
-            geo.moveBottomLeft(
-                parentRect.bottomLeft() + QPoint(margin.left(), -margin.bottom()))
+            geo.moveBottomLeft(parentRect.bottomLeft() + QPoint(margin.left(), -margin.bottom()))
 
         self.setGeometry(geo)
         self.show()

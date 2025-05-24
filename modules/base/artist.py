@@ -889,14 +889,16 @@ class Artist(QObject):
 
 
     def _plot_point (self, 
-                    *args,                     # optional: tuple or x,y
+                    *args,                                              # optional: tuple or x,y
                      symbol='o', color=None, style=Qt.PenStyle.SolidLine, 
                      size=7, pxMode=True, 
                      zValue=3,
                      brushColor=None, brushAlpha=1.0,
                      text=None, textColor=None, textFill=None,
                      textPos=None, anchor=None, angle=0,
-                     ensureInBounds=False):
+                     ensureInBounds=False,
+                     name: str | None = None,                           # to show in legend 
+                     ) -> pg.ScatterPlotItem:
         """ plot point with text item at x, y - text will follow the point """
 
         if isinstance (args[0], tuple):
@@ -918,7 +920,7 @@ class Artist(QObject):
         brushColor.setAlphaF (brushAlpha)
         brush = pg.mkBrush(brushColor) 
         p = pg.ScatterPlotItem  ([xt], [yt], symbol=symbol, size=size, pxMode=pxMode, 
-                                 pen=pen, brush=brush)
+                                 pen=pen, brush=brush, name=name)
         p.setZValue(zValue)                                 # move to foreground 
 
         # plot label as TextItem 
@@ -936,7 +938,7 @@ class Artist(QObject):
 
             self._add (t)
 
-        return self._add(p) 
+        return self._add(p, name=name) 
 
 
 
@@ -1001,7 +1003,7 @@ class Artist(QObject):
         if self._pi.legend is not None:
             p : pg.PlotDataItem
             for p in self._plots:
-                if isinstance (p, pg.PlotDataItem) :
+                if isinstance (p, pg.PlotDataItem) or isinstance (p, pg.ScatterPlotItem):
                     name = p.name()
                     if name:
                         self._pi.legend.addItem (p, name)
@@ -1011,19 +1013,13 @@ class Artist(QObject):
         """ removes legend items of self """
         if self._pi.legend is not None:
             for p in self._plots:
-                if isinstance (p, pg.PlotDataItem):
+                if isinstance (p, pg.PlotDataItem) or isinstance (p, pg.ScatterPlotItem) :
                     self._pi.legend.removeItem (p)
-
-            # ... try to rebuild layout of legend because of strange spacing 
-            # legend_ncol = self._pi.legend.columnCount
-            # self._pi.legend.setColumnCount (legend_ncol+1)
-            # self._pi.legend.setColumnCount (legend_ncol)
 
 
     def _refresh_plots (self):
         """ set new x,y data into plots"""
-        # can be overloaded for high speed refresh 
-
+        # can be overridden for high speed refresh 
         self.plot()             # default - normal plot 
 
 

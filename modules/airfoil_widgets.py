@@ -277,24 +277,27 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         return self._val
     def set_airfoil (self, anAirfoil : Airfoil):
 
-        # do manual set value and callback to avoid refresh ping-pong
-        self._val = anAirfoil 
         self._no_files_here = None                      # reset cached value 
+
+        # set tooltip of combobox to show full filename
+        self._combo_widget.setToolTip (self.airfoil_fileName())
+
+        self._set_value (anAirfoil)
 
         # refresh the sub widgets -> hide / show 
         w : Widget
         for w in self.findChildren (Widget):
             w.refresh()
 
-        # set tooltip of combobox to show full filename
-        self._combo_widget.setToolTip (self.airfoil_fileName())
+        # # do manual set value and callback to avoid refresh ping-pong
+        # self._val = anAirfoil 
 
-        # leave self for callback in a few ms 
-        timer = QTimer()                                
-        timer.singleShot(10, lambda: self._set_value_callback ())  
+        # # leave self for callback in a few ms 
+        # timer = QTimer()                                
+        # timer.singleShot(10, lambda: self._set_value_callback ())  
 
-        # no emit_change   
-        pass
+        # # no emit_change   
+        # pass
 
 
     def airfoil_fileName (self) -> str | None:

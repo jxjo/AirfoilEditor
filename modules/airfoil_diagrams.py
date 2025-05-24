@@ -66,8 +66,10 @@ class Diagram_Item_Airfoil (Diagram_Item):
             if a.isBezierBased: return True
         return False 
 
+
     def _is_one_airfoil_hicks_henne (self) -> bool: 
         """ is one of airfoils Hicks Henne based? """
+
         for a in self.airfoils():
             if a.isHicksHenneBased: return True
         return False 
@@ -185,7 +187,10 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         self.bezier_devi_artist = Bezier_Deviation_Artist (self, self.airfoils, show=False, show_legend=True)
 
-        a  = Xo2_Transition_Artist (self, lambda: self.design_airfoil, show=False,
+        a  = Flap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True)
+        self._add_artist (a)
+
+        a  = Xo2_Transition_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True,
                                     opPoints_result_fn=lambda: self.design_opPoints)
         self._add_artist (a)
 
@@ -270,7 +275,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             CheckBox (l,r,c, text="Deviation of Design", colSpan=2,
                     get=lambda: self.bezier_devi_artist.show,
                     set=self.bezier_devi_artist.set_show,
-                    hide=lambda : not self._is_design_and_bezier()) 
+                    hide=lambda : not self._is_design_and_bezier() or isinstance (self.case, Case_Optimize)) 
             r += 1
             l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)
@@ -792,7 +797,7 @@ class Diagram_Item_Polars (Diagram_Item):
                                        opPoint_results_fn = lambda: self.design_opPoints,
                                        prev_opPoint_results_fn = lambda: self.prev_design_opPoints,
                                        opPoint_defs_fn    = lambda: self.opPoint_defs, 
-                                       xyVars=self._xyVars)
+                                       xyVars=self._xyVars, show_legend=True)
         self._add_artist (a)
 
 
@@ -1310,6 +1315,20 @@ class Diagram_Airfoil_Polar (Diagram):
         artist : Xo2_OpPoint_Defs_Artist
         for artist in self._get_artist (Xo2_OpPoint_Defs_Artist):
             artist.highlight_current (opPoint_def)
+
+
+    def on_enter_flapping (self, aBool):
+        """ slot enter flapping - show flap artist"""
+        artist : Flap_Artist
+        for artist in self._get_artist (Flap_Artist):
+            artist.set_show (aBool)
+
+
+    def on_flap_changed (self):
+        """ slot flap settings changec - refresh flap artist"""
+        artist : Flap_Artist
+        for artist in self._get_artist (Flap_Artist):
+            artist.refresh()
 
 
     # --- private slots ---------------------------------------------------

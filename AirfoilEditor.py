@@ -22,10 +22,12 @@
 import os
 import sys
 import argparse
-from pathlib import Path
+from pathlib                import Path
+from shutil                 import copyfile
+from typing                 import Tuple
 
 from PyQt6.QtCore           import QMargins, QThread
-from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget 
+from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QDialog 
 from PyQt6.QtWidgets        import QVBoxLayout, QHBoxLayout, QMessageBox
 from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 
@@ -37,24 +39,22 @@ from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 from model.airfoil          import Airfoil, usedAs
-from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier
-from model.polar_set        import Polar_Definition, Polar_Set
+from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
+from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from model.xo2_driver       import Worker, Xoptfoil2
-from model.xo2_controller   import xo2_state
-from model.case             import Case_Direct_Design
+from model.xo2_input        import OpPoint_Definition
+from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract
 
 from base.common_utils      import * 
 from base.panels            import Container_Panel, Win_Util, Toaster
 from base.widgets           import *
 
 from airfoil_widgets        import * 
-from airfoil_diagrams       import * 
 
-from airfoil_dialogs        import Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog
-from airfoil_ui_panels      import * 
+from airfoil_dialogs        import (Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog,
+                                    Flap_Airfoil_Dialog)
 
 from xo2_dialogs            import Xo2_Run_Dialog, Xo2_Choose_Optimize_Dialog, Xo2_OpPoint_Def_Dialog
-from xo2_panels             import *
 
 import logging
 logger = logging.getLogger(__name__)
@@ -97,6 +97,8 @@ class App_Main (QMainWindow):
     sig_polar_set_changed       = pyqtSignal()          # new polar sets attached to airfoil
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
     sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
+    sig_enter_flapping          = pyqtSignal(bool)      # start /end flapping dialog 
+    sig_flap_changed            = pyqtSignal()          # flap setting (Flapper) changed 
 
     sig_mode_optimize           = pyqtSignal(bool)      # enter / leave mode optimize
     sig_new_case_optimize       = pyqtSignal()          #  new case optimize selected
@@ -167,18 +169,20 @@ class App_Main (QMainWindow):
 
         Worker().isReady (os.path.dirname(os.path.abspath(__file__)), min_version=self.WORKER_MIN_VERSION)
         if Worker.ready:
-            Worker().clean_workingDir (self.airfoil().pathName)
+            Worker().clean_workingDir (self.airfoil.pathName)
 
         Xoptfoil2().isReady (os.path.dirname(os.path.abspath(__file__)), min_version=self.XOPTFOIL2_MIN_VERSION)
 
 
         # init main layout of app
 
+        from airfoil_diagrams       import Diagram_Airfoil_Polar            # lazy import to avoid circular references 
+
         self._data_panel    = Container_Panel (title="Data panel", hide=lambda:     self.mode_optimize)
         self._xo2_panel     = Container_Panel (title="Xo2 panel",  hide=lambda: not self.mode_optimize)
         self._file_panel    = Container_Panel (title="File panel", width=250)
-        self._diagram       = Diagram_Airfoil_Polar (self, self.airfoils, 
-                                                     polar_defs_fn = self.polar_definitions,
+        self._diagram       = Diagram_Airfoil_Polar (self, lambda: self.airfoils, 
+                                                     polar_defs_fn = lambda: self.polar_definitions,
                                                      case_fn = lambda: self.case, 
                                                      diagram_settings= Settings().get('diagram_settings', []))
 
@@ -231,6 +235,8 @@ class App_Main (QMainWindow):
 
         self.sig_enter_blend.connect            (self._diagram.on_blend_airfoil)
         self.sig_enter_panelling.connect        (self._diagram.on_enter_panelling)
+        self.sig_enter_flapping.connect         (self._diagram.on_enter_flapping)
+        self.sig_flap_changed.connect           (self._diagram.on_flap_changed)
 
 
     @override
@@ -245,6 +251,10 @@ class App_Main (QMainWindow):
         #  || file panel ||        data panel             >||
         #                 | Geometry  | Coordinates | ... >| 
 
+        # lazy import to avoid circular references 
+        from xo2_panels             import (Panel_File_Optimize, Panel_Xo2_Advanced, Panel_Xo2_Case, Panel_Xo2_Curvature,
+                                            Panel_Xo2_Geometry_Targets, Panel_Xo2_Operating_Conditions, Panel_Xo2_Operating_Points)
+
         l_xo2 = QHBoxLayout()        
         l_xo2.addWidget (Panel_Xo2_Case                    (self, lambda: self.case))
         l_xo2.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case))
@@ -256,19 +266,25 @@ class App_Main (QMainWindow):
         l_xo2.setContentsMargins (QMargins(0, 0, 0, 0))
         self._xo2_panel.setLayout (l_xo2)
 
+        # lazy import to avoid circular references 
+        from airfoil_ui_panels      import (Panel_Bezier,Panel_Bezier_Match, Panel_File_Modify,
+                                            Panel_File_View, Panel_Geometry, Panel_LE_TE, Panel_Panels,
+                                            Panel_Flap) 
+
         l_data = QHBoxLayout()        
-        l_data.addWidget (Panel_Geometry        (self, self.airfoil))
-        l_data.addWidget (Panel_Panels          (self, self.airfoil))
-        l_data.addWidget (Panel_LE_TE           (self, self.airfoil))
-        l_data.addWidget (Panel_Bezier          (self, self.airfoil))
-        l_data.addWidget (Panel_Bezier_Match    (self, self.airfoil))
+        l_data.addWidget (Panel_Geometry        (self, lambda: self.airfoil))
+        l_data.addWidget (Panel_Panels          (self, lambda: self.airfoil))
+        l_data.addWidget (Panel_LE_TE           (self, lambda: self.airfoil))
+        l_data.addWidget (Panel_Flap            (self, lambda: self.airfoil))
+        l_data.addWidget (Panel_Bezier          (self, lambda: self.airfoil))
+        l_data.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil))
         l_data.setContentsMargins (QMargins(0, 0, 0, 0))
         self._data_panel.setLayout (l_data)
 
         l_file = QHBoxLayout()
-        l_file.addWidget (Panel_File_Modify     (self, self.airfoil))
+        l_file.addWidget (Panel_File_Modify     (self, lambda: self.airfoil))
         l_file.addWidget (Panel_File_Optimize   (self, lambda: self.case))
-        l_file.addWidget (Panel_File_View       (self, self.airfoil))
+        l_file.addWidget (Panel_File_View       (self, lambda: self.airfoil))
         l_file.setContentsMargins (QMargins(0, 0, 0, 0))
         self._file_panel.setLayout (l_file)
 
@@ -323,17 +339,19 @@ class App_Main (QMainWindow):
                 self.sig_new_case_optimize.emit()
 
 
+    @property
     def airfoil (self) -> Airfoil:
-        """ encapsulates current airfoil. Childs should acces only via this function
-        to enable a new airfoil to be set """
+        """ current airfoil """
+
         return self._airfoil 
 
 
+    @property
     def airfoils (self) -> list [Airfoil]:
         """ list of airfoils (current, ref1 and ref2) """
         airfoils = []
 
-        if self.airfoil():          airfoils.append (self.airfoil())
+        if self.airfoil:            airfoils.append (self.airfoil)
         if self.airfoil_seed:       airfoils.append (self.airfoil_seed)
         if self.airfoil_final:      airfoils.append (self.airfoil_final)
         if self.airfoil_2:          airfoils.append (self.airfoil_2)
@@ -359,7 +377,7 @@ class App_Main (QMainWindow):
         self._airfoil = aNew
 
         if aNew is not None: 
-            self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions(), only_active=True))
+            self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions, only_active=True))
 
             logger.debug (f"Load new airfoil: {aNew.name}")
             self.setWindowTitle (APP_NAME + "  v" + str(APP_VERSION) + "  [" + self._airfoil.fileName + "]")
@@ -378,12 +396,13 @@ class App_Main (QMainWindow):
             return self.case.workingDir
         elif self._airfoil_org:                                 # modify mode use airfoil org   
             return self._airfoil_org.pathName
-        elif self.airfoil():                                     
-            return self.airfoil().pathName
+        elif self.airfoil:                                     
+            return self.airfoil.pathName
         else:
             ""
 
 
+    @property
     def polar_definitions (self) -> list [Polar_Definition]:
         """ list of current polar definitions """
 
@@ -409,7 +428,7 @@ class App_Main (QMainWindow):
         if new_airfoil_ref in self.airfoils_ref: return 
 
         if new_airfoil_ref:
-            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions(), only_active=True))
+            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions, only_active=True))
             new_airfoil_ref.set_usedAs (usedAs.REF)   
 
         if cur_airfoil_ref:
@@ -446,7 +465,7 @@ class App_Main (QMainWindow):
         if self.mode_optimize and self.case:
             seed =  self.case.airfoil_seed
             if not seed.polarSet:
-               seed.set_polarSet (Polar_Set (seed, polar_def=self.polar_definitions(), only_active=True))
+               seed.set_polarSet (Polar_Set (seed, polar_def=self.polar_definitions, only_active=True))
             return seed
         
 
@@ -456,7 +475,7 @@ class App_Main (QMainWindow):
         if self.mode_optimize and self.case:
             final =  self.case.airfoil_final
             if final and not final.polarSet:
-               final.set_polarSet (Polar_Set (final, polar_def=self.polar_definitions(), only_active=True))
+               final.set_polarSet (Polar_Set (final, polar_def=self.polar_definitions, only_active=True))
             return final
 
 
@@ -484,6 +503,12 @@ class App_Main (QMainWindow):
             else: 
                 self._airfoil_org = None                # leave mode_modify - remove original 
         
+
+    @property
+    def mode_bezier (self) -> bool:
+        """ True if self is in mode_modify and geo is Bezier """
+        return self.mode_modify and self.airfoil.geo.isBezier
+
 
     @property
     def mode_optimize (self) -> bool: 
@@ -517,7 +542,7 @@ class App_Main (QMainWindow):
 
         if ok:
             # create new, final airfoil based on actual design and path from airfoil org 
-            new_airfoil = self.case.get_final_from_design (self.airfoil_org, self.airfoil())
+            new_airfoil = self.case.get_final_from_design (self.airfoil_org, self.airfoil)
 
             # dialog to edit name, chose path, ..
 
@@ -579,7 +604,7 @@ class App_Main (QMainWindow):
         self.sig_mode_optimize.emit(False)                  # signal leave mode optimize for diagram
 
 
-    def change_case_optimize (self, input_fileName : str, workingDir):
+    def case_optimize_change (self, input_fileName : str, workingDir):
         """ change current optimization case to new input file """
 
         # check if changes were made in current case 
@@ -599,19 +624,43 @@ class App_Main (QMainWindow):
         if self._xo2_opPoint_def_dialog:
              self._xo2_opPoint_def_dialog.close()
 
-        # set new case 
-        self.set_case_optimize (Case_Optimize (input_fileName, workingDir=workingDir))
+        # create new case 
+        try: 
+            new_case = Case_Optimize (input_fileName, workingDir=workingDir)
+        except ValueError as exc:
+            MessageBox.error (self, "New Case", str(exc), min_width=300)
+        else: 
+            
+            # set new case 
+            self.set_case_optimize (new_case)
 
-        self.set_airfoil (self.case.initial_airfoil_design(), silent=True)      # maybe there is already an existing design 
+            self.set_airfoil (self.case.initial_airfoil_design(), silent=True)      # maybe there is already an existing design 
 
-        # replace polar definitions with the ones defined by Xo2 input file 
-        self.refresh_polar_sets (silent=True)
+            # replace polar definitions with the ones defined by Xo2 input file 
+            self.refresh_polar_sets (silent=True)
 
-        self.refresh()  
-        self.sig_new_case_optimize.emit()                                       # signal for diagram
-        if self.case.input_file.opPoint_defs:                                   # set current opPoint_def 
-            self.sig_opPoint_def_selected.emit (self.case.input_file.opPoint_defs[0])
+            self.refresh()  
+            self.sig_new_case_optimize.emit()                                       # signal for diagram
+            if new_case.input_file.opPoint_defs:                                   # set current opPoint_def 
+                self.sig_opPoint_def_selected.emit (new_case.input_file.opPoint_defs[0])
 
+
+    def case_optimize_new_version (self): 
+        """ create new version of an existing optimization case self.input_file"""
+
+        cur_case : Case_Optimize = self.case 
+        cur_fileName = cur_case.input_file.fileName
+        new_fileName = Case_Optimize.new_input_fileName_version (cur_fileName, self.workingDir)
+
+        if new_fileName:
+
+            copyfile (os.path.join (self.workingDir,cur_fileName), os.path.join (self.workingDir,new_fileName))
+            self.case_optimize_change (new_fileName, self.workingDir)
+
+            self._toast_message (f"New version {new_fileName} created", toast_style=style.GOOD) 
+        else: 
+            MessageBox.error   (self,'Create new version', f"New Version of {cur_fileName} could not be created.",
+                                min_width=350)
 
 
     def refresh(self):
@@ -629,9 +678,9 @@ class App_Main (QMainWindow):
 
         changed = False 
 
-        for airfoil in self.airfoils():
+        for airfoil in self.airfoils:
 
-            new_polarSet = Polar_Set (airfoil, polar_def=self.polar_definitions(), only_active=True)
+            new_polarSet = Polar_Set (airfoil, polar_def=self.polar_definitions, only_active=True)
 
             # check changes to avoid unnecessary refresh
             if not new_polarSet.is_equal_to (airfoil.polarSet):
@@ -652,6 +701,16 @@ class App_Main (QMainWindow):
         """ modify airfoil - switch to modify mode - create Case """
         if self.mode_modify: return 
 
+        # info if airfoil is flapped 
+
+        if self.airfoil.geo.isProbablyFlapped:
+
+            text = "The airfoil is probably flapped and will be normalized.\n\n" + \
+                   "Modifying the geometry can lead to strange results."
+            button = MessageBox.confirm (self, "Modify Airfoil", text)
+            if button == QMessageBox.StandardButton.Cancel:
+                return
+
         # create new Design Case and get/create first design 
 
         self.set_case (Case_Direct_Design (self._airfoil))
@@ -671,14 +730,14 @@ class App_Main (QMainWindow):
 
         if input_fileNames:
             # change directly to mode optimize if there is an input file in directory
-            input_fileName   = Case_Optimize.input_fileName_of (self.airfoil())
+            input_fileName   = Case_Optimize.input_fileName_of (self.airfoil)
             initial_fileName = input_fileName if input_fileName is not None else input_fileNames [0]
 
             case = Case_Optimize (initial_fileName, workingDir=self.workingDir)
 
         else:
             # otherwise open selection dailog 
-            diag = Xo2_Choose_Optimize_Dialog (self, None, self.airfoil(), parentPos=(0.15,0.9), dialogPos=(0,1))
+            diag = Xo2_Choose_Optimize_Dialog (self, None, self.airfoil, parentPos=(0.15,0.9), dialogPos=(0,1))
             rc = diag.exec()
 
             if rc == QDialog.DialogCode.Accepted:
@@ -705,6 +764,16 @@ class App_Main (QMainWindow):
     def new_as_Bezier (self):
         """ create new Bezier airfoil based on current airfoil, create Case, switch to modify mode """
 
+        # current airfoil should be normalized to achieve good results 
+
+        if not self.airfoil.isNormalized:
+
+            text = "The airfoil is not normalized.\n\n" + \
+                   "Match Bezier will not lead to the best results."
+            button = MessageBox.confirm (self, "Modify Airfoil", text)
+            if button == QMessageBox.StandardButton.Cancel:
+                return
+
         # create initial Bezier airfoil based on current
 
         airfoil_bez = Airfoil_Bezier.onAirfoil (self._airfoil)
@@ -723,7 +792,7 @@ class App_Main (QMainWindow):
 
         self.sig_enter_blend.emit()
 
-        dialog = Blend_Airfoil_Dialog (self, self.airfoil(), self.airfoil_org, 
+        dialog = Blend_Airfoil_Dialog (self, self.airfoil, self.airfoil_org, 
                                        parentPos=(0.25, 0.75), dialogPos=(0,1))  
 
         dialog.sig_blend_changed.connect (self.sig_blend_changed.emit)
@@ -732,20 +801,19 @@ class App_Main (QMainWindow):
 
         if dialog.airfoil2 is not None: 
             # do final blend with high quality (splined) 
-            self.airfoil().geo.blend (self.airfoil_org.geo, 
+            self.airfoil.geo.blend (self.airfoil_org.geo, 
                                       dialog.airfoil2.geo, 
                                       dialog.blendBy) 
-        self.set_airfoil_2 (None)
+            self.set_airfoil_2 (None)
+            self._on_airfoil_changed()
 
-        self._on_airfoil_changed()
 
-
-    def repanel_airfoil (self): 
+    def repanel (self): 
         """ run repanel dialog""" 
 
         self.sig_enter_panelling.emit()
 
-        dialog = Repanel_Airfoil_Dialog (self, self.airfoil().geo,
+        dialog = Repanel_Airfoil_Dialog (self, self.airfoil.geo,
                                          parentPos=(0.35, 0.75), dialogPos=(0,1))
 
         dialog.sig_new_panelling.connect (self.sig_panelling_changed.emit)
@@ -753,9 +821,31 @@ class App_Main (QMainWindow):
 
         if dialog.has_been_repaneled:
             # finalize modifications 
-            self.airfoil().geo.repanel (just_finalize=True)                
+            self.airfoil.geo.repanel (just_finalize=True)                
 
-        self._on_airfoil_changed()
+            self._on_airfoil_changed()
+
+
+
+    def flap (self): 
+        """ run set flap dialog""" 
+
+        self.sig_enter_flapping.emit(True)
+
+        dialog = Flap_Airfoil_Dialog (self, self.airfoil,
+                                         parentPos=(0.55, 0.80), dialogPos=(0,1))
+
+        dialog.sig_new_flap_settings.connect (self.sig_flap_changed.emit)
+        dialog.exec()     
+
+        if dialog.has_been_flapped:
+            # finalize modifications 
+            self.airfoil.do_flap ()              
+
+            self._on_airfoil_changed()
+
+        self.sig_enter_flapping.emit(False)
+
 
 
     def edit_opPoint_def (self, parent:QWidget, parentPos:Tuple, dialogPos:Tuple, opPoint_def : OpPoint_Definition):
@@ -799,13 +889,22 @@ class App_Main (QMainWindow):
             self._xo2_run_dialog.activateWindow()
             return                                 # already openend?
 
+        # close other dialogs
+
+        if self._xo2_opPoint_def_dialog:
+            self._xo2_opPoint_def_dialog.close()
+
         # be sure input file data is written to file 
 
         case: Case_Optimize = self.case
         saved = case.input_file.save_nml()
 
+        if saved: 
+            self._toast_message (f"Options saved to Input file")
 
-        diag = Xo2_Run_Dialog (self._file_panel, self.case, dx=100, dy=-400)
+        # open dialog 
+
+        diag = Xo2_Run_Dialog (self._xo2_panel, self.case, parentPos=(0,0.7), dialogPos=(0.2,1.1))
 
         diag.sig_finished.connect (self._optimize_run_finished)
 
@@ -851,11 +950,14 @@ class App_Main (QMainWindow):
     def _on_airfoil_changed (self):
         """ slot handle airfoil changed signal - save new design"""
 
-        if self.mode_modify and self.airfoil().usedAsDesign: 
+        if self.mode_modify and self.airfoil.usedAsDesign: 
 
-            self.case.add_design(self.airfoil())
+            case : Case_Direct_Design = self.case
+            case.add_design(self.airfoil)
 
-            self.set_airfoil (self.airfoil())                # new DESIGN - inform diagram       
+            self.set_airfoil (self.airfoil)                # new DESIGN - inform diagram   
+
+            self._toast_message (f"New {self.airfoil.fileName} added")    
 
         self.refresh () 
 
@@ -918,9 +1020,13 @@ class App_Main (QMainWindow):
         self.sig_new_design.emit()                                          # refresh diagram 
 
 
-    def _toast_message (self, msg, toast_style : style = None):
+    def _toast_message (self, msg, toast_style = style.HINT):
 
-        parent = self._diagram._viewPanel
+        if self.mode_optimize:
+            parent = self._xo2_panel
+        else: 
+            parent = self._data_panel
+
         Toaster.showMessage (parent, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(0, 0, 0, 0),
                              toast_style=toast_style)
 
@@ -945,7 +1051,7 @@ class App_Main (QMainWindow):
         toDict (settings,'bezier_te_bunch', Panelling_Bezier().te_bunch)
 
         # save airfoils
-        airfoil : Airfoil = self.airfoil_org if self.airfoil().usedAsDesign else self.airfoil()
+        airfoil : Airfoil = self.airfoil_org if self.airfoil.usedAsDesign else self.airfoil
 
         if airfoil.isExample:
             toDict (settings,'last_opened', None)
@@ -963,7 +1069,7 @@ class App_Main (QMainWindow):
 
         # save polar definitions 
         def_list = []
-        for polar_def in self.polar_definitions():
+        for polar_def in self.polar_definitions:
             def_list.append (polar_def._as_dict())
         toDict (settings,'polar_definitions', def_list)
 
@@ -1028,7 +1134,7 @@ class App_Main (QMainWindow):
 
         # remove lost worker input files 
         if Worker.ready:
-            Worker().clean_workingDir (self.airfoil().pathName)
+            Worker().clean_workingDir (self.airfoil.pathName)
 
         # terminate polar watchdog thread 
 
@@ -1040,7 +1146,7 @@ class App_Main (QMainWindow):
         self._save_settings ()
 
         # inform parent (PlanformCreator) 
-        self.sig_closing.emit (self.airfoil().pathFileName)
+        self.sig_closing.emit (self.airfoil.pathFileName)
 
         event.accept()
 

@@ -66,6 +66,7 @@ class size (Enum):
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
 ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
 ALIGN_TOP           = Qt.AlignmentFlag.AlignTop
+ALIGN_BOTTOM        = Qt.AlignmentFlag.AlignBottom
 
 
 
@@ -238,14 +239,14 @@ class Widget:
 
     # Signals
 
-    sig_changed  = pyqtSignal(object)    # (Object class name, Method as string, new value)
+    sig_changed  = pyqtSignal(object)                   # (Object class name, Method as string, new value)
 
     # constants 
 
-    LIGHT_INDEX = 0                             # = Qt color index 
+    LIGHT_INDEX = 0                                     # = Qt color index 
     DARK_INDEX  = 1 
 
-    light_mode = True                           # common setting of light/dark mode 
+    light_mode = True                                   # common setting of light/dark mode 
                                        
     _width  = None
     _height = None 
@@ -456,25 +457,6 @@ class Widget:
             # logger.debug (f"{self} - refresh (disable={disable} -> {self._disabled})")
 
             self._set_Qwidget (refresh=True)
-
-
-
-
-
-    def set_enabled (self, aBool : bool):
-        """ 
-        enable/disable self 
-            - disable: always
-            - enable:  depending on 'disable' and 'set'argument and 'set' 
-        """
-        # to overload by subclass
-        disable = not bool(aBool) 
-        if disable: 
-            self._disabled = True 
-            self._set_Qwidget_disabled () 
-        else: 
-            self._disabled = False
-            self._set_Qwidget_disabled () 
 
 
 
@@ -699,6 +681,11 @@ class Widget:
 
     #---  from / to QWidget - inside the widget 
 
+    def _should_be_disabled (self) -> bool:
+        """ True is self is currently should be disabled but maybe not set intoQWidget"""
+        return self._disabled or self._disable_in_refresh
+    
+
     def _set_Qwidget (self, refresh=False): 
         """ set value and properties of self Qwidget"""
         # must be overridden 
@@ -734,13 +721,11 @@ class Widget:
 
     def _set_Qwidget_disabled (self):
         """ set self Qwidget according to self._disabled"""
-
         # can be overridden to suppress enable/disable 
-        disable = self._disabled or self._disable_in_refresh
 
         widget : QWidget = self
-        if widget.isEnabled() != (not disable) :
-            widget.setDisabled(disable)
+        if widget.isEnabled() != (not self._should_be_disabled()) :
+            widget.setDisabled(self._should_be_disabled())
 
 
     def _set_Qwidget_hidden (self):
@@ -795,7 +780,7 @@ class Widget:
                 if aStyle == style.GOOD:
                     color.setAlphaF (0.4) 
                 else:
-                    if self._disabled:
+                    if self._should_be_disabled():
                         color.setAlphaF (0.3)
                     else: 
                         color.setAlphaF (0.15)
@@ -877,7 +862,9 @@ class Field_With_Label (Widget):
                 raise ValueError (f"{self} Only QGridLayout supported for Field with a Label")
             else: 
                 self._label = Label(self._layout, self._row, self._col, get=lab, 
-                                    disable=disable, lab_disable=lab_disable,
+                                    disable=disable, lab_disable=lab_disable, align=self._alignment,
+                                    colSpan=1,              # label is always only 1 column
+                                    rowSpan=self._rowSpan,  # rowSpan same as parent field
                                     toolTip=toolTip)
             
 
@@ -894,8 +881,8 @@ class Field_With_Label (Widget):
         # on a sub layoutthe widget doesn't stretch if on widget in the column is fixed 
         super()._layout_add (col=col, widget=widget)
 
-        if self._label and self._alignment is not None:
-            self._layout.setAlignment (self._label, self._alignment)
+        # if self._label and self._alignment is not None:
+        #     self._layout.setAlignment (self._label, self._alignment)
 
         self.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
@@ -941,12 +928,15 @@ class Label (Widget, QLabel):
 
     def __init__(self, *args, 
                  styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Base
-                 disable = False,                            # labels are typically not disabled 
+                 disable = None,                             
                  lab_disable : bool = False,                 # label can be disabled (color) 
                  **kwargs):
 
         # special disable handling for Label as typically it is not disabled 
         self._label_disable = lab_disable
+
+        # labels are typically not disabled 
+        disable = False if disable is None else disable 
 
         super().__init__(*args, styleRole=styleRole, disable=disable,**kwargs)
 
@@ -980,6 +970,7 @@ class Label (Widget, QLabel):
         self.setText (self._val)
 
 
+    @override
     def _set_Qwidget_disabled (self):
         """ set self Qwidget according to self._disabled"""
         if self._label_disable:
@@ -1088,7 +1079,7 @@ class FieldI (Field_With_Label, QSpinBox):
 
         # overloaded to show/hide spin buttons  
         # parent could be disabled - so also remove spin buttons 
-        if self._spin and not self._disabled and self.isEnabled():
+        if self._spin and not self._should_be_disabled() and self.isEnabled():
             self.setButtonSymbols(QSpinBox.ButtonSymbols.PlusMinus)
         else: 
             self.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
@@ -1199,7 +1190,7 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
 
         # overloaded to show/hide spin buttons  
         # parent could be disabled - so also remove spin buttons 
-        if self._spin and not self._disabled and self.isEnabled():
+        if self._spin and not self._should_be_disabled() and self.isEnabled():
             self.setButtonSymbols(QSpinBox.ButtonSymbols.PlusMinus)
         else: 
             self.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
@@ -1296,7 +1287,7 @@ class Slider (Widget, QSlider):
         self._set_Qwidget ()
 
         # connect signals 
-        self.valueChanged.connect(self._on_finished)
+        self.valueChanged.connect(self._on_changed)
 
 
     @override
@@ -1324,16 +1315,16 @@ class Slider (Widget, QSlider):
         self.setValue (self._slider_val)
 
 
-    def _on_finished(self):
-      """ slot - finished slider movement"""
-      self._slider_val = self.value()
+    def _on_changed(self):
+        """ slot - finished slider movement"""
 
-      newVal = self._from_slider_to_val ()
-      newVal = round(newVal, self._dec)            # Qt sometimes has float artefacts 
-      self._set_value (newVal)
+        self._slider_val = self.value()
+        newVal = self._from_slider_to_val ()
+        newVal = round(newVal, self._dec)                   # Qt sometimes has float artefacts 
+        self._set_value (newVal)
 
 
-    def _from_val_to_slider (self):
+    def _from_val_to_slider (self) -> int:
         """ get the slider value from _val"""
 
         if not isinstance (self._lim, tuple): 
@@ -1350,7 +1341,7 @@ class Slider (Widget, QSlider):
         max_slider = self._slider_max
 
         slider_val = min_slider + rel_val * (max_slider - min_slider)
-        return int (slider_val)
+        return int (round(slider_val,0))
 
 
     def _from_slider_to_val (self):
@@ -1385,34 +1376,34 @@ class Button (Widget, QPushButton):
         self._button_style_getter = button_style
 
         self._get_properties ()
-
         self._layout_add ()                                 # put into layout - so it gets parent early
-
         self._set_Qwidget_static ()
         self._set_Qwidget ()
 
         # connect signals 
-        self.pressed.connect(self._on_pressed)
+        self.pressed.connect(lambda: self._set_value(None))
 
 
     def __repr__(self) -> str:
-        # overwritten to get a nice print string 
         text = f" '{str(self._text)}'" if self._text is not None else ''
         return f"<{type(self).__name__}{text}>"
     
 
+    @override
     def _get_properties (self): 
-        # overloaded
+        " get all the properties like disable"
         super()._get_properties () 
         self._button_style = self._get_value (self._button_style_getter)
 
 
+    @override
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
         self.setText (self._text)
 
 
+    @override
     def _set_Qwidget (self, **kwargs): 
         """ set properties of self Qwidget like data"""
         super()._set_Qwidget (**kwargs)        
@@ -1420,10 +1411,6 @@ class Button (Widget, QPushButton):
             self.setDefault (True)
         else: 
             self.setDefault(False)
-
-
-    def _on_pressed(self):
-      self._set_value (None)
 
 
 
@@ -1445,29 +1432,18 @@ class ToolButton (Widget, QToolButton):
         self._icon_name = icon                           # icon name 
 
         self._get_properties ()
-
         self._layout_add ()                                 # put into layout - so it gets parent early
-
         self._set_Qwidget_static ()
         self._set_Qwidget ()
 
-        self.clicked.connect(self._on_pressed)
+        self.clicked.connect(lambda: self._set_value(None))
+
 
     @override
     def __repr__(self) -> str:
         # get a nice print string 
         text = f" '{str(self._icon_name)}'" if self._icon_name is not None else ''
         return f"<{type(self).__name__}{text}>"
-
-
-    @override
-    def _set_Qwidget (self, **kwargs):
-        """ set value and properties of self Qwidget"""
-
-        super()._set_Qwidget (**kwargs)
-
-        if self.isEnabled() != (not self._disabled) :
-            self.setDisabled(self._disabled)
 
 
     @override
@@ -1485,11 +1461,6 @@ class ToolButton (Widget, QToolButton):
                 self.setIconSize (QSize(16,16))
             else: 
                 pass
-
-
-    def _on_pressed(self):
-        """ slot: user pressed button"""
-        self._set_value (None)
 
 
 
@@ -1737,20 +1708,23 @@ class ComboSpinBox (Field_With_Label, QComboBox):
 
 class ListBox (Field_With_Label, QListWidget):
     """
-    ComboBox  
-        - values list via 'options' (bound method or list)
+    Listbox  
+        - values list via 'options' (method or list)
         - when clicked, 'set' is called argument with selected text as argument 
+        - when double clicked, in addition 'dblClick' is called 
     """
         
     _height = 72 
 
     def __init__(self, *args, 
-                 options = [], 
+                 options = [],
+                 doubleClick = None,  
                  **kwargs):
         super().__init__(*args, **kwargs)
 
         self._options_getter = options
         self._options : list = None
+        self._doubleClick_setter = doubleClick if callable (doubleClick) else None
 
         self._get_properties ()
 
@@ -1763,7 +1737,7 @@ class ListBox (Field_With_Label, QListWidget):
         # connect signals 
         # self.itemActivated.connect(self._on_selected)
         self.itemClicked.connect(self._on_selected)
-
+        self.itemDoubleClicked.connect (self._on_doubleClick)
 
     @override
     def _get_properties (self): 
@@ -1785,8 +1759,7 @@ class ListBox (Field_With_Label, QListWidget):
         self.clear()                                
         for item_text in self._options:
              item = QListWidgetItem (item_text, self)
-             #item.setSizeHint (QSize (item.sizeHint().width(), 30))
-             item.setSizeHint (QSize (0, 22))
+             item.setSizeHint (QSize (0, 23))
 
         # set current item 
         try: 
@@ -1797,7 +1770,14 @@ class ListBox (Field_With_Label, QListWidget):
 
 
     def _on_selected (self, aItem : QListWidgetItem):
-      self._set_value (aItem.text())
+        """ slot clicked"""
+        self._set_value (aItem.text())
+
+
+    def _on_doubleClick (self, aItem : QListWidgetItem):
+        """ slot signal double clicked"""
+        if self._doubleClick_setter:
+            QTimer.singleShot (10, self._doubleClick_setter)  
 
 
 

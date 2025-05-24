@@ -396,6 +396,8 @@ class Xo2_OpPoint_Artist (Artist):
 
         opPoint_defs :  list[OpPoint_Definition] = self._opPoint_defs_fn() 
         prev_opPoints : list[OpPoint_Result] = self._prev_opPoint_results_fn() 
+
+        legend_name = "Op Point Result"
        
         for iop, opPoint in enumerate (opPoints):
 
@@ -403,15 +405,24 @@ class Xo2_OpPoint_Artist (Artist):
             x = opPoint.get_value (self.xyVars[0])
             y = opPoint.get_value (self.xyVars[1])
 
-            color  = self._opPoint_color  (opPoint, opPoint_defs[iop])
+            # sanity - opPoint def could be deleted in the meantime 
+            opPoint_def = opPoint_defs[iop] if len(opPoint_defs) == len (opPoints) else None
+
+            color  = self._opPoint_color  (opPoint, opPoint_def)
             symbol = self._opPoint_symbol (opPoint, prev_opPoint)
             size   = _size_opPoint (opPoint.weighting, normal_size = 11)
 
-            self._plot_point (x,y, color=color, size=size, symbol=symbol, zValue=20)
+            self._plot_point (x,y, color=color, size=size, symbol=symbol, zValue=20, name=legend_name)
+
+            legend_name = None 
 
         
-    def _opPoint_color (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition):
+    def _opPoint_color (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None):
         """ color of opPoint depending on % deviation """
+
+        # sanity 
+        if opPoint_def is None: 
+            return COLOR_OK
 
         deviation = opPoint.deviation
 
@@ -519,7 +530,10 @@ class Xo2_Design_Radius_Artist (Artist):
             # plot last as point 
             x = len(radius_list) - 1
             y = radius_list[-1]
-            self._plot_point (x,y, size=5, color=COLOR_OK)
+            back_color = QColor ("black")
+            back_color.setAlphaF (0.5)
+
+            self._plot_point (x,y, size=5, color=COLOR_OK, text = f"{y:.3f}", textFill=back_color, anchor= (1.1, 0.7))
 
 
 
@@ -547,7 +561,10 @@ class Xo2_Improvement_Artist (Artist):
             # plot last as point 
             x = len(improvement_list) - 1
             y = improvement_list[-1]
-            self._plot_point (x,y, size=5, color=COLOR_GOOD)
+            back_color = QColor ("black")
+            back_color.setAlphaF (0.5)
+            
+            self._plot_point (x,y, size=5, color=COLOR_GOOD, text = f"{y:.2f}%", textFill=back_color, anchor= (0.8, -0.1))
 
 
 
@@ -581,6 +598,8 @@ class Xo2_Transition_Artist (Artist):
 
         if not opPoints_result or not airfoil: return 
 
+        legend_name = "Point of Transition xtr"
+
         side : Line
         for side in [airfoil.geo.lower, airfoil.geo.upper]:     
 
@@ -598,7 +617,9 @@ class Xo2_Transition_Artist (Artist):
 
                 y      = y + 0.005 if side.isUpper else y - 0.005
 
-                self._plot_point (x,y, color=color, symbol=symbol, text=text, anchor=anchor, textFill=fill)
+                self._plot_point (x,y, color=color, symbol=symbol, text=text, anchor=anchor, textFill=fill, name=legend_name)
+
+                legend_name = None                                      # only once for legend 
 
         
     def _transition_symbol (self, opPoint : OpPoint_Result, prev_opPoint : OpPoint_Result | None ):

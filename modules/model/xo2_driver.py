@@ -353,6 +353,10 @@ class X_Program:
                 self._pipe_error_lines = process.stderr.split ("\n")
                 logger.error (f"==> {self.name} stderr: {"\n".join (self._pipe_error_lines)}")
 
+                if self._pipe_error_lines[0] == "STOP 1":
+                    # the error message will be in stdout
+                    self._pipe_error_lines = []
+
             if capture_output and process.stdout: 
                 self._pipe_out_lines = process.stdout.split ("\n")
                 # logger.debug (f"==> {self.name} stdout: {"\n".join (self._pipe_out_lines)}")
@@ -778,7 +782,8 @@ class Worker (X_Program):
                         x_flap : float = 0.75,
                         y_flap : float = 0.0,
                         y_flap_spec : str = 'y/c',
-                        flap_angle : float | list = 0.0) -> int:
+                        flap_angle : float | list = 0.0,
+                        outname : str =None) -> int:
         """ 
         Set flap for airfoilPathFileName in directory of airfoil.
 
@@ -791,24 +796,35 @@ class Worker (X_Program):
 
         # a temporary input file for polar generation is created
 
-        self._tmp_inpFile = self._generate_polar_inputFile (airfoil_pathFileName, 
+        self._tmp_inpFile = self._generate_flap_inputFile (airfoil_pathFileName, 
                                     x_flap, y_flap, y_flap_spec, flap_angle)         
         if not self._tmp_inpFile:
             raise RuntimeError (f"{self.name} setting flap failed: Couldn't create input file")
 
         # build args for worker 
 
-        args, workingDir = self._build_worker_args ('flap',airfoil1=airfoil_pathFileName, inputfile=self._tmp_inpFile)
+        args, workingDir = self._build_worker_args ('flap',
+                                                    airfoil1=airfoil_pathFileName, 
+                                                    inputfile=self._tmp_inpFile,
+                                                    outname=outname)
 
         # .execute  sync
 
         rc = self._execute (args, capture_output=True, workingDir=workingDir)
 
-        self.remove_tmp_file (self._tmp_inpFile)         
         
         if rc: 
-            raise RuntimeError (f"Worker polar generation failed for {airfoil_pathFileName}")
-        return rc    
+            raise RuntimeError (f"Worker set flap failed: {self.finished_errortext}")
+        else: 
+            self.remove_tmp_file (self._tmp_inpFile)         
+
+            # retrieve filename of new airfoil 
+            workingDir, _ = os.path.split(airfoil_pathFileName)
+            pathFileName = os.path.join (workingDir, outname + ".dat")
+            if os.path.isfile (pathFileName):
+                return pathFileName
+            else: 
+                return None 
 
 
     def clean_workingDir (self, workingDir):
@@ -961,8 +977,9 @@ class Worker (X_Program):
             tmp.write ("&operating_conditions\n")
             tmp.write (f"  x_flap = {x_flap:.2f}\n")  
             tmp.write (f"  y_flap = {y_flap:.2f}\n")  
-            tmp.write (f"  y_flap_spec = {y_flap_spec}\n")  
-            tmp.write (f"  flap_angle = {flap_angles}\n")  
+            tmp.write (f"  y_flap_spec = '{y_flap_spec}'\n")  
+            tmp.write (f"  flap_angle = {','.join(map(str, flap_angles))}\n")  
+            tmp.write ("/\n")
 
             tmpFilePath = tmp.name
 

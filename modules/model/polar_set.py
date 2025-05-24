@@ -577,10 +577,11 @@ class Polar (Polar_Definition):
     def get_label (cls, polarType, re, ma, ncrit): 
         """ return a label of these polar variables"""
         if ma:
-            maString = f" M {ma:.2f}".rstrip('0').rstrip('.') 
+            maString    = f" M {ma:.2f}".rstrip('0').rstrip('.') 
+            ncritString = f" N {ncrit:.2f}".rstrip('0').rstrip('.') 
         else: 
-            maString = ""
-        ncritString = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
+            maString    = ""
+            ncritString = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
         return f"{polarType} Re {int(re/1000)}k{maString}{ncritString}"
 
 
