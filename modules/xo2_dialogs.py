@@ -13,7 +13,7 @@ from shutil                 import copyfile
 import pyqtgraph as pg
 
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
-from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog
+from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog
 from PyQt6.QtGui            import QFontMetrics, QCloseEvent
 
 from base.widgets           import * 
@@ -39,19 +39,21 @@ logger = logging.getLogger(__name__)
 
 
 
-class Xo2_Choose_Optimize_Dialog (Dialog):
+class Xo2_Optimize_Select_Dialog (Dialog):
     """ Dialog to choose what should be done"""
 
-    _width  = (300, None)
-    _height = (500, None)
+    _width  = (550, None)
+    _height = (300, None)
 
-    name = "What You want to optimize"
+    name = "Airfoil Optimization"
 
     def __init__ (self, parent, input_fileName : str,  current_airfoil : Airfoil, **kwargs): 
 
         self._input_fileName  = input_fileName
         self._current_airfoil = current_airfoil
         self._workingDir      = None 
+
+        self._info_panel = None
 
         # is there an existung input file for airfoil
 
@@ -80,32 +82,71 @@ class Xo2_Choose_Optimize_Dialog (Dialog):
 
         l =  QGridLayout()
         r,c, = 0,0
-        Label    (l,r,c, height=70, colSpan=3, style=style.COMMENT,
-                  get= "Airfoil optimization is based on <b>Xoptfoil2</b>, which will run in the background.<br>" +
-                       "Xoptfoil2 is controlled via the input file, whoose paramters you may edit subsequently.<br>"
-                       "The input file equals to an optimization Case in the AirfoilEditor.")
-        r += 1
-        Button   (l,r,c, width=100, text="Open Case", set=self.open_case,
+        Button   (l,r,c, width=120, text="Open Case", set=self._open_case,
                   hide=lambda: self.input_fileName is None)
-        Label    (l,r,c+2, height=50, 
-                  get=lambda: f"Open input file <b>{self.input_fileName}</b> of airfoil {self.current_airfoil.fileName}" + 
-                              f"<br>change options and run optimization",
-                  hide=lambda: self.input_fileName is None and self.current_airfoil is None )
+        Label    (l,r,c+2, height=40, wordWrap=True,
+                  get=lambda: f"Open input file <b>{self.input_fileName}</b> of airfoil {self.current_airfoil.fileName}" ,
+                  hide=lambda: self.input_fileName is None )
+        r += 1
+        Button   (l,r,c, width=120, text="New Version", set=self._new_version,
+                  hide=lambda: self.input_fileName is None)
+        Label    (l,r,c+2,  height=40, wordWrap=True,
+                  get=lambda: f"Create new Version of input file <b>{self.input_fileName}</b>",
+                  hide=lambda: self.input_fileName is None)
+        r += 1
+        SpaceR   (l,r,stretch=0)
+        r += 1
+        Button   (l,r,c, width=120, text="Select && Open Case", set=self._select_open_open_case)
+        Label    (l,r,c+2, height=40, wordWrap=True,
+                  get=lambda: f"Select an existing Input file and switch to Optimization Mode")
+        r += 1
+        Button   (l,r,c, width=120, text="New ...", set=self._new_version)
+        Label    (l,r,c+2,  height=40, wordWrap=True,
+                  get=lambda: f"Create new optimization Case for a new airfoil")
+        r += 1
+
+        # add switchable info panel 
+        SpaceR   (l,r,stretch=0, height=20)
+        l.addWidget (self.info_panel, r,c, 1, 3)  
+
         # r +=1
-        # SpaceR   (l,r,stretch=0)
-        r += 1
-        Button   (l,r,c, width=100, text="New Version", set=self.new_version,
-                  hide=lambda: self.input_fileName is None)
-        Label    (l,r,c+2,  height=50, 
-                  get=lambda: f"Create new Version of input file <b>{self.input_fileName}</b>,<br>open it, change options and run optimization",
-                  hide=lambda: self.input_fileName is None)
-        
-        r += 1
-        l.setRowStretch (r,2)
+        # l.setRowStretch (r,2)
         l.setColumnMinimumWidth (1,20)
         l.setColumnStretch (2,2)
 
         return l 
+
+
+    @property
+    def info_panel (self) -> Edit_Panel:
+        """ return info panel holding additional user info"""
+
+        if self._info_panel is None:    
+            l = QGridLayout()
+            r,c = 0, 0 
+            Label    (l,r,c, height=80, colSpan=3, style=style.COMMENT, wordWrap=True,
+                        get="Airfoil optimization is based on <b>Xoptfoil2</b>, which will run in the background.<br><br>" +
+                            "Xoptfoil2 is controlled via the Input file, whose paramters can be edit subsequently. "
+                            "The Input file is equivalent to an optimization Case in the AirfoilEditor.")
+            r += 1
+            Label    (l,r,c, height=50, colSpan=3, style=style.COMMENT, wordWrap=True,
+                        get="If you have no experience with profile optimization, please read the description " + 
+                            "of Xoptfoil2 first and then run the two examples. " + 
+                            "After that you are ready for your own projects")
+            r += 1
+            Button   (l,r,c,   width=100, text="Example SD7003", set=self._new)
+            Button   (l,r,c+2, width=100, text="Example F3F", set=self._new)
+
+            self._info_panel = Edit_Panel (title="Info and examples", layout=l, height=(100,None), 
+                                              switchable=True, switched_on=False, on_switched=lambda x: self.adjustSize())
+            
+            self._info_panel.layout().setContentsMargins (QMargins(5, 10, 10, 10))
+            self._info_panel.set_background_color (color='darkturquoise', alpha=0.1)
+            Widget._set_height (self._info_panel._head, 30)
+            # self._info_panel.adjustSize()
+
+        return self._info_panel 
+
 
 
     @override
@@ -118,12 +159,38 @@ class Xo2_Choose_Optimize_Dialog (Dialog):
         return buttonBox 
 
 
-    def open_case (self): 
+    def _select_open_open_case (self): 
+        """ file select of an input file and close self with input_fileName"""
+
+        # build somethinglike "*.inp *.xo2" as filter for the dialog
+        filter_string = ""
+        for extension in Case_Optimize.INPUT_FILE_EXT:
+            filter_string += f" *{extension}" if filter_string else f"*{extension}"
+
+        filters  = f"Xoptfoil2 Input files ({filter_string})"
+        caption  = "Select Input file"
+
+        pathFileName, *_ = QFileDialog.getOpenFileName(self, caption=caption, filter=filters, directory=self.workingDir)
+
+        if pathFileName:                         # user pressed open
+            pathHandler = PathHandler (onFile=pathFileName)
+            self._input_fileName = pathHandler.relFilePath (pathFileName)
+            self._workingDir     = pathHandler.workingDir
+            self.accept ()
+
+
+    def _open_case (self): 
         """ open existing case self.input_file"""
         self.accept ()
 
 
-    def new_version (self): 
+    def _new (self): 
+        """ create new case for a new airfoil"""
+
+        pass
+
+
+    def _new_version (self): 
         """ create new version of an existing case self.input_file"""
 
         new_fileName = Case_Optimize.new_input_fileName_version (self.input_fileName, self.workingDir)
@@ -135,6 +202,7 @@ class Xo2_Choose_Optimize_Dialog (Dialog):
         else: 
             MessageBox.error   (self,'Create new version', f"New Version of {self.input_fileName} could not be created.",
                                 min_width=350)
+
 
 
 
@@ -467,9 +535,7 @@ class Xo2_Run_Dialog (Dialog):
             r = 0
             SpaceR (l, r, stretch=0, height=5) 
             r += 1
-            label = Label  (l,r,0,  get=lambda: f"{self.case.xo2.run_errortext}", height=(60,None))
-            label.setWordWrap(True)
-            # l.setRowStretch (r,5)
+            Label  (l,r,0,  get=lambda: f"{self.case.xo2.run_errortext}", height=(60,None), wordWrap=True)
             r += 1
             SpaceR (l, r) 
 

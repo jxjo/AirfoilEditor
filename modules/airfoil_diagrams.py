@@ -1183,12 +1183,11 @@ class Diagram_Airfoil_Polar (Diagram):
                 r += 1
                 SpaceR (l,r, height=5, stretch=0) 
                 r += 1
-                lab = Label (l,r,c, colSpan=6, get=Worker.ready_msg, style=style.COMMENT, height=(None,100)) 
-                lab.setWordWrap(True)
+                Label (l,r,c, colSpan=6, get=Worker.ready_msg, style=style.COMMENT, height=(None,100), wordWrap=True) 
 
             if Worker.ready:
                 r += 1
-                Label  (l,r,c, colSpan=6, get=f"Powered by {Worker.name} {Worker.version}", 
+                Label  (l,r,c, colSpan=6, get=f"Powered by {Worker.name} {Worker.version} using Xfoil", 
                         style=style.COMMENT, fontSize=size.SMALL)
 
             self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(250,None),

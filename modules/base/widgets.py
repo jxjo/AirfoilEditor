@@ -929,7 +929,8 @@ class Label (Widget, QLabel):
     def __init__(self, *args, 
                  styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Base
                  disable = None,                             
-                 lab_disable : bool = False,                 # label can be disabled (color) 
+                 lab_disable : bool = False,                 # label can be disabled (color)
+                 wordWrap = False,                           # activate word wrap
                  **kwargs):
 
         # special disable handling for Label as typically it is not disabled 
@@ -945,7 +946,12 @@ class Label (Widget, QLabel):
         self._layout_add ()                                 # put into layout - so it gets parent early
 
         self._set_Qwidget_static ()
+        if wordWrap:
+            self.setWordWrap (wordWrap)
+
         self._set_Qwidget ()
+
+
        # self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
 
 

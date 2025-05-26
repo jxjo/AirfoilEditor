@@ -152,7 +152,7 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
         if workingDir is None: 
             workingDir = self.workingDir
 
-        self.app.case_optimize_change (aFileName, workingDir)
+        self.app.optimize_change_case (aFileName, workingDir)
 
 
     def _new_version (self): 

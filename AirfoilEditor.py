@@ -54,7 +54,7 @@ from airfoil_widgets        import *
 from airfoil_dialogs        import (Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog,
                                     Flap_Airfoil_Dialog)
 
-from xo2_dialogs            import Xo2_Run_Dialog, Xo2_Choose_Optimize_Dialog, Xo2_OpPoint_Def_Dialog
+from xo2_dialogs            import Xo2_Run_Dialog, Xo2_Optimize_Select_Dialog, Xo2_OpPoint_Def_Dialog
 
 import logging
 logger = logging.getLogger(__name__)
@@ -542,7 +542,8 @@ class App_Main (QMainWindow):
 
         if ok:
             # create new, final airfoil based on actual design and path from airfoil org 
-            new_airfoil = self.case.get_final_from_design (self.airfoil_org, self.airfoil)
+            case : Case_Direct_Design = self.case
+            new_airfoil = case.get_final_from_design (self.airfoil_org, self.airfoil)
 
             # dialog to edit name, chose path, ..
 
@@ -553,6 +554,7 @@ class App_Main (QMainWindow):
                 return                                          # save was cancelled - return to modify mode 
             else: 
                 remove_designs = dlg.remove_designs
+                self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
 
         # leave mode_modify  
 
@@ -576,10 +578,10 @@ class App_Main (QMainWindow):
             - ok == True:  user wants to finish 
         """
 
-        remove_designs  = None                              # let case.close decide to remove design dir 
-
-        # sanity
         if not self.mode_optimize: return 
+
+        remove_designs  = None                              # let case.close decide to remove design dir 
+        new_airfoil     = None    
 
         if ok:
             # be sure input file data is written to file 
@@ -588,7 +590,8 @@ class App_Main (QMainWindow):
                 case.input_file.save_nml()
 
             new_airfoil = self.case.airfoil_final
-        else: 
+        
+        if not ok or new_airfoil is None: 
             new_airfoil = self._airfoil_org                 # restore original airfoil 
 
         # close open opPoint_def dialog 
@@ -604,7 +607,7 @@ class App_Main (QMainWindow):
         self.sig_mode_optimize.emit(False)                  # signal leave mode optimize for diagram
 
 
-    def case_optimize_change (self, input_fileName : str, workingDir):
+    def optimize_change_case (self, input_fileName : str, workingDir):
         """ change current optimization case to new input file """
 
         # check if changes were made in current case 
@@ -624,25 +627,7 @@ class App_Main (QMainWindow):
         if self._xo2_opPoint_def_dialog:
              self._xo2_opPoint_def_dialog.close()
 
-        # create new case 
-        try: 
-            new_case = Case_Optimize (input_fileName, workingDir=workingDir)
-        except ValueError as exc:
-            MessageBox.error (self, "New Case", str(exc), min_width=300)
-        else: 
-            
-            # set new case 
-            self.set_case_optimize (new_case)
-
-            self.set_airfoil (self.case.initial_airfoil_design(), silent=True)      # maybe there is already an existing design 
-
-            # replace polar definitions with the ones defined by Xo2 input file 
-            self.refresh_polar_sets (silent=True)
-
-            self.refresh()  
-            self.sig_new_case_optimize.emit()                                       # signal for diagram
-            if new_case.input_file.opPoint_defs:                                   # set current opPoint_def 
-                self.sig_opPoint_def_selected.emit (new_case.input_file.opPoint_defs[0])
+        self.optimize_airfoil (input_fileName=input_fileName, workingDir=workingDir)
 
 
     def case_optimize_new_version (self): 
@@ -655,7 +640,7 @@ class App_Main (QMainWindow):
         if new_fileName:
 
             copyfile (os.path.join (self.workingDir,cur_fileName), os.path.join (self.workingDir,new_fileName))
-            self.case_optimize_change (new_fileName, self.workingDir)
+            self.optimize_change_case (new_fileName, self.workingDir)
 
             self._toast_message (f"New version {new_fileName} created", toast_style=style.GOOD) 
         else: 
@@ -719,46 +704,48 @@ class App_Main (QMainWindow):
         self.set_airfoil (self.case.initial_airfoil_design(), silent=False)
 
 
-    def optimize_airfoil (self):
-        """ optimize airfoil with Xoptfoil2 - switch to optimize mode - create Case """
+    def optimize_airfoil (self, input_fileName : str =None, workingDir : str = None ):
+        """ 
+        optimize currrent airfoil with Xoptfoil2 - switch to optimize mode - create Case
+            There must be an existing Xoptfoil2 inputfile for the airfoil
+        """
         
         if self.mode_modify or not Xoptfoil2.ready : return 
 
-        case = None 
+        if input_fileName is None: 
+            input_fileName = Case_Optimize.input_fileName_of (self.airfoil)
+        if workingDir is None: 
+            workingDir = self.workingDir
 
-        input_fileNames = Case_Optimize.input_fileNames_in_dir (self.workingDir)
+        if input_fileName:
 
-        if input_fileNames:
-            # change directly to mode optimize if there is an input file in directory
-            input_fileName   = Case_Optimize.input_fileName_of (self.airfoil)
-            initial_fileName = input_fileName if input_fileName is not None else input_fileNames [0]
+            case = Case_Optimize (input_fileName, workingDir=workingDir)
 
-            case = Case_Optimize (initial_fileName, workingDir=self.workingDir)
-
-        else:
-            # otherwise open selection dailog 
-            diag = Xo2_Choose_Optimize_Dialog (self, None, self.airfoil, parentPos=(0.15,0.9), dialogPos=(0,1))
-            rc = diag.exec()
-
-            if rc == QDialog.DialogCode.Accepted:
-                case = Case_Optimize (diag.input_fileName, workingDir=diag.workingDir)
-            else:
-                return
-
-        self.set_case_optimize (case, silent=True)    
-
-        if case:
-            
+            self.set_case_optimize (case, silent=True)    
+        
             self.set_mode_optimize (True)                                   # switch UI 
-            self.set_airfoil (case.initial_airfoil_design(), silent=True)     # maybe there is already an existing design 
-
-            # replace polar definitions with the ones defined by Xo2 input file 
-            self.refresh_polar_sets (silent=True)
+            self.set_airfoil (case.initial_airfoil_design(), silent=True)   # maybe there is already an existing design              
+            self.refresh_polar_sets (silent=True)                           # replace polar definitions with the ones from Xo2 input file
 
             self.refresh()  
             self.sig_mode_optimize.emit(True)                               # signal enter / leave mode optimize for diagram
-            if self.case.input_file.opPoint_defs:                           # set current opPoint_def 
-                self.sig_opPoint_def_selected.emit (self.case.input_file.opPoint_defs[0])
+            if case.input_file.opPoint_defs:                                # set current opPoint_def 
+                self.sig_opPoint_def_selected.emit (case.input_file.opPoint_defs[0])
+
+
+    def optimize_select (self):
+        """ 
+        open selection dialog to choose what to optimizel
+        """
+        
+        if not Xoptfoil2.ready : return 
+
+        diag = Xo2_Optimize_Select_Dialog (self, None, self.airfoil, parentPos=(0.2,0.7), dialogPos=(0,1))
+        rc = diag.exec()
+
+        if rc == QDialog.DialogCode.Accepted:
+
+            self.optimize_airfoil (input_fileName=diag.input_fileName, workingDir=diag.workingDir)
 
 
     def new_as_Bezier (self):

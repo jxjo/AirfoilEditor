@@ -573,10 +573,7 @@ class Airfoil_Artist (Artist):
 class Flap_Artist (Artist):
     """Plot the flapped airfoil based on Flapper data  """
 
-
-    def __init__ (self, *args, 
-                  **kwargs):
-
+    def __init__ (self, *args, **kwargs):
         super().__init__ (*args, **kwargs)
 
 
@@ -593,21 +590,30 @@ class Flap_Artist (Artist):
     def flapper (self) -> Flapper:
         return self.design_airfoil.flapper if self.design_airfoil else None 
 
+
     def _plot (self): 
     
-        if self.flapper is None or self.flapper.airfoil_flapped is None: return 
+        if self.flapper is None: return 
 
-        airfoil_flapped = self.flapper.airfoil_flapped
-
-        # plot flapped airfoil 
-
+        flapped_airfoil = self.flapper.airfoil_flapped
         color = _color_airfoil ([], self.design_airfoil)
-        pen   = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
-        label = f"{self.design_airfoil.name_to_show} flapped"
 
+        if flapped_airfoil is not None:
 
-        self._plot_dataItem  (airfoil_flapped.x, airfoil_flapped.y, name=label, pen = pen, 
-                                antialias = False, zValue=1)
+            # plot flapped airfoil 
+
+            pen   = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+            label = f"{self.design_airfoil.name_to_show} flapped"
+
+            self._plot_dataItem  (flapped_airfoil.x, flapped_airfoil.y, name=label, pen = pen, 
+                                    antialias = False, zValue=1)
+
+            # plot flap angle 
+
+            x = (1.0 + flapped_airfoil.x[0]) / 2
+            y = flapped_airfoil.y[0] / 2
+
+            self._plot_point (x,y, size=0,text=f"{self.flapper.flap_angle:.1f}°", anchor=(-0.1, 0.5))
 
         # plot hinge point 
 
@@ -618,15 +624,6 @@ class Flap_Artist (Artist):
         y = y_base + self.flapper.y_flap * thick 
 
         self._plot_point (x,y, color=color, size=10,text=f"Hinge {self.flapper.x_flap:.1%}" )
-
-        # plot flap angle 
-
-        x = (1.0 + airfoil_flapped.x[0]) / 2
-        y = airfoil_flapped.y[0] / 2
-
-        self._plot_point (x,y, size=0,text=f"{self.flapper.flap_angle:.1f}°", anchor=(-0.1, 0.5))
-
-
 
 
 

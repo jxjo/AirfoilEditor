@@ -134,16 +134,21 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         Button (l,r,c, text="&Modify", width=90, 
                 set=self.app.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel, Set Flap",
                 button_style=button_style.PRIMARY)
-        Button (l,r,c+2, text="&Optimize ...", width=90, colSpan=2,
-                set=self.app.optimize_airfoil, 
-                toolTip="Optimize current airfoil with Xoptfoil2",
-                disable=lambda: not Xoptfoil2.ready)
-        r += 1
-        SpaceR (l,r, height=2, stretch=0)
-        r += 1
-        Button (l,r,c, text="&As Bezier", width=90, 
+        Button (l,r,c+2, text="&As Bezier", width=90, colSpan=2,
                 set=self.app.new_as_Bezier, disable=lambda: self.airfoil.isBezierBased,
                 toolTip="Create new Bezier airfoil based on current airfoil")
+        r += 1
+        SpaceR (l,r, height=10, stretch=0)
+        r += 1
+        Button (l,r,c, text="&Optimization", width=90, 
+                set=self.app.optimize_select, 
+                toolTip="Switch to airfoil optimization based on Xoptfoil2",
+                disable=lambda: not Xoptfoil2.ready)
+        Button (l,r,c+2, text="Open Case", width=90, colSpan=2,
+                set=self.app.optimize_airfoil, 
+                toolTip="Optimize current airfoil with Xoptfoil2",
+                hide=lambda: not Case_Optimize.input_fileName_of (self.airfoil),
+                disable=lambda: not Xoptfoil2.ready)
         r += 1
         SpaceR (l,r, stretch=4)
         r += 1
@@ -151,7 +156,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         r += 1
         SpaceR (l,r, height=5, stretch=0)        
         l.setColumnStretch (2,2)
-        l.setColumnMinimumWidth (1,5)
+        l.setColumnMinimumWidth (1,8)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         return l 
@@ -461,9 +466,8 @@ class Panel_Flap (Panel_Airfoil_Abstract):
                 r += 1
                 SpaceR (l,r, stretch=2)
                 r += 1
-                lab =Label  (l,r,c, width=None, height=(40,None), colSpan=3, style=style.COMMENT, 
+                lab =Label  (l,r,c, width=None, height=(40,None), colSpan=3, style=style.COMMENT, wordWrap=True,
                         get="As the base airfoil is still available, another flap setting can be applied.")
-                lab.setWordWrap (True)
                 lab.setAlignment (ALIGN_BOTTOM)
                 l.setRowStretch (r,1)
                 l.setColumnMinimumWidth (0,80)
@@ -473,9 +477,8 @@ class Panel_Flap (Panel_Airfoil_Abstract):
 
                 SpaceR (l,r, stretch=2)
                 r += 1
-                lab =Label  (l,r,c, width=None,  colSpan=3, style=style.COMMENT, 
-                        get="Ready to set flap")
-                lab.setWordWrap (True)
+                lab =Label  (l,r,c, width=None,  colSpan=3, style=style.COMMENT, wordWrap=True,
+                             get="Ready to set flap")
                 l.setColumnStretch (2,3)
 
             elif self.airfoil.isFlapped:
@@ -489,9 +492,8 @@ class Panel_Flap (Panel_Airfoil_Abstract):
                              styleRole=QPalette.ColorRole.Window, 
                              get="The airfoil is already flapped.")
                 r += 1
-                lab =Label  (l,r,c, width=None, height=(40,None), colSpan=3, style=style.COMMENT, 
+                lab =Label  (l,r,c, width=None, height=(40,None), colSpan=3, style=style.COMMENT, wordWrap=True, 
                              get="Choose a Design, which is not flapped to set a flap.")
-                lab.setWordWrap (True)
                 lab.setAlignment (ALIGN_BOTTOM)
                 l.setRowStretch (r,1)
                 l.setColumnMinimumWidth (0,80)
@@ -508,9 +510,8 @@ class Panel_Flap (Panel_Airfoil_Abstract):
                 r +=1
                 SpaceR (l,r, stretch=2)
                 r += 1
-                lab =Label  (l,r,c, width=None, colSpan=3, style=style.COMMENT, 
+                lab =Label  (l,r,c, width=None, colSpan=3, style=style.COMMENT, wordWrap=True, 
                              get="The airfoil has a set flap.")
-                lab.setWordWrap (True)
                 l.setColumnMinimumWidth (0,80)
                 l.setColumnStretch (2,3)
                                 
@@ -518,11 +519,9 @@ class Panel_Flap (Panel_Airfoil_Abstract):
 
                 SpaceR (l,r, stretch=2)
                 r += 1
-                lab =Label  (l,r,c, width=None, height=(80,None), colSpan=3, style=style.COMMENT, 
+                lab =Label  (l,r,c, width=None, height=(80,None), colSpan=3, style=style.COMMENT, wordWrap=True, 
                              get="The airfoil is probably flapped, but a kink in the contour couldn't be detected on both sides.")
                 lab.setAlignment (ALIGN_BOTTOM)
-                lab.setWordWrap (True)
-                # l.setRowStretch (r,1)
                 l.setColumnStretch (2,3)
 
         return l

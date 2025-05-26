@@ -27,6 +27,7 @@ from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
 from model.polar_set        import Polar_Definition, polarType, var
 
+from model.xo2_driver       import Worker
 from airfoil_widgets        import Airfoil_Select_Open_Widget
 
 
@@ -389,7 +390,7 @@ class Flap_Airfoil_Dialog (Dialog):
     """ Dialog to set flap of airfoil"""
 
     _width  = 320
-    _height = 190
+    _height = 200
 
     name = "Set Flap"
 
@@ -423,24 +424,27 @@ class Flap_Airfoil_Dialog (Dialog):
         r += 1
         FieldF  (l,r,c, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
                         obj=self.flapper, prop=Flapper.x_flap)
-        Slider  (l,r,c+3, colSpan=2, width=120, # align=Qt.AlignmentFlag.AlignHCenter,
-                        lim=(0.0, 1), dec=2, # step=10,
+        Slider  (l,r,c+3, colSpan=2, width=120,  
+                        lim=(0.0, 1), dec=2,  
                         obj=self.flapper, prop=Flapper.x_flap)
         r += 1
         FieldF  (l,r,c, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
                         obj=self.flapper, prop=Flapper.y_flap)
         Label   (l,r,c+3, get="of thickness")
         r += 1
-        SpaceR (l, r, stretch=1, height=10) 
+        SpaceR  (l, r, stretch=1, height=10) 
         r += 1
         FieldF  (l,r,c, lab="Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
                         obj=self.flapper, prop=Flapper.flap_angle)
-        Slider  (l,r,c+3, colSpan=2, width=120, # align=Qt.AlignmentFlag.AlignHCenter,
-                        lim=(-20,20), dec=2, # step=10,
+        Slider  (l,r,c+3, colSpan=2, width=120,  
+                        lim=(-20,20), dec=2,  
                         obj=self.flapper, prop=Flapper.flap_angle)
-
         r += 1
-        l.setRowStretch (r,2)
+        SpaceR  (l, r, stretch=3) 
+        r += 1
+        Label   (l,r,c, colSpan=5, get=f"Powered by {Worker.name} {Worker.version} using Xfoil", 
+                 style=style.COMMENT, fontSize=size.SMALL)
+
         l.setColumnMinimumWidth (0,70)
         l.setColumnMinimumWidth (2,10)
         l.setColumnMinimumWidth (3,50)
