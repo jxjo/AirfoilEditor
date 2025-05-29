@@ -64,7 +64,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
         # is there an existung input file for airfoil
 
         if self._input_fileName is None and self._current_airfoil is not None:
-            self._input_fileName = Case_Optimize.input_fileName_of (self._current_airfoil)
+            self._input_fileName = Input_File.fileName_of (self._current_airfoil)
             self._workingDir     = self._current_airfoil.pathName 
 
         super().__init__ ( parent, **kwargs)
@@ -182,7 +182,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
 
         # build somethinglike "*.inp *.xo2" as filter for the dialog
         filter_string = ""
-        for extension in Case_Optimize.INPUT_FILE_EXT:
+        for extension in Input_File.INPUT_FILE_EXT:
             filter_string += f" *{extension}" if filter_string else f"*{extension}"
 
         filters  = f"Xoptfoil2 Input files ({filter_string})"
@@ -211,7 +211,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
     def _new_version (self): 
         """ create new version of an existing case self.input_file"""
 
-        new_fileName = Case_Optimize.new_input_fileName_version (self.input_fileName, self.workingDir)
+        new_fileName = Input_File.new_input_fileName_version (self.input_fileName, self.workingDir)
 
         if new_fileName:
             copyfile (os.path.join (self.workingDir,self.input_fileName), os.path.join (self.workingDir,new_fileName))
@@ -241,7 +241,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
         if not os.path.isdir (example_dir): return examples_dict
 
         for sub_dir, _, _ in os.walk(example_dir):
-            for input_file in Case_Optimize.input_fileNames_in_dir (sub_dir):
+            for input_file in Input_File.files_in_dir (sub_dir):
                 examples_dict [input_file] = os.path.join (sub_dir, input_file)
         return examples_dict
 
@@ -378,7 +378,10 @@ class Xo2_Optimize_New_Dialog (Dialog):
 
         l =  QGridLayout()
         r,c, = 0,0
-        Label    (l,r,c, get="Seed Airfoil")
+        Field       (l,r,c, lab="Outname",  
+                    get=lambda: self.input_file.outName, set=self.input_file.set_outName)
+        r += 1
+        Label       (l,r,c, get="Seed Airfoil")
         Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, width=180,
                                     textOpen="&Open", widthOpen=90, 
                                     obj=lambda: self.input_file, prop=Input_File.airfoil_seed)

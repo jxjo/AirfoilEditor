@@ -42,7 +42,7 @@ from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
 from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from model.xo2_driver       import Worker, Xoptfoil2
-from model.xo2_input        import OpPoint_Definition
+from model.xo2_input        import OpPoint_Definition, Input_File
 from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract
 
 from base.common_utils      import * 
@@ -636,7 +636,7 @@ class App_Main (QMainWindow):
 
         cur_case : Case_Optimize = self.case 
         cur_fileName = cur_case.input_file.fileName
-        new_fileName = Case_Optimize.new_input_fileName_version (cur_fileName, self.workingDir)
+        new_fileName = Input_File.new_input_fileName_version (cur_fileName, self.workingDir)
 
         if new_fileName:
 
@@ -714,7 +714,7 @@ class App_Main (QMainWindow):
         if self.mode_modify or not Xoptfoil2.ready : return 
 
         if input_fileName is None: 
-            input_fileName = Case_Optimize.input_fileName_of (self.airfoil)
+            input_fileName = Input_File.input_fileName_of (self.airfoil)
         if workingDir is None: 
             workingDir = self.workingDir
 

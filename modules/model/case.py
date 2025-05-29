@@ -314,75 +314,6 @@ class Case_Optimize (Case_Abstract):
 
     """
 
-    INPUT_FILE_EXT = [".inp", ".xo2"]
-
-
-    @staticmethod
-    def input_fileNames_in_dir (workingDir :  str | None) -> list[str]: 
-        """ 
-        Returns list of xo2 input file path in directory workingDir
-        All .dat, .bez and .hicks files are collected 
-        """
-
-        if workingDir is None or not os.path.isdir (workingDir): return []
-
-        input_files = []
-        for extension in Case_Optimize.INPUT_FILE_EXT:
-            input_files = input_files + fnmatch.filter(os.listdir(workingDir), f"*{extension}")
-        return sorted (input_files, key=str.casefold)
-
-
-
-    @staticmethod
-    def input_fileName_of (airfoil : Airfoil) -> str:
-        """ returns fileName of xo2 input file belonging to airfoil - or None if not existing"""
-
-        for extension in Case_Optimize.INPUT_FILE_EXT:
-            pathFileName = os.path.join (airfoil.pathName, airfoil.fileName_stem + extension)
-            if os.path.isfile (pathFileName):
-                return airfoil.fileName_stem + extension
-        return None 
-
-
-    @staticmethod
-    def new_input_fileName_version (input_fileName : str, workingDir=None) -> str:
-        """ 
-        returns new fileName of xo2 input file with _vXX appended. 
-        """
-
-        if not input_fileName: 
-            raise ValueError (f"Input_fileName is missing")
-
-        new_fileName = None 
-
-        if os.path.isfile (os.path.join (workingDir, input_fileName)):
-
-            fileName_stem = Path(input_fileName).stem
-            fileName_ext  = os.path.splitext(input_fileName)[1]
-
-            # already a version number appended to fileName?
-            digits =""
-            for i in reversed(range(len(fileName_stem))):
-                if fileName_stem[i].isdigit():
-                    digits = fileName_stem[i] + digits
-                else: 
-                    break
-            if digits and i > 0 and fileName_stem[i] == 'v':
-                new_fileName = input_fileName
-                new_version  = int(digits)
-                # loop until unused version number is found 
-                while os.path.isfile (os.path.join (workingDir, new_fileName)):
-                    new_version +=  1
-                    new_fileName = f"{fileName_stem[:i+1]}{new_version}{fileName_ext}"
-            
-            # no - create first version 
-            if new_fileName is None: 
-                new_fileName = f"{fileName_stem}_v1{fileName_ext}"
-
-        return new_fileName
-
-
-
     def __init__(self, airfoil_or_input_file : Airfoil | str, workingDir=None, is_new=False):
 
         self._airfoil_seed     = None   
@@ -396,7 +327,7 @@ class Case_Optimize (Case_Abstract):
 
         if isinstance (airfoil_or_input_file, Airfoil):
             airfoil : Airfoil = airfoil_or_input_file
-            input_fileName = self.input_fileName_of (airfoil) 
+            input_fileName = Input_File.fileName_of (airfoil) 
 
             self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName, is_new=is_new)
             self._workingDir    = airfoil.pathName
@@ -410,8 +341,6 @@ class Case_Optimize (Case_Abstract):
         else: 
             raise ValueError (f"{airfoil_or_input_file} not a valid argument")
         
-
-
         # init xo2 controller
 
         self._xo2 = Xo2_Controller (self.workingDir)

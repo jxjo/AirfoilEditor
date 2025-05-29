@@ -13,9 +13,9 @@
 import os
 import sys
 import textwrap
+import fnmatch      
 from pathlib import Path
 from typing import TextIO
-
 
 import f90nml         # fortran namelist parser
 
@@ -39,6 +39,77 @@ class Input_File:
     """ 
     Proxy to Xoptfoil2 input file, manage input data of an optimization      
     """
+
+    INPUT_FILE_EXT = [".xo2", ".inp"]
+
+
+    @staticmethod
+    def files_in_dir (workingDir :  str | None) -> list[str]: 
+        """ 
+        Returns list of xo2 input file path in directory workingDir
+        All .dat, .bez and .hicks files are collected 
+        """
+
+        if workingDir is None or not os.path.isdir (workingDir): return []
+
+        input_files = []
+        for extension in Input_File.INPUT_FILE_EXT:
+            input_files = input_files + fnmatch.filter(os.listdir(workingDir), f"*{extension}")
+        return sorted (input_files, key=str.casefold)
+
+
+
+    @staticmethod
+    def fileName_of (airfoil : Airfoil) -> str:
+        """ returns fileName of xo2 input file belonging to airfoil - or None if not existing"""
+
+        for extension in Input_File.INPUT_FILE_EXT:
+            pathFileName = os.path.join (airfoil.pathName, airfoil.fileName_stem + extension)
+            if os.path.isfile (pathFileName):
+                return airfoil.fileName_stem + extension
+        return None 
+
+
+    @staticmethod
+    def new_fileName_version (input_fileName : str, workingDir=None) -> str:
+        """ 
+        returns new fileName of xo2 input file with _vXX appended. 
+        """
+
+        if not input_fileName: 
+            raise ValueError (f"Input_fileName is missing")
+
+        new_fileName = None 
+
+        if os.path.isfile (os.path.join (workingDir, input_fileName)):
+
+            fileName_stem = Path(input_fileName).stem
+            fileName_ext  = os.path.splitext(input_fileName)[1]
+
+            # already a version number appended to fileName?
+            digits =""
+            for i in reversed(range(len(fileName_stem))):
+                if fileName_stem[i].isdigit():
+                    digits = fileName_stem[i] + digits
+                else: 
+                    break
+            if digits and i > 0 and fileName_stem[i] == 'v':
+                new_fileName = input_fileName
+                new_version  = int(digits)
+                # loop until unused version number is found 
+                while os.path.isfile (os.path.join (workingDir, new_fileName)):
+                    new_version +=  1
+                    new_fileName = f"{fileName_stem[:i+1]}{new_version}{fileName_ext}"
+            
+            # no - create first version 
+            if new_fileName is None: 
+                new_fileName = f"{fileName_stem}_v1{fileName_ext}"
+
+        return new_fileName
+
+
+    # ---------------------------------------------
+
 
     def __init__(self, fileName: str, workingDir: str = '', is_new=False ):
         """
@@ -106,10 +177,16 @@ class Input_File:
     def set_workingDir (self, aDir : str):
         self._workingDir = aDir 
 
+
     @property
-    def name(self) -> str:  
-        """ name of input file without .inp"""
+    def outName(self) -> str:  
+        """ name of input file without .inp - equals to final airfoil"""
         return Path(self.fileName).stem
+
+    def set_outName (self, aStr: str):
+        if aStr: 
+            self._fileName = Path (aStr).stem + self.INPUT_FILE_EXT [0]
+
 
     @property
     def fileName(self) -> str:  

@@ -20,6 +20,7 @@ from model.airfoil_geometry import Line, Side_Airfoil_Bezier
 from model.polar_set        import Polar_Definition
 from model.case             import Case_Abstract, Case_Direct_Design, Case_Optimize
 from model.xo2_driver       import Xoptfoil2
+from model.xo2_input        import Input_File
 
 from airfoil_widgets        import * 
 from airfoil_dialogs        import Match_Bezier_Dialog, Matcher, Polar_Definition_Dialog
@@ -147,7 +148,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         Button (l,r,c+2, text="Open Case", width=90, colSpan=2,
                 set=self.app.optimize_airfoil, 
                 toolTip="Optimize current airfoil with Xoptfoil2",
-                hide=lambda: not Case_Optimize.input_fileName_of (self.airfoil),
+                hide=lambda: not Input_File.fileName_of (self.airfoil),
                 disable=lambda: not Xoptfoil2.ready)
         r += 1
         SpaceR (l,r, stretch=4)

@@ -110,7 +110,7 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
         r,c = 0, 0 
         ComboBox (l,r,c, colSpan=2,  
                         get=lambda:self._input_fileName, set=self._set_input_fileName,
-                        options= lambda: Case_Optimize.input_fileNames_in_dir (self.workingDir),
+                        options= lambda: Input_File.files_in_dir (self.workingDir),
                         toolTip="The Xoptfoil2 input file")
         ToolButton (l,r,c+3, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
 
@@ -166,7 +166,7 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
         # build somethinglike "*.inp *.xo2" as filter for the dialog
         filter_string = ""
-        for extension in Case_Optimize.INPUT_FILE_EXT:
+        for extension in Input_File.INPUT_FILE_EXT:
             filter_string += f" *{extension}" if filter_string else f"*{extension}"
 
         filters  = f"Xoptfoil2 Input files ({filter_string})"
