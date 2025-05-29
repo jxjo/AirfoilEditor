@@ -218,8 +218,9 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         #                 hide=lambda: not self.input_file.nml_info.author)
         r += 1
         ComboBox    (l,r,c, lab="Shape functions", lab_disable=True,
-                     get=lambda: self._shape_functions_label_long, set=self._set_shape_functions_label_long,
-                     options=lambda: self.shape_functions_list)     
+                     get=lambda: self.optimization_options.shape_functions_label_long, 
+                     set=self.optimization_options.set_shape_functions_label_long,
+                     options=lambda: self.optimization_options.shape_functions_list)     
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_shape_functions,
                      toolTip="Edit options of shape functions")
 
@@ -248,41 +249,6 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             
             self.app._on_xo2_input_changed ()
 
-
-    @property
-    def shape_functions_list (self) -> list:
-        l = []
-        l.append (self.input_file.nml_bezier_options.label_long)
-        l.append (self.input_file.nml_hicks_henne_options.label_long)
-        l.append (self.input_file.nml_camb_thick_options.label_long)
-        return l
-
-    @property
-    def _shape_functions_nml (self) -> Nml_Abstract:
-        """ namelist of current shape functions"""
-
-        if self.optimization_options.shape_functions == Nml_optimization_options.BEZIER:
-            return self.input_file.nml_bezier_options
-        if self.optimization_options.shape_functions == Nml_optimization_options.HICKS_HENNE:
-            return self.input_file.nml_hicks_henne_options
-        if self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK:
-            return self.input_file.nml_camb_thick_options
-
-    @property
-    def _shape_functions_label_long (self) -> str:
-
-        return self._shape_functions_nml.label_long if self._shape_functions_nml.label_long else ''
-
-
-    def _set_shape_functions_label_long (self, aLabel : str):
-        """ setter for combobox"""
-
-        if aLabel == self.input_file.nml_bezier_options.label_long:
-            self.optimization_options.set_shape_functions (Nml_optimization_options.BEZIER)
-        if aLabel == self.input_file.nml_hicks_henne_options.label_long:
-            self.optimization_options.set_shape_functions (Nml_optimization_options.HICKS_HENNE)
-        if aLabel == self.input_file.nml_camb_thick_options.label_long:
-            self.optimization_options.set_shape_functions (Nml_optimization_options.CAMB_THICK)
 
 
     def _edit_shape_functions (self):

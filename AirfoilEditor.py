@@ -54,7 +54,8 @@ from airfoil_widgets        import *
 from airfoil_dialogs        import (Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog,
                                     Flap_Airfoil_Dialog)
 
-from xo2_dialogs            import Xo2_Run_Dialog, Xo2_Optimize_Select_Dialog, Xo2_OpPoint_Def_Dialog
+from xo2_dialogs            import (Xo2_Run_Dialog, Xo2_Optimize_Select_Dialog, Xo2_OpPoint_Def_Dialog,
+                                    Xo2_Optimize_New_Dialog)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -735,17 +736,40 @@ class App_Main (QMainWindow):
 
     def optimize_select (self):
         """ 
-        open selection dialog to choose what to optimizel
+        open selection dialog to choose what to optimize
         """
         
         if not Xoptfoil2.ready : return 
 
-        diag = Xo2_Optimize_Select_Dialog (self, None, self.airfoil, parentPos=(0.2,0.7), dialogPos=(0,1))
+        diag = Xo2_Optimize_Select_Dialog (self, None, self.airfoil, parentPos=(0.2,0.5), dialogPos=(0,1))
         rc = diag.exec()
 
         if rc == QDialog.DialogCode.Accepted:
 
+            if diag.input_fileName:
+                self.optimize_airfoil (input_fileName=diag.input_fileName, workingDir=diag.workingDir)
+            else: 
+                self.optimize_new ()
+
+
+    def optimize_new (self): 
+        """ 
+        open new optimization case dialog based on current airfoil"""
+        
+        if not Xoptfoil2.ready : return 
+
+        diag = Xo2_Optimize_New_Dialog (self, self.workingDir, self.airfoil, 
+                                        parentPos=(0.3,0.6), dialogPos=(0,0.5))
+        
+        self._watchdog.sig_new_polars.connect  (diag.refresh)
+
+        rc = diag.exec()
+
+        self._watchdog.sig_new_polars.disconnect  (diag.refresh)
+
+        if rc == QDialog.DialogCode.Accepted:
             self.optimize_airfoil (input_fileName=diag.input_fileName, workingDir=diag.workingDir)
+
 
 
     def new_as_Bezier (self):

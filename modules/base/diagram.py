@@ -627,7 +627,7 @@ class Diagram_Item (pg.PlotItem):
 
         refresh_done = False
 
-        if self.section_panel is not None: 
+        if self._section_panel is not None: 
             # refresh artists only if self section is switched on 
             if self.section_panel.switched_on:
                 self.refresh_artists()          # first artist and then panel 

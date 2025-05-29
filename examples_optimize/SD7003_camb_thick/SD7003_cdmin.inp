@@ -1,0 +1,32 @@
+! Easy going examaple ...
+!
+! Optimize min cd while keeping glide ratio of SD7003 at Reynolds 400,000 
+! The optimized airfoil should have 8% thickness  
+!
+
+&optimization_options
+  airfoil_file     = 'SD7003.dat'
+  shape_functions  = 'camb-thick'				! just optimize thickness, camber and their highpoints
+  show_details = .false.						! only minimum output on screen
+/  
+
+&operating_conditions
+
+  re_default       = 400000						! use this Reynolds number for operating points
+  noppoint         = 2
+
+  op_mode(1) = 'spec-cl'						! Specifiy operating point based on cl-value						
+  op_point(1) = 0.2
+  optimization_type(1) = 'min-drag'				! optimize cd 
+
+  op_mode(2) = 'spec-cl'
+  op_point(2) = 0.7								! glide ratio cl/cd at cl = 0.7
+  optimization_type(2) = 'target-glide'         !   
+  target_value(2) = -1.0 						! keep the current value of SD7003
+/
+
+&geometry_targets
+  ngeo_targets    = 1					 
+  target_type(1)  = 'Thickness'					! we want 8% thickness ...
+  target_value(1) = 0.08
+/

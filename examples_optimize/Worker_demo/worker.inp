@@ -1,0 +1,19 @@
+! Helper inputs for Worker 
+
+&polar_generation
+  type_of_polar   = 1									! either Type1 or Type 2 
+  op_mode         = 'spec-al'
+  op_point_range  = -2, 10, 0.25						! alpha start, end, delta 
+  polar_reynolds  = 10000  , 20000 , 50000, 100000, 200000, 400000, 800000
+/
+
+&operating_conditions
+  x_flap       = 0.75
+  y_flap       = 0.0
+  y_flap_spec  = 'y/t'
+  flap_angle = -1, 2
+/
+
+&panelling_options
+  npan             = 200                            	! no of panels of airfoil
+/

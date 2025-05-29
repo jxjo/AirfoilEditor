@@ -383,7 +383,7 @@ class Case_Optimize (Case_Abstract):
 
 
 
-    def __init__(self, airfoil_or_input_file : Airfoil | str, workingDir=None):
+    def __init__(self, airfoil_or_input_file : Airfoil | str, workingDir=None, is_new=False):
 
         self._airfoil_seed     = None   
         self._airfoil_final    = None
@@ -398,13 +398,13 @@ class Case_Optimize (Case_Abstract):
             airfoil : Airfoil = airfoil_or_input_file
             input_fileName = self.input_fileName_of (airfoil) 
 
-            self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName)
+            self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName, is_new=is_new)
             self._workingDir    = airfoil.pathName
 
         elif isinstance (airfoil_or_input_file, str):
 
             fileName : str      = airfoil_or_input_file
-            self._input_file    = Input_File (fileName, workingDir=workingDir)
+            self._input_file    = Input_File (fileName, workingDir=workingDir, is_new=is_new)
             self._workingDir    = workingDir
 
         else: 

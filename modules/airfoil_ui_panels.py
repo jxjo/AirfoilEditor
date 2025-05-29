@@ -935,7 +935,7 @@ class Panel_Polar_Defs (Edit_Panel):
 
             #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
             w = CheckBox   (l,r,c  , width=20,  get=lambda p=polar_def: p.active, set=polar_def.set_active,
-                            disable=lambda: self.mode_optimize)
+                            disable=lambda: self.mode_optimize)  # if optimize, polar defds are created dynamically - no set active
             w.sig_changed.connect (self._on_polar_def_changed)
             Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name)
 

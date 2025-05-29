@@ -155,20 +155,21 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def plot_title(self, **kwargs):
 
         # the first airfoil get's in the title 
-        airfoil = self.airfoils()[0]
+        if self.airfoils():
+            airfoil = self.airfoils()[0]
 
-        mods = None 
-        if airfoil.usedAsDesign:
-            mods = ', '.join(airfoil.geo.modifications_as_list) 
-            
-        if mods:
-            subtitle = "Mods: " + mods
-        elif not mods and airfoil.isBezierBased:
-            subtitle = 'Based on 2 Bezier curves'
-        else: 
-            subtitle = "" 
+            mods = None 
+            if airfoil.usedAsDesign:
+                mods = ', '.join(airfoil.geo.modifications_as_list) 
+                
+            if mods:
+                subtitle = "Mods: " + mods
+            elif not mods and airfoil.isBezierBased:
+                subtitle = 'Based on 2 Bezier curves'
+            else: 
+                subtitle = "" 
 
-        super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
+            super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
 
 
     @override
@@ -226,11 +227,12 @@ class Diagram_Item_Airfoil (Diagram_Item):
             self.bezier_devi_artist.refresh()
 
         # show Bezier shape function when current airfoil is Design and Bezier 
-        cur_airfoil : Airfoil = self.airfoils()[0]
-        if cur_airfoil.isBezierBased and cur_airfoil.usedAsDesign:
-            self.bezier_artist.set_show (True)
-        else: 
-            self.bezier_artist.refresh() 
+        if self.airfoils():
+            cur_airfoil : Airfoil = self.airfoils()[0]
+            if cur_airfoil.isBezierBased and cur_airfoil.usedAsDesign:
+                self.bezier_artist.set_show (True)
+            else: 
+                self.bezier_artist.refresh() 
 
         # show Hicks Henne shape functions 
         self.hicks_henne_artist.refresh()
@@ -1140,7 +1142,7 @@ class Diagram_Airfoil_Polar (Diagram):
             r,c = 0, 0
 
             Label (l,r,c, colSpan=5, 
-                   get=lambda: "Polar definitions" if not self.mode_optimize else  "Polar definitions of Optimization") 
+                   get=lambda: "Polar definitions" if not self.mode_optimize else  "Polar definitions of Case") 
             r += 1
 
             # helper panel for polar definitions 

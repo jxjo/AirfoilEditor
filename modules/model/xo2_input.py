@@ -40,7 +40,7 @@ class Input_File:
     Proxy to Xoptfoil2 input file, manage input data of an optimization      
     """
 
-    def __init__(self, fileName: str, workingDir: str = '' ):
+    def __init__(self, fileName: str, workingDir: str = '', is_new=False ):
         """
         """
         self._workingDir = workingDir           # working dir of optimizer
@@ -49,9 +49,7 @@ class Input_File:
         self._hasErrors  = False                # errors in input file? 
         self._error_text = None                 # text from error check by worker
 
-        if os.path.exists (self.pathFileName):
-            pass
-        else: 
+        if not os.path.exists (self.pathFileName) and not is_new:
             raise ValueError (f"Input file '{self.pathFileName}' doesn't exist")
 
         # read all the namelist group from nml_file
@@ -101,34 +99,37 @@ class Input_File:
     # ---- Properties -------------------------------------------
 
     @property
-    def workingDir (self): 
+    def workingDir (self) -> str: 
         """ working dir of optimizer - absolut"""
         return self._workingDir
+    
+    def set_workingDir (self, aDir : str):
+        self._workingDir = aDir 
 
     @property
-    def name(self):  
+    def name(self) -> str:  
         """ name of input file without .inp"""
         return Path(self.fileName).stem
 
     @property
-    def fileName(self):  
+    def fileName(self) -> str:  
         """ name of input file including .inp"""
         return self._fileName
 
 
     @property
-    def pathFileName (self): 
+    def pathFileName (self) -> str: 
         """returns the path of the input file rebuild from name """
         return os.path.join (self.workingDir, self.fileName)
 
 
     @property
-    def pathFileName_relative (self): 
+    def pathFileName_relative (self) -> str: 
         """returns the relative path of the input 'save' file to working directory """
         return  PathHandler.relPath (self.pathFileName_save, self.workingDir)
     
     @property
-    def pathFileName_save (self): 
+    def pathFileName_save (self) -> str: 
         """returns the pathFileName of the output file"""
 
         # dir  = os.path.split (self.pathFileName) [0]
@@ -140,14 +141,19 @@ class Input_File:
         """ self as f90nml namelist object (dict) """
 
         if self._nml_file is None: 
-            parser = f90nml.Parser()
-            parser.global_start_index = 1
-            try: 
-                self._nml_file = parser.read(self.pathFileName)   # fortran namelist as object  
-            except: 
-                self._nml_file = None    
-                self._hasErrors  = True  
-                self._error_text = 'Generell syntax error'            
+            if os.path.isfile (self.pathFileName): 
+                parser = f90nml.Parser()
+                parser.global_start_index = 1
+                try: 
+                    self._nml_file = parser.read(self.pathFileName)   # fortran namelist as object  
+                except: 
+                    self._nml_file = None    
+                    self._hasErrors  = True  
+                    self._error_text = 'Generell syntax error'   
+            else: 
+                # new, not existing input file 
+                self._nml_file = {}    
+
         return self._nml_file
 
     @property 
@@ -274,7 +280,7 @@ class Input_File:
 
     
     def set_airfoil_seed (self, airfoil: Airfoil):  
-        """ set new seed airfoil in input file and refresh"""
+        """ set new seed airfoil in input file an8d refresh"""
         if airfoil: 
             self.nml_optimization_options.set_airfoil_file(airfoil.pathFileName)
             self.save_nml ()
@@ -335,8 +341,9 @@ class Input_File:
         "returns the content of input file as text string"
 
         text = ""
-        with open(self.pathFileName,'r') as f:
-            text = f.read()
+        if os.path.isfile (self.pathFileName): 
+            with open(self.pathFileName,'r') as f:
+                text = f.read()
         return text
 
 
@@ -1917,6 +1924,42 @@ class Nml_optimization_options (Nml_Abstract):
         if aShape in self.SHAPE_FUNCTIONS:  
             self._set('shape_functions', aShape)
 
+    @property
+    def shape_functions_label_long (self) -> str:
+        """  current shape functions as long label"""
+        return self.shape_functions_nml.label_long 
+    
+    def set_shape_functions_label_long (self, aLabel : str):
+        """ set actualshape functions with long label"""
+        if aLabel == self._input_file.nml_bezier_options.label_long:
+            self.set_shape_functions (Nml_optimization_options.BEZIER)
+        elif aLabel == self._input_file.nml_hicks_henne_options.label_long:
+            self.set_shape_functions (Nml_optimization_options.HICKS_HENNE)
+        else:
+            self.set_shape_functions (Nml_optimization_options.CAMB_THICK)
+
+
+    @property
+    def shape_functions_nml (self) -> Nml_Abstract:
+        """ namelist of current shape functions"""
+
+        if self.shape_functions == self.BEZIER:
+            return self._input_file.nml_bezier_options
+        elif self.shape_functions == self.HICKS_HENNE:
+            return self._input_file.nml_hicks_henne_options
+        else:
+            return self._input_file.nml_camb_thick_options
+
+    @property
+    def shape_functions_list (self) -> list [str]:
+        """ list of available shape functions as label_long"""
+        l = []
+        l.append (self._input_file.nml_bezier_options.label_long)
+        l.append (self._input_file.nml_hicks_henne_options.label_long)
+        l.append (self._input_file.nml_camb_thick_options.label_long)
+        return l
+
+
 
 class Nml_hicks_henne_options (Nml_Abstract):
     """ 
@@ -2130,7 +2173,7 @@ class Nml_operating_conditions (Nml_Abstract):
 
 
     @property
-    def re_default (self) -> float:             return self._get('re_default', default=100000)
+    def re_default (self) -> float:             return self._get('re_default', default=400000)
     def set_re_default (self, aVal):            self._set ('re_default', clip (aVal, 1000, 10000000)) 
 
     @property
