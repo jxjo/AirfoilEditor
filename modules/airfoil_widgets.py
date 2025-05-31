@@ -3,7 +3,7 @@
 
 """  
 
-Higher level Widgets to handle Airfoil UI operations like Open and Select
+Handle Airfoil UI operations like Open and Select
 
 """
 
@@ -24,6 +24,16 @@ from base.panels            import MessageBox
 from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
 from model.airfoil          import GEO_BASIC
 from model.airfoil_examples import Example
+
+
+# ------ colors of modes ----------------------------------
+
+
+class mode_color:
+    """ colors as kwargs for the different modes """
+
+    MODIFY        = {'color': 'deeppink',      'alpha' : 0.2 }
+    OPTIMIZE      = {'color': 'darkturquoise', 'alpha' : 0.2 }  
 
 
 # ----- common methods -----------

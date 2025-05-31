@@ -15,7 +15,7 @@ from PyQt6.QtWidgets        import QDialog, QFileDialog
 from base.widgets           import * 
 from base.panels            import Edit_Panel, Toaster, MessageBox
 
-from airfoil_widgets        import Airfoil_Select_Open_Widget
+from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
 from airfoil_ui_panels      import Polar_Definition_Dialog
 
 from xo2_dialogs            import *
@@ -104,7 +104,7 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
     def _init_layout (self): 
 
-        self.set_background_color (color='darkturquoise', alpha=0.2)
+        self.set_background_color (**mode_color.OPTIMIZE)
 
         l = QGridLayout()
         r,c = 0, 0 
@@ -118,12 +118,6 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
         Button   (l,r,c, width=90, text="New Version", set=self._new_version,
                   toolTip="Create a new version of the existing input file")
 
-        # Field (l,r,c, colSpan=3, width=190, get=lambda: self.airfoil.fileName)
-        # r += 1
-        # ComboSpinBox (l,r,c, colSpan=2, width=160, get=self.airfoil_fileName, 
-        #                      set=self.set_airfoil_by_fileName,
-        #                      options=self.airfoil_fileNames,
-        #                      signal=False)
         r += 1
         SpaceR (l,r)
         l.setRowStretch (r,2)
@@ -199,13 +193,17 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
     def optimization_options (self) -> Nml_optimization_options:
         return self.case.input_file.nml_optimization_options
 
+    @property
+    def info (self) -> Nml_info:
+        return self.case.input_file.nml_info
+
 
     def _init_layout (self): 
 
         l = QGridLayout()
         r,c = 0, 0 
         Label  (l,r,c,  colSpan=2, height=(None,None), style=style.COMMENT,
-                        get=lambda: self.input_file.nml_info.descriptions_string)
+                        get=lambda: self.info.descriptions_string if self.info.descriptions_string else 'Enter a description ...')
         ToolButton (l,r,c+2, icon=Icon.EDIT, align=ALIGN_TOP,
                         set=self._edit_description)
         r += 1
@@ -217,6 +215,15 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         #                 get=lambda: self.input_file.nml_info.author,
         #                 hide=lambda: not self.input_file.nml_info.author)
         r += 1
+        Field       (l,r,c, lab="Final Airfoil", 
+                     get=lambda: self.input_file.airfoil_final_fileName)
+        r += 1
+        Label       (l,r,c, get="Seed Airfoil", lab_disable=True)
+        w = Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, textOpen="&Open", widthOpen=90, 
+                                    obj=lambda: self.input_file, prop=Input_File.airfoil_seed)
+        w.sig_changed.connect (self._airfoil_seed_changed)                  # check working dir 
+
+        r += 1
         ComboBox    (l,r,c, lab="Shape functions", lab_disable=True,
                      get=lambda: self.optimization_options.shape_functions_label_long, 
                      set=self.optimization_options.set_shape_functions_label_long,
@@ -224,11 +231,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_shape_functions,
                      toolTip="Edit options of shape functions")
 
-        r += 1
-        Label    (l,r,c, get="Seed Airfoil", lab_disable=True)
-        Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, 
-                                    textOpen="&Open", widthOpen=90, 
-                                    obj=lambda: self.input_file, prop=Input_File.airfoil_seed)
+
         r += 1
         l.setRowStretch (r,1)
         l.setColumnMinimumWidth (0,90)
@@ -270,6 +273,23 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             diag.exec()
             self.refresh ()
             self.app._on_xo2_input_changed()
+
+
+    def _airfoil_seed_changed (self, *_):
+        """ slot seed airfoil changed - check if still in working dir"""
+
+        airfoil_seed = self.input_file.airfoil_seed
+        # the airfoil may not have a directory as it should be relative to its working dir 
+        if airfoil_seed.pathName:
+
+            # copy seed airfoil to working dir 
+            airfoil_seed.saveAs (dir=self.input_file.workingDir, isWorkingDir=True)
+
+            text = f"Seed airfoil <b>{airfoil_seed.fileName}</b> copied to working directory."
+            MessageBox.info(self, "Copy seed airfoil", text)
+
+            # QTimer.singleShot (10, self.refresh)
+
 
 
 
@@ -565,7 +585,7 @@ class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
                      set=lambda x: self.curvature.set_max_curv_reverse_top(x),
                      hide=lambda: not self.curvature.check_curvature)
         r += 1
-        CheckBox    (l,r,c, text="Bot side (rearloading)", colSpan=2,   
+        CheckBox    (l,r,c, text="Bot side (rearloaded)", colSpan=2,   
                      get=lambda: self.curvature.max_curv_reverse_bot == 1,
                      set=lambda x: self.curvature.set_max_curv_reverse_bot(x),
                      hide=lambda: not self.curvature.check_curvature)

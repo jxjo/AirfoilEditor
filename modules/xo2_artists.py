@@ -293,7 +293,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
             if x is not None and y is not None: 
 
                 pt = Movable_Xo2_OpPoint_Def  (self._pi, opPoint_def, self.xyVars, 
-                                                movable=self.optimizer_isReady,
+                                                movable=self.optimizer_isReady and self.show_mouse_helper,
                                                 on_changed =self.sig_opPoint_def_changed.emit,
                                                 on_dblClick=self.sig_opPoint_def_dblClick.emit,
                                                 on_selected=self.sig_opPoint_def_selected.emit)
@@ -533,7 +533,7 @@ class Xo2_Design_Radius_Artist (Artist):
             back_color = QColor ("black")
             back_color.setAlphaF (0.5)
 
-            self._plot_point (x,y, size=5, color=COLOR_OK, text = f"{y:.3f}", textFill=back_color, anchor= (1.1, 0.7))
+            self._plot_point (x,y, size=5, color=COLOR_OK, text = f"Steps:{x}  {y:.3f}", textFill=back_color, anchor= (1.1, 0.7))
 
 
 
@@ -581,15 +581,6 @@ class Xo2_Transition_Artist (Artist):
         super().__init__ (*args, **kwargs)
 
 
-    @property
-    def prev_opPoints (self) -> list[OpPoint_Result]:
-        """ opPoints of previous Design """
-        try: 
-            return self.designs_opPoints [self.iDesign - 1]
-        except: 
-            return [None] * len (self.opPoints) 
-
-
     def _plot (self): 
         """ plot all opPoints"""
 
@@ -609,7 +600,7 @@ class Xo2_Transition_Artist (Artist):
                 y = side.yFn (x) 
 
                 color  = _color_airfoil ([], airfoil) 
-                symbol = '|' # self._opPoint_symbol (opPoint, self.prev_opPoints[iop])
+                symbol = '|'
                 text   = f"{iop+1}"
                 anchor = (0.5, 1.1) if side.isUpper else (0.5, -0.1)
                 fill   = QColor ("black")
@@ -620,27 +611,4 @@ class Xo2_Transition_Artist (Artist):
                 self._plot_point (x,y, color=color, symbol=symbol, text=text, anchor=anchor, textFill=fill, name=legend_name)
 
                 legend_name = None                                      # only once for legend 
-
-        
-    def _transition_symbol (self, opPoint : OpPoint_Result, prev_opPoint : OpPoint_Result | None ):
-        """ a triangle in the direction of value change """
-
-        if prev_opPoint is None: return 'o'
-
-        x = opPoint.get_value (self.xyVars[0])
-        y = opPoint.get_value (self.xyVars[1])
-        prev_x = prev_opPoint.get_value (self.xyVars[0])
-        prev_y = prev_opPoint.get_value (self.xyVars[1])
-
-        if prev_x > x:
-            symbol = 't3'               # triangle to left
-        elif prev_x < x:
-            symbol = 't2'               # triangle to right
-        elif prev_y > y:
-            symbol = 't'                # triangle to down
-        elif prev_y < y:
-            symbol = 't1'               # triangle to up
-        else: 
-            symbol = 'o'
-        return symbol
 

@@ -145,11 +145,11 @@ class Panel_File_View (Panel_Airfoil_Abstract):
                 set=self.app.optimize_select, 
                 toolTip="Switch to airfoil optimization based on Xoptfoil2",
                 disable=lambda: not Xoptfoil2.ready)
-        Button (l,r,c+2, text="Open Case", width=90, colSpan=2,
-                set=self.app.optimize_airfoil, 
-                toolTip="Optimize current airfoil with Xoptfoil2",
-                hide=lambda: not Input_File.fileName_of (self.airfoil),
-                disable=lambda: not Xoptfoil2.ready)
+        # Button (l,r,c+2, text="Open Case", width=90, colSpan=2,
+        #         set=self.app.optimize_airfoil, 
+        #         toolTip="Optimize current airfoil with Xoptfoil2",
+        #         hide=lambda: not Input_File.fileName_of (self.airfoil),
+        #         disable=lambda: not Xoptfoil2.ready)
         r += 1
         SpaceR (l,r, stretch=4)
         r += 1
@@ -199,7 +199,7 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
 
     def _init_layout (self): 
 
-        self.set_background_color (color='deeppink', alpha=0.2)
+        self.set_background_color (**mode_color.MODIFY)
 
         l = QGridLayout()
         r,c = 0, 0 
@@ -900,9 +900,6 @@ class Panel_Polar_Defs (Edit_Panel):
 
     name = None                                         # suppress header
 
-    _panel_margins = (0, 0, 0, 0)                       # no inset of panel data 
-    _main_margins  = (0, 0, 0, 0)                       # margins of Edit_Panel
-
     sig_polar_def_changed = pyqtSignal()                # polar definition changed 
 
 
@@ -910,7 +907,8 @@ class Panel_Polar_Defs (Edit_Panel):
 
         self._mode_optimize_fn = mode_optimize_fn
 
-        super().__init__(*args, **kwargs)
+        # no margins 
+        super().__init__(*args, main_margins=(0,0,0,0), panel_margins=(0,0,0,0), **kwargs)
 
     # ---------------------------------------------
 

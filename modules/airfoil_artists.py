@@ -549,6 +549,10 @@ class Airfoil_Artist (Artist):
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush, 
                                           fillLevel=0.0, fillBrush=brush, antialias = antialias,
                                           zValue=zValue)
+                    
+                    # plot note if reflexed or rearloaded
+                    self._plot_reflexed_rearloaded (airfoil, color)
+
                 else: 
                     self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
@@ -567,6 +571,21 @@ class Airfoil_Artist (Artist):
                     self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
                                       text=text,anchor=(0.5,1) )
 
+
+    def _plot_reflexed_rearloaded (self, airfoil : Airfoil, color : QColor): 
+        """ plot note if reflexed or rearloaded"""
+
+        textColor = color.darker (140)                  #Artist.COLOR_LEGEND
+
+        if airfoil.isReflexed: 
+            x = 0.8
+            y = airfoil.geo.upper.yFn (x) 
+            self._plot_point (x, y, size=0, text="Reflexed", anchor=(0.5,2.0), textColor=textColor) 
+
+        elif airfoil.isRearLoaded: 
+            x = 0.8
+            y = airfoil.geo.lower.yFn (x) 
+            self._plot_point (x, y, size=0, text="Rearloaded", anchor=(0.5,-1.0), textColor=textColor)
 
 
 
@@ -1099,17 +1118,18 @@ class Polar_Artist (Artist):
 
                 for iPolar, polar in enumerate(polars [::-1]): 
 
-                    # generate increasing color hue value for the polars of an airfoil 
-                    color = color_in_series (color_airfoil, iPolar, len(polars), delta_hue=0.1)
-
-                    self._plot_polar (self.airfoils, airfoil, polar, color)
-
                     if not polar.isLoaded: 
                         nPolar_generating += 1
                     elif polar.error_occurred:
                         # in error_msg could be e.g. '<' 
                         error_msg.append (f"'{airfoil.name_to_show} - {polar.name}': {html.escape(polar.error_reason)}")
                     else: 
+
+                        # generate increasing color hue value for the polars of an airfoil 
+                        color = color_in_series (color_airfoil, iPolar, len(polars), delta_hue=0.1)
+
+                        self._plot_polar (self.airfoils, airfoil, polar, color)
+
                         nPolar_plotted += 1
 
         # show error messages 

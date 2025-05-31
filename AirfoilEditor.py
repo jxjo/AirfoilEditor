@@ -409,7 +409,7 @@ class App_Main (QMainWindow):
 
         if self.mode_optimize:
             # get polar definitions from xo2 input file 
-            return self._case.polar_definitions_of_input()
+            return self._case.input_file.opPoint_defs.polar_defs()
         else:
             if not self._polar_definitions: 
                 self._polar_definitions = [Polar_Definition()]
@@ -759,7 +759,7 @@ class App_Main (QMainWindow):
         if not Xoptfoil2.ready : return 
 
         diag = Xo2_Optimize_New_Dialog (self, self.workingDir, self.airfoil, 
-                                        parentPos=(0.3,0.6), dialogPos=(0,0.5))
+                                        parentPos=(0.2,0.5), dialogPos=(0,0.5))
         
         self._watchdog.sig_new_polars.connect  (diag.refresh)
 
@@ -927,6 +927,7 @@ class App_Main (QMainWindow):
         self._watchdog.sig_xo2_new_state.connect        (self._file_panel.refresh)
         self._watchdog.sig_xo2_new_state.connect        (diag.on_results)
         self._watchdog.sig_xo2_new_design.connect       (diag.on_results)
+        self._watchdog.sig_xo2_new_step.connect         (diag.on_results)
         self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
 
         # run immedately if ready (and not finished)
@@ -949,6 +950,7 @@ class App_Main (QMainWindow):
 
         self._watchdog.sig_xo2_new_state.disconnect     (diag.on_results)
         self._watchdog.sig_xo2_new_design.disconnect    (diag.on_results)
+        self._watchdog.sig_xo2_new_step.disconnect      (diag.on_results)
         self._watchdog.sig_xo2_still_running.disconnect (diag.refresh)
         self._watchdog.set_case_optimize (None)
 
@@ -1177,6 +1179,7 @@ class Watchdog (QThread):
 
     sig_new_polars          = pyqtSignal ()
     sig_xo2_new_state       = pyqtSignal ()
+    sig_xo2_new_step        = pyqtSignal ()
     sig_xo2_new_design      = pyqtSignal (int)
     sig_xo2_still_running   = pyqtSignal ()
 
@@ -1189,7 +1192,8 @@ class Watchdog (QThread):
         self._case_optimize_fn = None                           # Case_Optimize to watch      
         self._xo2_state        = None                           # last run state of xo2
         self._xo2_id           = None                           # instance id of xo2 for change detection
-        self._xo2_nDesigns     = 0                              # last actual steps    
+        self._xo2_nDesigns     = 0                              # last actual design    
+        self._xo2_nSteps       = 0                              # last actual steps    
 
 
     def __repr__(self) -> str:
@@ -1223,7 +1227,14 @@ class Watchdog (QThread):
                 case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
                 self.sig_xo2_new_design.emit(case.xo2.nDesigns)
                 self._xo2_nDesigns = case.xo2.nDesigns
+                self._xo2_nSteps = case.xo2.nSteps                              # new design will also update nsteps
 
+            elif case.xo2.nSteps != self._xo2_nSteps:
+
+                case.results._reader_optimization_history.set_results_could_be_dirty(True)
+                self.sig_xo2_new_step.emit()
+                self._xo2_nSteps = case.xo2.nSteps
+ 
             elif case.isRunning:
 
                 self.sig_xo2_still_running.emit()                               # update time elapsed etc.  

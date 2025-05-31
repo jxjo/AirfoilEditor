@@ -562,6 +562,70 @@ class Polar_Set:
 
 #------------------------------------------------------------------------------
 
+
+class Polar_Point:
+    """ 
+    A single point of a polar of an airfoil   
+
+    airfoil 
+        --> Polar_Set 
+            --> Polar   (1..n) 
+                --> Polar_Point  (1..n) 
+    """
+    def __init__(self):
+        """
+        Main constructor for new opPoint 
+
+        """
+        self.spec   = var.ALPHA                         # self based on ALPHA or CL
+        self.alpha : float = None
+        self.cl    : float = None
+        self.cd    : float = None
+        self.cm    : float = None 
+        self.xtrt  : float = None                       # transition top side
+        self.xtrb  : float = None                       # transition bot side
+
+    @property
+    def glide (self) -> float: 
+        if self.cd and self.cl:                  
+            return round_down(self.cl/self.cd,2)  
+        else: 
+            return 0.0 
+
+    @property
+    def sink (self) -> float: 
+        if self.cd > 0.0 and self.cl >= 0.0:                  
+            return round_down(self.cl**1.5 / self.cd,2)
+        else: 
+            return 0.0 
+
+    def get_value (self, op_var : var ) -> float:
+        """ get the value of the opPoint variable with id"""
+
+        if op_var == var.CD:
+            val = self.cd
+        elif op_var == var.CL:
+            val = self.cl
+        elif op_var == var.ALPHA:
+            val = self.alpha
+        elif op_var == var.CM:
+            val = self.cm
+        elif op_var == var.XTRT:
+            val = self.xtrt
+        elif op_var == var.XTRB:
+            val = self.xtrb
+        elif op_var == var.GLIDE:
+            val = self.glide
+        elif op_var == var.SINK:
+            val = self.sink
+        else:
+            raise ValueError ("Op point variable id '%s' not known" %op_var)
+        return val 
+
+
+#------------------------------------------------------------------------------
+
+
 class Polar (Polar_Definition):
     """ 
     A single polar of an airfoil created by Worker
@@ -601,18 +665,18 @@ class Polar (Polar_Definition):
         self._polar_set = mypolarSet
         self._re_scale  = re_scale
 
-        self._error_reason = None               # if error occurred during polar generation 
+        self._error_reason = None                       # if error occurred during polar generation 
 
-        self._opPoints = []                     # the single opPoins of self
+        self._polar_points = []                         # the single polar points of self
         self._alpha = None
-        self._cl = None
-        self._cd = None
-        self._cm = None 
-        self._cd = None 
-        self._xtrt = None
-        self._xtrb = None
+        self._cl    = None
+        self._cd    = None
+        self._cm    = None 
+        self._cd    = None 
+        self._xtrt  = None
+        self._xtrb  = None
         self._glide = None
-        self._sink = None
+        self._sink  = None
 
         if polar_def: 
             self.set_active     (polar_def.active)
@@ -650,14 +714,14 @@ class Polar (Polar_Definition):
         return self._re_scale
 
     @property
-    def opPoints (self) -> list:
-        """ returns the sorted list of opPoints of self """
-        return self._opPoints
+    def polar_points (self) -> list [Polar_Point]:
+        """ returns the sorted list of Polar_Points of self """
+        return self._polar_points
         
     @property
     def isLoaded (self) -> bool: 
         """ is polar data loaded from file (for async polar generation)"""
-        return len(self._opPoints) > 0 or self.error_occurred
+        return len(self._polar_points) > 0 or self.error_occurred
     
     @property 
     def error_occurred (self) -> bool:
@@ -713,19 +777,46 @@ class Polar (Polar_Definition):
         if not np.any(self._xtrb): self._xtrb = self._get_values_forVar (var.XTRB)
         return self._xtrb
 
-    @property
-    def cl_max (self) -> float:
-        if np.any(self.cl):
-            return np.max(self.cl)
-        else: 
-            return None
 
     @property
-    def cd_min (self) -> float:
+    def min_cd (self) -> Polar_Point:
+        """ returns a Polar_Point at min cd - or None if not valid"""
         if np.any(self.cd):
-            return np.min(self.cd)
-        else: 
-            return None
+            ip = np.argmin (self.cd)
+            # sanity for somehow valid polar 
+            if ip > 2 and ip < (len(self.cd) - 1):
+                return self.polar_points [ip]
+
+
+    @property
+    def max_glide (self) -> Polar_Point:
+        """ returns a Polar_Point at max glide - or None if not valid"""
+        if np.any(self.glide):
+            ip = np.argmax (self.glide)
+            # sanity for somehow valid polar 
+            if ip > 2 and ip < (len(self.glide) - 5):
+                return self.polar_points [ip]
+
+
+    @property
+    def max_cl (self) -> Polar_Point:
+        """ returns a Polar_Point at max cl - or None if not valid"""
+        if np.any(self.cl):
+            ip = np.argmax (self.cl)
+            # sanity for somehow valid polar 
+            if ip > (len(self.cl) - 5):
+                return self.polar_points [ip]
+
+
+    @property
+    def min_cl (self) -> Polar_Point:
+        """ returns a Polar_Point at max cl - or None if not valid"""
+        if np.any(self.cl):
+            ip = np.argmin (self.cl)
+            # sanity for somehow valid polar 
+            if ip < (len(self.cl) - 10):
+                return self.polar_points [ip]
+
 
     @property
     def alpha_cl0_inviscid (self) -> float:
@@ -744,14 +835,6 @@ class Polar (Polar_Definition):
     def alpha_cl0 (self) -> float:
         if np.any(self.cl) and np.any(self.alpha):
             return self.get_interpolated (var.CL, 0.0, var.ALPHA)
-        else: 
-            return None
-
-
-    @property
-    def glide_max (self) -> float:
-        if np.any(self.glide):
-            return np.max(self.glide)
         else: 
             return None
 
@@ -807,12 +890,11 @@ class Polar (Polar_Definition):
     def _get_values_forVar (self, var) -> np.ndarray:
         """ copy values of var from op points to array"""
 
-        nPoints = len(self.opPoints)
+        nPoints = len(self.polar_points)
         if nPoints == 0: return np.array([]) 
 
         values = np.zeros (nPoints)
-        op : OpPoint
-        for i, op in enumerate(self.opPoints):
+        for i, op in enumerate(self.polar_points):
             values[i] = op.get_value (var)
         return values 
 
@@ -926,7 +1008,7 @@ class Polar (Polar_Definition):
                     for element in splittedLine:
                         if element != '':
                             dataPoints.append(element)
-                    op = OpPoint ()
+                    op = Polar_Point ()
                     op.alpha = float(dataPoints[0])
                     op.cl = float(dataPoints[1])
                     op.cd = float(dataPoints[2])
@@ -940,7 +1022,7 @@ class Polar (Polar_Definition):
 
         if len(opPoints) > 0: 
 
-            self._opPoints = opPoints
+            self._polar_points = opPoints
 
         else: 
             logger.error (f"{self} - import from {polarPathFileName} failed")
@@ -1187,68 +1269,6 @@ class Polar_Task (Polar_Definition):
 # ------------------------------------------
 
 
-class OpPoint:
-    """ 
-    A single (operating) point of a polar of an airfoil   
-
-    airfoil 
-        --> Polar_Set 
-            --> Polar   (1..n) 
-                --> OpPoint  (1..n) 
-    """
-    def __init__(self):
-        """
-        Main constructor for new opPoint 
-
-        """
-        self.spec   = var.ALPHA                 # self based on ALPHA or CL
-        self.valid  = True                      # has it converged during xfoil calculation
-        self.alpha  = None
-        self.cl     = None
-        self.cd     = None
-        self.cm     = None 
-        self.xtrt   = None                      # transition top side
-        self.xtrb   = None                      # transition bot side
-
-    @property
-    def glide (self) -> float: 
-        if self.cd and self.cl:                 # cd != 0.0  
-            return round(self.cl/self.cd,2)  
-        else: 
-            return 0.0 
-
-    @property
-    def sink (self) -> float: 
-        if self.cd > 0.0 and self.cl >= 0.0:                 # cd != 0.0  
-            return round(self.cl**1.5 / self.cd,2)
-        else: 
-            return 0.0 
-
-    def get_value (self, op_var : var ) -> float:
-        """ get the value of the opPoint variable with id"""
-
-        if op_var == var.CD:
-            val = self.cd
-        elif op_var == var.CL:
-            val = self.cl
-        elif op_var == var.ALPHA:
-            val = self.alpha
-        elif op_var == var.CM:
-            val = self.cm
-        elif op_var == var.XTRT:
-            val = self.xtrt
-        elif op_var == var.XTRB:
-            val = self.xtrb
-        elif op_var == var.GLIDE:
-            val = self.glide
-        elif op_var == var.SINK:
-            val = self.sink
-        else:
-            raise ValueError ("Op point variable id '%s' not known" %op_var)
-        return val 
-
-
-
 
 class Polar_Splined (Polar_Definition):
     """ 
@@ -1283,7 +1303,7 @@ class Polar_Splined (Polar_Definition):
 
         self._polar_set = mypolarSet
 
-        self._opPoints = []                     # the single opPoins of self
+        self._polar_points = []                     # the single opPoins of self
         self._alpha = []
         self._cl = []
         self._cd = []
@@ -1378,7 +1398,7 @@ class Polar_Splined (Polar_Definition):
     @property
     def opPoints (self) -> list:
         """ returns the sorted list of opPoints of self """
-        return self._opPoints
+        return self._polar_points
     
     
     @property
@@ -1449,7 +1469,7 @@ class Polar_Splined (Polar_Definition):
         if nPoints == 0: return [] 
 
         values  = [0] * nPoints
-        op : OpPoint
+        op : Polar_Point
         for i, op in enumerate(self.opPoints):
             values[i] = op.get_value (var)
         return values 

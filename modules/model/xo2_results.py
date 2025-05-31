@@ -305,7 +305,7 @@ class Optimization_History_Entry:
 #-------------------------------------------------------------------------------
 
 
-class GeoTarget_Result (OpPoint):
+class GeoTarget_Result (Polar_Point):
     """ 
     The optimization result of the Geometry target  
     """
@@ -375,7 +375,7 @@ class GeoTarget_Result (OpPoint):
 #-------------------------------------------------------------------------------
 
 
-class OpPoint_Result (OpPoint):
+class OpPoint_Result (Polar_Point):
     """ 
     The optimization result of Xoptfoil2 for single op point - inherits from opPoint   
     """

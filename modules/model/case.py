@@ -330,13 +330,11 @@ class Case_Optimize (Case_Abstract):
             input_fileName = Input_File.fileName_of (airfoil) 
 
             self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName, is_new=is_new)
-            self._workingDir    = airfoil.pathName
 
         elif isinstance (airfoil_or_input_file, str):
 
             fileName : str      = airfoil_or_input_file
             self._input_file    = Input_File (fileName, workingDir=workingDir, is_new=is_new)
-            self._workingDir    = workingDir
 
         else: 
             raise ValueError (f"{airfoil_or_input_file} not a valid argument")
@@ -353,6 +351,15 @@ class Case_Optimize (Case_Abstract):
     @property
     def name (self) -> str:
        return self.input_file.fileName
+
+    @override
+    @property
+    def workingDir (self) -> str:
+        """working directory where input file is located"""
+        return self.input_file.workingDir
+
+    def set_workingDir (self, aDir : str):
+        self.input_file.set_workingDir (aDir)
 
 
     @override
@@ -448,18 +455,15 @@ class Case_Optimize (Case_Abstract):
         return isFinished
 
 
-    def polar_definitions_of_input (self) -> list[Polar_Definition]:
-        """ polar definitions defined in input file - operating conditions"""
-
-        return self.input_file.opPoint_defs.polar_defs()
-
-
     # ---- Methods -------------------------------------------
 
     def run (self):
         """ start a new optimization run """
 
         if not self.input_file.hasErrors and self.xo2.isReady:
+
+            # be sure all changes written to file 
+            self.input_file.save_nml()
 
             rc = self.xo2.run (self.outName, self.input_file.fileName)
 

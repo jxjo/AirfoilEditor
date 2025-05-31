@@ -682,7 +682,7 @@ class Widget:
     #---  from / to QWidget - inside the widget 
 
     def _should_be_disabled (self) -> bool:
-        """ True is self is currently should be disabled but maybe not set intoQWidget"""
+        """ True if self currently should be disabled but maybe not set into QWidget"""
         return self._disabled or self._disable_in_refresh
     
 
@@ -716,7 +716,8 @@ class Widget:
 
         # toolTip 
         if self._toolTip is not None:
-            widget.setToolTip (self._toolTip)
+            toolTip = self._toolTip() if callable (self._toolTip) else self._toolTip
+            widget.setToolTip (toolTip)
 
 
     def _set_Qwidget_disabled (self):
@@ -927,7 +928,7 @@ class Label (Widget, QLabel):
     _height = 26 
 
     def __init__(self, *args, 
-                 styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Base
+                 styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Window
                  disable = None,                             
                  lab_disable : bool = False,                 # label can be disabled (color)
                  wordWrap = False,                           # activate word wrap
@@ -1720,17 +1721,20 @@ class ListBox (Field_With_Label, QListWidget):
         - when double clicked, in addition 'dblClick' is called 
     """
         
-    _height = 72 
+    _height      = 72 
+    _item_height = 23
 
     def __init__(self, *args, 
                  options = [],
                  doubleClick = None,  
+                 autoHeight = False,                    # height dependend on n items, height must be tuple
                  **kwargs):
         super().__init__(*args, **kwargs)
 
         self._options_getter = options
         self._options : list = None
         self._doubleClick_setter = doubleClick if callable (doubleClick) else None
+        self._autoHeight = autoHeight
 
         self._get_properties ()
 
@@ -1741,9 +1745,9 @@ class ListBox (Field_With_Label, QListWidget):
         self._set_Qwidget ()
 
         # connect signals 
-        # self.itemActivated.connect(self._on_selected)
         self.itemClicked.connect(self._on_selected)
         self.itemDoubleClicked.connect (self._on_doubleClick)
+
 
     @override
     def _get_properties (self): 
@@ -1765,14 +1769,40 @@ class ListBox (Field_With_Label, QListWidget):
         self.clear()                                
         for item_text in self._options:
              item = QListWidgetItem (item_text, self)
-             item.setSizeHint (QSize (0, 23))
+             item.setSizeHint (QSize (0, self._item_height))
 
-        # set current item 
-        try: 
-            irow = self._options.index (self._val)
-        except: 
-            irow = 0 
-        self.setCurrentRow (irow)
+        # set current item if not disabled 
+        if not (self._disabled or self._disable_in_refresh):
+            try: 
+                irow = self._options.index (self._val)
+            except: 
+                irow = 0 
+            self.setCurrentRow (irow)
+
+        # set height of listbox dynamically (if height is tuple) 
+        if self._autoHeight:
+            self._set_height (self._height)
+
+
+
+    def _set_height (self, height ):
+        """ set a dynamic height of Listbox depending on number of items - height must be tuple"""
+        if height is None or not isinstance (height, tuple): 
+            return 
+
+        min_height = height[0]
+        max_height = height[1]
+
+        nitems = len(self._options) if len(self._options) else 1
+        calc_height = nitems * self._item_height + 4 
+
+        min_height = min_height if min_height else calc_height
+        max_height = max_height if max_height else calc_height
+        if min_height > max_height:
+            min_height, max_height = max_height, min_height
+
+        self.setMinimumHeight(min_height)
+        self.setMaximumHeight(max_height)        
 
 
     def _on_selected (self, aItem : QListWidgetItem):

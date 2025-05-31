@@ -9,11 +9,12 @@ Extra functions (dialogs) to optimize airfoil
 
 from copy                   import copy 
 from shutil                 import copyfile
+from datetime               import date
 
 import pyqtgraph as pg
 
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
-from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog
+from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog, QMessageBox
 from PyQt6.QtGui            import QFontMetrics, QCloseEvent
 
 from base.widgets           import * 
@@ -22,7 +23,8 @@ from base.diagram           import Diagram, Diagram_Item
 from base.artist            import Artist
 
 from airfoil_dialogs        import Polar_Definition_Dialog
-from airfoil_widgets        import Airfoil_Select_Open_Widget
+from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
+from airfoil_artists        import Polar_Artist
 
 from model.airfoil          import Airfoil
 from model.polar_set        import Polar_Definition
@@ -33,7 +35,7 @@ from model.xo2_results      import Xo2_Results
 from model.xo2_input        import *
 
 from model.xo2_input        import SPEC_TYPES, SPEC_ALLOWED, OPT_ALLOWED, var
-from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist
+from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist, Xo2_OpPoint_Defs_Artist
 
 
 import logging
@@ -161,7 +163,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
             self._info_panel = Edit_Panel (title="Info and Examples", layout=l, height=(100,None), 
                                               switchable=True, switched_on=False, on_switched=lambda x: self.adjustSize())
             
-            self._info_panel.set_background_color (color='darkturquoise', alpha=0.2)
+            self._info_panel.set_background_color (**mode_color.OPTIMIZE)
 
         return self._info_panel 
 
@@ -251,24 +253,35 @@ class Xo2_Optimize_Select_Dialog (Dialog):
 class Xo2_Optimize_New_Dialog (Dialog):
     """ Dialog to create a new input file """
 
-    _width  = (1000, None)
-    _height = (800, None)
+    _width  = (1200, None)
+    _height = (700, None)
 
     name = "New Optimization Case"
 
 
     class Diagram_Airfoil_and_Polar (Diagram):
-        """ Diagram with design radus and improvement development  """
+        """ Diagram with Airfoil and Polar Item  """
 
         width  = (None, None)               # (min,max) 
         height = (400, None)                # (min,max)
 
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args, case_fn = None, **kwargs):
+
+            self._case_fn = case_fn
 
             super().__init__(*args, **kwargs)
 
             self.graph_layout.setContentsMargins (5,10,5,5)  # default margins
+
+            # show opPoint definitions
+            for artist in self._get_artist (Xo2_OpPoint_Defs_Artist):
+                artist.set_show (True)
+                artist.set_show_mouse_helper (False) 
+
+            # switch off polar legend 
+            for artist in self._get_artist (Polar_Artist):
+                artist.set_show_legend (False) 
 
 
         @property
@@ -293,9 +306,12 @@ class Xo2_Optimize_New_Dialog (Dialog):
     
             r += 1
             for iItem, xyVars in enumerate ([(var.CD,var.CL), (var.CL,var.GLIDE)]):
-                item = Diagram_Item_Polars (self, getter=self.airfoils, xyVars=xyVars, show=True)
+                item = Diagram_Item_Polars (self, getter=self.airfoils, xyVars=xyVars, case_fn=self._case_fn, show=True)
                 item.setMinimumSize (200, 200)
                 self._add_item (item, r, iItem)
+
+            self.graph_layout.setRowStretchFactor (0,2)
+            self.graph_layout.setRowStretchFactor (1,3)
 
 
         @override
@@ -308,21 +324,31 @@ class Xo2_Optimize_New_Dialog (Dialog):
 
     def __init__ (self, parent, workingDir : str,  current_airfoil : Airfoil, **kwargs): 
 
-        self._case            = Case_Optimize ('New',workingDir=workingDir, is_new=True)  
+        self._case            = Case_Optimize ('',workingDir=workingDir, is_new=True)  
 
         # init empty input file with current seed airfoil
 
         self.input_file.set_airfoil_seed (current_airfoil)
+        self.input_file.nml_info.set_descriptions([f"My new Case created on {str(date.today())}"])
+        self.optimization_options.set_shape_functions (Nml_optimization_options.BEZIER)
+        self.operating_conditions.set_re_default_asK (400)
+        self.geometry_targets.activate_thickness (True)
 
-        polar_defs = self.case.polar_definitions_of_input ()
-        self.airfoil_seed.set_polarSet (Polar_Set (self.airfoil_seed, polar_def=polar_defs))
+        self._create_opPoint_defs () 
 
         #  main panels 
 
         self._edit_panel      = None  
+        self._info_panel      = None
         self._diagram         = None
 
+        self._btn_ok : QPushButton = None 
+
         super().__init__ ( parent, **kwargs)
+
+        # initially disable ok button - see refresh 
+        self._btn_ok.setDisabled(True)
+
 
     @override
     @property
@@ -358,12 +384,16 @@ class Xo2_Optimize_New_Dialog (Dialog):
         return self.input_file.airfoil_seed
     
     @property
-    def opPoint_defs (self) -> OpPoint_Definitions:
-        return self.input_file.opPoint_defs
-
+    def polarSet_seed (self) -> Polar_Set:
+        return self.airfoil_seed.polarSet
+    
     @property
     def optimization_options (self) -> Nml_optimization_options:
         return self.input_file.nml_optimization_options
+
+    @property
+    def operating_conditions (self) -> Nml_operating_conditions:
+        return self.input_file.nml_operating_conditions
 
     @property
     def geometry_targets (self) -> Nml_geometry_targets:
@@ -373,48 +403,118 @@ class Xo2_Optimize_New_Dialog (Dialog):
     def thickness (self) -> GeoTarget_Definition | None: 
         return self.geometry_targets.thickness
 
+    @property
+    def curvature (self) -> Nml_curvature:
+        return self.input_file.nml_curvature
+
+    @property
+    def opPoint_defs (self) -> OpPoint_Definitions:
+        return self.input_file.opPoint_defs
+
+    def _create_opPoint_defs (self): 
+        """ create opPoint defs based on shape functions and seed airfoil"""
+
+        self.airfoil_seed.set_polarSet (Polar_Set (self.airfoil_seed, polar_def=self.opPoint_defs.polar_def_default))
+        self.polarSet_seed.load_or_generate_polars ()
+
+        if self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK:
+            n = 3
+        else: 
+            n = 5
+
+        # (re) create opPoint definitions 
+        self.opPoint_defs.create_initial (self.polarSet_seed, n)
+
 
     def _init_layout(self) -> QLayout:
 
         l =  QGridLayout()
         r,c, = 0,0
-        Field       (l,r,c, lab="Outname",  
-                    get=lambda: self.input_file.outName, set=self.input_file.set_outName)
+
+        l.addWidget (self.info_panel, r,c,1,5)
         r += 1
-        Label       (l,r,c, get="Seed Airfoil")
-        Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, width=180,
-                                    textOpen="&Open", widthOpen=90, 
+        SpaceR      (l,r, stretch=0)
+        r += 1
+        Label       (l,r,c, get="Name of Input file equals final airfoil and working directory", height=30, colSpan=4, style=style.COMMENT)
+        r += 1
+        Field       (l,r,c+1, lab="Outname", width=175, 
+                     get=lambda: self.input_file.outName, set=self.input_file.set_outName,
+                     style=lambda: style.WARNING if not self.input_file.outName else style.NORMAL)
+        r += 1
+        Field       (l,r,c+1, lab="Working directory",  
+                     get=lambda: ('...'+self.workingDir[-26:]) if len(self.workingDir) > 26 else self.workingDir, 
+                     toolTip=lambda: self.workingDir)
+        ToolButton  (l,r,c+3, icon=Icon.OPEN, set=self._change_working_dir, 
+                     toolTip="Select new working directory")
+
+        r += 1
+        SpaceR      (l,r, stretch=0)
+        r += 1
+        Label       (l,r,c, get="Seed airfoil and shape functions to apply for optimization", height=30, colSpan=4, style=style.COMMENT)
+        r += 1
+        Label       (l,r,c+1, get="Seed Airfoil")
+        w = Airfoil_Select_Open_Widget (l,r,c+2, colSpan=2, width=198, textOpen="&Open", widthOpen=90, 
                                     obj=lambda: self.input_file, prop=Input_File.airfoil_seed)
-
+        w.sig_changed.connect (self._airfoil_seed_changed)                          # copy seed to working Dir
         r += 1
-        Field       (l,r,c, lab="Default Polar",  
-                    get=lambda: self.opPoint_defs.polar_def_default.name)
-        ToolButton  (l,r,c+2, icon=Icon.EDIT,   set=self._edit_polar_def)
-
-        r += 1
-        ComboBox    (l,r,c, lab="Shape functions", lab_disable=True,
+        ComboBox    (l,r,c+1, lab="Shape functions", lab_disable=True,
                      get=lambda: self.optimization_options.shape_functions_label_long, 
                      set=self.optimization_options.set_shape_functions_label_long,
                      options=lambda: self.optimization_options.shape_functions_list)     
 
         r += 1
-        CheckBox    (l,r,c, text="Thickness", colSpan=2, 
+        SpaceR      (l,r, stretch=0)
+        r += 1
+        Label       (l,r,c, get="Default polar and proposed, first operating points", height=30, colSpan=4, style=style.COMMENT)
+        r += 1
+        Field       (l,r,c+1, lab="Default Polar",  
+                    get=lambda: self.opPoint_defs.polar_def_default.name)
+        ToolButton  (l,r,c+3, icon=Icon.EDIT,   set=self._edit_polar_def)
+        r += 1
+        Label       (l,r,c+1, get="Operating Points")
+        ListBox     (l,r,c+2, height=(None, None), autoHeight=True, rowSpan=2, width=175,          
+                     options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs],
+                     hide = lambda: not self.opPoint_defs)
+        Label       (l,r,c+2, get="Waiting for polar ...", colSpan=2, style=style.COMMENT,
+                     hide = lambda: self.opPoint_defs or self.polarSet_seed.has_all_polars_loaded)
+        Label       (l,r,c+2, get="Creation failed", colSpan=2, 
+                     style=style.ERROR, styleRole = QPalette.ColorRole.Window,
+                     hide = lambda: self.opPoint_defs or self.polarSet_seed.has_polars_not_loaded)
+
+        r += 2
+        SpaceR      (l,r, stretch=0)
+        r += 1
+        Label       (l,r,c, get="Geometry targets and curvature demands", height=30, colSpan=4, style=style.COMMENT)
+        r += 1
+        CheckBox    (l,r,c+1, text="Thickness", colSpan=2, 
                      get=lambda: self.thickness is not None, 
                      set=lambda x: self.geometry_targets.activate_thickness(x))
         FieldF      (l,r,c+2, width=70, unit="%", step=0.2,
                      obj=lambda: self.thickness, prop=GeoTarget_Definition.optValue,
                      hide=lambda: not self.thickness)
         r += 1
+        CheckBox    (l,r,c+1, text="Reflexed (reversal on top side)", colSpan=2, 
+                     get=lambda: self.curvature.max_curv_reverse_top == 1,
+                     set=lambda x: self.curvature.set_max_curv_reverse_top(x),
+                     hide=lambda: not self.airfoil_seed.isReflexed)
+        r += 1
+        CheckBox    (l,r,c+1, text="Rearloaded (reversal on bottom)", colSpan=3,   
+                     get=lambda: self.curvature.max_curv_reverse_bot == 1,
+                     set=lambda x: self.curvature.set_max_curv_reverse_bot(x),
+                     hide=lambda: not self.airfoil_seed.isRearLoaded)
 
-        l.setRowStretch (r,1)
-        l.setColumnMinimumWidth (0,110)
-        l.setColumnMinimumWidth (1,140)
-        l.setColumnMinimumWidth (2,50)
+        r += 1
+        l.setRowStretch (r,5)
+        l.setColumnMinimumWidth (0,20)
+        l.setColumnMinimumWidth (1,110)
+        l.setColumnMinimumWidth (2,175)
+        l.setColumnMinimumWidth (3,50)
         l.setColumnStretch (3,2)
+        l.setColumnStretch (4,2)
 
-        self._edit_panel      = Edit_Panel (self, layout=l, width=400) 
+        self._edit_panel      = Edit_Panel (self, layout=l, has_head=False, main_margins= (5,0,10,5), panel_margins=(0,0,0,0), width=380) 
 
-        self._diagram         = self.Diagram_Airfoil_and_Polar (self, lambda: self.airfoil_seed)
+        self._diagram         = self.Diagram_Airfoil_and_Polar (self, lambda: self.airfoil_seed, case_fn=lambda: self.case)
         
         l =  QHBoxLayout()
         l.addWidget (self._edit_panel)
@@ -422,6 +522,82 @@ class Xo2_Optimize_New_Dialog (Dialog):
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
         return l 
+
+
+    @property
+    def info_panel (self) -> Edit_Panel:
+        """ return info panel holding additional user info"""
+
+        if self._info_panel is None:    
+            l = QGridLayout()
+            r,c = 0, 0 
+            Label  (l,r,c, style=style.COMMENT, wordWrap=True, height=(None,None),
+                    get="Create a new optimization by defining the major parameters.<br>" +
+                        "All parameters can be changed subsequently. Some typical operating points are " +
+                        "created based on the selected shape functions. Adjust these operating points later " + 
+                        "depending on the objectives of the optimization.")
+            l.setRowStretch (r,1)
+            self._info_panel = Edit_Panel (layout=l, has_head=False, main_margins= (0,0,0,0), panel_margins=(10,0,5,0), height=100)  
+            self._info_panel.set_background_color (**mode_color.OPTIMIZE)
+
+        return self._info_panel 
+
+
+
+    def _change_working_dir (self): 
+        """ set a new working directoy - handle seed airfoil"""
+
+        new_dir = QFileDialog.getExistingDirectory(self, directory=self.workingDir, caption="Select or create working directory")
+
+        if new_dir and (os.path.abspath (new_dir) != os.path.abspath (self.workingDir)):
+
+            seed_ok = self._ask_copy_airfoil_seed (new_dir)                 # ensure seed airfoil is copied 
+
+            if seed_ok: 
+                self.case.set_workingDir (new_dir)
+
+                QTimer.singleShot (10, self.refresh)
+
+
+    def _airfoil_seed_changed (self, *_):
+        """ slot seed airfoil changed - check if still in working dir"""
+
+        # the airfoil may not have a directory as it should be relative to its working dir 
+        if self.airfoil_seed.pathName:
+
+            # copy seed airfoil to working dir 
+            self.airfoil_seed.saveAs (dir=self.workingDir, isWorkingDir=True)
+
+            text = f"Seed airfoil <b>{self.airfoil_seed.fileName}</b> copied to working directory."
+            MessageBox.info(self, "Copy seed airfoil", text)
+
+            QTimer.singleShot (10, self.refresh)
+
+
+    def _ask_copy_airfoil_seed (self, new_dir : str = None): 
+        """ 
+        ask if seed should be copied to new_dir and copy if yes
+        Returns True if seed was copied or if it was already there
+        """
+
+        # check if seed is already in new_dir 
+        if os.path.isfile (os.path.join (new_dir, self.airfoil_seed.fileName)): 
+            self.airfoil_seed.set_pathFileName (self.airfoil_seed.fileName)
+            self.airfoil_seed.set_workingDir (new_dir)
+            return True 
+
+        # ask if it should be copied 
+        text = f"Seed airfoil <b>{self.airfoil_seed.fileName}</b><br>will be copied to the new working directory."
+        button = MessageBox.confirm (self, "Copy seed airfoil", text)
+
+        if button == QMessageBox.StandardButton.Cancel:
+            return False
+        
+        # copy seed airfoil 
+        self.airfoil_seed.saveAs (dir=new_dir, isWorkingDir=True)
+
+        return True 
+
 
 
     def _edit_polar_def (self):
@@ -446,6 +622,8 @@ class Xo2_Optimize_New_Dialog (Dialog):
         buttonBox.rejected.connect  (self.close)
         buttonBox.accepted.connect  (self.accept)
 
+        self._btn_ok  = buttonBox.button(QDialogButtonBox.StandardButton.Ok)
+
         return buttonBox 
 
 
@@ -453,6 +631,34 @@ class Xo2_Optimize_New_Dialog (Dialog):
         """ open existing case self.input_file"""
         self.accept ()
 
+
+    @override
+    def refresh (self,*_):
+        """ refesh including diagram"""
+
+        self._create_opPoint_defs ()
+
+        super().refresh() 
+
+        self._diagram.refresh()
+
+        # activate ok button if all is ok 
+        if self.input_file.outName and self.opPoint_defs:
+            self._btn_ok.setEnabled(True)
+        else: 
+            self._btn_ok.setEnabled(False)
+
+
+    @override
+    def accept (self): 
+        """ ok button pressed"""
+
+        # sanity check 
+        if not (self.input_file.outName and self.opPoint_defs): return 
+
+        self.input_file.save_nml ()
+
+        super().accept()
 
 
 
@@ -825,7 +1031,7 @@ class Xo2_Run_Dialog (Dialog):
 
             self._panel_finished = Edit_Panel (title="Finished - Final Results", layout=l, height=(None,None),
                         hide=lambda: not (self.case.xo2.state == xo2_state.READY and self.case.isFinished)) 
-            self._panel_finished.set_background_color (color='darkturquoise', alpha=0.2)
+            self._panel_finished.set_background_color (**mode_color.OPTIMIZE)
 
         return self._panel_finished
 

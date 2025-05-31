@@ -266,13 +266,11 @@ class Container_Panel (Panel_Abstract):
 
 class Edit_Panel (Panel_Abstract):
     """ 
-    Panel with a title and an optional on/off switch 
+    Panel with/out a title and an optional on/off switch 
     having a layout area for content  
     """
 
     _height = (150, None) 
-    _panel_margins = (15, 0, 0, 0)          # margins of panel data 
-    _main_margins  = (10, 5, 10, 5)         # margins of Edit_Panel
 
     def __init__(self, *args, 
                  layout : QLayout | None = None,
@@ -280,6 +278,10 @@ class Edit_Panel (Panel_Abstract):
                  switched_on : bool = True, 
                  on_switched = None, 
                  hide_switched : bool = True,
+                 has_head : bool = True,
+                 main_margins  : tuple = (10, 5,10, 5),             
+                 head_margins  : tuple = ( 0, 0, 0, 5),             
+                 panel_margins : tuple = (15, 0, 0, 0),           
                  **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -291,6 +293,10 @@ class Edit_Panel (Panel_Abstract):
         self._head  = None
         self._panel = None
 
+        self._main_margins  = main_margins
+        self._head_margins  = head_margins
+        self._panel_margins = panel_margins
+
         # set background color depending light/dark mode
 
         if Widget.light_mode:
@@ -300,11 +306,11 @@ class Edit_Panel (Panel_Abstract):
 
         # title layout - with optional on/off switch 
 
-        if self.title_text() is not None: 
+        if has_head and self.title_text() is not None: 
 
             self._head = QWidget(self)
             l_head = QHBoxLayout(self._head)
-            l_head.setContentsMargins (QMargins(0,0,0,5))
+            l_head.setContentsMargins (*self._head_margins)
 
             if self._switchable:
                 CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
@@ -340,7 +346,6 @@ class Edit_Panel (Panel_Abstract):
         # initial visibility 
         if not self.shouldBe_visible:         
             self.setVisible (False)             # setVisible(True) results in a dummy window on startup 
-
 
 
     def title_text (self) -> str: 
@@ -564,6 +569,14 @@ class MessageBox (QMessageBox):
         """ success message with Ok button"""
 
         msg = MessageBox (parent, title, text, Icon (Icon.SUCCESS), min_width=min_width, min_height= min_height)
+        msg.exec()
+
+
+    @staticmethod
+    def info (parent: object, title : str, text : str, min_width=None, min_height=None):
+        """ info message with Ok button"""
+
+        msg = MessageBox (parent, title, text, Icon (Icon.INFO), min_width=min_width, min_height= min_height)
         msg.exec()
 
 

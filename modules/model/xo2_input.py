@@ -187,6 +187,10 @@ class Input_File:
         if aStr: 
             self._fileName = Path (aStr).stem + self.INPUT_FILE_EXT [0]
 
+    @property
+    def airfoil_final_fileName (self) -> str:  
+        """ fileName of the the final airfoil created by Xo2"""
+        return self.outName + '.dat'
 
     @property
     def fileName(self) -> str:  
@@ -353,14 +357,19 @@ class Input_File:
             airfoil.set_usedAs (usedAs.SEED)
             self._airfoil_seed = airfoil
         
+        # ensure a default polar set 
+
+        if self._airfoil_seed.polarSet is None: 
+            polar_defs = self.opPoint_defs.polar_defs()
+            self._airfoil_seed.set_polarSet (Polar_Set (self._airfoil_seed, polar_def=polar_defs))
+
         return self._airfoil_seed
 
     
     def set_airfoil_seed (self, airfoil: Airfoil):  
-        """ set new seed airfoil in input file an8d refresh"""
-        if airfoil: 
+        """ set new seed airfoil in input file"""
+        if isinstance (airfoil, Airfoil): 
             self.nml_optimization_options.set_airfoil_file(airfoil.pathFileName)
-            self.save_nml ()
             self._airfoil_seed = None
 
 
@@ -558,7 +567,7 @@ SPEC_TYPES  = [var.CL, var.ALPHA]
 
 class OpPoint_Definition:
     """ 
-    A single op point for optimization   
+    A single op point definition of optimization   
     """
     def __init__(self, 
                     myList : 'OpPoint_Definitions', 
@@ -690,9 +699,9 @@ class OpPoint_Definition:
     """ set specValue - alpha with 2 dec, cl with 3 dec"""
     def set_specValue (self, aVal):  
         if self.specVar == var.ALPHA:
-            self._specValue = round (aVal,2)
+            self._specValue = round (aVal,3)
         else: 
-            self._specValue = round (aVal,2)
+            self._specValue = round (aVal,3)
 
     def set_specValue_limited (self, aVal):  
         """ set specValue - assures aVal is between specValues of self neighbours"""
@@ -708,10 +717,12 @@ class OpPoint_Definition:
     def opt (self) -> tuple:
         """ returns optType and optvar as tuple like (OPT_TARGET, CD)""" 
         return (self.optType, self.optVar)
+    
     def set_opt (self, aOpt: tuple):  
         if aOpt in OPT_ALLOWED: 
             self._optType = aOpt[0] 
             self._optVar  = aOpt[1] 
+
     def opt_allowed (self) -> list: 
         """ return list of allowed (optType,optVar) combinations depending on specVar"""
         return [opt for opt in OPT_ALLOWED if opt[1] != self.specVar]  
@@ -773,9 +784,11 @@ class OpPoint_Definition:
                 self._optValue = -abs(round(aVal,2))
             else: 
                 if self.optVar == var.CD:
-                    self._optValue = round (aVal,5)
+                    # round to the worse value 
+                    self._optValue = round_up (aVal,5)
                 else: 
-                    self._optValue = round (aVal,3)
+                    # round to the worse value 
+                    self._optValue = round_down (aVal,3)
         else: 
             self._optValue = None 
 
@@ -1573,10 +1586,79 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
                                                         optVar = optVar, optValue = optValue)
             self.add (new_opPoint_def)
-            self._sort ()
             return new_opPoint_def
         else: 
             return None 
+
+
+    def create_from_polar_point (self, aPoint : Polar_Point, specVar=var.CL, optType=OPT_TARGET, optVar=var.CD) -> OpPoint_Definition:
+        """ 
+        creates and adds new OpPoint_Definition based on a Polar_point 
+        """
+
+        specValue = aPoint.get_value (specVar)
+        optValue  = aPoint.get_value (optVar)
+
+        new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
+                                                    optType=optType, optVar = optVar, optValue = optValue)
+        self.add (new_opPoint_def)
+        return new_opPoint_def
+
+
+    def create_initial (self, polarSet: Polar_Set, n : int):
+        """ 
+        create n new opPoint defs based on default polar in polarSet 
+            and replaces the existing in self
+
+        """
+
+        # "delete" all existing opPoint defs 
+        self.clear()                                    
+         
+        # get polar from polarSet which is equal to self default polar 
+        polar = None
+        for p in polarSet.polars:
+            if p.is_equal_to (self.polar_def_default) and p.isLoaded:
+                polar = p 
+                break
+        if not polar: return
+
+        # target point at min_cd 
+        if n > 0:
+            self.create_from_polar_point (polar.min_cd, optVar=var.CD)
+
+        # target point at max_glide 
+        if n > 1:
+            self.create_from_polar_point (polar.max_glide, optVar=var.GLIDE)
+
+        # target point below min cd 
+        if n > 2:
+            cl_min_cl    = polar.min_cl.cl
+            cl_min_cd    = polar.min_cd.cl
+            if (cl_min_cd - cl_min_cl) > 0.35:
+                cl_between   = round ((cl_min_cl + cl_min_cd) / 2, 2) 
+                idx   = np.abs(polar.cl - cl_between).argmin()
+                new_point    = polar.polar_points [idx]
+                if (cl_min_cd - new_point.cl) > 0.2:                            # ensure min distance 
+                    self.create_from_polar_point (new_point, optVar=var.CD)
+
+        # target point below max_cl 
+        if n > 3:
+            cl_near_max = polar.max_cl.cl * 0.95
+            idx   = np.abs(polar.cl - cl_near_max).argmin()
+            new_point = polar.polar_points [idx]
+            self.create_from_polar_point (new_point, optVar=var.GLIDE)
+
+        # target point between min cd und max glide 
+        if n > 4:
+            cl_max_glide = polar.max_glide.cl
+            cl_min_cd    = polar.min_cd.cl
+            if (cl_max_glide - cl_min_cd) > 0.35:
+                cl_between   = round ((cl_max_glide + cl_min_cd) / 2, 2) 
+                idx   = np.abs(polar.cl - cl_between).argmin()
+                new_point = polar.polar_points [idx]
+                self.create_from_polar_point (new_point, optVar=var.CD)
+
 
 
     def add (self, aOpPoint_def : 'OpPoint_Definition'):
@@ -1656,7 +1738,7 @@ class GeoTarget_Definition:
         """ the target value to optimize """
         return self._optValue
     def set_optValue (self, aVal):  
-        self._optValue = aVal
+        self._optValue = round(aVal,4)
 
 
     @property
@@ -1781,8 +1863,6 @@ class Nml_Abstract:
     def __init__(self, input_file: Input_File):
 
         self._input_file = input_file 
-        self._workingDir = input_file.workingDir
-
 
     @property
     def nml (self) -> dict:
@@ -1983,7 +2063,7 @@ class Nml_optimization_options (Nml_Abstract):
   
     @property
     def airfoil_file (self) -> str:             return self._get ('airfoil_file', default=None) 
-    def set_airfoil_file (self, aStr : str):    self._set ('airfoil_file', PathHandler.relPath (aStr, self._workingDir)) 
+    def set_airfoil_file (self, aStr : str):    self._set ('airfoil_file', PathHandler.relPath (aStr, self._input_file.workingDir)) 
 
     @property 
     def show_details (self) -> bool:            return self._get ('show_details', default=True)

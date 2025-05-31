@@ -563,6 +563,27 @@ class Curvature_Abstract:
             return (upper_x_max + lower_x_max) / 2
 
 
+    @property
+    def isReflexed (self) -> bool:
+        """ True if there is just one reversal on upper side"""
+
+        nReverse_upper = len (self.upper.reversals (xStart=0.5, xEnd=0.9))
+        nReverse_lower = len (self.lower.reversals (xStart=0.5, xEnd=0.9))
+
+        return nReverse_upper == 1 and nReverse_lower == 0
+
+
+    @property
+    def isRearLoaded (self) -> bool:
+        """ True if there is just one reversal on lower side"""
+
+        nReverse_upper = len (self.upper.reversals (xStart=0.5, xEnd=0.9))
+        nReverse_lower = len (self.lower.reversals (xStart=0.5, xEnd=0.9))
+
+        return nReverse_upper == 0 and nReverse_lower == 1
+
+
+
 
 class Curvature_of_xy (Curvature_Abstract):
     """

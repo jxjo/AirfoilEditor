@@ -389,6 +389,18 @@ class Airfoil:
 
 
     @property
+    def isReflexed (self) -> bool:
+        """ True if there is just one reversal on upper side"""
+        return self.geo.curvature.isReflexed
+
+
+    @property
+    def isRearLoaded (self) -> bool:
+        """ True if there is just one reversal on lower side"""
+        return self.geo.curvature.isRearLoaded
+
+
+    @property
     def isUpToDate (self) -> bool:
         """ true if the loaded airfoil is up to date with its file - none if no answer"""
 
@@ -651,22 +663,31 @@ class Airfoil:
             logger.debug (f"{self} save to {self.fileName}")
 
 
-    def saveAs (self, dir = None, destName = None):
+    def saveAs (self, dir : str = None, destName : str = None, isWorkingDir = False):
         """
         save self to dir and destName and set new values to self
         if both dir and name are not set, it's just a save to current directory
+
+        If workingDir is set, the saved airfoil will be relative to workingDir
 
         Returns: 
             newPathFileName from dir and destName 
         """     
         if destName: 
-            self.set_name (destName)  
+            self.set_name (destName)
+            fileName = destName +  Airfoil.Extension
+        else: 
+            fileName = self.fileName  
 
         # create dir if not exist - build new airfoil filename
         if dir: 
             if not os.path.isdir (dir):
                 os.mkdir(dir)
-            self.set_pathFileName (os.path.join (dir, self.name) + Airfoil.Extension, noCheck=True)
+            if isWorkingDir:
+                self.set_pathFileName (self.fileName)
+                self.set_workingDir   (dir)
+            else:
+                self.set_pathFileName (os.path.join (dir, fileName), noCheck=True)
 
         self.save()
         self.set_isModified (False)
