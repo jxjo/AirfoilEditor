@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 
-class Xo2_Optimize_Select_Dialog (Dialog):
+class Xo2_Select_Dialog (Dialog):
     """ Dialog to choose what should be done"""
 
     _width  = (480, None)
@@ -67,7 +67,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
 
         if self._input_fileName is None and self._current_airfoil is not None:
             self._input_fileName = Input_File.fileName_of (self._current_airfoil)
-            self._workingDir     = self._current_airfoil.pathName 
+            self._workingDir     = self._current_airfoil.pathName_abs 
 
         super().__init__ ( parent, **kwargs)
 
@@ -92,11 +92,11 @@ class Xo2_Optimize_Select_Dialog (Dialog):
         r,c, = 0,0
         if self.input_fileName:
             Button   (l,r,c, width=120, text="Open Case", set=self._open_case)
-            Label    (l,r,c+2, wordWrap=True,
+            Label    (l,r,c+2, wordWrap=True, height=(25,None),
                       get=lambda: f"Open input file <b>{self.input_fileName}</b> of airfoil {self.current_airfoil.fileName}" )
             r += 1
             Button   (l,r,c, width=120, text="New Version", set=self._new_version)
-            Label    (l,r,c+2, wordWrap=True,
+            Label    (l,r,c+2, wordWrap=True, height=(25,None),
                       get=lambda: f"Create new Version of input file <b>{self.input_fileName}</b>")
             r += 1
             SpaceR   (l,r,stretch=0, height=20)
@@ -112,13 +112,11 @@ class Xo2_Optimize_Select_Dialog (Dialog):
         r += 1
 
         # add switchable info panel 
-        SpaceR   (l,r,stretch=1, height=10)
+        SpaceR   (l,r,stretch=1, height=20)
         r += 1
         l.addWidget (self.info_panel, r,c, 1, 3)  
         l.setRowStretch (r,1)
 
-        # r +=1
-        # l.setRowStretch (r,2)
         l.setColumnMinimumWidth (1,20)
         l.setColumnStretch (2,2)
 
@@ -213,7 +211,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
     def _new_version (self): 
         """ create new version of an existing case self.input_file"""
 
-        new_fileName = Input_File.new_input_fileName_version (self.input_fileName, self.workingDir)
+        new_fileName = Input_File.new_fileName_version (self.input_fileName, self.workingDir)
 
         if new_fileName:
             copyfile (os.path.join (self.workingDir,self.input_fileName), os.path.join (self.workingDir,new_fileName))
@@ -250,7 +248,7 @@ class Xo2_Optimize_Select_Dialog (Dialog):
 
 
 
-class Xo2_Optimize_New_Dialog (Dialog):
+class Xo2_New_Dialog (Dialog):
     """ Dialog to create a new input file """
 
     _width  = (1200, None)
@@ -324,12 +322,12 @@ class Xo2_Optimize_New_Dialog (Dialog):
 
     def __init__ (self, parent, workingDir : str,  current_airfoil : Airfoil, **kwargs): 
 
-        self._case            = Case_Optimize ('',workingDir=workingDir, is_new=True)  
+        self._case = Case_Optimize (None, workingDir=workingDir)  
 
         # init empty input file with current seed airfoil
 
-        self.input_file.set_airfoil_seed (current_airfoil)
-        self.input_file.nml_info.set_descriptions([f"My new Case created on {str(date.today())}"])
+        self.input_file.set_airfoil_seed (current_airfoil.fileName)
+        self.input_file.nml_info.set_descriptions([f"e.g. improve max glide, while keep min cd", "and thickness"])
         self.optimization_options.set_shape_functions (Nml_optimization_options.BEZIER)
         self.operating_conditions.set_re_default_asK (400)
         self.geometry_targets.activate_thickness (True)
@@ -411,19 +409,18 @@ class Xo2_Optimize_New_Dialog (Dialog):
     def opPoint_defs (self) -> OpPoint_Definitions:
         return self.input_file.opPoint_defs
 
+
     def _create_opPoint_defs (self): 
         """ create opPoint defs based on shape functions and seed airfoil"""
 
         self.airfoil_seed.set_polarSet (Polar_Set (self.airfoil_seed, polar_def=self.opPoint_defs.polar_def_default))
         self.polarSet_seed.load_or_generate_polars ()
-
-        if self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK:
-            n = 3
-        else: 
-            n = 5
+        
+        nOp = 3 if self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK else 5
 
         # (re) create opPoint definitions 
-        self.opPoint_defs.create_initial (self.polarSet_seed, n)
+        self.opPoint_defs.create_initial (self.polarSet_seed, nOp, 
+                                          target_max_glide=1.05, target_min_cd=1.01, target_low_cd=1.03)
 
 
     def _init_layout(self) -> QLayout:
@@ -496,12 +493,14 @@ class Xo2_Optimize_New_Dialog (Dialog):
         CheckBox    (l,r,c+1, text="Reflexed (reversal on top side)", colSpan=2, 
                      get=lambda: self.curvature.max_curv_reverse_top == 1,
                      set=lambda x: self.curvature.set_max_curv_reverse_top(x),
-                     hide=lambda: not self.airfoil_seed.isReflexed)
+                     hide=lambda: not self.airfoil_seed.isReflexed or 
+                          self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK)
         r += 1
         CheckBox    (l,r,c+1, text="Rearloaded (reversal on bottom)", colSpan=3,   
                      get=lambda: self.curvature.max_curv_reverse_bot == 1,
                      set=lambda x: self.curvature.set_max_curv_reverse_bot(x),
-                     hide=lambda: not self.airfoil_seed.isRearLoaded)
+                     hide=lambda: not self.airfoil_seed.isRearLoaded or 
+                        self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK)
 
         r += 1
         l.setRowStretch (r,5)
@@ -599,7 +598,6 @@ class Xo2_Optimize_New_Dialog (Dialog):
         return True 
 
 
-
     def _edit_polar_def (self):
         """ edit default polar definition"""
 
@@ -613,6 +611,7 @@ class Xo2_Optimize_New_Dialog (Dialog):
         self.airfoil_seed.set_polarSet (Polar_Set (self.airfoil_seed, polar_def=polar_def))
 
         self.refresh()
+
 
     @override
     def _button_box (self):
@@ -656,6 +655,16 @@ class Xo2_Optimize_New_Dialog (Dialog):
         # sanity check 
         if not (self.input_file.outName and self.opPoint_defs): return 
 
+        # check file already exists 
+        if os.path.isfile (self.input_file.pathFileName):
+            text   = f"Input file <b>{self.input_file.fileName}</b> already exists.<br><br>The file will be overwritten."
+            button = MessageBox.confirm (self, title="Create Input file", text=text)
+            if button == QMessageBox.StandardButton.Cancel:
+                return
+            
+            # remove existing result directory
+            self.case.clear_results()
+
         self.input_file.save_nml ()
 
         super().accept()
@@ -666,11 +675,12 @@ class Xo2_Run_Dialog (Dialog):
     """ Dialog to run/watch Xoptfoil2"""
 
     _width  = (330, None)
-    _height = (340, None)
+    _height = (380, None)
 
-    name = "Run Control"
+    name = "Run"
 
-    sig_finished          = pyqtSignal()       
+    sig_run               = pyqtSignal()
+    sig_closed            = pyqtSignal()       
 
 
     class Diagram_Item_Design_Radius (Diagram_Item):
@@ -766,8 +776,8 @@ class Xo2_Run_Dialog (Dialog):
     class Diagram_Progress (Diagram):
         """ Diagram with design radus and improvement development  """
 
-        width  = (None, None)               # (min,max) 
-        height = (400, None)                # (min,max)
+        _width  = (None, None)               # (min,max) 
+        _height = (150, None)                # (min,max)
 
 
         def __init__(self, *args, **kwargs):
@@ -808,23 +818,23 @@ class Xo2_Run_Dialog (Dialog):
 
         # init layout etc 
 
-        self._last_improvement = 0
-        self._improved = False
+        self._last_improvement  = 0
+        self._improved          = False
+        self._about_to_run      = False                             # additional state 
 
-        self._panel_container = Container_Panel  (height=150)
-
-        self._panel_running  : Edit_Panel = None
-        self._panel_ready    : Edit_Panel = None
-        self._panel_stopping : Edit_Panel = None
-        self._panel_finished : Edit_Panel = None
-        self._panel_error    : Edit_Panel = None
-        self._diagram        : Diagram    = None
+        self._panel_about_to_run : Edit_Panel = None
+        self._panel_running      : Edit_Panel = None
+        self._panel_ready        : Edit_Panel = None
+        self._panel_stopping     : Edit_Panel = None
+        self._panel_finished     : Edit_Panel = None
+        self._panel_error        : Edit_Panel = None
+        self._diagram            : Diagram    = None
         
         self._btn_stop   : QPushButton = None
         self._btn_close  : QPushButton = None 
         self._btn_run    : QPushButton = None 
 
-        super().__init__ (parent, title=self._titletext(), **kwargs)  
+        super().__init__ (parent, title=f"{self.name}   [{self.case.input_file.fileName}]", **kwargs)  
 
         #self.setWindowFlags (self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint,)
         self.setWindowFlags (Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window | Qt.WindowType.WindowTitleHint)
@@ -836,11 +846,19 @@ class Xo2_Run_Dialog (Dialog):
 
         self._btn_stop.pressed.connect   (self._stop_optimize)
         self._btn_close.clicked.connect  (self.close)
-        self._btn_run.clicked.connect    (self.run_optimize)
+        self._btn_run.clicked.connect    (self.sig_run.emit)
 
         # switch panel and buttons on/off
 
         self._set_buttons ()
+
+    @override
+    def show (self):
+        """ show this dialog and return """
+        super().show()
+
+        # overridden to ensure the actual panel according to state when open 
+        self.refresh()
 
 
     @property
@@ -865,28 +883,8 @@ class Xo2_Run_Dialog (Dialog):
         else: 
             return self.results.nSteps * nxfoil_per_step
 
-
-    def run_optimize (self): 
-        """ run optimizer"""
-
-        # reset current xo2 controller if there was an error 
-        if self.case.xo2.isRun_failed:
-            self.case.xo2_reset()
-
-        # now run if ready
-
-        if self.case.xo2.isReady:
-
-            self._last_improvement = 0.0
-            self._improved = False 
-
-            self.case.run()
-
-        self.refresh ()              # after to get running state 
-
-
-    def on_results (self):
-        """ slot to receice new results from running thread"""
+    def _set_improved (self): 
+        """ set internal improved flag if step made an improvement"""
 
         if self.xo2.improvement > self._last_improvement:
             self._improved = True
@@ -894,12 +892,64 @@ class Xo2_Run_Dialog (Dialog):
         else:
             self._improved = False
 
+
+    def on_about_to_run (self):
+        """ slot - just before optimiaztion starts """
+
+        self._last_improvement = 0.0
+        self._improved = False 
+        self._about_to_run = True 
+
+        self.refresh ()              # after to get running state 
+
+
+    def on_results (self):
+        """ slot to receice new results from running thread"""
+
+        self._about_to_run = False 
+
+        self._set_improved ()
         self.refresh ()
 
         # and the diagram 
         self._diagram.refresh()
 
-        self.setWindowTitle (self._titletext())
+
+    def on_new_step (self):
+        """ slot new step """
+
+        self._about_to_run = False 
+
+        self._set_improved ()
+        self.panel_about_to_run.refresh() 
+        self.panel_running.refresh() 
+
+        self._diagram.refresh()
+
+
+    @property
+    def panels_state (self) -> str:
+        """ state string to select the right panel dependend on xo2 state"""
+
+        if self._about_to_run:
+            state = "about to run"
+        elif self.case.xo2.state == xo2_state.RUNNING and self.xo2.nSteps == 0:
+            state = "about to run"
+        elif self.case.xo2.state == xo2_state.RUNNING and self.xo2.nSteps > 0:
+            state = "running"
+        elif self._about_to_run:
+            state = "about to run"
+        elif self.case.xo2.state == xo2_state.STOPPING:
+            state = "stopping"
+        elif self.case.xo2.state == xo2_state.RUN_ERROR:
+            state = "error"
+        elif self.case.xo2.state == xo2_state.READY and not self.case.isFinished:
+            state = "ready"
+        elif self.case.xo2.state == xo2_state.READY and self.case.isFinished:
+            state = "finished"
+        else: 
+            state = "ready"
+        return state 
 
 
     @property
@@ -932,10 +982,32 @@ class Xo2_Run_Dialog (Dialog):
             l.setColumnStretch (2,2)
 
             self._panel_running = Edit_Panel (title="Running", layout=l, height=(None,None),
-                                              hide=lambda: not self.case.xo2.state == xo2_state.RUNNING) 
+                                              hide=lambda: self.panels_state != "running") 
             self._panel_running.set_background_color (color='magenta', alpha=0.2)        
 
         return self._panel_running
+
+
+
+    @property
+    def panel_about_to_run (self) -> Edit_Panel:
+        """ shows info during Xo2 short before run"""
+
+        if self._panel_about_to_run is None: 
+
+            l = QGridLayout()
+            r,c = 0, 0 
+            SpaceR (l, r, stretch=0, height=5) 
+            r += 1
+            Label  (l,r,c,   get="... preparing and evaluating seed airfoil ...")
+            r += 1
+            SpaceR (l, r) 
+
+            self._panel_about_to_run = Edit_Panel (title="Running", layout=l, height=(None,None),
+                                              hide=lambda: self.panels_state != "about to run") 
+            self._panel_about_to_run.set_background_color (color='magenta', alpha=0.15)        
+
+        return self._panel_about_to_run
 
 
     @property
@@ -948,12 +1020,10 @@ class Xo2_Run_Dialog (Dialog):
             r = 0
             Label  (l,r,0, colSpan=5, height=40, get="Ready for Optimization")
             r += 1
-            SpaceR (l, r, stretch=0, height=5) 
-            r += 1
             SpaceR (l, r) 
 
             self._panel_ready = Edit_Panel (title="Ready", layout=l, height=(None,None),
-                        hide=lambda: not (self.case.xo2.state == xo2_state.READY and not self.case.isFinished)) 
+                        hide=lambda: self.panels_state != "ready") 
     
         return self._panel_ready
 
@@ -975,7 +1045,7 @@ class Xo2_Run_Dialog (Dialog):
             SpaceR (l, r) 
 
             self._panel_stopping = Edit_Panel (title="Stopping", layout=l, height=(None,None),
-                                            hide=lambda: not self.case.xo2.state == xo2_state.STOPPING) 
+                                            hide=lambda: self.panels_state != "stopping") 
             self._panel_stopping.set_background_color (color='darkorange', alpha=0.3)
 
         return self._panel_stopping
@@ -996,7 +1066,7 @@ class Xo2_Run_Dialog (Dialog):
             SpaceR (l, r) 
 
             self._panel_error = Edit_Panel (title="Error occured", layout=l, height=(None,None),
-                                            hide=lambda: not self.case.xo2.state == xo2_state.RUN_ERROR) 
+                                            hide=lambda: self.panels_state != "error") 
             self._panel_error.set_background_color (color='red', alpha=0.3)
 
         return self._panel_error
@@ -1030,7 +1100,7 @@ class Xo2_Run_Dialog (Dialog):
             l.setColumnStretch (2,2)
 
             self._panel_finished = Edit_Panel (title="Finished - Final Results", layout=l, height=(None,None),
-                        hide=lambda: not (self.case.xo2.state == xo2_state.READY and self.case.isFinished)) 
+                        hide=lambda: self.panels_state != "finished") 
             self._panel_finished.set_background_color (**mode_color.OPTIMIZE)
 
         return self._panel_finished
@@ -1039,35 +1109,23 @@ class Xo2_Run_Dialog (Dialog):
 
     def _init_layout(self) -> QLayout:
 
-        # container panel with different state panels 
-
-        l_cont = QVBoxLayout()
-        l_cont.addWidget (self.panel_ready)
-        l_cont.addWidget (self.panel_running)
-        l_cont.addWidget (self.panel_stopping)
-        l_cont.addWidget (self.panel_finished)
-        l_cont.addWidget (self.panel_error)
-        l_cont.setContentsMargins (QMargins(0, 0, 0, 0))
-        self._panel_container.setLayout (l_cont) 
-
-        # main layout with diagram 
+        l = QGridLayout()
+        l.addWidget (self.panel_ready, 0,0,1,1)
+        l.addWidget (self.panel_about_to_run, 0,0,1,1)
+        l.addWidget (self.panel_running, 0,0,1,1)
+        l.addWidget (self.panel_stopping, 0,0,1,1)
+        l.addWidget (self.panel_finished, 0,0,1,1)
+        l.addWidget (self.panel_error, 0,0,1,1)
 
         self._diagram = self.Diagram_Progress (self, lambda: self.case.results)
 
-        l =  QVBoxLayout()
-        l.addWidget (self._panel_container)
-        l.addWidget (self._diagram, stretch=5)   
+        l.addWidget (self._diagram, 1,0,1,1) 
+
+        l.setRowMinimumHeight (0,150)  
+        l.setRowStretch (1,1)  
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
         return l
-
-
-    def _titletext (self) -> str: 
-        """ headertext depending on state """
-        if self.case.xo2.state == xo2_state.RUNNING:
-            return f"Xoptfoil2 running ..."
-        else: 
-            return self.name
 
 
     def _button_box (self):
@@ -1134,9 +1192,6 @@ class Xo2_Run_Dialog (Dialog):
             self._btn_close.setVisible (True) 
             self._btn_close.setFocus ()
 
-        self.setWindowTitle (self._titletext())
-
-
 
     def _stop_optimize (self):
         """ request thread termination"""
@@ -1152,13 +1207,6 @@ class Xo2_Run_Dialog (Dialog):
 
         self._set_buttons ()
 
-        # refresh only the visible widgets 
-        w : QWidget
-        for w in self.widgets:
-            if w.isVisible() or isinstance (w, Edit_Panel):
-                w.refresh(disable=disable)
-
-        # and the various Panels 
         for panel in self.findChildren (Edit_Panel):
             panel.refresh()
 
@@ -1172,7 +1220,7 @@ class Xo2_Run_Dialog (Dialog):
             self._stop_optimize()
         
         # tell parent including self
-        self.sig_finished.emit () 
+        self.sig_closed.emit () 
 
         # normal close 
         super().reject()
@@ -1341,12 +1389,12 @@ class Xo2_Description_Dialog (Dialog):
 
 
 class Xo2_OpPoint_Def_Dialog (Dialog):
-    """ Dialog to view / edit a single opPoint definition """
+    """ Dialog to view / edit current opPoint definition """
 
     _width  = (320, None)
     _height = (210, 210)
 
-    name = "OpPoint Deinition"
+    name = "Operating Point Definition"
 
     sig_finished            = pyqtSignal(object)          # self finished 
     sig_opPoint_def_changed = pyqtSignal()
@@ -1355,15 +1403,13 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
     def __init__ (self, parent : QWidget, 
                   case_fn,
-                  opPoint_def : OpPoint_Definition,
                   **kwargs): 
 
-        self._opPoint_def = opPoint_def
         self._case_fn = case_fn
 
-        self._show_weighting = False if self.opPoint_def.has_default_weighting else True 
-        self._show_polar     = False if self.opPoint_def.has_default_polar     else True 
-        self._show_flap      = False if self.opPoint_def.has_default_flap      else True 
+        self._individual_weighting  = False if self.opPoint_def.has_default_weighting else True 
+        self._individual_polar      = False if self.opPoint_def.has_default_polar     else True 
+        self._individual_flap       = False if self.opPoint_def.has_default_flap      else True 
 
         # init layout etc 
 
@@ -1388,19 +1434,17 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
     @property
     def opPoint_def (self) ->OpPoint_Definition:
-        return self._opPoint_def
+        return self.opPoint_defs.current_opPoint_def
 
-    def set_opPoint_def (self, opPoint_def : OpPoint_Definition):
-        """ slot for new opPoint def"""
-        if isinstance (opPoint_def, OpPoint_Definition):
-            self._opPoint_def = opPoint_def
+    def refresh_current (self):
+        """ slot for refresh opPoint def"""
 
-            # update local settings 
-            self.set_show_weighting (not self.opPoint_def.has_default_weighting) 
-            self.set_show_polar     (not self.opPoint_def.has_default_polar) 
-            self.set_show_flap      (not self.opPoint_def.has_default_flap) 
+        # update local settings 
+        self.set_individual_weighting (not self.opPoint_def.has_default_weighting) 
+        self.set_individual_polar     (not self.opPoint_def.has_default_polar) 
+        self.set_individual_flap      (not self.opPoint_def.has_default_flap) 
 
-            self.refresh()
+        self.refresh()
  
  
     @property
@@ -1433,52 +1477,68 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         r,c, = 0,0
         ComboBox (l,r,c, lab="Spec", width=90, 
                     get=lambda: self.opPoint_def.specVar, set=self.opPoint_def.set_specVar,
-                    options=SPEC_TYPES)
-        FieldF   (l,r,c+2, width=70, dec=2, lim=(-20,20), step=0.1,
-                    get=lambda: self.opPoint_def.specValue, set=lambda aVal: self.opPoint_def.set_specValue_limited(aVal))
+                    options=SPEC_TYPES,
+                    toolTip="Specification of this Operating Point is either based on cl or alpha")
+        FieldF   (l,r,c+2, width=70, dec=2, lim=(-20,20), step=0.01,
+                    get=lambda: self.opPoint_def.specValue, set=lambda aVal: self.opPoint_def.set_specValue_limited(aVal),
+                    toolTip="Specification of this Operating Point is on the polar")
         r += 1
         ComboBox (l,r,c, lab="Type", width=90, 
                     get=lambda: self.opPoint_def.opt_asString, set=self.opPoint_def.set_opt_asString,
-                    options=lambda:self.opPoint_def.opt_allowed_asString())
-        FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.0001, 
+                    options=lambda:self.opPoint_def.opt_allowed_asString(),
+                    toolTip="Type of optimization for this Operating Point")
+        FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.00001, 
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue,
-                    hide=lambda: not (self.opPoint_def.isTarget_type and self.opPoint_def.optVar==var.CD))
-        FieldF   (l,r,c+2, width=70, dec=2, lim=(0.0,200), step=0.1, 
+                    hide=lambda: not (self.opPoint_def.isTarget_type and self.opPoint_def.optVar==var.CD),
+                    toolTip="Target value to achieve")
+        FieldF   (l,r,c+2, width=70, dec=2, lim=(0.0,200), step=0.01, 
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue,
-                    hide=lambda: not (self.opPoint_def.isTarget_type and self.opPoint_def.optVar!=var.CD))
+                    hide=lambda: not (self.opPoint_def.isTarget_type and self.opPoint_def.optVar!=var.CD),
+                    toolTip="Target value to achieve")
         r += 1
         SpaceR   (l,r, stretch=0)
         r += 1
-        CheckBox (l,r,c, text="Individual Weighting", colSpan=2,
-                    get=lambda: self.show_weighting, set=self.set_show_weighting)
-        FieldF   (l,r,c+2, width=70, step=0.2, lim=(-10,10), dec=2,
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting,
-                    hide=lambda: not self.show_weighting)
-        Label    (l,r,c+3, style=style.COMMENT, 
-                    get=lambda: self.opPoint_def.weighting_fixed_label)
+        CheckBox (l,r,c, text="Individual Weighting", colSpan=2, 
+                    get=lambda: self.individual_weighting, set=self.set_individual_weighting,
+                    toolTip="Set an individual weighting for this Operating Point")
+        FieldF   (l,r,c+2, width=70, step=0.1, lim=(0,10), dec=1,
+                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting_abs,
+                    hide=lambda: not self.individual_weighting,
+                    toolTip="An individual weighting for this Operating Point")
+        CheckBox (l,r,c+3, text="Fix", align=ALIGN_RIGHT,
+                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting_fixed,
+                    hide=lambda: not self.individual_weighting or not self.opPoint_defs.dynamic_weighting,
+                    toolTip="Fix this weighting during Dynamic Weighting")
+
         r += 1
         CheckBox (l,r,c, text="Individual Polar", colSpan=2,
-                    get=lambda: self.show_polar, set=self.set_show_polar)
+                    get=lambda: self.individual_polar, set=self.set_individual_polar,
+                    toolTip="Set an individual polar for this Operating Point")
         ToolButton (l,r,c+1, icon=Icon.EDIT, align=ALIGN_RIGHT,  set=self.new_polar_def,
-                    hide=lambda: not self.show_polar)
+                    hide=lambda: not self.individual_polar,
+                    toolTip="Edit the individual polar definition")
 
-        ComboBox (l,r,c+2, colSpan=2, # width=130,
+        ComboBox (l,r,c+2, colSpan=2,
                     get=lambda: self.opPoint_def.polar_def.name if self.opPoint_def.polar_def else None,
                     set=self.set_polar_def_by_name,
                     options=lambda: [polar_def.name for polar_def in self.polar_defs_without_default],
-                    hide=lambda: not self.show_polar)
+                    hide=lambda: not self.individual_polar,
+                    toolTip="Select individual polar for this Operating Point")
 
         r += 1
         CheckBox (l,r,c, text="Individual Flap Angle", colSpan=2,
-                    get=lambda: self.show_flap, set=self.set_show_flap,
-                    disable=lambda: not self.opPoint_defs.use_flap)
+                    get=lambda: self.individual_flap, set=self.set_individual_flap,
+                    disable=lambda: not self.opPoint_defs.use_flap,
+                    toolTip="Set an individual flap angle for this Operating Point")
         FieldF   (l,r,c+2, width=70, step=0.2, lim=(-15,15), dec=1, unit='°',
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_angle,
-                    hide=lambda: not self.show_flap)
+                    hide=lambda: not self.individual_flap,
+                    toolTip="An individual flap angle of this Operating Point")
         r += 1
         CheckBox (l,r,c, text="Flap Optimize", colSpan=2,
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_optimize,
-                    disable=lambda: not self.opPoint_defs.use_flap)
+                    disable=lambda: not self.opPoint_defs.use_flap,
+                    toolTip="Optimize flap angle at this Operating Point")
         r += 1
         l.setRowStretch (r,5)
         l.setColumnMinimumWidth (0,40)
@@ -1488,8 +1548,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
 
     def _titletext (self) -> str: 
-        """ headertext depending on state """
-        return f"Op Point Definition {self.opPoint_def.iPoint}"
+        return f"Operating Point {self.opPoint_def.iPoint}"
 
 
     @override
@@ -1503,40 +1562,37 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         self.sig_opPoint_def_changed.emit()
 
 
-    # @override
-    # def set_background_color (self, **_):
-    #     """ do not change background """
-    #     if Widget.light_mode:
-    #         self.set_background_color (darker_factor = 80)                  # make it lighter 
-    #     else: 
-    #         self.set_background_color (darker_factor = 110)                 # make it darker
-
     @property
-    def show_weighting (self) -> bool:
-        """ show weighting entry field"""
-        return self._show_weighting 
+    def individual_weighting (self) -> bool:
+        """ checkbox - opPoint def has individual weighting"""
+        return self._individual_weighting
 
-    def set_show_weighting (self, aBool : bool):
-        self._show_weighting = aBool 
+    def set_individual_weighting (self, aBool : bool):
+        self._individual_weighting = aBool 
         if not aBool:
             self.opPoint_def.set_weighting (1.0)                    # will set to default 
 
 
     @property
-    def show_polar (self) -> bool:
-        """ show polar entry field"""
-        return self._show_polar 
+    def individual_polar (self) -> bool:
+        """ checkBox - opPoint def has individual polar """
+        return self._individual_polar 
 
-    def set_show_polar (self, aBool : bool):
-        self._show_polar = aBool 
+    def set_individual_polar (self, aBool : bool):
         if not aBool:
-            # remove individual polar definition
-            self.opPoint_def.set_re(None)                    # will set to default 
+            # switch off - remove individual polar definition
+            self.opPoint_def.set_re(None)                           # will set to default 
             self.opPoint_def.set_ma(None)                    
-            self.opPoint_def.set_ncrit(None)     
-        elif not self.polar_defs_without_default:
-            # if there are now other polar defs open dialog directly 
-            self.new_polar_def ()             
+            self.opPoint_def.set_ncrit(None)  
+        elif aBool and not self._individual_polar:    
+            # switch on
+            if not self.polar_defs_without_default:
+                # if there are now other polar defs open dialog directly 
+                self.new_polar_def ()   
+            else: 
+                # take the first individual polar 
+                self.opPoint_def.set_polar_def (self.polar_defs_without_default[0])          
+        self._individual_polar = aBool 
 
 
     def set_polar_def_by_name (self, aStr : str):
@@ -1567,12 +1623,12 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
 
     @property
-    def show_flap (self) -> bool:
-        """ show flap entry field"""
-        return self._show_flap
+    def individual_flap (self) -> bool:
+        """ checkbox - opPoint def has individual flap angle"""
+        return self._individual_flap
 
-    def set_show_flap (self, aBool : bool):
-        self._show_flap = aBool 
+    def set_individual_flap (self, aBool : bool):
+        self._individual_flap = aBool 
         if not aBool:
             self.opPoint_def.set_flap_angle (None)                    # will set to default 
             self.opPoint_def.set_flap_optimize (None)                    

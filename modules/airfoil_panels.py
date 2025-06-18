@@ -18,16 +18,15 @@ from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Geometry, Geometry_Bezier, Curvature_Abstract
 from model.airfoil_geometry import Line, Side_Airfoil_Bezier
 from model.polar_set        import Polar_Definition
-from model.case             import Case_Abstract, Case_Direct_Design, Case_Optimize
+from model.case             import Case_Abstract, Case_Direct_Design
 from model.xo2_driver       import Xoptfoil2
-from model.xo2_input        import Input_File
 
 from airfoil_widgets        import * 
 from airfoil_dialogs        import Match_Bezier_Dialog, Matcher, Polar_Definition_Dialog
 
 
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 class Panel_Airfoil_Abstract (Edit_Panel):
@@ -274,8 +273,6 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
-        l_head.addStretch(1)
-
         # blend with airfoil - currently Bezier is not supported
         Button (l_head, text="&Blend", width=80,
                 set=self.app.blend_with, 
@@ -287,31 +284,31 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.2,
+        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.max_thick,
                 disable=lambda: self.airfoil.isBezierBased)
         r += 1
-        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.2,
+        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.max_camb,
                 disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
         r += 1
-        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
-                obj=lambda: self.geo, prop=Geometry.te_gap)
+        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.02,
+                obj=lambda: self.geo, prop=Geometry.le_radius,
+                disable=lambda: self.airfoil.isBezierBased)
 
         r,c = 0, 2 
         SpaceC (l,c, stretch=0)
         c += 1 
-        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.5,
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
                 obj=lambda: self.geo, prop=Geometry.max_thick_x,
                 disable=lambda: self.airfoil.isBezierBased)
         r += 1
-        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.5,
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
                 obj=lambda: self.geo, prop=Geometry.max_camb_x,
                 disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
         r += 1
-        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.05,
-                obj=lambda: self.geo, prop=Geometry.le_radius,
-                disable=lambda: self.airfoil.isBezierBased)
+        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.te_gap)
         r += 1
         SpaceR (l,r, height=5)
         r += 1
@@ -332,8 +329,6 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
-
-        l_head.addStretch(1)
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=80,
@@ -427,8 +422,6 @@ class Panel_Flap (Panel_Airfoil_Abstract):
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
-
-        l_head.addStretch(1)
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="Set F&lap", width=80,
@@ -552,7 +545,6 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
-        l_head.addStretch(1)
         Button (l_head, text="&Normalize", width=80,
                 set=lambda : self.airfoil.normalize(), signal=True, 
                 hide=lambda: not self.mode_modify,
@@ -587,7 +579,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         r += 1
         SpaceR (l,r, height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
+        Label  (l,r,0,colSpan=5, get=self._messageText, style=style.COMMENT, height=(None,None))
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnStretch (c+3,1)
@@ -934,20 +926,27 @@ class Panel_Polar_Defs (Edit_Panel):
 
             #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
             w = CheckBox   (l,r,c  , width=20,  get=lambda p=polar_def: p.active, set=polar_def.set_active,
-                            disable=lambda: self.mode_optimize)  # if optimize, polar defds are created dynamically - no set active
+                            toolTip="Show/Hide this polar in diagram")  
             w.sig_changed.connect (self._on_polar_def_changed)
+
             Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name)
 
             ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self.edit_polar_def,   id=idef,
-                        hide=lambda: self.mode_optimize)
+                            toolTip="Change the settings of this polar definition",  
+                            hide=lambda: self.mode_optimize)            # if optimize, polar defs are created dynamically - no edit
             ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_polar_def, id=idef,
-                        hide=lambda: (len(self.polar_defs) <= 1) or self.mode_optimize)
+                            toolTip="Delete this polar definition",  
+                            hide=lambda: (len(self.polar_defs) <= 1) or self.mode_optimize)
             r += 1
 
         if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS and (not self.mode_optimize):
-            ToolButton (l,r,c+1, icon=Icon.ADD,   set=self.add_polar_def)
+            ToolButton (l,r,c+1, icon=Icon.ADD,  
+                            toolTip="Add a new polar definition",  
+                            set=self.add_polar_def)
+            r += 1
 
         l.setColumnStretch (c+1,2)
+        l.setColumnMinimumWidth (c+2,20)
 
         return l 
 
@@ -1035,8 +1034,13 @@ class Panel_Airfoils (Edit_Panel):
 
         self._airfoil_designs_fn = airfoil_designs_fn
         self._show_reference_airfoils = None                    # will be set in init_layout
+        self._show_design_airfoils = True                       # show all design airfoils on/off
 
         super().__init__(*args, **kwargs)
+
+        # ensure design airfoil is set
+        if self.airfoil_design:
+            self.airfoil_design.set_property ("show", self.show_design_airfoils)
 
     # ---------------------------------------------
 
@@ -1069,7 +1073,17 @@ class Panel_Airfoils (Edit_Panel):
                     self.set_show_airfoil (show, iair)
 
         self.refresh()
+
+    def reset_show_reference_airfoils (self):
+        """ set swow switch to initial state""" 
+        # will be set in init_layout
+        self._show_reference_airfoils = None
+
         
+    @property 
+    def show_design_airfoils (self) -> bool: 
+        return self._show_design_airfoils
+      
 
     def _n_REF (self) -> int:
         """ number of reference airfoils"""
@@ -1104,13 +1118,14 @@ class Panel_Airfoils (Edit_Panel):
 
             if airfoil.usedAs == usedAs.NORMAL :
                 CheckBox    (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
-                             disable=lambda: self._DESIGN_in_list())
+                             disable=lambda: self._DESIGN_in_list(), toolTip="Show/Hide airfoil in diagram")
                 Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
-                             toolTip=f"Original airfoil {airfoil.fileName}")
+                             toolTip=airfoil.info_as_html)
                 r += 1
 
             elif airfoil.usedAs == usedAs.DESIGN:                
-                CheckBox    (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
+                CheckBox    (l,r,c  , width=18, get=lambda: self.show_design_airfoils, set=self.set_show_design_airfoils,
+                             toolTip="Show/Hide Design airfoils in diagram")
                 if self.airfoil_designs:
                     ComboBox    (l,r,c+1, width=155, get=lambda: self.airfoil_design.fileName if self.airfoil_design else None,
                                  set=self._on_airfoil_design_selected,
@@ -1118,18 +1133,21 @@ class Panel_Airfoils (Edit_Panel):
                                  toolTip=f"Select a Design out of list of airfoil designs")
                 else: 
                     Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
-                                 toolTip=f"{airfoil.usedAs} airfoil {airfoil.fileName}")
+                                 toolTip=airfoil.info_as_html)
                 r += 1
 
             elif airfoil.usedAs in [usedAs.SECOND, usedAs.SEED, usedAs.FINAL, usedAs.DESIGN]:
-                CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
+                CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
+                             toolTip="Show/Hide airfoil in diagram")
                 Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
-                             toolTip=f"{airfoil.usedAs} airfoil {airfoil.fileName}")
+                             style=lambda i=iair: style.GOOD if self.airfoil(i).usedAs == usedAs.FINAL else style.NORMAL,
+                             toolTip=airfoil.info_as_html)
                 r += 1
 
         CheckBox (l,r,c, colSpan=4, text="Reference airfoils", 
                   get=lambda: self.show_reference_airfoils,
-                  set=self.set_show_reference_airfoils) 
+                  set=self.set_show_reference_airfoils,
+                  toolTip="Activate additional reference airfoils to show in diagram") 
         
         if self.show_reference_airfoils:
 
@@ -1140,14 +1158,16 @@ class Panel_Airfoils (Edit_Panel):
                     pass
                 if airfoil.usedAs == usedAs.REF:
                     iRef += 1
-                    CheckBox   (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair)
+                    CheckBox   (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
+                                toolTip="Show/Hide airfoil in diagram")
 
                     Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
                                     get=self.airfoil, set=self.set_airfoil, id=iair,
                                     initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
-                                    toolTip=f"Reference airfoil {iRef}")
+                                    toolTip=airfoil.info_as_html)
 
-                    ToolButton (l,r,c+2, icon=Icon.DELETE, set=self.delete_airfoil, id=iair)
+                    ToolButton (l,r,c+2, icon=Icon.DELETE, set=self.delete_airfoil, id=iair,
+                                toolTip="Remove this airfoil as reference")
                     r += 1
 
             # add new reference as long as < max REF airfoils 
@@ -1186,9 +1206,18 @@ class Panel_Airfoils (Edit_Panel):
         """ is ref airfoil with id active"""
         return self.airfoils[id].get_property ("show", True)
 
+
     def set_show_airfoil (self, aBool, id : int):
         """ set ref airfoil with index id active"""
         self.airfoils[id].set_property ("show", aBool)
+        self.sig_airfoils_to_show_changed.emit()
+
+
+    def set_show_design_airfoils (self, show : bool): 
+
+        self._show_design_airfoils = show 
+
+        self.airfoil_design.set_property ("show", show)
         self.sig_airfoils_to_show_changed.emit()
 
 
@@ -1210,6 +1239,7 @@ class Panel_Airfoils (Edit_Panel):
         # signal app of new selected current design airfoil 
         for iDesign, airfoil in enumerate (self.airfoil_designs):
             if airfoil.fileName == fileName:
+                airfoil.set_property ("show", self.show_design_airfoils)
                 self.sig_airfoil_design_selected.emit (iDesign)
                 break
 
@@ -1217,6 +1247,10 @@ class Panel_Airfoils (Edit_Panel):
     @override
     def refresh (self, reinit_layout=None):
         """ refreshes all Widgets on self """
+
+        # ensure (new) show of design airfoil is set accordingly
+        if self.airfoil_design:
+            self.airfoil_design.set_property ("show", self.show_design_airfoils)
 
         # rebuild layout with new airfoil entries 
         logger.debug (f"{self} refresh with reinit layout")

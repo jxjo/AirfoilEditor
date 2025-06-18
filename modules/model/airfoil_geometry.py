@@ -1205,12 +1205,8 @@ class Side_Airfoil_Bezier (Line):
         else:
             self._bezier    = Bezier(px,py)             # the bezier curve 
 
-        # initial panel distribution for this side based on nPanels default of airfoil 
-        nPanels = Panelling_Bezier().nPanels_default_of (self.type)
-        self._u = Panelling_Bezier()._get_panels_of_side (nPanels)
-
-        # eval Bezier for u - x,y - values will be cached in 'Bezier'
-        self.bezier.eval(self._u)
+        # panel distribution for this side will be based on nPanels default of airfoil 
+        self._u = None
 
 
     @staticmethod
@@ -1287,65 +1283,30 @@ class Side_Airfoil_Bezier (Line):
         return list(zip(cp_x, cp_y)) 
 
 
+    @property
+    def u (self ) -> list [float]:
+        """ Bezier panel distribution equals curve parameter u of Bezier"""
+        if self._u is None:
+            panelling = Panelling_Bezier()
+            nPanels = panelling.nPanels_default_of (self.type)
+            self._u = panelling._get_panels_of_side (nPanels)
+        return self._u
+
+
     def set_panel_distribution  (self, u_new : int ):
         """ set new Bezier panel distribution"""
         self._u = u_new
 
 
-    def set_panel_distribution_sav  (self, nPoints):
-        """ set a new panel (=u) - distribution with nPoints for self """
-
-        # a special distribution for Bezier curve to achieve a similar bunching to splined airfoils
-
-        # for a constant du the resulting arc length of a curve section (panel) is proportional the 
-        # reverse of the curvature, so it fits naturally the need of airfoil paneling especially
-        # at LE. For LE and TE a little extra bunching is done ...
-
-        # te_bunch 0..1  
-        te_bunch = 0.5 
-        du_te_end = 1.0 - 0.8 * te_bunch 
-
-        te_du_end = 0.5                             # size of last du compared to linear du
-        te_du_growth = 1.4                          # how fast panel size will grow 
-
-        # le_bunch 0..1  
-        le_bunch = 0.5 
-        du_le_start = 1.0 - 0.4 * te_bunch 
-        le_du_start = 0.8                           # size of first du compared to linear du                       
-        le_du_growth = 1.1                          # how fast panel size will grow 
-
-        nPanels = nPoints - 1
-        u  = np.zeros(nPoints)
-        du = np.ones(nPanels)
-
-        # start from LE backward - increasing du 
-        du_ip = le_du_start 
-        ip = 0
-        while du_ip < 1.0:
-            du[ip] = du_ip
-            ip += 1
-            du_ip *= le_du_growth
-
-        # run from TE forward - increasing du 
-        du_ip = te_du_end
-        ip = len(du) - 1
-        while du_ip < 1.0:
-            du[ip] = du_ip
-            ip -= 1
-            du_ip *= te_du_growth
-
-        # build u array and normalized to 0..1
-        for ip, du_ip in enumerate(du):
-            u[ip+1] = u[ip] + du_ip 
-        u = u / u[-1]
-
-        self._u =  u 
-
-
     @property
     def bezier(self) -> Bezier:
         """ returns the bezier object of self"""
+
+        # lazy filling Bezier cached values for x,y
+        if not self._bezier.has_u:
+            self._bezier.eval(self.u)
         return self._bezier 
+
 
     @property
     def controlPoints (self) -> list[tuple]: 
@@ -1409,12 +1370,12 @@ class Side_Airfoil_Bezier (Line):
     @property
     def x (self):
         # overloaded bezier caches values
-        return self.bezier.eval(self._u)[0]
+        return self.bezier.eval(self.u)[0]
     
     @property
     def y (self): 
         # overloaded bezier caches values
-        return self.bezier.eval(self._u)[1]
+        return self.bezier.eval(self.u)[1]
 
     @property
     def curvature (self): 
@@ -1422,7 +1383,7 @@ class Side_Airfoil_Bezier (Line):
         !! as side is going from 0..1 the upper side has negative value 
         !! compared to curvature of airfoil which is 1..0..1
         """
-        return Line (self.x, self.bezier.curvature(self._u), name='curvature')
+        return Line (self.x, self.bezier.curvature(self.u), name='curvature')
    
 
     def yFn (self,x):

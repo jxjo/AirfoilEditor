@@ -24,7 +24,7 @@ from base.panels            import Dialog
 
 from model.airfoil          import Airfoil, Flapper
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
-from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
+from model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline, Curvature_Abstract
 from model.polar_set        import Polar_Definition, polarType, var
 
 from model.xo2_driver       import Worker
@@ -1250,5 +1250,83 @@ class Polar_Definition_Dialog (Dialog):
         buttonBox = QDialogButtonBox(buttons)
         buttonBox.rejected.connect(self.close)
 
+        return buttonBox 
+
+
+
+class Airfoil_Info_Dialog (Dialog):
+    """ small info dialog for airfoil properties"""
+
+    _width  = 400
+    _height = (100, None)
+
+    name = "Description"
+
+    def __init__ (self, *args, title : str= None, **kwargs): 
+
+        self._close_btn  : QPushButton = None 
+
+        super().__init__ ( *args, **kwargs)
+
+        self.setWindowTitle (f"{self.airfoil.fileName}")
+
+        self._close_btn.clicked.connect  (self.close)
+
+        self.refresh (disable=True)
+
+
+    @property
+    def airfoil (self) -> Airfoil:
+        return self.dataObject
+
+    @property
+    def geo (self) -> Geometry:
+        return self.airfoil.geo
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+
+        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_thick, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_camb, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.01,
+                obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="LE curvature", width=75, dec=0,
+                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_around_le, disable=True)
+
+        r,c = 0, 2 
+        SpaceC (l,c, stretch=0)
+        c += 1 
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_thick_x, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_camb_x, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.02,
+                obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
+        r += 1
+
+        l.setRowStretch (r,1)    
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (3,60)
+        l.setColumnStretch (5,2)
+
+        return l
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttonBox = QDialogButtonBox (QDialogButtonBox.StandardButton.Close) #  | QDialogButtonBox.StandardButton.Cancel)
+        self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
         return buttonBox 
 

@@ -15,8 +15,8 @@ from base.common_utils          import *
 
 from model.airfoil              import Line
 from model.polar_set            import * 
-from model.xo2_input            import OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN
-from model.xo2_results          import OpPoint_Result, Xo2_Results, Optimization_History_Entry
+from model.xo2_input            import OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN, GeoTarget_Definitions
+from model.xo2_results          import OpPoint_Result, Xo2_Results, Optimization_History_Entry, GeoTarget_Result
 
 from airfoil_artists            import _color_airfoil
 
@@ -26,16 +26,16 @@ from PyQt6.QtCore               import pyqtSignal
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 # -------- helper functions ------------------------
 
-def _size_opPoint (weighting : float, normal_size = 8) -> float:
+def _size_opPoint (weighting : float, normal_size = 13) -> float:
     """ returns plot size of an opPoint (def) depending on weighting"""
 
     # weighting can be negative (meaning fixed weighting - no dynamic)
-    return abs(weighting) ** 0.5 * normal_size 
+    return abs(weighting) ** 0.7 * normal_size 
 
 
 
@@ -83,13 +83,13 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
     SYMBOL_OPT_RIGHT = tr.map (SYMBOL_OPT_DOWN)                        
 
 
-
     def __init__ (self, pi : pg.PlotItem, 
                     opPoint_def : OpPoint_Definition,
                     xyVars : Tuple[var, var], 
                     movable = True, 
                     on_selected = None,
                     on_dblClick = None,
+                    on_delete   = None,
                     **kwargs):
 
         self._pi = pi
@@ -98,18 +98,19 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
 
         self._callback_selected = on_selected
         self._callback_dblClick = on_dblClick
+        self._callback_delete   = on_delete
         self._highlight_item    = None                       
 
         brush = QColor ("black")
         brush.setAlphaF (0.3) 
 
-        size = _size_opPoint (opPoint_def.weighting, normal_size = 11)
+        size = _size_opPoint (opPoint_def.weighting)
 
         super().__init__(self._point_xy(), movable=movable, label_anchor = (0, 0.5),
-                            color=self.COLOR, brush=brush,
+                            color=QColor(self.COLOR), brush=brush,
                             symbol=self._symbol(), size=size, show_label_static = True, **kwargs)
 
-        self.sigShiftClick.connect             (self._delete_opPoint_def)
+        self.sigShiftClick.connect  (self._delete_opPoint_def)
 
 
     def _symbol (self) -> QPainterPath | str:
@@ -139,8 +140,10 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
 
     def _delete_opPoint_def (self, _):
         """ shift-click - delete me opPoint_dev"""
-        self._opPoint_def.delete_me ()
-        self._changed ()
+
+        if callable(self._callback_delete):
+            # callback / emit signal delayed so we leave the scope of Graphics 
+            QTimer() .singleShot(10, lambda: self._callback_delete (self._opPoint_def))   
 
 
     def _point_xy (self) -> tuple:  
@@ -151,11 +154,15 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
     def mouseClickEvent(self, ev):
         """ handle callback to parent when clicked with left button to select self """
 
-        if not self.moving and ev.button() == QtCore.Qt.MouseButton.LeftButton:
+        if not self.moving and ev.button() == QtCore.Qt.MouseButton.LeftButton  \
+                           and not (ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier): # shift is handled in super
             if callable(self._callback_selected):
                 ev.accept()
+
+                self._opPoint_def.set_as_current()
+
                 # callback / emit signal delayed so we leave the scope of Graphics 
-                QTimer() .singleShot(10, lambda: self._callback_selected (self._opPoint_def))   
+                QTimer() .singleShot(10, lambda: self._callback_selected ())   
         else:
             super().mouseClickEvent (ev)
 
@@ -165,8 +172,11 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
         """ handle callback to parent when double clicked """
         if callable(self._callback_dblClick):
             ev.accept()
+
+            self._opPoint_def.set_as_current()
+
             # callback / emit signal delayed so we leave the scope of Graphics 
-            QTimer() .singleShot(10, lambda: self._callback_dblClick (self._opPoint_def))   
+            QTimer() .singleShot(10, lambda: self._callback_dblClick ())   
         else:
             super().mouseDoubleClickEvent (ev)
 
@@ -178,7 +188,9 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
 
         self.setPos (self._point_xy())                      # ... if we run against limits 
 
-        self.refresh_highlight()
+        # also refresh pos of highlight item 
+        if isinstance (self._highlight_item, pg.TargetItem):
+            self._highlight_item.setPos (self.pos())
 
 
     @override
@@ -195,23 +207,18 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
     def _finished (self, _):
         """ slot - point moving is finished"""
 
+        self._opPoint_def.set_as_current()
+
         # callback / emit signal delayed so we leave the scope of Graphics 
-        QTimer() .singleShot(10, lambda: self._callback_changed (self._opPoint_def))   
+        QTimer() .singleShot(10, lambda: self._callback_changed ())   
 
 
-    def set_highlight_item (self, aItem: pg.ScatterPlotItem):
+    def set_highlight_item (self, aItem: pg.TargetItem):
         """ a point item used to highlight current"""
 
         self._highlight_item = aItem
-        self.refresh_highlight ()
-
-
-    def refresh_highlight (self): 
-        """ refesh highlight item position"""
-
-        if isinstance (self._highlight_item, pg.ScatterPlotItem):
-
-            self._highlight_item.setData ([self.pos()[0]], [self.pos()[1]])
+        if self._highlight_item:
+            self._highlight_item.setPos (self.pos())
 
 
 
@@ -222,19 +229,18 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
 class Xo2_OpPoint_Defs_Artist (Artist):
     """ Plot / Modify Xoptfoil2 operating point defin itions """
 
-    sig_opPoint_def_changed     = pyqtSignal (OpPoint_Definition)       # opPoint_def changed changed 
-    sig_opPoint_def_selected    = pyqtSignal (OpPoint_Definition)
-    sig_opPoint_def_dblClick    = pyqtSignal (OpPoint_Definition)
+    sig_opPoint_def_changed     = pyqtSignal ()             # opPoint_def changed changed 
+    sig_opPoint_def_selected    = pyqtSignal ()
+    sig_opPoint_def_dblClick    = pyqtSignal ()
 
     def __init__ (self, *args, 
-                  isReady_fn = None, 
+                  isRunning_fn = None, 
                   xyVars = (var.CD, var.CL), 
                   **kwargs):
         super().__init__ (*args, **kwargs)
 
         self._xyVars = xyVars                               # definition of x,y axis
-        self._isReady_fn = isReady_fn
-        self._highlight_item = None                         # additional item to highlight current
+        self._isRunning_fn = isRunning_fn
 
 
     @property
@@ -250,39 +256,14 @@ class Xo2_OpPoint_Defs_Artist (Artist):
         return self.data_list
 
     @property
-    def optimizer_isReady (self) -> bool:
+    def opPoint_def_are_editable (self) -> bool:
         """ True if optimier is ready - definitions can be changed"""
-        return self._isReady_fn() if callable (self._isReady_fn) else False
-
-
-    def highlight_current (self, cur_opPoint_def : OpPoint_Definition):
-        """ highlight current opPoint_def"""
-
-        highlighted = False
-
-        # set highlight item into Movable_Xo2_OpPoint_Def which is current 
-        for item in self._plots:
-            if isinstance (item, Movable_Xo2_OpPoint_Def):
-                if item._opPoint_def == cur_opPoint_def:
-
-                    self._remove_plot (self._highlight_item)
-                    brushColor = Movable_Xo2_OpPoint_Def.COLOR
-                    self._highlight_item = self._plot_point (0.02,0.2, color="black", size=60, brushColor=brushColor, brushAlpha=0.3)
-
-                    item.set_highlight_item (self._highlight_item)
-
-                    highlighted = True 
-                else: 
-                   item.set_highlight_item (None)                   # remove highlighter from other points
-
-        # if current opPoint def is not in self - remove highlighter
-        if not highlighted and self._highlight_item:
-            self._remove_plot (self._highlight_item)
-            self._highlight_item = None
-
+        return not self._isRunning_fn() if callable (self._isRunning_fn) else True
 
 
     def _plot (self): 
+
+        legend_name = "Op Point Definition" 
 
         for opPoint_def in self.opPoint_defs:
 
@@ -293,11 +274,24 @@ class Xo2_OpPoint_Defs_Artist (Artist):
             if x is not None and y is not None: 
 
                 pt = Movable_Xo2_OpPoint_Def  (self._pi, opPoint_def, self.xyVars, 
-                                                movable=self.optimizer_isReady and self.show_mouse_helper,
+                                                movable=self.opPoint_def_are_editable and self.show_mouse_helper,
                                                 on_changed =self.sig_opPoint_def_changed.emit,
+                                                on_delete  =self._on_delete,
                                                 on_dblClick=self.sig_opPoint_def_dblClick.emit,
                                                 on_selected=self.sig_opPoint_def_selected.emit)
-                self._add (pt) 
+                self._add (pt, name = legend_name) 
+
+                legend_name = None                                  # legend only once 
+
+                # highlight current opPoint def for edit with a big circle 
+
+                if opPoint_def == self.opPoint_defs.current_opPoint_def and self.opPoint_def_are_editable:
+
+                    brush = QColor (Movable_Xo2_OpPoint_Def.COLOR)
+                    brush.setAlphaF (0.3)
+                    highlight_item = self._plot_point (0.02,0.2, color="black", size=60, brush=brush)
+
+                    pt.set_highlight_item (highlight_item)
 
 
         # make scene clickable to add wing section - delayed as during init scene is not yet available
@@ -355,12 +349,17 @@ class Xo2_OpPoint_Defs_Artist (Artist):
             pos : pg.Point = viewbox.mapSceneToView(ev.scenePos())
 
             # create new opPoint_def in the list of opPoint_defs 
-            new_opPoint_def = self.opPoint_defs.create_in_xyVars (self.xyVars, pos.x(), pos.y())
+            self.opPoint_defs.create_in_xyVars (self.xyVars, pos.x(), pos.y())
 
-            if new_opPoint_def:
-                self.sig_opPoint_def_changed.emit(new_opPoint_def)
+            self.sig_opPoint_def_changed.emit()
 
 
+    def _on_delete (self, opPoint_def : OpPoint_Definition):
+        """ callback of Movable Point to delete opPoint_def"""
+
+        self.opPoint_defs.delete (opPoint_def)
+
+        self.sig_opPoint_def_changed.emit ()
 
 
 class Xo2_OpPoint_Artist (Artist):
@@ -395,9 +394,12 @@ class Xo2_OpPoint_Artist (Artist):
         if not opPoints: return 
 
         opPoint_defs :  list[OpPoint_Definition] = self._opPoint_defs_fn() 
-        prev_opPoints : list[OpPoint_Result] = self._prev_opPoint_results_fn() 
+        prev_opPoints : list[OpPoint_Result] = self._prev_opPoint_results_fn() [:] 
 
-        legend_name = "Op Point Result"
+        legend_name = f"Op Point Result - Design {opPoints[0].idesign}"
+
+        textFill = QColor ("black")
+        textFill.setAlphaF (0.5)
        
         for iop, opPoint in enumerate (opPoints):
 
@@ -410,14 +412,26 @@ class Xo2_OpPoint_Artist (Artist):
 
             color  = self._opPoint_color  (opPoint, opPoint_def)
             symbol = self._opPoint_symbol (opPoint, prev_opPoint)
-            size   = _size_opPoint (opPoint.weighting, normal_size = 11)
+            label  = self._opPoint_label  (opPoint, opPoint_def)
+            size   = _size_opPoint (opPoint.weighting)
 
-            self._plot_point (x,y, color=color, size=size, symbol=symbol, zValue=20, name=legend_name)
+            textColor = QColor (color).darker(130)
+
+            self._plot_point ((x,y), color=color, size=size, symbol=symbol, zValue=20, name=legend_name,
+                              text=label, anchor=(0, 0.5), textOffset = (8,0), textColor=textColor, textFill=textFill)
 
             legend_name = None 
 
+        # message if dynamic weighting of opPoints occured 
+
+        if prev_opPoints:
+            weightings      = [op.weighting for op in opPoints]
+            prev_weightings = [op.weighting for op in prev_opPoints]
+            if sum(weightings) != sum (prev_weightings):
+                self._plot_text ('New weightings applied', color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
+
         
-    def _opPoint_color (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None):
+    def _opPoint_color (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None) -> QColor:
         """ color of opPoint depending on % deviation """
 
         # sanity 
@@ -482,7 +496,8 @@ class Xo2_OpPoint_Artist (Artist):
             else:
                 color = COLOR_ERROR
         return color 
-        
+
+
     def _opPoint_symbol (self, opPoint : OpPoint_Result, prev_opPoint : OpPoint_Result | None ):
         """ a triangle in the direction of value change """
 
@@ -504,6 +519,53 @@ class Xo2_OpPoint_Artist (Artist):
         else: 
             symbol = 'o'
         return symbol
+
+        
+    def _opPoint_label (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None) -> str:
+        """ label of opPoint depending on % deviation """
+
+        label = None 
+
+        # sanity 
+        if opPoint_def is None: 
+            return label
+
+        distance  = opPoint.distance
+
+        optType = opPoint_def.optType
+        optVar  = opPoint_def.optVar
+        allow_improved = opPoint_def._myList.allow_improved_target
+
+        if optType == OPT_TARGET:                            # targets - take deviation to target
+
+            if allow_improved   and optVar == var.CD and distance < 0.0:
+                distance = 0.0
+            elif allow_improved and optVar != var.CD and distance > 0.0:
+                distance = 0.0
+            else:
+                distance = abs(distance)
+
+            if optVar == var.CD and round_down (distance,5):
+                label = f"delta {optVar}: {distance:.5f}"
+            elif optVar != var.CD and round_up (distance,2):
+                label = f"delta {optVar}: {distance:.2f}"        
+            else: 
+                label = f"hit"        
+
+        else:                                               # min/max - deviation is improvement 
+
+            if optType == OPT_MAX:                          # eg. OPT_MAX of 'glide' - more is better 
+                improv = distance
+            else:                                           # eg OPT_MIN of 'cd' - less is better
+                improv = distance
+
+            if improv: 
+                if optVar == var.CD:
+                    label = f"d{var.CD} {improv:.5f}"
+                else:
+                    label = f"d{optVar} {improv:.2f}"
+        return label 
+        
 
 
 
@@ -533,7 +595,7 @@ class Xo2_Design_Radius_Artist (Artist):
             back_color = QColor ("black")
             back_color.setAlphaF (0.5)
 
-            self._plot_point (x,y, size=5, color=COLOR_OK, text = f"Steps:{x}  {y:.3f}", textFill=back_color, anchor= (1.1, 0.7))
+            self._plot_point (x,y, size=5, color=COLOR_OK, text = f"{y:.3f}", textFill=back_color, anchor= (1.1, 0.9))
 
 
 
@@ -564,13 +626,38 @@ class Xo2_Improvement_Artist (Artist):
             back_color = QColor ("black")
             back_color.setAlphaF (0.5)
             
-            self._plot_point (x,y, size=5, color=COLOR_GOOD, text = f"{y:.2f}%", textFill=back_color, anchor= (0.8, -0.1))
+            self._plot_point (x,y, size=5, color=COLOR_GOOD, text = f"{y:.2f}%", textFill=back_color, 
+                              textOffset=(-5,0), anchor= (0.8, -0.1))
 
 
 
 
 class Xo2_Transition_Artist (Artist):
     """ Plot Xoptfoil2 point of transition on design airfoil """
+
+    # ----------  Symbol transition - create an arrow up and rotate to right 
+    #
+    #               .--x
+    #               |
+    #               y
+
+    @staticmethod
+    def _symbol_transition_up ():
+        path = QPainterPath()
+        coords = [(-0.125, 0.125), (0, 0), (0.125, 0.125),
+                    (0.05, 0.125), (0.05, 0.5), (-0.05, 0.5), (-0.05, 0.125)]
+        path.moveTo(*coords[0])
+        for x,y in coords[1:]:
+            path.lineTo(x, y)
+        path.closeSubpath()
+        return path
+    tr : QTransform = QTransform()
+    tr.rotate(90)                                   # because y is downward
+    tr.translate (0,-0.5)                          # translate is after rotation ...
+
+    SYMBOL_TRANSITION_RIGHT  = tr.map (_symbol_transition_up())                         
+
+    # ----------------
 
     def __init__ (self, *args, 
                   opPoints_result_fn : Callable = None,
@@ -591,24 +678,97 @@ class Xo2_Transition_Artist (Artist):
 
         legend_name = "Point of Transition xtr"
 
-        side : Line
+        color  = _color_airfoil ([], airfoil).darker (120) 
+        symbol = self.SYMBOL_TRANSITION_RIGHT
+        size   = 30
+        brush  = QColor ("black")
+        fill   = QColor ("black")
+        fill.setAlphaF (0.5) 
+
         for side in [airfoil.geo.lower, airfoil.geo.upper]:     
 
             for iop, opPoint in enumerate (opPoints_result):
 
                 x = opPoint.xtrt if side.isUpper else opPoint.xtrb
                 y = side.yFn (x) 
+                y = y + 0.008 if side.isUpper else y - 0.008
 
-                color  = _color_airfoil ([], airfoil) 
-                symbol = '|'
                 text   = f"{iop+1}"
                 anchor = (0.5, 1.1) if side.isUpper else (0.5, -0.1)
-                fill   = QColor ("black")
-                fill.setAlphaF (0.7) 
 
-                y      = y + 0.005 if side.isUpper else y - 0.005
-
-                self._plot_point (x,y, color=color, symbol=symbol, text=text, anchor=anchor, textFill=fill, name=legend_name)
+                self._plot_point (x,y, color=color, symbol=symbol, size=size, brush=brush, 
+                                  text=text, textColor=color, anchor=anchor, textFill=fill, name=legend_name)
 
                 legend_name = None                                      # only once for legend 
 
+
+    @override
+    def _add_legend_item (self, plot_item, name : str = None):
+        """ add legend item having 'name'"""
+
+        # non standard legend size of transition symbol 
+        if self._pi.legend is not None and self.show_legend and name:
+
+            if isinstance (plot_item,  pg.TargetItem):
+
+                # create a dummy PlotItem as TargetItem won't appear in legend 
+                size_legend = 30    
+                pen    = plot_item.pen
+                symbol = plot_item._path 
+                brush  = plot_item.brush
+                p = pg.ScatterPlotItem ([], [], pen= pen, brush=brush, symbol=symbol, size=size_legend, pxMode=True)
+                self._add (p, name=name) 
+
+            else: 
+
+                super()._add_legend_item (plot_item, name=name)
+     
+
+class Xo2_GeoTarget_Artist (Artist):
+    """ Plot Xoptfoil2 geometry target results """
+
+    def __init__ (self, *args, 
+                  geoTarget_defs_fn : Callable = None,
+                  geoTarget_results_fn : Callable = None,
+                  **kwargs):
+
+        self._geoTarget_defs_fn    = geoTarget_defs_fn                     # method to get geo target definitions
+        self._geoTarget_results_fn = geoTarget_results_fn                  # method to get geo target results
+
+        super().__init__ (*args, **kwargs)
+
+
+    def _plot (self): 
+        """ plot all geo target results"""
+
+        geoTargets :      list[GeoTarget_Result] = self._geoTarget_results_fn() 
+        if not geoTargets: return 
+
+        geoTarget_defs :  GeoTarget_Definitions = self._geoTarget_defs_fn() 
+       
+        for igeo, geoTarget_def in enumerate (geoTarget_defs):
+
+            for geoTarget in geoTargets:                                    # get both definition and result
+                if geoTarget_def.optVar == geoTarget.optVar:
+
+                    target_text = f"Target {geoTarget_def.optVar}: {geoTarget_def.optValue:.2%}"
+
+                    if round (geoTarget.deviation,1) != 0.0:
+                        result_text = f"delta: {geoTarget.distance:.2%}"
+                    else: 
+                        result_text = f"hit"        
+
+                    deviation = abs (round (geoTarget.deviation,1))
+                    if deviation < 0.1:
+                        result_color = COLOR_GOOD
+                    elif deviation >= 10:
+                        result_color = COLOR_ERROR
+                    elif deviation >= 2.0:
+                        result_color = COLOR_WARNING
+                    elif deviation >= 0.1:
+                        result_color = COLOR_OK
+                    else:
+                        result_color = COLOR_OK
+
+                    self._plot_text (target_text, parentPos=(0.5,0.1), itemPos=(1.0, 0.5), offset=(0, igeo*20))
+                    self._plot_text (result_text, parentPos=(0.5,0.1), itemPos=(0.0, 0.5), offset=(5, igeo*20), color=result_color)

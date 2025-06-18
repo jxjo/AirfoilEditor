@@ -11,6 +11,9 @@ test_optimize
 # examples_optimize
 *_temp
 
+# VSCodeCounter 
+.VSCodeCounter
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

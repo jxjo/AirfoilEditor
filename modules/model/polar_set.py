@@ -294,10 +294,17 @@ class Polar_Definition:
         return f"{self.name}  {self.specVar}: {self.valRange_string}"    
 
 
-    def is_equal_to (self, aPolarDef: 'Polar_Definition'):
+    def is_equal_to (self, aDef: 'Polar_Definition', ignore_active=False):
         """ True if aPolarDef is equals self"""
-        if isinstance (aPolarDef, Polar_Definition):
-            return aPolarDef._as_dict() == self._as_dict()
+
+        if isinstance (aDef, Polar_Definition):
+            self_dict = self._as_dict()
+            aDef_dict = aDef._as_dict()
+            if ignore_active:
+                self_dict.pop('active', None)
+                aDef_dict.pop('active', None)
+                
+            return self_dict == aDef_dict
         else:
             return False
 
@@ -899,8 +906,12 @@ class Polar (Polar_Definition):
         return values 
 
 
-    def get_interpolated (self, xVar : var, xVal : float, yVar : var) -> float:
-        """ interpolates yVar in polar (xVar, yVar) - returns None if not successful"""
+    def get_interpolated (self, xVar : var, xVal : float, yVar : var,
+                          allow_outside_range = False) -> float:
+        """
+        Interpolates yVar in polar (xVar, yVar) - returns None if not successful
+           allow_outside_range = True will return the y value at the boundaries 
+        """
 
         if not self.isLoaded: return None
 
@@ -918,6 +929,10 @@ class Polar (Polar_Definition):
             y2 = yVals[i+1]
             y = interpolate (x1, x2, y1, y2, xVal)
             y = round (y,5) if yVar == var.CD else round(y,3)
+
+        elif allow_outside_range:
+            y = yVals[0] if i < 0 else yVals[-1]                    # see return values of bisection
+
         else: 
             y = None
 
@@ -1141,6 +1156,11 @@ class Polar_Task (Polar_Definition):
 
 
     #---------------------------------------------------------------
+
+    @property
+    def n_polars (self) -> int:
+        """ number of polars of self should generate"""
+        return len(self._polars)
 
 
     def add_polar (self, polar : Polar) -> bool:

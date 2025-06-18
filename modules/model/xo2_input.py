@@ -26,6 +26,7 @@ from base.spline            import HicksHenne
 
 from model.polar_set        import * 
 from model.airfoil          import Airfoil, GEO_BASIC
+from model.airfoil_geometry import Geometry_Bezier
 from model.airfoil_examples import Example
 
 
@@ -58,13 +59,26 @@ class Input_File:
         return sorted (input_files, key=str.casefold)
 
 
+    @staticmethod
+    def is_xo2_input (fileName : str, workingDir = None) -> bool:
+        """ True if fileName is a Xo2 input file - if workingDir is set, also do file check"""
+
+        fileName_ext = os.path.splitext(fileName)[1]
+        for ext in Input_File.INPUT_FILE_EXT:
+            if ext.lower() == fileName_ext.lower():
+                if workingDir:
+                    return os.path.isfile (os.path.join (workingDir, fileName))
+                else: 
+                    return True
+        return False 
+
 
     @staticmethod
     def fileName_of (airfoil : Airfoil) -> str:
         """ returns fileName of xo2 input file belonging to airfoil - or None if not existing"""
 
         for extension in Input_File.INPUT_FILE_EXT:
-            pathFileName = os.path.join (airfoil.pathName, airfoil.fileName_stem + extension)
+            pathFileName = os.path.join (airfoil.pathName_abs, airfoil.fileName_stem + extension)
             if os.path.isfile (pathFileName):
                 return airfoil.fileName_stem + extension
         return None 
@@ -140,7 +154,7 @@ class Input_File:
 
         # fortran namelist of the input file  
 
-        self._nml_file = None                   # f90nml namelist as dict 
+        self._nml_file_dict = None                                              # f90nml namelist as dict 
 
         # single namelists within the input file 
 
@@ -160,12 +174,19 @@ class Input_File:
         # definitions from input file 
 
         self._airfoil_seed   = None                 # seed Airfoil    
+        self._airfoils_ref   = None                 # optional reference airfoils in input file     
         self._opPoints_def   = None                 # op Points definition in input file
         self._polar_defs     = None                 # Polar definitions in input file
         self._geoTargets_def = None                 # geo targets definition in input file
 
         self._hasErrors  = False                    # errors in input file? 
         self._error_text = None                     # text from error check by worker
+
+        # additional consistency 
+
+        if self.airfoil_seed and self.airfoil_seed.isBezierBased:
+            self.set_airfoil_seed (self.airfoil_seed)           # will asign control points of seed to shape functions
+
 
     # ---- Properties -------------------------------------------
 
@@ -191,6 +212,11 @@ class Input_File:
     def airfoil_final_fileName (self) -> str:  
         """ fileName of the the final airfoil created by Xo2"""
         return self.outName + '.dat'
+
+    @property
+    def airfoil_final_pathFileName (self) -> str:  
+        """ fileName of the the final airfoil created by Xo2"""
+        return os.path.join (self.workingDir, self.airfoil_final_fileName)
 
     @property
     def fileName(self) -> str:  
@@ -221,21 +247,21 @@ class Input_File:
     def nml_file (self) -> f90nml.Namelist:
         """ self as f90nml namelist object (dict) """
 
-        if self._nml_file is None: 
+        if self._nml_file_dict is None: 
             if os.path.isfile (self.pathFileName): 
                 parser = f90nml.Parser()
                 parser.global_start_index = 1
                 try: 
-                    self._nml_file = parser.read(self.pathFileName)   # fortran namelist as object  
+                    self._nml_file_dict = parser.read(self.pathFileName)   # fortran namelist as object  
                 except: 
-                    self._nml_file = None    
+                    self._nml_file_dict = None    
                     self._hasErrors  = True  
                     self._error_text = 'Generell syntax error'   
             else: 
                 # new, not existing input file 
-                self._nml_file = {}    
+                self._nml_file_dict = {}    
 
-        return self._nml_file
+        return self._nml_file_dict
 
     @property 
     def nml_info (self) -> 'Nml_info':
@@ -366,11 +392,69 @@ class Input_File:
         return self._airfoil_seed
 
     
-    def set_airfoil_seed (self, airfoil: Airfoil):  
+    def set_airfoil_seed (self, airfoil: Airfoil | str):  
         """ set new seed airfoil in input file"""
+
         if isinstance (airfoil, Airfoil): 
             self.nml_optimization_options.set_airfoil_file(airfoil.pathFileName)
-            self._airfoil_seed = None
+
+            if airfoil.isBezierBased:
+
+                # if seed is bezier, init shape Bezier with number of control points of seed 
+                #   as Xo2 will do it 
+                geo : Geometry_Bezier = airfoil.geo
+                ncp_top = geo.upper.nControlPoints
+                ncp_bot = geo.lower.nControlPoints
+                self.nml_bezier_options.set_ncp_top (ncp_top)
+                self.nml_bezier_options.set_ncp_bot (ncp_bot)
+
+        elif isinstance (airfoil, str):
+            self.nml_optimization_options.set_airfoil_file(airfoil)
+
+        # reset existing Airfoil - will be re-created 
+        self._airfoil_seed = None
+
+
+    @property
+    def airfoils_ref (self) -> list[Airfoil]:
+        """ individual reference airfoils of this input file"""
+
+        # cache list for performance 
+        if self._airfoils_ref is None:
+
+            self._airfoils_ref = []
+
+            # get reference file names form info namelist of input file 
+            for pathFileName in self.nml_info.ref_airfoils_pathFileName:
+                try: 
+                    airfoil = Airfoil.onFileType (pathFileName, workingDir=self.workingDir, geometry=GEO_BASIC)
+                    airfoil.load ()
+                    if airfoil.isLoaded:
+                        airfoil.set_property ("show", True)
+                        airfoil.set_usedAs (usedAs.REF)
+
+                        polar_defs = self.opPoint_defs.polar_defs()
+                        airfoil.set_polarSet (Polar_Set (self._airfoil_seed, polar_def=polar_defs))
+
+                        self._airfoils_ref.append (airfoil)
+                except: 
+                    logger.warning (f"{self.fileName} reference airfoil {pathFileName} could be created")
+
+            # write back updated list of airfoils 
+            self.airfoils_ref_set_nml ()
+
+        return self._airfoils_ref
+
+
+    def airfoils_ref_set_nml (self):
+        """ set reference airfoils back into namelist"""
+
+        pathFileNames = []
+        for airfoil in self.airfoils_ref: 
+            # ensure relative path to working dir 
+            rel_path = PathHandler (self.workingDir).relFilePath (airfoil.pathFileName_abs)
+            pathFileNames.append (rel_path)
+        self.nml_info.set_ref_airfoils_pathFileName (pathFileNames)
 
 
     @property
@@ -476,7 +560,7 @@ class Input_File:
     def isChanged (self) -> bool:
         """ True if changes were made to the namelist"""
 
-        return str(self._nml_file) != self._nml_file_str
+        return str(self._nml_file_dict) != self._nml_file_str
 
 
     def save_nml (self) -> bool:
@@ -486,6 +570,7 @@ class Input_File:
 
         self.opPoint_defs.set_nml() 
         self.nml_geometry_targets.geoTarget_defs.set_nml ()
+        self.airfoils_ref_set_nml ()
 
         # check if there are changes 
 
@@ -696,12 +781,12 @@ class OpPoint_Definition:
 
     @property
     def specValue (self): return self._specValue
-    """ set specValue - alpha with 2 dec, cl with 3 dec"""
+    """ set specValue -  with 3 dec"""
     def set_specValue (self, aVal):  
         if self.specVar == var.ALPHA:
-            self._specValue = round (aVal,3)
+            self._specValue = round (aVal,4)
         else: 
-            self._specValue = round (aVal,3)
+            self._specValue = round (aVal,4)
 
     def set_specValue_limited (self, aVal):  
         """ set specValue - assures aVal is between specValues of self neighbours"""
@@ -785,10 +870,12 @@ class OpPoint_Definition:
             else: 
                 if self.optVar == var.CD:
                     # round to the worse value 
-                    self._optValue = round_up (aVal,5)
+                    # self._optValue = round_up (aVal,6)
+                    self._optValue = round (aVal,7)
                 else: 
                     # round to the worse value 
-                    self._optValue = round_down (aVal,3)
+                    # self._optValue = round_down (aVal,3)
+                    self._optValue = round (aVal,4)
         else: 
             self._optValue = None 
 
@@ -886,6 +973,15 @@ class OpPoint_Definition:
         else: 
             return Polar_Definition ({"re": self.re, "mach": self.ma, "ncrit": self.ncrit})
         
+    @property
+    def polar_def_or_default (self) -> Polar_Definition | None:
+        """ either individual or default polar definition """
+        if self.has_default_polar:
+            return self._myList.polar_def_default
+        else: 
+            return Polar_Definition ({"re": self.re, "mach": self.ma, "ncrit": self.ncrit})
+
+
     def set_polar_def (self, polar_def : Polar_Definition):
         self.set_re (polar_def.re)
         self.set_ma (polar_def.ma)
@@ -894,11 +990,8 @@ class OpPoint_Definition:
 
     @property
     def weighting (self): 
-        """ an individual weighting - default is 1"""
-        if self._weighting is None: 
-            return 1.0
-        else: 
-            return self._weighting
+        """ an individual weighting - default is 1 - can be negative, which means fixed """
+        return 1.0 if self._weighting is None else self._weighting
         
     def set_weighting (self, aVal): 
         if aVal == 1.0: 
@@ -907,9 +1000,29 @@ class OpPoint_Definition:
             self._weighting = aVal 
 
     @property
-    def weighting_fixed_label (self) -> str:
-        """ returns a label if weighing is fixed aga not dynamic"""
-        return " = fix" if self.weighting < 0.0 and self._myList.dynamic_weighting else ""
+    def weighting_abs (self): 
+        """ an individual weighting - default is 1 - always > 0  """
+        return 1.0 if self._weighting is None else abs(self._weighting)
+
+    def set_weighting_abs (self, aVal : float):
+        aVal = -abs(aVal) if self.weighting_fixed else abs(aVal)
+        self.set_weighting (aVal) 
+
+
+    @property
+    def weighting_fixed (self) -> str:
+        """ True if weighing is fixed aga not dynamic"""
+        # negative weighting means fixed
+        return self.weighting < 0.0 and self._myList.dynamic_weighting
+
+    def set_weighting_fixed (self, fixed : bool) -> str:
+        if not self._myList.dynamic_weighting:
+            fixed = False
+        if self.weighting > 0.0 and fixed:           
+            self.set_weighting (- self.weighting)
+        elif self.weighting < 0.0 and not fixed:
+            self.set_weighting (- self.weighting)
+
 
     @property
     def has_default_weighting (self) -> bool:
@@ -946,7 +1059,9 @@ class OpPoint_Definition:
     #------------
 
     @property
-    def iPoint (self): return self._myList.index (self) + 1
+    def iPoint (self):
+        """ number 1...n of self""" 
+        return self._myList.index (self) + 1 if self._myList else None 
 
 
     @property
@@ -995,11 +1110,21 @@ class OpPoint_Definition:
         lower_limit = None 
         upper_limit = None 
 
-        n = len (self._myList) 
-        index = self._myList.index(self)
+        # get opPoints having the same polar 
 
-        opPoint_before  = self._myList[index-1] if index > 0 else None
-        opPoint_after   = self._myList[index+1] if index < (n-1) else None
+        opPoints_same_polar : OpPoint_Definitions = []
+
+        for op in self._myList:
+            if op.polar_def_or_default.is_equal_to (self.polar_def_or_default) :
+                opPoints_same_polar.append(op)
+
+        # get and check neighbours 
+
+        n = len (opPoints_same_polar) 
+        index = opPoints_same_polar.index(self)
+
+        opPoint_before  = opPoints_same_polar [index-1] if index > 0 else None
+        opPoint_after   = opPoints_same_polar [index+1] if index < (n-1) else None
 
         if opPoint_before and opPoint_before.specVar == self.specVar:          
             lower_limit = opPoint_before.specValue * 1.02
@@ -1205,12 +1330,11 @@ class OpPoint_Definition:
 
         return newVar, newType
 
-    def delete_me (self):
-        """ remove self from list"""
 
-        self._myList.remove (self) 
-        self._myList = None 
-
+    def set_as_current(self):
+        """ set self as the current opPOint def """
+        if self._myList:
+            self._myList.set_current_opPoint_def (self)
 
 
 class OpPoint_Definitions (list [OpPoint_Definition]):
@@ -1228,7 +1352,8 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         super().__init__ ([])
 
         self._nml = nml 
-        self._input_file = input_file
+        self._input_file    = input_file
+        self._current_index = 0                             # index of current opPoint def 
 
         # read self from namelist 
 
@@ -1390,6 +1515,23 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self.sort(key=attrgetter('specValue'))  
         self.sort(key=attrgetter('specVar'), reverse=True)  
 
+    @property
+    def current_index (self) -> int:
+        """ index of current opPoint def """
+
+        self._current_index = min(self._current_index, len(self) - 1)
+        return self._current_index
+    
+    @property
+    def current_opPoint_def (self) -> OpPoint_Definition: 
+        """current opPoint definition"""
+        return self[self.current_index]
+
+    def set_current_opPoint_def (self, opPoint_def : OpPoint_Definition): 
+        """current opPoint definition"""
+        if opPoint_def in self: 
+            self._current_index = self.index (opPoint_def)
+
 
     @property
     def ncrit (self) -> float:  
@@ -1475,11 +1617,11 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self._input_file.nml_xfoil_run_options.set_ncrit (polar_def.ncrit)
         
 
-    def create_after (self, opPoint_def : OpPoint_Definition | None) -> OpPoint_Definition:
+    def create_after (self, opPoint_def : OpPoint_Definition | None):
         """
         Create and add a new opPoint_def after opPoint_def with
-            a best fit of specVar, specVal
-        Returns new opPoint_def
+            a best fit of specVar, specVal.
+            Set new current opPoint def
         """
 
         if opPoint_def in self: 
@@ -1545,14 +1687,15 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                                                     optVar = optVar, optValue = optValue)
         self.insert (index, new_opPoint_def)
 
-        return new_opPoint_def
+        self._current_index = index
+
 
 
     def create_in_xyVars (self, xyVars, x, y, re=None):
         """
         Alternate constructor for new opPoint definition coming from diagram with 
             xyVars like CD or CL with corresponding x,y values 
-        New opPoint_def is added to self
+        New opPoint_def is added to self und current is set to new 
 
         Args:
             xyVars: tuple of polar variables like (CD,CL)
@@ -1586,30 +1729,37 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
                                                         optVar = optVar, optValue = optValue)
             self.add (new_opPoint_def)
-            return new_opPoint_def
-        else: 
-            return None 
+
+            self.set_current_opPoint_def (new_opPoint_def)
 
 
-    def create_from_polar_point (self, aPoint : Polar_Point, specVar=var.CL, optType=OPT_TARGET, optVar=var.CD) -> OpPoint_Definition:
+    def create_from_polar_point (self, aPoint : Polar_Point, 
+                                 specVar=var.CL, optType=OPT_TARGET, optVar=var.CD, factor = 1.0):
         """ 
-        creates and adds new OpPoint_Definition based on a Polar_point 
+        Creates and adds new OpPoint_Definition based on a Polar_point.
+            an optional factor is applied to optValue.
+            Set current to new opPoint def 
         """
 
         specValue = aPoint.get_value (specVar)
-        optValue  = aPoint.get_value (optVar)
+        optValue  = aPoint.get_value (optVar) * factor
 
         new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
                                                     optType=optType, optVar = optVar, optValue = optValue)
         self.add (new_opPoint_def)
-        return new_opPoint_def
+
+        self.set_current_opPoint_def (new_opPoint_def)
 
 
-    def create_initial (self, polarSet: Polar_Set, n : int):
+    def create_initial (self, polarSet: Polar_Set, 
+                              nOp : int,
+                              target_max_glide = 1.0,
+                              target_min_cd = 1.0,
+                              target_low_cd = 1.0):
         """ 
         create n new opPoint defs based on default polar in polarSet 
             and replaces the existing in self
-
+        target-factors to seed airfoil can be supplied
         """
 
         # "delete" all existing opPoint defs 
@@ -1624,15 +1774,15 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         if not polar: return
 
         # target point at min_cd 
-        if n > 0:
-            self.create_from_polar_point (polar.min_cd, optVar=var.CD)
+        if nOp > 0:
+            self.create_from_polar_point (polar.min_cd, optVar=var.CD, factor=target_min_cd)
 
         # target point at max_glide 
-        if n > 1:
-            self.create_from_polar_point (polar.max_glide, optVar=var.GLIDE)
+        if nOp > 1:
+            self.create_from_polar_point (polar.max_glide, optVar=var.GLIDE, factor=target_max_glide)
 
         # target point below min cd 
-        if n > 2:
+        if nOp > 2:
             cl_min_cl    = polar.min_cl.cl
             cl_min_cd    = polar.min_cd.cl
             if (cl_min_cd - cl_min_cl) > 0.35:
@@ -1640,17 +1790,17 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 idx   = np.abs(polar.cl - cl_between).argmin()
                 new_point    = polar.polar_points [idx]
                 if (cl_min_cd - new_point.cl) > 0.2:                            # ensure min distance 
-                    self.create_from_polar_point (new_point, optVar=var.CD)
+                    self.create_from_polar_point (new_point, optVar=var.CD, factor = target_low_cd)
 
         # target point below max_cl 
-        if n > 3:
+        if nOp > 3:
             cl_near_max = polar.max_cl.cl * 0.95
             idx   = np.abs(polar.cl - cl_near_max).argmin()
             new_point = polar.polar_points [idx]
             self.create_from_polar_point (new_point, optVar=var.GLIDE)
 
         # target point between min cd und max glide 
-        if n > 4:
+        if nOp > 4:
             cl_max_glide = polar.max_glide.cl
             cl_min_cd    = polar.min_cd.cl
             if (cl_max_glide - cl_min_cd) > 0.35:
@@ -1658,6 +1808,39 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 idx   = np.abs(polar.cl - cl_between).argmin()
                 new_point = polar.polar_points [idx]
                 self.create_from_polar_point (new_point, optVar=var.CD)
+
+        self._current_index = 0
+
+
+    def delete (self, opPoint_def : OpPoint_Definition ) -> OpPoint_Definition:
+        """
+        Delete opPoint_def if it is not the last. Set new current opPoint def
+        Returns next opPoint_def
+        """
+
+        # sanity checks 
+
+        if len(self) <= 1: return
+
+        if opPoint_def in self: 
+            index = self.index (opPoint_def)
+        else: 
+            return  
+
+        # delete 
+
+        self.remove (opPoint_def) 
+        opPoint_def._myList = None 
+
+        # set new current after deletion 
+
+        if index == len(self) - 1:
+            new_index = -1
+        elif index > 0:
+            new_index = index - 1
+        else:
+            new_index = 0 
+        self._current_index = new_index
 
 
 
@@ -1686,8 +1869,9 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             if opPoint.re == polar.re and opPoint.ma == polar.ma and \
                opPoint.ncrit == polar.ncrit and opPoint.re_type == polar.type:
                 
-                # get interpolated value in this polar
-                return polar.get_interpolated (opPoint.specVar, opPoint.specValue, opPoint.optVar) 
+                # get interpolated value in this polar - allow vals lt, gt than seed 
+                return polar.get_interpolated (opPoint.specVar, opPoint.specValue, opPoint.optVar, 
+                                               allow_outside_range=True) 
                 
         return None
 
@@ -1751,6 +1935,31 @@ class GeoTarget_Definition:
             self._weighting = None
         else: 
             self._weighting = aVal 
+
+    @property
+    def weighting_abs (self): 
+        """ an individual weighting - default is 1 - always > 0  """
+        return 1.0 if self._weighting is None else abs(self._weighting)
+
+    def set_weighting_abs (self, aVal : float):
+        aVal = -abs(aVal) if self.weighting_fixed else abs(aVal)
+        self.set_weighting (aVal) 
+
+
+    @property
+    def weighting_fixed (self) -> str:
+        """ True if weighing is fixed aga not dynamic"""
+        # negative weighting means fixed
+        return self.weighting < 0.0 # and self._myList.dynamic_weighting
+
+    def set_weighting_fixed (self, fixed : bool) -> str:
+        # if not self._myList.dynamic_weighting:
+        #     fixed = False
+        if self.weighting > 0.0 and fixed:           
+            self.set_weighting (- self.weighting)
+        elif self.weighting < 0.0 and not fixed:
+            self.set_weighting (- self.weighting)
+
 
     @property
     def weighting_fixed_label (self) -> str:
@@ -1987,7 +2196,10 @@ class Nml_info (Nml_Abstract):
     &info                                          ! main control of optimization
     description(1)   = 'The first line ...'        ! description for thsi input file 
     description(2)   = 'and the second and so on'  !  
-    author           = 'Jochen Guenzel'            ! author of ths input file  
+    author           = 'Jochen Guenzel'            ! author of ths input file 
+    ref_airfoil(1)   = 'MH30.dat'                  ! reference airfoils 
+    ref_airfoil(2)   = 'JX-GS3-100.dat'
+    / 
     """
 
     name = "info"
@@ -2008,10 +2220,15 @@ class Nml_info (Nml_Abstract):
         # write description as single value like 
         # description(1)   = 'first line'                    
         # description(2)   = 'second'                    
+        # ref_airfoil(1)   = 'MH30.dat'                  ! reference airfoils 
 
         descriptions = self._get('description', [])        
         for i, description in enumerate (descriptions):
             self._write_entry (aStream, f"description({i+1})", description)
+
+        ref_airfoils = self._get('ref_airfoil', [])        
+        for i, ref_airfoil in enumerate (ref_airfoils):
+            self._write_entry (aStream, f"ref_airfoil({i+1})", ref_airfoil)
 
 
     def _get_descriptions_from_file (self) -> list:
@@ -2042,6 +2259,9 @@ class Nml_info (Nml_Abstract):
     def descriptions_string (self) -> str:      
         return '\n'.join(self.descriptions)
 
+    @property
+    def ref_airfoils_pathFileName (self) -> list:           return self._get('ref_airfoil', default=[])
+    def set_ref_airfoils_pathFileName (self, aList:list):   self._set ('ref_airfoil', [line for line in aList if line]) 
 
 
 class Nml_optimization_options (Nml_Abstract):

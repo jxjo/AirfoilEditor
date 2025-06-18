@@ -21,7 +21,7 @@ from pyqtgraph          import icons
 
 from base.common_utils  import *
 from base.panels        import Edit_Panel, Container_Panel
-from base.widgets       import ToolButton, Icon
+from base.widgets       import ToolButton, Icon, Widget
 from base.artist        import Artist
 
 logger = logging.getLogger(__name__)
@@ -39,18 +39,32 @@ class Diagram (QWidget):
 
     """
 
-    width  = (800, None)                # (min,max) 
-    height = (400, None)                # (min,max)
+    _width  = (200, None)                # (min,max) 
+    _height = (100, None)                # (min,max)
 
     name   = "My Diagram"               # will be shown in Tabs 
 
 
-    def __init__(self, parent, getter = None, **kwargs):
+    def __init__(self, parent, 
+                 getter = None, 
+                 width=None, 
+                 height=None, 
+                 **kwargs):
         super().__init__(parent, **kwargs)
 
         self._getter = getter
         self._myApp  = parent
         self._section_panel = None 
+
+        # set width and height 
+
+        if width is not None: 
+            self._width = width
+        if height is not None: 
+            self._height = height
+
+        Widget._set_width  (self, self._width)
+        Widget._set_height (self, self._height)
 
         # create graphics widget 
 
@@ -197,6 +211,9 @@ class Diagram (QWidget):
 
             logger.debug (f"{str(self)} refresh")
 
+            if self._viewPanel:
+                self._viewPanel.refresh()                                       # first view panel as diagram settings could change
+
             item : Diagram_Item
             for item in self.diagram_items:
                 if item.isVisible(): 
@@ -204,8 +221,6 @@ class Diagram (QWidget):
                 if also_viewRange:                                              # also setup view range if not visible
                     item.setup_viewRange()  
 
-            if self._viewPanel:
-                self._viewPanel.refresh()
 
     @override
     def showEvent (self, ev):

@@ -44,6 +44,14 @@ class Case_Abstract:
 
         return f"{cls.DESIGN_NAME_BASE}{iDesign:4}{extension}"
 
+    @classmethod
+    def get_iDesign (cls, airfoil : Airfoil) -> int:
+        """ get iDesign from Airfoil fileName - or None if couldn't retrieved"""
+
+        fileName = airfoil.fileName_stem
+        if fileName.startswith (cls.DESIGN_NAME_BASE):
+            return int (fileName [len(cls.DESIGN_NAME_BASE):])
+
 
     # ---------------------------------
 
@@ -82,6 +90,11 @@ class Case_Abstract:
     def airfoil_designs (self) -> list[Airfoil]: 
         """ list of airfoil designs - to be overridden"""
         return self._airfoil_designs     
+      
+    @property
+    def airfoils_ref (self) -> list[Airfoil]:
+        """ individual reference airfoils of this case"""
+        return []
 
 
     def initial_airfoil_design (self) -> Airfoil:
@@ -314,7 +327,7 @@ class Case_Optimize (Case_Abstract):
 
     """
 
-    def __init__(self, airfoil_or_input_file : Airfoil | str, workingDir=None, is_new=False):
+    def __init__(self, airfoil_or_input_file : Airfoil | str | None, workingDir=None):
 
         self._airfoil_seed     = None   
         self._airfoil_final    = None
@@ -325,16 +338,20 @@ class Case_Optimize (Case_Abstract):
 
         # init input file instance 
 
-        if isinstance (airfoil_or_input_file, Airfoil):
-            airfoil : Airfoil = airfoil_or_input_file
-            input_fileName = Input_File.fileName_of (airfoil) 
+        if airfoil_or_input_file is None:
 
-            self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName, is_new=is_new)
+            self._input_file    = Input_File ("new.xo2", workingDir=workingDir, is_new=True)
+
+        elif isinstance (airfoil_or_input_file, Airfoil):
+
+            airfoil : Airfoil = airfoil_or_input_file
+            input_fileName      = Input_File.fileName_of (airfoil) 
+            self._input_file    = Input_File (input_fileName, workingDir=airfoil.pathName)
 
         elif isinstance (airfoil_or_input_file, str):
 
             fileName : str      = airfoil_or_input_file
-            self._input_file    = Input_File (fileName, workingDir=workingDir, is_new=is_new)
+            self._input_file    = Input_File (fileName, workingDir=workingDir)
 
         else: 
             raise ValueError (f"{airfoil_or_input_file} not a valid argument")
@@ -383,6 +400,11 @@ class Case_Optimize (Case_Abstract):
         """ list of airfoil designs"""
         return self.results.designs_airfoil
 
+    @override
+    @property
+    def airfoils_ref (self) -> list[Airfoil]:
+        """ individual reference airfoils of this case"""
+        return self.input_file.airfoils_ref
 
     @property
     def input_file (self) -> Input_File:
@@ -457,6 +479,13 @@ class Case_Optimize (Case_Abstract):
 
     # ---- Methods -------------------------------------------
 
+    def clear_results (self):
+        """ removes all existing results - deletes result directory  """
+
+        self._results = Xo2_Results (self.workingDir, self.outName, remove_result_dir=True, remove_airfoil=True)
+        self._results.set_results_could_be_dirty ()
+
+
     def run (self):
         """ start a new optimization run """
 
@@ -465,16 +494,12 @@ class Case_Optimize (Case_Abstract):
             # be sure all changes written to file 
             self.input_file.save_nml()
 
-            rc = self.xo2.run (self.outName, self.input_file.fileName)
+            self.xo2.run (self.outName, self.input_file.fileName)
 
-            if rc == 0: 
-                # re-init results - remove result_dir and result airfoil as Xoptfoil2 is slow 
-                self._results = Xo2_Results (self.workingDir, self.outName, remove_result_dir=True, remove_airfoil=True)
-                self._results.set_results_could_be_dirty ()
 
 
     def state_info (self):
-        """returns stae info tuple of current state (progress)
+        """returns state info tuple of current state (progress)
 
         Returns:
             state: xo2 state

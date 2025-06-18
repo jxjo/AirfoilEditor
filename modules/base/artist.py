@@ -22,6 +22,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt       import QtCore
 from PyQt6.QtCore       import pyqtSignal
+from PyQt6.QtWidgets    import QGraphicsGridLayout
 
 from pyqtgraph.graphicsItems.ScatterPlotItem    import Symbols
 from pyqtgraph.graphicsItems.GraphicsObject     import GraphicsObject
@@ -37,7 +38,7 @@ from base.spline        import Bezier
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 COLOR_EDITABLE      = QColor('orange')                          # Movable Point 
@@ -167,8 +168,9 @@ class Movable_Point (pg.TargetItem):
             symbol = self._symbol_movable
             size = size if size is not None else 9 
 
-            brush_color = QColor(color) if color else COLOR_EDITABLE
-            brush_color = QColor(brush_color.darker(200))
+            color = color if color else COLOR_EDITABLE
+            brush_color = QColor(color)
+            brush_color.darker(200)
 
             color = movable_color if movable_color is not None else COLOR_EDITABLE
             hoverBrush = COLOR_HOVER
@@ -183,17 +185,18 @@ class Movable_Point (pg.TargetItem):
             symbol = self._symbol_fixed
             size = size if size is not None else 9 
 
-            penColor = QColor (color).darker (120)
+            penColor = QColor (color)
+            penColor.darker (120)
 
             pen = pg.mkPen (penColor, width=1)
 
             if brush is not None: 
-                brush_color = brush
+                brush_color = QColor(brush)
             else:
                 brush_color = QColor(penColor)  
 
-            hoverBrush  = QColor(color)
-            hoverPen = pg.mkPen (color, width=1) 
+            hoverBrush = QColor(color)
+            hoverPen   = pg.mkPen (color, width=1) 
 
         # init TargetItem  
 
@@ -742,18 +745,11 @@ class Artist(QObject):
 
         if self.show: 
             if refresh:
-                if not self._plots:
-                    self.plot()                                 # first time, up to now no plots created ...
-                else: 
-                    self.refresh()                              # normal refresh 
+                self.plot()                                 
 
         else:
-            p : pg.PlotDataItem
-            for p in self._plots:                               # always hide all plot 
-                p.hide()
-
-            if self.show_legend:                                # and remove legend 
-                self._remove_legend_items ()
+            self._remove_legend_items ()
+            self._remove_plots ()
 
             self.set_help_message (None)                        # remove user help message
 
@@ -848,6 +844,10 @@ class Artist(QObject):
                 if self._plots:
                     logger.debug  (f"{self} of {self._pi} - plot {len(self._plots)} items")
 
+            # hack - set row height - as it tends to change in LegendItem
+            if self.show_legend:
+                self._adjust_legend_item_height ()
+
 
     def refresh(self):
         """
@@ -855,11 +855,8 @@ class Artist(QObject):
         """
 
         if self.show and self._pi.isVisible():
-            self._refresh_plots ()
 
-            if self.show_legend:
-                self._remove_legend_items ()
-                self._add_legend_items()
+            self.plot()
 
 
     # --------------  private -------------
@@ -887,19 +884,14 @@ class Artist(QObject):
 
         return p 
 
-
-    def _plot_point (self, 
+    def _plot_circle (self, 
                     *args,                                              # optional: tuple or x,y
                      symbol='o', color=None, style=Qt.PenStyle.SolidLine, 
-                     size=7, pxMode=True, 
+                     size : float = None,                               # size of circle 
                      zValue=3,
-                     brushColor=None, brushAlpha=1.0,
-                     text=None, textColor=None, textFill=None,
-                     textPos=None, anchor=None, angle=0,
-                     ensureInBounds=False,
+                     brush=None,                                        # defaults to transparent black
                      name: str | None = None,                           # to show in legend 
                      ) -> pg.ScatterPlotItem:
-        """ plot point with text item at x, y - text will follow the point """
 
         if isinstance (args[0], tuple):
             x = args[0][0] 
@@ -911,35 +903,62 @@ class Artist(QObject):
         # (optional) transformation of coordinate 
         xt, yt = self.t_fn (x,y)
 
-        # pen style
+        # pen style and brush
         color = QColor(color) if color else QColor(self.COLOR_NORMAL)
         pen = pg.mkPen (color, style=style)   
 
-        # brush style 
-        brushColor = QColor(brushColor) if brushColor else color 
-        brushColor.setAlphaF (brushAlpha)
-        brush = pg.mkBrush(brushColor) 
-        p = pg.ScatterPlotItem  ([xt], [yt], symbol=symbol, size=size, pxMode=pxMode, 
+        if brush is None: 
+            brush = QColor ("black")
+            brush.setAlphaF (0.3)
+
+        p = pg.ScatterPlotItem  ([xt], [yt], symbol=symbol, size=size, pxMode=False, 
                                  pen=pen, brush=brush, name=name)
         p.setZValue(zValue)                                 # move to foreground 
 
-        # plot label as TextItem 
-
-        if text is not None: 
-            color = QColor(textColor) if textColor else QColor(self.COLOR_NORMAL)
-            anchor = anchor if anchor else (0, 1)
-
-            t = pg.TextItem(text, color, anchor=anchor, angle=angle, fill=textFill, ensureInBounds=ensureInBounds)
-
-            # ? attach to parent doesn't work (because of PlotDataItem? )
-            textPos = textPos if textPos is not None else (xt,yt)
-            t.setPos (*textPos)
-            t.setZValue(3)                                      # move to foreground 
-
-            self._add (t)
-
         return self._add(p, name=name) 
 
+
+    def _plot_point (self,*args, 
+                  text : str = None, textColor = None, textFill  = None, textOffset = (0,0), anchor = (0,1),
+                  symbol = 'o', color  = "red", brush  = None, size = 7, style=Qt.PenStyle.SolidLine,
+                  zValue=3,
+                  name=None,
+                  **kwargs) -> pg.TargetItem:
+        """ plot point with text item at x, y - text will follow the point """
+
+        # support x,y or (x,y) or  JPoint 
+
+        if len(args) == 1:
+            if isinstance (args[0], JPoint):
+                xy = args[0].xy
+            else: 
+                xy = args[0]
+        elif len(args) == 2:
+            xy = (args[0], args[1])
+        else: 
+            raise ValueError ("Arguments couldn't be interpreted as x,y")
+
+        # symbol pen colors and brushes 
+
+        pen = pg.mkPen (color, width=1, style=style)
+        brush_color = brush if brush is not None else QColor(color) 
+
+        # text (label) options 
+
+        color = QColor(textColor) if textColor else QColor(self.COLOR_NORMAL)
+        labelOpts = {'anchor': anchor, 'color': color, 'fill': textFill, 'offset': textOffset}
+
+        # create TargetItem  
+
+        p = pg.TargetItem (pos=xy, pen= pen, brush = brush_color, 
+                            symbol=symbol, size=size, movable=False,
+                            label = text, labelOpts = labelOpts, **kwargs)
+
+        p.setZValue (zValue)
+
+        self._add (p, name=name)
+
+        return p 
 
 
     def _plot_text (self, text : str, color=None, fontSize=None, 
@@ -996,25 +1015,73 @@ class Artist(QObject):
             self._plots.remove (p)
 
 
+    def _add_legend_item (self, plot_item, name : str = None):
+        """ add legend item having 'name'"""
 
+        if self._pi.legend is not None and self.show_legend and name:
 
-    def _add_legend_items (self):
-        """ add legend items of self """
-        if self._pi.legend is not None:
-            p : pg.PlotDataItem
-            for p in self._plots:
-                if isinstance (p, pg.PlotDataItem) or isinstance (p, pg.ScatterPlotItem):
-                    name = p.name()
-                    if name:
-                        self._pi.legend.addItem (p, name)
+            # avoid dublicates in legend
+
+            for legend_item in self._pi.legend.items:
+                label_item = legend_item [1]                        # index 1 is name (0 is symbol) 
+                if label_item.text == name:
+                    return 
+
+            if isinstance (plot_item, pg.PlotDataItem) or isinstance (plot_item, pg.ScatterPlotItem)  : 
+ 
+                self._pi.legend.addItem (plot_item, name)
+                plot_item.opts['name'] = name
+
+            elif isinstance (plot_item,  pg.TargetItem):
+
+                # create a dummy PlotItem as TargetItem won't appear in legend 
+                size_legend = 10    
+                pen    = plot_item.pen
+                symbol = plot_item._path 
+                brush  = plot_item.brush
+                p = pg.ScatterPlotItem ([], [], pen= pen, brush=brush, symbol=symbol, size=size_legend, pxMode=True)
+                self._add (p, name=name) 
+
+            else: 
+
+                raise ValueError (f"{type(plot_item)} not supported for legend")
+     
 
 
     def _remove_legend_items (self):
         """ removes legend items of self """
+
         if self._pi.legend is not None:
-            for p in self._plots:
-                if isinstance (p, pg.PlotDataItem) or isinstance (p, pg.ScatterPlotItem) :
-                    self._pi.legend.removeItem (p)
+
+            for plot_item in self._plots:
+                try:                                                # e.g. TargetItems do not have name()
+                    self._pi.legend.removeItem (plot_item.name())
+                except:
+                    pass
+
+            # hack - to avoid empty rows in legend - rebuild legend 
+            legend_layout : QGraphicsGridLayout = self._pi.legend.layout
+            for sample, label in self._pi.legend.items:
+                legend_layout.removeItem(sample)                    # just remove from layout (not from scene) 
+                legend_layout.removeItem(label)
+            for sample, label in self._pi.legend.items:
+                self._pi.legend._addItemToLayout(sample, label)
+
+            self._adjust_legend_item_height ()
+
+
+
+    def _adjust_legend_item_height (self):
+        """ set height of all single legend items"""
+
+        if self._pi.legend is not None:
+
+            item_height = 30
+            legend_layout : QGraphicsGridLayout = self._pi.legend.layout
+            for row in range(legend_layout.rowCount()):
+                legend_layout.setRowFixedHeight (row, item_height)
+
+            self._pi.legend.updateSize()                            # adjust size of legend box 
 
 
     def _refresh_plots (self):
@@ -1023,28 +1090,16 @@ class Artist(QObject):
         self.plot()             # default - normal plot 
 
 
-    def _add(self, aPlot: pg.PlotDataItem, name = None):
+    def _add(self, plot_item: pg.PlotDataItem, name = None):
         """ 
         Add new plot item to self plots
             name: ... of item in legend  
         """
 
-        self._pi.addItem (aPlot)
-        self._plots.append(aPlot)
+        self._pi.addItem (plot_item)
+        self._plots.append(plot_item)
 
-        # 'manual' control if aPlot should appear in legend 
-        if self.show_legend and name and isinstance (aPlot, pg.PlotDataItem) : 
-
-            # avoid dublicates in legend
-            label_exists = False
-            for legend_item in self._pi.legend.items:
-                label_item = legend_item [1]
-                if label_item.text == name:
-                    label_exists = True
-                    break
-
-            if not label_exists:                             
-                self._pi.legend.addItem (aPlot, name)
-                aPlot.opts['name'] = name
+        # add to legend having name 
+        self._add_legend_item (plot_item, name)
  
-        return aPlot 
+        return plot_item 

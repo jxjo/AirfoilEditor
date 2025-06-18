@@ -32,8 +32,8 @@ from model.airfoil_examples import Example
 class mode_color:
     """ colors as kwargs for the different modes """
 
-    MODIFY        = {'color': 'deeppink',      'alpha' : 0.2 }
-    OPTIMIZE      = {'color': 'darkturquoise', 'alpha' : 0.2 }  
+    MODIFY        = {'color': 'deeppink',          'alpha' : 0.2 }
+    OPTIMIZE      = {'color': 'mediumspringgreen', 'alpha' : 0.2 }  # darkturquoise
 
 
 # ----- common methods -----------
@@ -175,14 +175,14 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                                                 set=self.set_airfoil_by_fileName, 
                                                 options=self.airfoil_fileNames_sameDir,
                                                 hide=self.no_files_here,
-                                                toolTip=self._toolTip,
+                                                toolTip=None,               # is set separately 
                                                 signal=False)
         else:             
             self._combo_widget = ComboBox      (l, get=self.airfoil_fileName, 
                                                 set=self.set_airfoil_by_fileName, 
                                                 options=self.airfoil_fileNames_sameDir,
                                                 hide=self.no_files_here, 
-                                                toolTip=self._toolTip,
+                                                toolTip=None,               # is set separately 
                                                 signal=False)
         if withOpen:
 
@@ -192,7 +192,8 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                                                 hide=lambda: not self.no_files_here() ) 
             # ... or icon button together with combo box 
             self._icon_widget =   ToolButton (l, icon=Icon.OPEN, set=self._open_airfoil, signal=False,
-                                                hide=self.no_files_here)
+                                                hide=self.no_files_here,
+                                                toolTip="Select an airfoil in a different directory")
             # l.insertStretch (-1)
 
         l.setContentsMargins (QMargins(0, 0, 0, 0))
@@ -215,10 +216,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._get_properties ()
         self._set_Qwidget_static ()
         self._set_Qwidget ()
-
-        name = self.airfoil_fileName() if self.airfoil_fileName() is not None else ""
-        tip = f"{self._toolTip}: {name}" if self._toolTip else f"{name}"
-        self._combo_widget.setToolTip (tip)  
+        self._set_comboBox_tooltip ()
 
 
     @override
@@ -229,6 +227,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
         if self._combo_widget:
             self._combo_widget.refresh (disable) 
+            self._set_comboBox_tooltip ()
         if self._button_widget:
             self._button_widget.refresh (disable) 
         if self._icon_widget:
@@ -289,9 +288,6 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
         self._no_files_here = None                      # reset cached value 
 
-        # set tooltip of combobox to show full filename
-        self._combo_widget.setToolTip (self.airfoil_fileName())
-
         self._set_value (anAirfoil)
 
         # refresh the sub widgets -> hide / show 
@@ -299,15 +295,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         for w in self.findChildren (Widget):
             w.refresh()
 
-        # # do manual set value and callback to avoid refresh ping-pong
-        # self._val = anAirfoil 
-
-        # # leave self for callback in a few ms 
-        # timer = QTimer()                                
-        # timer.singleShot(10, lambda: self._set_value_callback ())  
-
-        # # no emit_change   
-        # pass
+        self._set_comboBox_tooltip()
 
 
     def airfoil_fileName (self) -> str | None:
@@ -354,3 +342,13 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             fileNames.append(os.path.basename(aFileName))
 
         return fileNames
+
+
+    def _set_comboBox_tooltip (self):
+        """ set tooltip for comboBox - normally pathFileName of airfoil"""
+
+        if self._combo_widget:
+
+            toolTip = self.airfoil.info_as_html if self.airfoil else self._toolTip 
+
+            self._combo_widget.setToolTip (toolTip)  

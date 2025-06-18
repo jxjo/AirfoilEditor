@@ -264,7 +264,8 @@ def round_up (number : float, decimals : int =0) -> float:
     """ round number up with to deciamls"""
 
     multiplier = 10 ** decimals
-    return math.ceil(number * multiplier) / multiplier
+    multiplied = round(number * multiplier, 1)        # avoid Python float artefacts 
+    return math.ceil(multiplied) / multiplier
 
 
 
@@ -272,7 +273,8 @@ def round_down (number : float, decimals : int =0) -> float:
     """ round number down with to deciamls"""
 
     multiplier = 10 ** decimals
-    return math.floor(number * multiplier) / multiplier
+    multiplied = round(number * multiplier, 1)        # avoid Python float artefacts 
+    return math.floor(multiplied) / multiplier
 
 
 

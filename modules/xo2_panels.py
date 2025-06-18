@@ -15,8 +15,9 @@ from PyQt6.QtWidgets        import QDialog, QFileDialog
 from base.widgets           import * 
 from base.panels            import Edit_Panel, Toaster, MessageBox
 
+from airfoil_dialogs        import Airfoil_Info_Dialog
 from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
-from airfoil_ui_panels      import Polar_Definition_Dialog
+from airfoil_panels      import Polar_Definition_Dialog
 
 from xo2_dialogs            import *
 
@@ -95,7 +96,19 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
     name = 'Optimize Mode'
 
-    
+    @override
+    @property
+    def _isDisabled (self) -> bool:
+        """ overloaded: disable when optimize run dialog is open"""
+        return self.app._xo2_run_dialog is not None
+
+    @override
+    def _on_widget_changed (self, *_):
+        """ user changed data in widget"""
+        # no automatic change handling 
+        pass
+
+
     @property
     def workingDir (self) -> str:
         #todo 
@@ -108,29 +121,30 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ComboBox (l,r,c, colSpan=2,  
+        ComboBox    (l,r,c, colSpan=2,  
                         get=lambda:self._input_fileName, set=self._set_input_fileName,
                         options= lambda: Input_File.files_in_dir (self.workingDir),
                         toolTip="The Xoptfoil2 input file")
-        ToolButton (l,r,c+3, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
+        ToolButton  (l,r,c+3, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
+        r += 1
+        Button      (l,r,c, width=90, text="New Version", set=self.app.case_optimize_new_version,
+                        toolTip="Create a new version of the existing input file")
+        Button      (l,r,c+1, width=90, text="New ...", set=self.app.optimize_new,
+                        toolTip="Create a new input file")
+        r += 1
+        SpaceR      (l,r,height=10, stretch=0)
+        r += 1
+        Button      (l,r,c, text="Run Xoptfoil2", colSpan=2, button_style = button_style.PRIMARY,
+                        set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
+        r += 1
+        SpaceR      (l,r)
+        r += 1
+        Button      (l,r,c,  text="&Close",  width=90, 
+                        set=lambda : self.app.mode_optimize_finished(),
+                        toolTip="Leave optimization mode")
+        r += 1
+        SpaceR      (l,r, height=5, stretch=0)
 
-        r += 1
-        Button   (l,r,c, width=90, text="New Version", set=self._new_version,
-                  toolTip="Create a new version of the existing input file")
-
-        r += 1
-        SpaceR (l,r)
-        l.setRowStretch (r,2)
-        r += 1
-        Button (l,r,c,  text="&Finish ...", width=90, 
-                        set=lambda : self.app.mode_optimize_finished(ok=True), 
-                        toolTip="Save current airfoil, optionally modifiy name and leave optimize mode")
-        r += 1
-        Button (l,r,c,  text="&Cancel",  width=90, 
-                        set=lambda : self.app.mode_optimize_finished(ok=False),
-                        toolTip="Cancel optimization of airfoil")
-        r += 1
-        SpaceR (l,r, height=5, stretch=0)
         l.setColumnStretch (1,2)
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
@@ -142,17 +156,11 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
         return self.input_file.fileName
 
     def _set_input_fileName (self, aFileName : str, workingDir=None):
-
+        """ set new case by name of input file"""
         if workingDir is None: 
             workingDir = self.workingDir
 
         self.app.optimize_change_case (aFileName, workingDir)
-
-
-    def _new_version (self): 
-        """ create new version of an existing case self.input_file"""
-
-        self.app.case_optimize_new_version ()
 
 
     def _open_input_file (self):
@@ -179,15 +187,14 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
     """ Main panel of optimization"""
 
     name = 'Case'
-    _width  = (320, 320)
+    _width  = (320, 400)
 
-    @override
-    def _add_to_header_layout(self, l_head: QHBoxLayout):
-        """ add Widgets to header layout"""
+    # @override
+    # def _add_to_header_layout(self, l_head: QHBoxLayout):
+    #     """ add Widgets to header layout"""
 
-        l_head.addStretch(1)
-        Button (l_head, text="Run Xoptfoil2", width=120, button_style = button_style.PRIMARY,
-                set=self.app.optimize_run, toolTip="Run Optimizer Xoptfoil2")        
+    #     Button (l_head, text="Run Xoptfoil2", width=120, button_style = button_style.PRIMARY,
+    #             set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
 
     @property
     def optimization_options (self) -> Nml_optimization_options:
@@ -216,7 +223,12 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         #                 hide=lambda: not self.input_file.nml_info.author)
         r += 1
         Field       (l,r,c, lab="Final Airfoil", 
-                     get=lambda: self.input_file.airfoil_final_fileName)
+                     get=lambda: self.input_file.airfoil_final_fileName,
+                     style=lambda: style.GOOD if self.case.airfoil_final else style.NORMAL,
+                     toolTip=lambda: (self.case.airfoil_final.info_as_html if self.case.airfoil_final else "it does not yet exist"))
+        # ToolButton  (l,r,c+2, icon=Icon.SHOW_INFO, set=self._show_info_airfoil_final,
+        #              hide=lambda: self.case.airfoil_final is None,
+        #              toolTip="Edit options of shape functions")
         r += 1
         Label       (l,r,c, get="Seed Airfoil", lab_disable=True)
         w = Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, textOpen="&Open", widthOpen=90, 
@@ -225,9 +237,11 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
 
         r += 1
         ComboBox    (l,r,c, lab="Shape functions", lab_disable=True,
-                     get=lambda: self.optimization_options.shape_functions_label_long, 
-                     set=self.optimization_options.set_shape_functions_label_long,
-                     options=lambda: self.optimization_options.shape_functions_list)     
+                     obj=self.optimization_options, prop=Nml_optimization_options.shape_functions_label_long,
+                     options=lambda: self.optimization_options.shape_functions_list,
+                     disable=lambda: self.input_file.airfoil_seed.isBezierBased,
+                     toolTip=lambda: "Bezier based seed airfoil is master of shape functions" if self.input_file.airfoil_seed.isBezierBased \
+                                     else "Select shape functions for optimization")     
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_shape_functions,
                      toolTip="Edit options of shape functions")
 
@@ -235,7 +249,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         r += 1
         l.setRowStretch (r,1)
         l.setColumnMinimumWidth (0,90)
-        l.setColumnStretch (1,5)
+        l.setColumnStretch (1,3)
         return l 
 
 
@@ -252,6 +266,12 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             
             self.app._on_xo2_input_changed ()
 
+
+    def _show_info_airfoil_final (self):
+        """ show little info dialog about final airfoil"""
+
+        dialog = Airfoil_Info_Dialog (self,self.case.airfoil_final, parentPos=(0.8,0,3), dialogPos=(0,1))
+        dialog.exec () 
 
 
     def _edit_shape_functions (self):
@@ -297,7 +317,7 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
     """ Define operating conditions"""
 
     name = 'Operating Conditions'
-    _width  = 230
+    _width  = (230,350)
 
 
     @property
@@ -329,7 +349,7 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         r += 1
         l.setRowStretch (r,3)
         l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (0,2)
+        l.setColumnStretch (0,1)
 
         return l
 
@@ -369,9 +389,6 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
 
         super().__init__ (*args, **kwargs)
 
-        # connect to update for changes made in diagram 
-        self.app.sig_opPoint_def_selected.connect  (self.set_cur_opPoint_def)
-
     
     @property
     def opPoint_defs (self) -> OpPoint_Definitions:
@@ -380,9 +397,7 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
     @property
     def cur_opPoint_def (self) -> OpPoint_Definition:
         """ current, selected opPoint def"""
-        if not (self._cur_opPoint_def in self.opPoint_defs):                    # in case, case changed 
-            self._cur_opPoint_def = self.opPoint_defs [0] if self.opPoint_defs else None
-        return self._cur_opPoint_def
+        return self.opPoint_defs.current_opPoint_def
 
 
     def _init_layout (self): 
@@ -414,58 +429,32 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
         return l
 
 
-    def set_cur_opPoint_def (self, opPoint_def):
-        """ slot - set from diagram"""
-        self._cur_opPoint_def = opPoint_def
-        self.refresh()
-
  
     def set_cur_opPoint_def_from_label (self, aStr: str):
         """ set from labelLong - for ComboBox"""
         for opPoint_def in self.opPoint_defs:
-            if opPoint_def.labelLong == aStr: 
-                self._cur_opPoint_def = opPoint_def
-                self.app.sig_opPoint_def_selected.emit(opPoint_def)
+            if opPoint_def.labelLong == aStr:
+                self.opPoint_defs.set_current_opPoint_def (opPoint_def) 
+                self.app._on_xo2_opPoint_def_selected()
                 break
 
 
     def _delete_opPoint_def (self):
         """ delete me opPoint_dev"""
 
-        if not self.opPoint_defs: return 
-
-        # define new current after deletion 
-        if len(self.opPoint_defs) > 1: 
-            if self.cur_opPoint_def.iPoint == len(self.opPoint_defs):
-                new_index = -1
-            elif self.cur_opPoint_def.iPoint > 1:
-                new_index = self.cur_opPoint_def.iPoint - 1
-            else:
-                new_index = 0 
-        else: 
-            new_index = None
-
-        self.cur_opPoint_def.delete_me ()
-
-        # set new current 
-        if new_index is not None: 
-            self._cur_opPoint_def = self.opPoint_defs [new_index]
-        else: 
-            self._cur_opPoint_def = None
+        self.opPoint_defs.delete (self.cur_opPoint_def)
 
         self.refresh ()
         self.app._on_xo2_input_changed()
-        self.app.sig_opPoint_def_selected.emit(self.cur_opPoint_def)
 
 
     def _add_opPoint_def (self):
         """ add a new opPoint_dev after current """
 
-        self._cur_opPoint_def = self.opPoint_defs.create_after (self.cur_opPoint_def)
+        self.opPoint_defs.create_after (self.cur_opPoint_def)
 
         self.refresh ()
         self.app._on_xo2_input_changed()
-        self.app.sig_opPoint_def_selected.emit(self.cur_opPoint_def)
 
 
     def _edit_opPoint_def (self):
@@ -474,7 +463,7 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
         parentPos=(0.9, 0.2) 
         dialogPos=(0,1)
 
-        self.app.edit_opPoint_def (self, parentPos, dialogPos, self.cur_opPoint_def)
+        self.app.edit_opPoint_def (self, parentPos, dialogPos)
 
 
 
@@ -482,7 +471,7 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
     """ Edit geometry target """
 
     name = 'Geometry Targets'
-    _width  = 210
+    _width  = 250
 
     @property
     def geometry_targets (self) -> Nml_geometry_targets:
@@ -503,31 +492,33 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
         CheckBox    (l,r,c, text="Thickness", colSpan=2, 
                      get=lambda: self.thickness is not None, 
                      set=lambda x: self.geometry_targets.activate_thickness(x))
-        FieldF      (l,r,c+2, width=70, unit="%", step=0.2,
+        FieldF      (l,r,c+2, width=70, unit="%", step=0.01,
                      obj=lambda: self.thickness, prop=GeoTarget_Definition.optValue,
                      hide=lambda: not self.thickness)
         r += 1
-        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.2, lim=(-10,10), dec=2,
-                     obj=lambda: self.thickness, prop=GeoTarget_Definition.weighting,
+        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.1, lim=(-10,10), dec=2,
+                     obj=lambda: self.thickness, prop=GeoTarget_Definition.weighting_abs,
                      hide=lambda: self.thickness is None)
-        Label       (l,r,c+3, style=style.COMMENT, 
-                     get=lambda: self.thickness.weighting_fixed_label,
-                     hide=lambda: self.thickness is None)
+        CheckBox    (l,r,c+3, text="Fix", align=ALIGN_RIGHT,
+                     obj=lambda: self.thickness, prop=OpPoint_Definition.weighting_fixed,
+                     hide=lambda: self.thickness is None,
+                     toolTip="Fix this weighting during Dynamic Weighting")
 
         r += 1
         CheckBox    (l,r,c, text="Camber", colSpan=2, 
                      get=lambda: self.camber is not None, 
                      set=lambda x: self.geometry_targets.activate_camber(x))
-        FieldF      (l,r,c+2, width=70, unit="%", step=0.2,
+        FieldF      (l,r,c+2, width=70, unit="%", step=0.01,
                      obj=lambda: self.camber, prop=GeoTarget_Definition.optValue,
                      hide=lambda: not self.camber)
         r += 1
-        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.2, lim=(-10,10), dec=2,
-                     obj=lambda: self.camber, prop=GeoTarget_Definition.weighting,
+        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.1, lim=(-10,10), dec=2,
+                     obj=lambda: self.camber, prop=GeoTarget_Definition.weighting_abs,
                      hide=lambda: self.camber is None)
-        Label       (l,r,c+3, style=style.COMMENT, 
-                     get=lambda: self.camber.weighting_fixed_label,
-                     hide=lambda: self.camber is None)
+        CheckBox    (l,r,c+3, text="Fix", align=ALIGN_RIGHT,
+                     obj=lambda: self.camber, prop=OpPoint_Definition.weighting_fixed,
+                     hide=lambda: self.camber is None,
+                     toolTip="Fix this weighting during Dynamic Weighting")
         r += 1
         l.setRowStretch (r,2)
         r += 1
@@ -536,6 +527,7 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
                hide=lambda: len (self.geometry_targets.geoTarget_defs )== 0)        
         l.setColumnMinimumWidth (0,20)
         l.setColumnMinimumWidth (1,70)
+        l.setColumnMinimumWidth (3,50)
         l.setColumnStretch (4,2)
 
         return l
@@ -576,7 +568,7 @@ class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
                      set=self._edit_curvature_options,
                      hide=lambda: not self.curvature.check_curvature)
         r += 1
-        Label       (l,r,c, style=style.COMMENT, colSpan=2, 
+        Label       (l,r,c, style=style.COMMENT, colSpan=2, lab_disable=True,  
                      get="Allow reversal on ...",
                      hide=lambda: not self.curvature.check_curvature)
         r += 1
@@ -618,10 +610,8 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
-        l_head.addStretch(1)
         Button (l_head, text="Input File", width=70, button_style = button_style.SUPTLE,
                 set=self._edit_input_file, toolTip="Direct editing of the Xoptfoil2 input file")        
-        # l_head.addSpacing (23)
 
 
     def _init_layout (self) -> QGridLayout:

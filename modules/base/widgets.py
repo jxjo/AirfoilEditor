@@ -103,6 +103,7 @@ class Icon (QIcon):
     FIT        = "fit" 
     RESETVIEW  = "resetView" 
     AE         = "AE"               # Airfoil Editor
+    SHOW_INFO  = "info"
 
     # for messageBox 
     SUCCESS    = "success.png" 
@@ -332,7 +333,7 @@ class Widget:
         else: 
             self._disabled   = False                                # default values 
 
-        if self._setter is None and self._prop is None and disable is None: 
+        if self._setter is None and disable is None and self._prop is None:
             self._disabled = True  
 
         self._hidden   = False                          
@@ -343,23 +344,25 @@ class Widget:
         else: 
             self._hidden_getter = None
 
+        # tooltip
+
+        self._toolTip = toolTip
 
         # style of widget 
 
         self._style_getter = style 
         self._style = None 
         self._style_role = styleRole                # apply to background or text 
-        self._palette_normal = None                 # will be copy of palette - for style reset  
         self._font = fontSize
 
-        self._toolTip = toolTip
+        self._palette_normal = None                 # will be copy of palette - for style reset  
+        self._palette_normal = self._initial_palette()
 
         # emit signal 
 
         self._signal = signal if isinstance (signal, bool) else True  
 
         # connect to parent refresh signal 
-
 
 
 
@@ -694,6 +697,7 @@ class Widget:
         self._set_Qwidget_hidden ()
         self._set_Qwidget_disabled ()
         self._set_Qwidget_style ()              # NORMAL, WARNING, etc 
+        self._set_QWidget_toolTip ()
 
 
     def _set_Qwidget_static (self, widget = None): 
@@ -714,9 +718,13 @@ class Widget:
         Widget._set_width  (widget, self._width)
         Widget._set_height (widget, self._height)
 
-        # toolTip 
+
+    def _set_QWidget_toolTip (self):
+        """ set a toolTip into self QWidget"""
+
         if self._toolTip is not None:
             toolTip = self._toolTip() if callable (self._toolTip) else self._toolTip
+            widget : QWidget = self
             widget.setToolTip (toolTip)
 
 
@@ -750,7 +758,6 @@ class Widget:
         """ set (color) style of QWidget based on self._style"""
 
         # default color_role is change the text color according to style
-        # can be olverlaoded by subclass  
 
         # QPalette.ColorRole.Text, .ColorRole.WindowText, .ColorRole.Base, .ColorRole.Window
         self._set_Qwidget_style_color (self._style, self._style_role)  
@@ -761,50 +768,72 @@ class Widget:
         low level set of colored part of widget accordings to style and color_role
             color_role = .Text, .Base (background color), .Window
         """
-        # ! ColorRole.Base and ColorRole.Window not implemented up to now
-        # if not color_role in [QPalette.ColorRole.Text, QPalette.ColorRole.WindowText]:
-        #     raise ValueError (f"{self}: color_role '{color_role}' not implemented")
+
+        # # qt so new backgrund colour will be applied  - but: no more transparent inheritence!
+        autoFill = False                                        
 
         if aStyle in [style.WARNING, style.ERROR, style.COMMENT, style.GOOD, style.HINT]:
 
-            palette : QPalette = self.palette()
-            if self._palette_normal is None:                     # store normal palette for later reset 
-                self._palette_normal =  QPalette(palette)        # create copy (otherwise is just a pointer) 
-            if self.light_mode:
-                index = self.LIGHT_INDEX
-            else: 
-                index = self.DARK_INDEX
-            color = QColor (aStyle.value[index])
+            index = self.LIGHT_INDEX if self.light_mode else self.DARK_INDEX
+
+            color          = QColor (aStyle.value[index])
+            color_disabled = QColor (color)
 
             # if it's background color apply alpha
             if color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]:
-                if aStyle == style.GOOD:
-                    color.setAlphaF (0.4) 
+                if aStyle == style.GOOD or style.HINT:
+                    color.setAlphaF (0.3) 
+                    color_disabled.setAlphaF (0.15)
                 else:
-                    if self._should_be_disabled():
-                        color.setAlphaF (0.3)
-                    else: 
-                        color.setAlphaF (0.15)
-                qwidget : QWidget = self
-                qwidget.setAutoFillBackground(True)             # important to be applied
+                    color.setAlphaF (0.15)
+                    color_disabled.setAlphaF (0.1)
+                autoFill = True                                         # apply background 
+            elif color_role in [QPalette.ColorRole.WindowText, QPalette.ColorRole.Text]:
+                pass
+            else: 
+                raise ValueError (f"ColorRole {color_role} not supported")
 
-            # palette.setColor(self.backgroundRole(), color)
-            palette.setColor(color_role, color)
+            if self._palette_normal is None: 
+                palette =  self._initial_palette ()
+                self._palette_normal = palette if palette else self.palette()
 
-            self._update_palette (palette)                      # Qt strange : on init 'setPalette' is needed
-                                                                # later compounds like SpinBox need different treatment
-        elif aStyle == style.NORMAL and self._palette_normal is not None:
-            qwidget : QWidget = self
-            qwidget.setAutoFillBackground(False)                 # transparent background again
-            self._update_palette (self._palette_normal)
+            palette =  QPalette (self._palette_normal)          # copy normal palette 
+            palette.setColor(QPalette.ColorGroup.Active,   color_role, color)
+            palette.setColor(QPalette.ColorGroup.Inactive, color_role, color)
+            palette.setColor(QPalette.ColorGroup.Disabled, color_role, color_disabled)
+
+            self._update_palette (palette, autoFill=autoFill)                     
+
+        elif aStyle == style.NORMAL :
+
+            self._reset_palette ()
 
 
-    def _update_palette (self, palette: QPalette):
-        """ set new QPalette for self"""
+    def _initial_palette (self) -> QPalette:
+        """ returns initial normal palette of self"""
 
+        return None 
+
+
+    def _update_palette (self, palette: QPalette, qwidget : QWidget = None, autoFill=False):
+        """ set new QPalette for self or qwidget if set """
+
+        if self._palette_normal is None: return 
+    
         # to overwrite if self is compound like QSpinbox ()  
-        self.setPalette (palette) 
-          
+        if qwidget is None: 
+            qwidget : QWidget = self
+
+        if qwidget.palette() != palette:
+            qwidget.setAutoFillBackground(autoFill)             # important to be applied
+            qwidget.setPalette (palette) 
+
+
+    def _reset_palette (self):
+        """ reset self (or of qwidget) palette to palette normal """
+
+        self._update_palette (self._palette_normal)
+
 
     def _getFrom_Qwidget (self):
         """returns the current value of QWidget  
@@ -866,7 +895,7 @@ class Field_With_Label (Widget):
                                     disable=disable, lab_disable=lab_disable, align=self._alignment,
                                     colSpan=1,              # label is always only 1 column
                                     rowSpan=self._rowSpan,  # rowSpan same as parent field
-                                    toolTip=toolTip)
+                                    toolTip=None)           # no tooltip on label 
             
 
     def _layout_add (self, widget=None):
@@ -955,19 +984,17 @@ class Label (Widget, QLabel):
 
        # self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
 
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
 
-
-    def _set_Qwidget_style (self): 
-        """ set (color) style of QWidget based on self._style"""
-
-        if self._style == style.NORMAL and not self.light_mode:
-
+        if not self.light_mode:
             # dark mode: make labels a little darker (not white)      
-            palette = QPalette (self.palette())
+            palette =  self.palette()
             palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
-            self.setPalette (palette)
-
-        super()._set_Qwidget_style ()  
+            return palette
+        else: 
+            return None 
 
 
     def _set_Qwidget (self, **kwargs):
@@ -1024,6 +1051,23 @@ class Field (Field_With_Label, QLineEdit):
             self.setCursorPosition (cursor_pos)
         else: 
             self.setText (str(val))
+
+
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+
+        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base)
+        color.setAlphaF (0.3)
+        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, color)
+
+        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+        color = color.darker (180)
+        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+
+        return palette
 
 
     def _on_finished(self):
@@ -1106,13 +1150,26 @@ class FieldI (Field_With_Label, QSpinBox):
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
 
-    def _update_palette (self, palette: QPalette):
+        palette =  self.palette()
+
+        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+        color = color.darker (180)
+        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+
+        return palette
+
+
+    @override
+    def _update_palette (self, palette: QPalette, autoFill=False):
         """ set new QPalette for self"""
-        # Qt bug?
-        # overwritten as Palette has to be set for LineEdit of self  
-        self.lineEdit().setPalette (palette) 
- 
+        # for QSpinbox LineEdit is the relevant qwidget 
+        # super()._update_palette (palette)
+        super()._update_palette (palette, qwidget=self.lineEdit(), autoFill=autoFill) 
+
 
     def stepBy (self, step):
         # Qt overloaded: Detect when a Spin Button is pressed with new value 
@@ -1169,8 +1226,8 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self.editingFinished.connect(self._on_finished)
 
 
+    @override
     def _get_properties (self): 
-        # overloaded
         super()._get_properties () 
         self._lim = self._get_value (self._lim_getter)
 
@@ -1218,12 +1275,26 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
 
-    def _update_palette (self, palette: QPalette):
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+
+        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+        color = color.darker (180)
+        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+
+        return palette
+
+
+    @override
+    def _update_palette (self, palette: QPalette, autoFill=False):
         """ set new QPalette for self"""
 
-        # Qt bug?
-        # overwritten as Palette has to be set for LineEdit of self  
-        self.lineEdit().setPalette (palette) 
+        # for QDoubleSpinbox LineEdit is the relevant qwidget 
+        # super()._update_palette (palette)
+        super()._update_palette (palette, qwidget=self.lineEdit(), autoFill=autoFill) 
 
 
     def stepBy (self, step):
@@ -1520,18 +1591,18 @@ class CheckBox (Widget, QCheckBox):
         super()._set_Qwidget_static ()
 
 
-    @override 
-    def _set_Qwidget_style (self): 
-        """ set (color) style of QWidget based on self._style"""
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
 
-        if self._style == style.NORMAL and not self.light_mode:
 
-            # dark mode: make labels a little darker (not white)      
-            palette = QPalette (self.palette())
+        if not self.light_mode:
+            palette =  self.palette()
             palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
-            self.setPalette (palette)
+        else: 
+            palette = None
 
-        super()._set_Qwidget_style()
+        return palette
 
 
     def _on_checked(self):
@@ -1856,12 +1927,12 @@ class Test_Widgets (QMainWindow):
         CheckBox (l,r,3,fontSize=size.HEADER, text="Header", width=(90, 120), disable=lambda: self.disabled, )
         r += 1
         Label  (l,r,0,get="Label",width=(90,None))
-        Label  (l,r,1,get=lambda: f"Disabled: {str(self.disabled)}")
-        Label  (l,r,2,get=self.str_val, style=style.GOOD)
-        Label  (l,r,3,get=self.str_val, style=self.style )
+        Label  (l,r,1,get=lambda: f"Disabled: {str(self.disabled)}", disable=lambda:self.disabled, lab_disable=True)
+        Label  (l,r,2,get=lambda: f"Good {self.str_val()}", style=style.GOOD, styleRole = QPalette.ColorRole.Window)
+        Label  (l,r,3,get=lambda: f"Disabled: {str(self.disabled)}", style=self.style )
         r += 1
         Label  (l,r,0,get="Field")
-        Field  (l,r,1,get="initial", set=self.set_str, width=(80, 120), style=style.ERROR)
+        Field  (l,r,1,get="initial", set=self.set_str, width=(80, 120), disable=True) # style=style.ERROR
         Field  (l,r,2,get=self.str_val, set=self.set_str, disable=lambda: self.disabled)
         Field  (l,r,3,get="Error", set=self.set_str, width=80, style=self.style, disable=lambda: self.disabled)
         r += 1
@@ -1873,7 +1944,7 @@ class Test_Widgets (QMainWindow):
         FieldI (l,r,3,get=self.int_val, set=self.set_int, lim=(1,100), step=1, disable=lambda: self.disabled, style=self.style, width=(80, 100))
         r += 1
         Label  (l,r,0,get="FieldF")
-        FieldF (l,r,1,get=-0.1234, set=self.set_float, width=80, lim=(-1,1), unit="m", step=0.1, dec=2, specialText="Automatic")
+        FieldF (l,r,1,get=-0.1234, set=self.set_float, width=80, lim=(-1,1), unit="m", step=0.1, dec=2, specialText="Automatic", disable=lambda: self.disabled)
         FieldF (l,r,2,get=self.float_val, set=self.set_float, lim=(1,100), dec=4, step=1.0, disable=lambda: self.disabled, style=style.GOOD)
         FieldF (l,r,3,get=self.float_val, set=self.set_float, lim=(1,100), width=80, dec=4, step=1.0, disable=True, style=self.style)
         r += 1
@@ -1921,6 +1992,7 @@ class Test_Widgets (QMainWindow):
 
         container = QWidget()
         container.setLayout (l) 
+        # set_background (container, color="yellow",  alpha=0.5)
         self.setCentralWidget(container)
 
     def str_val (self):

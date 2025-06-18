@@ -190,7 +190,7 @@ class Panel_Abstract (QWidget):
 
     @property 
     def shouldBe_visible (self) -> bool:
-        """ True if self is visible 
+        """ True if self should be visible 
             - can be overridden to control visibility in subclass """
         
         if callable (self._hidden_getter):
@@ -300,7 +300,7 @@ class Edit_Panel (Panel_Abstract):
         # set background color depending light/dark mode
 
         if Widget.light_mode:
-            self.set_background_color (darker_factor = 105)                 # make it darker 
+            self.set_background_color (darker_factor = 104)                 # make it darker 
         else: 
             self.set_background_color (darker_factor = 80)                  # make it lighter 
 
@@ -317,6 +317,7 @@ class Edit_Panel (Panel_Abstract):
                         get=lambda: self.switched_on, set=self.set_switched_on)
             else: 
                 Label (l_head, fontSize=size.HEADER, get=self.title_text)
+            l_head.setStretch (0,1)
 
             self._add_to_header_layout (l_head)     # optional individual widgets
  
@@ -402,25 +403,27 @@ class Edit_Panel (Panel_Abstract):
     def refresh(self, reinit_layout=False):
         """ refreshes all Widgets on self """
 
-        hide = not self.shouldBe_visible and (self.shouldBe_visible != self.isVisible())
-        show =     self.shouldBe_visible and (self.shouldBe_visible != self.isVisible())
-
-        # reinit layout 
-        if (hide or show) or reinit_layout:
-            self._set_panel_layout  () 
-            logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
+        hide = not self.shouldBe_visible and     self.isVisible()
+        show =     self.shouldBe_visible and not self.isVisible()
 
         # hide / show self 
-        if (hide or show) or reinit_layout: 
+
+        if hide or show: 
             self.setVisible (self.shouldBe_visible)
             logger.debug (f"{self} - setVisible ({self.shouldBe_visible})")
 
-        # refresh widgets of self only if visible 
         if self.isVisible():
-            self.refresh_widgets (self._isDisabled)
-            logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
 
-            # print (self, self.layout().minimumSize(), self.size())
+            # reinit layout 
+            if show or reinit_layout:
+                self._set_panel_layout  () 
+                logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
+
+            # refresh widgets of self only if visible 
+            if self.isVisible():
+                self.refresh_widgets (self._isDisabled)
+                logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
+
 
     def refresh_widgets (self, disable : bool):
         """ enable / disable all widgets of self - except Labels (color!) """
@@ -602,14 +605,14 @@ class MessageBox (QMessageBox):
 
 
     @staticmethod
-    def save (parent: object, title : str, text : str, min_width=None):
+    def save (parent: object, title : str, text : str, min_width=None, buttons=None):
         """ ask to save or discard - returns QMessageBox.StandardButton"""
 
         msg = MessageBox (parent, title, text, Icon (Icon.WARNING), min_width=min_width)
 
-        msg.setStandardButtons(QMessageBox.StandardButton.Save | 
-                               QMessageBox.StandardButton.Discard | 
-                               QMessageBox.StandardButton.Cancel)
+        if buttons is None: 
+            buttons = QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel 
+        msg.setStandardButtons(buttons)
         msg.setDefaultButton  (QMessageBox.StandardButton.Save)
 
         return msg.exec()

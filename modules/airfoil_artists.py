@@ -25,7 +25,7 @@ from PyQt6.QtCore               import pyqtSignal, QObject
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 # -------- helper functions ------------------------
@@ -40,16 +40,16 @@ def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
         color = 'deeppink'
     elif airfoil_type == usedAs.NORMAL:
         color = 'springgreen'  
-        alpha = 1.0
     elif airfoil_type == usedAs.FINAL:
-        color = QColor('turquoise').lighter (120)
+        # color = QColor('turquoise').lighter (120)
+        color = 'springgreen'  
     elif airfoil_type == usedAs.SEED:
         color = 'dodgerblue'
     elif airfoil_type == usedAs.SEED_DESIGN:
         color = 'cornflowerblue'
     elif airfoil_type == usedAs.REF:                         
         color = _color_airfoil_ref (airfoils, airfoil)
-        alpha = 0.9
+        # alpha = 0.9
     elif airfoil_type == usedAs.TARGET:
         color = 'cornflowerblue'
     elif airfoil_type == usedAs.SECOND:
@@ -74,7 +74,7 @@ def _color_airfoil_ref (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
 
     # get color depending on iRef 
     color = color_in_series ('lightskyblue', iRef, nRef, delta_hue=0.4)
-    color.setAlphaF (0.9)
+    # color.setAlphaF (0.9)
 
     return color 
 
@@ -568,7 +568,7 @@ class Airfoil_Artist (Artist):
                     else: 
                         brushcolor = "yellow"
                         text="LE spline"
-                    self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
+                    self._plot_point (airfoil.geo.le_real, color=color, brush=brushcolor,
                                       text=text,anchor=(0.5,1) )
 
 
@@ -580,12 +580,12 @@ class Airfoil_Artist (Artist):
         if airfoil.isReflexed: 
             x = 0.8
             y = airfoil.geo.upper.yFn (x) 
-            self._plot_point (x, y, size=0, text="Reflexed", anchor=(0.5,2.0), textColor=textColor) 
+            self._plot_point ((x,y), size=0, text="Reflexed", anchor=(0.5,2.0), textColor=textColor) 
 
         elif airfoil.isRearLoaded: 
             x = 0.8
             y = airfoil.geo.lower.yFn (x) 
-            self._plot_point (x, y, size=0, text="Rearloaded", anchor=(0.5,-1.0), textColor=textColor)
+            self._plot_point ((x,y), size=0, text="Rearloaded", anchor=(0.5,-1.0), textColor=textColor)
 
 
 
@@ -632,7 +632,7 @@ class Flap_Artist (Artist):
             x = (1.0 + flapped_airfoil.x[0]) / 2
             y = flapped_airfoil.y[0] / 2
 
-            self._plot_point (x,y, size=0,text=f"{self.flapper.flap_angle:.1f}°", anchor=(-0.1, 0.5))
+            self._plot_point ((x,y), size=0,text=f"{self.flapper.flap_angle:.1f}°", anchor=(-0.1, 0.5))
 
         # plot hinge point 
 
@@ -642,7 +642,7 @@ class Flap_Artist (Artist):
         thick  = self.design_airfoil.geo.thickness.yFn(x)
         y = y_base + self.flapper.y_flap * thick 
 
-        self._plot_point (x,y, color=color, size=10,text=f"Hinge {self.flapper.x_flap:.1%}" )
+        self._plot_point ((x,y), color=color, size=10,text=f"Hinge {self.flapper.x_flap:.1%}" )
 
 
 
@@ -670,7 +670,7 @@ class Bezier_Artist (Artist):
             if airfoil.isBezierBased and airfoil.isLoaded:
 
                 color = _color_airfoil (self.airfoils, airfoil)
-                movable = airfoil.usedAsDesign
+                movable = airfoil.usedAsDesign and self.show_mouse_helper
 
                 side : Side_Airfoil_Bezier
                 for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
@@ -799,7 +799,7 @@ class Hicks_Henne_Artist (Artist):
                         text = f"HH{ih+1}"
                         anchor = (-0.05,1.05) if side.isUpper else (-0.05,-0.05)
 
-                        self._plot_point (x, y, symbol = '+', color=color, text=text, textColor=color, anchor=anchor,
+                        self._plot_point ((x, y), symbol = '+', color=color, text=text, textColor=color, anchor=anchor,
                                           zValue=4)
 
  
@@ -1039,8 +1039,9 @@ class Airfoil_Line_Artist (Artist, QObject):
             # plot le circle 
 
             radius = airfoil.geo.le_radius
-            circle_item = self._plot_point (radius, 0, color=color, size=2*radius, pxMode=False, 
-                                            style=Qt.PenStyle.DotLine, brushAlpha=0.3, brushColor='black')
+            
+            circle_item = self._plot_circle (radius, 0, color=color, size=2*radius, 
+                                            style=Qt.PenStyle.DotLine)
             pl = Movable_LE_Point (airfoil.geo, circle_item, 
                                     movable=airfoil.usedAsDesign, color=color,
                                     on_changed=self.sig_geometry_changed.emit )

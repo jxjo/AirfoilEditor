@@ -320,6 +320,43 @@ class Airfoil:
         if len(self.name) <= 23:    return self.name
         else:                       return "..." + self.name[-20:]
 
+    @property
+    def info_as_html (self) -> str:
+        """ comprehensive info about self as formatted html string"""
+
+        used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
+        info = f"{used_as}{self.fileName}" 
+
+        info = info + f"<br><br>in {self.pathName_abs}  " 
+
+        t = f"<br>" + \
+            f"<table>" + \
+                f"<tr>" + \
+                    f"<td>Thickness  </td>" + \
+                    f"<td>{self.geo.max_thick:.2%}  </td>" + \
+                    f"<td>at  </td>" + \
+                    f"<td>{self.geo.max_thick_x:.2%}  </td>" + \
+                f"</tr>" + \
+                f"<tr>" + \
+                    f"<td>Camber  </td>" + \
+                    f"<td>{self.geo.max_camb:.2%}  </td>" + \
+                    f"<td>at  </td>" + \
+                    f"<td>{self.geo.max_camb_x:.2%}  </td>" + \
+                f"</tr>" + \
+                f"<tr>" + \
+                f"</tr>" + \
+                f"<tr>" + \
+                    f"<td>Curvature LE  </td>" + \
+                    f"<td>{self.geo.curvature.max_around_le:.0f}  </td>" + \
+                    f"<td>TE    </td>" + \
+                    f"<td>{max (self.geo.curvature.at_upper_te, self.geo.curvature.at_lower_te):.0f}  </td>" + \
+                f"</tr>" + \
+            f"</table>"
+        
+        info = "<p style='white-space:pre'>" + info + t                     # no word wrap 
+        return info 
+
+
 
     @property
     def polarSet (self):
@@ -585,7 +622,8 @@ class Airfoil:
                 ts = os.path.getmtime(sourcePathFile)                       # file modification timestamp of a file
                 self._file_datetime = datetime.fromtimestamp(ts)            # convert timestamp into DateTime object
 
-            except ValueError:
+            except ValueError as e:
+                logger.error (f"{self} {e}")
                 pass
 
 
