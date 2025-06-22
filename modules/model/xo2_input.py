@@ -63,6 +63,8 @@ class Input_File:
     def is_xo2_input (fileName : str, workingDir = None) -> bool:
         """ True if fileName is a Xo2 input file - if workingDir is set, also do file check"""
 
+        if not fileName: return False
+        
         fileName_ext = os.path.splitext(fileName)[1]
         for ext in Input_File.INPUT_FILE_EXT:
             if ext.lower() == fileName_ext.lower():

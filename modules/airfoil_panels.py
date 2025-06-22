@@ -10,6 +10,7 @@ UI panels
 import logging
 from copy                   import copy 
 
+from PyQt6.QtWidgets        import QMenu
 
 from base.widgets           import * 
 from base.panels            import Edit_Panel, Toaster
@@ -144,11 +145,9 @@ class Panel_File_View (Panel_Airfoil_Abstract):
                 set=self.app.optimize_select, 
                 toolTip="Switch to airfoil optimization based on Xoptfoil2",
                 disable=lambda: not Xoptfoil2.ready)
-        # Button (l,r,c+2, text="Open Case", width=90, colSpan=2,
-        #         set=self.app.optimize_airfoil, 
-        #         toolTip="Optimize current airfoil with Xoptfoil2",
-        #         hide=lambda: not Input_File.fileName_of (self.airfoil),
-        #         disable=lambda: not Xoptfoil2.ready)
+        MenuButton (l,r,c+2, text="More...", width=90, 
+                menu=self._more_menu(), 
+                toolTip="Choose further actions")
         r += 1
         SpaceR (l,r, stretch=4)
         r += 1
@@ -161,6 +160,17 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
         return l 
  
+
+    def _more_menu (self) -> QMenu:
+        """ create and return sub menu for 'more' actions"""
+
+        menue = QMenu ()
+        menue.addAction ("Save as...",  self.app.do_save_as)
+        menue.addAction ("Rename...",   self.app.do_rename)
+        menue.addAction ("Delete",      self.app.do_delete)
+
+        return menue
+
 
 
 class Panel_File_Modify (Panel_Airfoil_Abstract):
@@ -275,7 +285,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         # blend with airfoil - currently Bezier is not supported
         Button (l_head, text="&Blend", width=80,
-                set=self.app.blend_with, 
+                set=self.app.do_blend_with, 
                 hide=lambda: not self.mode_modify or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
 
@@ -332,7 +342,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=80,
-                set=self.app.repanel, hide=lambda: not self.mode_modify,
+                set=self.app.do_repanel, hide=lambda: not self.mode_modify,
                 disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
                 toolTip="Repanel airfoil with a new number of panels" ) 
 
@@ -425,7 +435,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="Set F&lap", width=80,
-                set=self.app.flap, hide=lambda: not self.mode_modify,
+                set=self.app.do_flap, hide=lambda: not self.mode_modify,
                 disable=self._set_flap_disabled,
                 toolTip="Set flap at airfoil" ) 
 

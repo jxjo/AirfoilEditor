@@ -522,9 +522,13 @@ class Airfoil:
         """ path including working dir and filename of airfoil like '/root/examples/JX-GT-15.dat' """
 
         if self.workingDir:
-            return os.path.join(self.workingDir, self.pathFileName)
+            pathFileName =  os.path.join(self.workingDir, self.pathFileName)
         else: 
-            return self._pathFileName
+            pathFileName =  self._pathFileName
+        
+        if not os.path.isabs (pathFileName):
+            pathFileName = os.path.abspath(self.pathFileName_abs)       # will insert cwd 
+        return pathFileName
 
 
     def set_pathName (self, aDir : str, noCheck=False):
@@ -532,7 +536,8 @@ class Airfoil:
         Set fullpaths of airfoils directory  
             ! This will not move or copy the airfoil physically
         """
-        if noCheck or (os.path.isdir(aDir)) or aDir == '':
+        aDir_abs = os.path.join (self.workingDir, aDir)
+        if noCheck or (os.path.isdir(aDir_abs)) or aDir == '':
             self._pathFileName = os.path.join (aDir, self.fileName)
         else:
             raise ValueError ("Directory \'%s\' does not exist. Couldn\'t be set" % aDir)
@@ -582,14 +587,11 @@ class Airfoil:
         """
         absolute directory pathname of airfoil like '\\root\\myAirfoils\\'
         """
-        if not self.pathFileName is None: 
-            if os.path.isabs (self.pathFileName):
-                # current path is already abs 
-                return os.path.dirname(self.pathFileName)
-            else: 
-                return os.path.dirname(os.path.abspath(self.pathFileName_abs))
+        if not self.pathFileName_abs is None: 
+            return os.path.dirname(self.pathFileName_abs)
         else:
             # fallback - current python working dir
+            logger.warning (f"{self} has not pathFileName")
             return os.path.dirname(os.getcwd())
 
 
@@ -793,13 +795,18 @@ class Airfoil:
         returns a copy of self 
 
         Args:
-            pathFileName: optional - string of existinng airfoil path and name 
+            pathFileName: optional - string of existing (relative) airfoil path and name 
             name: optional         - name of airfoil - no checks performed 
             nameExt: -optional     - will be appended to self.name (if name is not provided)
             geometry: optional     - the geometry staretegy either GEO_BASIC, GEO_SPLNE...
         """
         if pathFileName is None and name is None: 
             pathFileName = self.pathFileName
+
+        if os.path.isabs (pathFileName):
+            workingDir = None
+        else: 
+            workingDir = self.workingDir 
 
         if name is None:
             name = self.name + nameExt if nameExt else self.name
@@ -808,6 +815,7 @@ class Airfoil:
 
         airfoil =  Airfoil (x = np.copy (self.x), y = np.copy (self.y), 
                             name = name, pathFileName = pathFileName, 
+                            workingDir = workingDir,
                             geometry = geometry )
         return airfoil 
 
@@ -994,6 +1002,7 @@ class Airfoil_Bezier(Airfoil):
         # fileName_ext  = anAirfoil.fileName_ext
         pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + '_bezier' + Airfoil_Bezier.Extension)
         airfoil_new.set_pathFileName (pathFileName, noCheck=True)
+        airfoil_new.set_workingDir   (anAirfoil.workingDir)
 
         airfoil_new.set_isLoaded (True)
 
@@ -1192,6 +1201,11 @@ class Airfoil_Bezier(Airfoil):
         if pathFileName is None and name is None: 
             pathFileName = self.pathFileName
 
+        if os.path.isabs (pathFileName):
+            workingDir = None
+        else: 
+            workingDir = self.workingDir 
+
         if name is None:
             name = self.name + nameExt if nameExt else self.name
 
@@ -1199,6 +1213,7 @@ class Airfoil_Bezier(Airfoil):
             raise ValueError (f"Airfoil_Bezier does not support new geometry {geometry}")
 
         airfoil =  Airfoil_Bezier (name = name, pathFileName = pathFileName,
+                                   workingDir=workingDir, 
                                    cp_upper = self.geo.upper.controlPoints,
                                    cp_lower = self.geo.lower.controlPoints)
         airfoil.set_isLoaded (True)
@@ -1444,8 +1459,7 @@ class Flapper:
         if airfoil_base.isFlapped:
             raise ValueError ("A flapped airfoil cannot be flapped")
         
-        self._workingDir         = airfoil_base.pathName_abs 
-        self._base_pathFileName  = airfoil_base.pathFileName
+        self._worker_workingDir  = airfoil_base.pathName_abs                # working dir of Worker!
         self._base_fileName      = airfoil_base.fileName
         self._base_fileName_stem = airfoil_base.fileName_stem
 
@@ -1520,20 +1534,23 @@ class Flapper:
 
         # run Worker 
 
-        worker = Worker(self._workingDir)
+        worker = Worker(self._worker_workingDir)
 
-        pathFileName = worker.set_flap (self._base_pathFileName, 
+        flapped_fileName = worker.set_flap (self._base_fileName, 
                                         x_flap = self.x_flap, y_flap = self.y_flap, y_flap_spec = self.y_flap_spec,
                                         flap_angle = self.flap_angle,
                                         outname = outname )
-        if pathFileName: 
-            self._airfoil_flapped = Airfoil (pathFileName=pathFileName)
+        if flapped_fileName: 
+
+            # load new airfoil 
+            self._airfoil_flapped = Airfoil (pathFileName=flapped_fileName, workingDir=self._worker_workingDir)
             self._airfoil_flapped.load()
 
+            # ... and delete immediatly its file to have a clean directory  
             try: 
-                os.remove(pathFileName) 
+                os.remove(self._airfoil_flapped.pathFileName_abs) 
             except OSError as exc: 
-                logger.error (f"{pathFileName} couldn't be removed")
+                logger.error (f"{self._airfoil_flapped.pathFileName_abs} couldn't be removed")
 
 
 

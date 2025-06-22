@@ -1218,12 +1218,11 @@ class Diagram_Airfoil_Polar (Diagram):
             # helper panel for polar definitions 
 
             p = Panel_Polar_Defs (self, lambda: self.polar_defs, mode_optimize_fn=lambda: self.mode_optimize, 
-                                  height=(None,40))
+                                  height=(None,None))
 
             p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
 
             l.addWidget (p, r, c, 1, 6)
-            p.layout().setStretch (0,0)
             r += 1
 
             SpaceR (l,r, height=5, stretch=0) 

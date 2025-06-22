@@ -20,7 +20,7 @@ from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer
 
 from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
 from PyQt6.QtWidgets    import (
-                            QApplication, QWidget, QPushButton, 
+                            QApplication, QWidget, QPushButton, QMenu,
                             QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
                             QLabel, QToolButton, QCheckBox,
                             QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
@@ -781,7 +781,7 @@ class Widget:
 
             # if it's background color apply alpha
             if color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]:
-                if aStyle == style.GOOD or style.HINT:
+                if aStyle == style.GOOD or aStyle == style.HINT:
                     color.setAlphaF (0.3) 
                     color_disabled.setAlphaF (0.15)
                 else:
@@ -1539,6 +1539,29 @@ class ToolButton (Widget, QToolButton):
                 self.setIconSize (QSize(16,16))
             else: 
                 pass
+
+
+class MenuButton (Button, QPushButton):
+    """
+    Push-Button with an action menu. 
+    
+    A QMenu (having actions) has to be provided instead of a 'set' method.
+
+    """
+    def __init__(self, *args,
+                 menu : QMenu = None,                                # default is not to signal change 
+                 **kwargs):
+        
+        self._menu = menu
+
+        super().__init__(*args, **kwargs)
+
+        if isinstance(menu, QMenu):
+            self.setMenu (menu)
+            self._disabled = None                                    # missing setter would disable
+            self._set_Qwidget_disabled ()
+        else: 
+            self._disabled = True 
 
 
 

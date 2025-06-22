@@ -593,7 +593,7 @@ class App_Main (QMainWindow):
             case : Case_Direct_Design = self.case
             new_airfoil = case.get_final_from_design (self.airfoil_org, self.airfoil)
 
-            # dialog to edit name, chose path, ..
+            # dialog to edit name, choose path, ..
 
             dlg = Airfoil_Save_Dialog (parent=self, getter=new_airfoil)
             ok_save = dlg.exec()
@@ -832,8 +832,8 @@ class App_Main (QMainWindow):
   
 
 
-    def blend_with (self): 
-        """ run blend airfoil with dialog to blend current with another airfoil""" 
+    def do_blend_with (self): 
+        """ blend with another airfoil - open blend airfoil dialog """ 
 
         self.sig_enter_blend.emit()
 
@@ -853,8 +853,8 @@ class App_Main (QMainWindow):
             self._on_airfoil_changed()
 
 
-    def repanel (self): 
-        """ run repanel dialog""" 
+    def do_repanel (self): 
+        """ repanel airfoil - open repanel dialog""" 
 
         self.sig_enter_panelling.emit()
 
@@ -872,8 +872,8 @@ class App_Main (QMainWindow):
 
 
 
-    def flap (self): 
-        """ run set flap dialog""" 
+    def do_flap (self): 
+        """ set flaps - run set flap dialog""" 
 
         self.sig_enter_flapping.emit(True)
 
@@ -890,6 +890,58 @@ class App_Main (QMainWindow):
             self._on_airfoil_changed()
 
         self.sig_enter_flapping.emit(False)
+
+
+    def do_save_as (self): 
+        """ save current airfoil as ..."""
+
+        dlg = Airfoil_Save_Dialog (parent=self, getter=self.airfoil)
+        ok_save = dlg.exec()
+
+        if ok_save: 
+            self.set_airfoil (self.airfoil)
+            self._toast_message (f"New airfoil {self.airfoil.fileName} saved", toast_style=style.GOOD)
+
+
+    def do_rename (self): 
+        """ rename current airfoil as ..."""
+
+        old_pathFileName = self.airfoil.pathFileName_abs
+
+        dlg = Airfoil_Save_Dialog (parent=self, getter=self.airfoil, rename_mode=True, remove_designs=True)
+        ok_save = dlg.exec()
+
+        if ok_save: 
+
+            # delete old one 
+            if os.path.isfile (old_pathFileName):  
+                os.remove (old_pathFileName)
+
+            # a copy with new name was created 
+            self.set_airfoil (self.airfoil)                                 # refresh with new 
+            self._toast_message (f"Airfoil renamed to {self.airfoil.fileName}", toast_style=style.GOOD)
+
+
+    def do_delete (self): 
+        """ delete current airfoil ..."""
+
+        if not os.path.isfile (self.airfoil.pathFileName_abs): return 
+
+        text = f"Airfoil <b>{self.airfoil.fileName}</b> including temporary files will be deleted."
+        button = MessageBox.warning (self, "Delete airfoil", text)
+
+        if button == QMessageBox.StandardButton.Ok:
+            
+            next_airfoil = get_next_airfoil_in_dir(self.airfoil, example_if_none=True)
+
+            os.remove (self.airfoil.pathFileName_abs)
+            Case_Direct_Design (self.airfoil).close(remove_designs=True)        # remove temp files and dir 
+
+            self.set_airfoil (next_airfoil)                                     # try to set on next airfoil
+
+            if next_airfoil.isExample:
+               button = MessageBox.info (self, "Delete airfoil", "This was the last airfoil in the directory.<br>" + \
+                                               "Showing Example airfoil") 
 
 
 
@@ -1230,7 +1282,7 @@ class App_Main (QMainWindow):
 
             if pathFileName is not None: 
                 try: 
-                    airfoil = Airfoil(pathFileName=pathFileName)
+                    airfoil = Airfoil.onFileType (pathFileName=pathFileName)
                     airfoil.load ()
                     airfoil.set_property ("show", show)
                     self.set_airfoil_ref (None, airfoil)

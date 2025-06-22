@@ -34,7 +34,11 @@ from airfoil_widgets        import Airfoil_Select_Open_Widget
 
 class Airfoil_Save_Dialog (Dialog):
     """ 
-    Button - either Text or Icon to open Airfoil with file select 
+    Common airfoil save dialog - optionally
+        - set new filename
+        - set new airfoil name
+        - select directory
+        - remove temp files 
 
     When user successfully selected an airfoil file, 'set' is called with 
     the new <Airfoil> as argument 
@@ -43,11 +47,15 @@ class Airfoil_Save_Dialog (Dialog):
     _width  = (520, None)
     _height = 300
 
-    name = "Save Airfoil Design as..."
+    name = "Save Airfoil as..."
 
-    def __init__ (self,*args, **kwargs):
+    def __init__ (self,*args, remove_designs=False, rename_mode=False, **kwargs):
 
-        self._remove_designs = False
+        self._rename_mode    = rename_mode
+        self._remove_designs = remove_designs
+
+        if rename_mode:
+            self.name = "Rename Airfoil"
 
         super().__init__ (*args, **kwargs)
 
@@ -80,7 +88,8 @@ class Airfoil_Save_Dialog (Dialog):
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use filename as airfoil name")
         r += 1
-        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=20)
+        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=20,
+                       hide= lambda: not self._messageText())
         r += 1
         Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None),
                 signal=True)
@@ -88,17 +97,20 @@ class Airfoil_Save_Dialog (Dialog):
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use airfoil name as filename")
         r += 1
+        SpaceR (l, r, height=10, stretch=0) 
+        r += 1
         Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName_abs, width=(150,None),
                        disable=True)
         ToolButton (l,r,2, icon=Icon.OPEN, set=self._open_dir, signal=True,
+                    hide = self._rename_mode,
                     toolTip = 'Select directory of airfoil') 
         r += 1
-        SpaceR (l, r, height=20, stretch=0) 
+        SpaceR (l, r, height=10, stretch=2) 
         r += 1
-        CheckBox (l,r,0, text="Remove all designs and design directory on finish", colSpan=4,
+        CheckBox (l,r,0, text="Remove all designs and design directory", colSpan=4,
                         get=lambda: self.remove_designs, set=self.set_remove_designs)
         r += 1
-        SpaceR (l, r, height=5, stretch=1) 
+        SpaceR (l, r, height=10, stretch=1) 
 
         l.setColumnStretch (1,5)
         l.setColumnMinimumWidth (0,80)
@@ -132,11 +144,7 @@ class Airfoil_Save_Dialog (Dialog):
     def _messageText (self): 
         """ info / wanrning text"""
         if not self._names_are_equal():
-             text = "You may want to sync airfoil Name and Filename"
-        else: 
-             text = ""
-        return text 
-
+             return "You may want to sync airfoil Name and Filename"
 
 
     def _open_dir (self):

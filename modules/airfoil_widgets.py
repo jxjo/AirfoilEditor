@@ -38,6 +38,7 @@ class mode_color:
 
 # ----- common methods -----------
 
+
 def create_airfoil_from_path (parent, pathFilename, example_if_none=False, message_delayed=False) -> Airfoil:
     """
     Create and return a new airfoil based on pathFilename.
@@ -45,45 +46,28 @@ def create_airfoil_from_path (parent, pathFilename, example_if_none=False, messa
         or 'Example' airfoil if example_if_none == True  
     """
 
-    file_found = True
+    file_found     = False
     airfoil_loaded = False
-    airfoil = None
+    airfoil        = None
 
     try: 
-        extension = os.path.splitext(pathFilename)[1]
-        if extension == ".bez":
-            airfoil = Airfoil_Bezier (pathFileName=pathFilename)
-        elif extension == ".hicks":
-            airfoil = Airfoil_Hicks_Henne (pathFileName=pathFilename)
-        else: 
-            airfoil = Airfoil(pathFileName=pathFilename, geometry=GEO_BASIC)
-    except:
-        file_found = False
-
-    if file_found:
+        airfoil = Airfoil.onFileType(pathFilename, geometry=GEO_BASIC)
         airfoil.load()
+        airfoil_loaded = airfoil.isLoaded
+        file_found     = True
+    except:
+        pass
 
-        if airfoil.isLoaded:                      
-            airfoil_loaded = True 
-        else: 
-            airfoil_loaded = False
+    if not airfoil_loaded:
 
-    if not file_found or not airfoil_loaded:
-        if example_if_none:
-            airfoil = Example()
-        else: 
-            airfoil = None 
+        airfoil = Example() if example_if_none else None
 
         if pathFilename: 
             fileName = os.path.basename (pathFilename)
-            if not file_found:
-                msg = f"{fileName} does not exist."
-            else: 
-                msg = f"{fileName} couldn't be loaded."
-            if example_if_none:
-                example = "\nUsing example airfoil."
-            else:
-                example= ""
+            
+            msg     = f"<b>{fileName}</b> does not exist." if not file_found else f"<b>{fileName}</b> couldn't be loaded."
+            example = "\nUsing example airfoil." if example_if_none else ""
+
             if message_delayed:
                 QTimer.singleShot (100, lambda: MessageBox.error   (parent,'Load Airfoil', f"{msg}{example}", min_height= 60))
             else:
@@ -92,22 +76,24 @@ def create_airfoil_from_path (parent, pathFilename, example_if_none=False, messa
     return airfoil  
 
 
-def get_airfoil_files_sameDir (initialDir : Airfoil | str | None): 
+
+def get_airfoil_fileNames_sameDir (airfoil_or_dir : Airfoil | str | None) -> list[str]: 
     """ 
-    Returns list of airfoil file path in the same directory as airf
-    All .dat, .bez and .hicks files are collected 
+    Returns list of airfoil file names in the same directory as airfoil
+        airfoil can be either an Airfoil or a subdirectory
+    Returns all .dat, .bez and .hicks files 
     """
 
-    if initialDir is None: return []
+    if airfoil_or_dir is None: return []
 
-    if isinstance(initialDir, Airfoil):
-        airfoil : Airfoil = initialDir
+    if isinstance(airfoil_or_dir, Airfoil):
+        airfoil : Airfoil = airfoil_or_dir
         if airfoil.pathFileName_abs is not None: 
             airfoil_dir = os.path.dirname(airfoil.pathFileName_abs) 
         else:
             airfoil_dir = None 
     else: 
-        airfoil_dir = initialDir
+        airfoil_dir = airfoil_or_dir
 
     if not airfoil_dir: airfoil_dir = '.'
 
@@ -116,11 +102,48 @@ def get_airfoil_files_sameDir (initialDir : Airfoil | str | None):
         bez_files = fnmatch.filter(os.listdir(airfoil_dir), '*.bez')
         hh_files  = fnmatch.filter(os.listdir(airfoil_dir), '*.hicks')
         airfoil_files = dat_files + bez_files + hh_files
-        airfoil_files = [os.path.normpath(os.path.join(airfoil_dir, f)) \
-                            for f in airfoil_files if os.path.isfile(os.path.join(airfoil_dir, f))]
         return sorted (airfoil_files, key=str.casefold)
     else:
         return []
+
+
+def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airfoil: 
+    """ 
+    Returns next airfoil following anAirfoil in the same directory 
+        - or the last airfoil in the directory if anAirfoil was already the last one
+        - Example.dat if there are no more airfoil files in the directory 
+    """
+
+    airfoil_files = get_airfoil_fileNames_sameDir (anAirfoil)
+
+    # get index 
+    try: 
+        iair = airfoil_files.index(anAirfoil.fileName)
+    except: 
+        iair = None
+
+    # get next 
+    if iair is not None and len(airfoil_files) > 1: 
+        if iair == (len (airfoil_files) - 1):
+            next_file = airfoil_files [iair - 1] 
+        else:
+            next_file = airfoil_files [iair + 1]
+    elif iair is not None and len(airfoil_files) == 1: 
+        next_file = None
+    else: 
+        next_file = airfoil_files [0] if airfoil_files else None 
+
+    if next_file: 
+        next_airfoil = Airfoil.onFileType(next_file, workingDir = anAirfoil.pathName_abs, geometry=GEO_BASIC)
+        next_airfoil.load()
+    elif example_if_none:
+        next_airfoil = Example()
+    else: 
+        next_airfoil = None 
+ 
+    return next_airfoil
+
+
 
 
 # ----- widgets -----------
@@ -159,9 +182,12 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._icon_widget   = None 
 
         self._no_files_here = None
-        self._initial_dir = initialDir
         self._addEmpty = addEmpty is True 
-        self
+        if isinstance (initialDir, Airfoil):
+            airfoil : Airfoil = initialDir
+            self._initial_dir = airfoil.pathName_abs
+        else:
+            self._initial_dir = initialDir
 
         # get initial properties  (cur airfoil) 
         self._get_properties ()
@@ -301,6 +327,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     def airfoil_fileName (self) -> str | None:
         return self.airfoil.fileName if self.airfoil is not None else None
 
+
     def set_airfoil_by_fileName (self, newFileName): 
         """ set new current airfoil bei filename""" 
 
@@ -309,38 +336,31 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             self.set_airfoil (None)
             return 
 
-        # get full path of new fileName 
-        if self.airfoil is None:
-            sameDir = self._initial_dir
-        else: 
-            sameDir = self.airfoil
+        # is fileName in directory ?
 
-        for aPathFileName in get_airfoil_files_sameDir (sameDir):
-            if newFileName == os.path.basename(aPathFileName):
+        fileNames = get_airfoil_fileNames_sameDir (self.airfoil if self.airfoil else self._initial_dir)
 
-                if os.path.isfile (aPathFileName):   # maybe it was deleted in meantime 
-                     
-                    airfoil = create_airfoil_from_path (self, aPathFileName)
-                    if airfoil is not None: 
-                        self.set_airfoil (airfoil)
-                break
+        if newFileName in fileNames: 
 
+            # create and set new airfoil
+
+            workingDir = self.airfoil.pathName_abs if self.airfoil else self._initial_dir
+            try:
+                new_airfoil = Airfoil.onFileType(newFileName, workingDir = workingDir, geometry=GEO_BASIC)
+                new_airfoil.load()
+                self.set_airfoil (new_airfoil)
+            except:
+                logger.error (f"Couldn't create Airfoil {newFileName}")
+        
 
     def airfoil_fileNames_sameDir (self): 
         """ list of airfoil filenames in the same dir as current airfoil"""
 
-        if self.airfoil is None:
-            sameDir = self._initial_dir
-        else: 
-            sameDir = self.airfoil
 
-        fileNames = []
+        fileNames = get_airfoil_fileNames_sameDir (self.airfoil if self.airfoil else self._initial_dir)
+
         if self._addEmpty: 
-            fileNames.append ("")
-           
-        for aFileName in get_airfoil_files_sameDir (sameDir):
-            fileNames.append(os.path.basename(aFileName))
-
+            fileNames.insert (0,"")  
         return fileNames
 
 

@@ -428,7 +428,7 @@ class X_Program:
                     flags  = 0                              # posix must be 0 
                 startupinfo = self._get_popen_startupinfo (SW_MINIMIZE)  
 
-            logger.debug (f"==> {self.name} run async: '{args}'")
+            logger.debug (f"==> {self.name} run async: '{args}' in: {workingDir}")
 
             popen = Popen (arg_list, creationflags=flags, text=True, **startupinfo, 
                                 stdout=stdout, stderr=stderr)  
@@ -778,7 +778,7 @@ class Worker (X_Program):
 
 
 
-    def set_flap (self, airfoil_pathFileName, 
+    def set_flap (self, airfoil_fileName, 
                         x_flap : float = 0.75,
                         y_flap : float = 0.0,
                         y_flap_spec : str = 'y/c',
@@ -787,24 +787,25 @@ class Worker (X_Program):
         """ 
         Set flap for airfoilPathFileName in directory of airfoil.
 
-        Returncode = 0 if successfully (sync)
+        Returns fileName of flapped airfoil in working Dir  
         """ 
 
-        if not os.path.isfile(airfoil_pathFileName): 
-            name = airfoil_pathFileName if len(airfoil_pathFileName) <= 40 else "..." + airfoil_pathFileName[-35:]
+        airfoil_pathFileName_abs = os.path.join(self.workingDir, airfoil_fileName)
+
+        if not os.path.isfile(airfoil_pathFileName_abs): 
+            name = airfoil_pathFileName_abs if len(airfoil_pathFileName_abs) <= 40 else "..." + airfoil_pathFileName_abs[-35:]
             raise ValueError (f"Airfoil '{name}' does not exist")
 
         # a temporary input file for polar generation is created
 
-        self._tmp_inpFile = self._generate_flap_inputFile (airfoil_pathFileName, 
-                                    x_flap, y_flap, y_flap_spec, flap_angle)         
+        self._tmp_inpFile = self._generate_flap_inputFile (self.workingDir, x_flap, y_flap, y_flap_spec, flap_angle)         
         if not self._tmp_inpFile:
             raise RuntimeError (f"{self.name} setting flap failed: Couldn't create input file")
 
         # build args for worker 
 
         args, workingDir = self._build_worker_args ('flap',
-                                                    airfoil1=airfoil_pathFileName, 
+                                                    airfoil1=airfoil_fileName, 
                                                     inputfile=self._tmp_inpFile,
                                                     outname=outname)
 
@@ -818,11 +819,10 @@ class Worker (X_Program):
         else: 
             self.remove_tmp_file (self._tmp_inpFile)         
 
-            # retrieve filename of new airfoil 
-            workingDir, _ = os.path.split(airfoil_pathFileName)
-            pathFileName = os.path.join (workingDir, outname + ".dat")
-            if os.path.isfile (pathFileName):
-                return pathFileName
+            flapped_fileName = outname + ".dat"
+            # check if flapped airfoil was created  
+            if os.path.isfile (os.path.join (workingDir, flapped_fileName)):
+                return flapped_fileName
             else: 
                 return None 
 
@@ -845,19 +845,21 @@ class Worker (X_Program):
 
 
     def _build_worker_args (self, action, actionArg='', airfoil1='', airfoil2='', outname='', inputfile=''):
-        """ return worker args as list of strings and working dir extracted from airfoil1"""
+        """ 
+        return worker args as list of strings and 
+        working dir extracted from airfoil1 if airfoil1 is not in current working dir 
+        """
 
         airfoil1_dir, airfoil1_fileName = os.path.split(airfoil1)
         _,            airfoil2_fileName = os.path.split(airfoil2)
 
 
-        if (airfoil1_dir != ''):
-            self._workingDir = airfoil1_dir
-            # in this case also strip airfoil2 
-            if (airfoil2 != ''):
+        if airfoil1_dir != '' and os.path.isabs(airfoil1_dir):
+            working_dir = airfoil1_dir
+            if (airfoil2 != ''):                                         # in this case also strip airfoil2 
                 _, airfoil2_fileName = os.path.split(airfoil2)
         else:
-            self._workingDir = None
+            working_dir = self._workingDir
 
         # info inputfile is in a dir - strip dir from path - local execution 
         if (inputfile != ''):
@@ -881,7 +883,7 @@ class Worker (X_Program):
         if (outname  ): args.extend(['-o',  outname]) 
         if (inputfile): args.extend(['-i',  local_inputfile])
 
-        return  args, airfoil1_dir
+        return  args, working_dir
 
 
 
@@ -945,13 +947,14 @@ class Worker (X_Program):
 
 
 
-    def _generate_flap_inputFile (self, airfoilPathFileName,
+    def _generate_flap_inputFile (self, 
+                                  working_dir : str = None,         # if none self._workingDir is taken 
                                   x_flap : float = 0.75,
                                   y_flap : float = 0.0,
                                   y_flap_spec : str = 'y/c',
                                   flap_angle : float | list = 0.0, 
                                   ) -> str:
-        """ Generate a temporary polar input file for worker like this 
+        """ Generate a temporary polar input file for worker in working_dir
 
         &operating_conditions                              ! options to describe the optimization task
             x_flap                 = 0.75                  ! chord position of flap 
@@ -965,14 +968,21 @@ class Worker (X_Program):
 
         tmpFilePath = None
 
-        airfoilPath, airfoilFileName = os.path.split(airfoilPathFileName)
+        if working_dir is None:
+            working_dir = self._workingDir
+
+        # sanity 
+
+        if not os.path.isdir (working_dir):
+            raise ValueError (f"Worker working directory {working_dir} does not exist")
+
 
         flap_angles = flap_angle if isinstance (flap_angle, list) else [flap_angle]
         y_flap_spec = 'y/t' if y_flap_spec == 'y/t' else 'y/c'
 
         # create tmp input file 
 
-        with NamedTemporaryFile(mode="w", delete=False, dir=airfoilPath, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
+        with NamedTemporaryFile(mode="w", delete=False, dir=working_dir, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
 
             tmp.write ("&operating_conditions\n")
             tmp.write (f"  x_flap = {x_flap:.2f}\n")  

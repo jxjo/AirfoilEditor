@@ -123,11 +123,11 @@ class Case_Direct_Design (Case_Abstract):
         super().__init__()
 
         self._airfoil_seed = airfoil
-        self._workingDir   = airfoil.pathName 
+        self._workingDir   = airfoil.pathName_abs 
 
         # create design directory 
-        if not os.path.isdir (self.design_dir):
-            os.makedirs(self.design_dir)
+        if not os.path.isdir (self.design_dir_abs):
+            os.makedirs(self.design_dir_abs)
 
 
     @property
@@ -136,12 +136,16 @@ class Case_Direct_Design (Case_Abstract):
 
     @property
     def design_dir (self) -> str:
-        """ directory with airfoil designs"""
+        """ relative directory with airfoil designs"""
 
-        base=os.path.basename (self._airfoil_seed.pathFileName)
-        dir =os.path.dirname  (self._airfoil_seed.pathFileName)
-        design_dir_name = f"{os.path.splitext(base)[0]}{self.DESIGN_DIR_EXT}"
-        return os.path.join(dir, design_dir_name)
+        return f"{os.path.splitext(self._airfoil_seed.fileName)[0]}{self.DESIGN_DIR_EXT}"
+
+
+    @property
+    def design_dir_abs (self) -> str:
+        """ absolute directory with airfoil designs"""
+
+        return os.path.join(self.workingDir, self.design_dir)
 
 
     @override
@@ -149,9 +153,9 @@ class Case_Direct_Design (Case_Abstract):
     def airfoil_designs (self) -> list[Airfoil]: 
         """ list of airfoil designs"""
         if not self._airfoil_designs: 
-            reader = Reader_Airfoil_Designs(self.design_dir)
-            self._airfoil_designs = reader.read_all(prefix=self.DESIGN_NAME_BASE,
-                                                    extension=self.airfoil_seed.fileName_ext)
+            self._airfoil_designs = self._read_all_designs(self.design_dir, self.workingDir,
+                                                            prefix=self.DESIGN_NAME_BASE,
+                                                            extension=self.airfoil_seed.fileName_ext)
         return self._airfoil_designs 
       
 
@@ -165,13 +169,14 @@ class Case_Direct_Design (Case_Abstract):
         if self.airfoil_designs:
             airfoil =  self.airfoil_designs[-1]
         else: 
-            try:                                            # normal airfoil - allows new geometry
+            try:                                                        # normal airfoil - allows new geometry
                 airfoil  = self.airfoil_seed.asCopy (geometry=GEO_SPLINE)
-            except:                                         # bezier or hh does not allow new geometry
+            except:                                                     # bezier or hh does not allow new geometry
                 airfoil  = self.airfoil_seed.asCopy ()
-            airfoil.normalize(just_basic=True)              # 
+            airfoil.normalize(just_basic=True)              
             airfoil.useAsDesign()
-            airfoil.set_pathName (self.design_dir)
+            airfoil.set_pathName   (self.design_dir, noCheck=True)      # no check, because workingDir is needed
+            airfoil.set_workingDir (self.workingDir)
 
             self.add_design (airfoil)
 
@@ -317,7 +322,54 @@ class Case_Direct_Design (Case_Abstract):
             remove = remove_designs 
 
         if remove: 
-            shutil.rmtree (self.design_dir, ignore_errors=True)
+            shutil.rmtree (self.design_dir_abs, ignore_errors=True)
+
+
+    # ---------------------------------
+
+
+    def _read_all_designs (self, design_dir, working_dir, prefix : str = None, extension=".dat"):
+        """ read all airfoils satisfying 'filter'
+
+        Args:
+            prefix (str, optional): file filter prefix for airfoils 
+        """
+
+        airfoils = []
+        design_dir_abs = os.path.join (working_dir, design_dir)
+
+        if not os.path.isdir (design_dir_abs): 
+            return airfoils
+
+        # read all file names in dir and filter 
+ 
+        all_files     = os.listdir(design_dir_abs)                             
+        airfoil_files = fnmatch.filter(all_files, f'{prefix}*{extension}')     
+
+        # built pathFileName and sort 
+
+        airfoil_files = [os.path.normpath(os.path.join(design_dir, f)) \
+                            for f in airfoil_files if os.path.isfile(os.path.join(design_dir_abs, f))]
+        airfoil_files = sorted (airfoil_files, key=str.casefold)
+
+        # create Airfoils from file 
+
+        for fileName in airfoil_files:
+            try: 
+                airfoil = Airfoil.onFileType(fileName, workingDir=working_dir, geometry=GEO_SPLINE)
+                airfoil.load()
+                airfoil.useAsDesign()
+                airfoil_loaded = airfoil.isLoaded
+            except:
+                airfoil_loaded = False
+
+            if airfoil_loaded:
+                airfoils.append (airfoil)
+            else:
+                 logger.error (f"Could not load '{fileName}'")
+
+        return airfoils 
+
 
 
 
@@ -509,78 +561,3 @@ class Case_Optimize (Case_Abstract):
 
         return self.xo2.state, self.xo2.nSteps, self.xo2.nDesigns
     
-
-
-#-------------------------------------------------------------------------------
-# Result Reader 
-#-------------------------------------------------------------------------------
-
-
-class Reader_Airfoil_Designs:
-    """ 
-    Reads all Airfoil .dat or .bez files in a directory   
-    """
-
-    def __init__(self, directory : str):
-
-        self._directory = directory if directory else '.'
-
-
-    def read_all(self, prefix : str = None, extension=".dat"):
-        """ read all airfoils satisfying 'filter'
-
-        Args:
-            prefix (str, optional): file filter prefix for airfoils 
-        """
-
-        airfoils = []
-
-        if not os.path.isdir (self._directory): 
-            return airfoils
-
-        # read all file names in dir and filter 
-
-        all_files = os.listdir(self._directory)                             # all files in dir
-
-        airfoil_files = fnmatch.filter(all_files, f'{prefix}*{extension}')      # filter 
-
-        # built pathFileName and sort 
-
-        airfoil_files = [os.path.normpath(os.path.join(self._directory, f)) \
-                            for f in airfoil_files if os.path.isfile(os.path.join(self._directory, f))]
-        airfoil_files = sorted (airfoil_files, key=str.casefold)
-
-        # create Airfoils from file 
-
-        for file in airfoil_files:
-            try: 
-                airfoils.append (self._create_airfoil_from_path (file))
-            except RuntimeError:
-                pass
-
-        return airfoils 
-
-
-
-
-    def _create_airfoil_from_path (self, pathFilename) -> Airfoil:
-        """
-        Create and return a new airfoil based on pathFilename.
-            Return None if the Airfoil couldn't be loaded  
-        """
-
-        extension = os.path.splitext(pathFilename)[1]
-        if extension == ".bez":
-            airfoil = Airfoil_Bezier (pathFileName=pathFilename)
-        elif extension == ".hicks":
-            airfoil = Airfoil_Hicks_Henne (pathFileName=pathFilename)
-        else: 
-            airfoil = Airfoil(pathFileName=pathFilename, geometry=GEO_SPLINE)
-
-        airfoil.load()
-        airfoil.useAsDesign()
-
-        if airfoil.isLoaded:                      # could have been error in loading
-            return airfoil
-        else:
-            raise RuntimeError (f"Could not load '{pathFilename}'")

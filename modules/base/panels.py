@@ -597,8 +597,19 @@ class MessageBox (QMessageBox):
 
         msg = MessageBox (parent, title, text, Icon (Icon.INFO), min_width=min_width)
 
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok | 
-                               QMessageBox.StandardButton.Cancel)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton  (QMessageBox.StandardButton.Ok)
+
+        return msg.exec()
+
+
+    @staticmethod
+    def warning (parent: object, title : str, text : str, min_width=None):
+        """ warning with Ok and Cancel"""
+
+        msg = MessageBox (parent, title, text, Icon (Icon.WARNING), min_width=min_width)
+
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         msg.setDefaultButton  (QMessageBox.StandardButton.Ok)
 
         return msg.exec()
