@@ -11,6 +11,8 @@ import logging
 from copy                   import copy 
 
 from PyQt6.QtWidgets        import QMenu
+from PyQt6.QtGui            import QDesktopServices
+from PyQt6.QtCore           import QUrl
 
 from base.widgets           import * 
 from base.panels            import Edit_Panel, Toaster
@@ -168,8 +170,25 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menue.addAction ("Save as...",  self.app.do_save_as)
         menue.addAction ("Rename...",   self.app.do_rename)
         menue.addAction ("Delete",      self.app.do_delete)
+        menue.addSeparator ()
+        menue.addAction ("Readme on Github",   self._open_AE_url)
+        menue.addAction ("Releases on Github", self._open_releases_url)
 
         return menue
+
+
+    def _open_releases_url (self):
+        """ open Github versions in Browser"""
+
+        link = "https://github.com/jxjo/AirfoilEditor/releases"
+        QDesktopServices.openUrl(QUrl(link))
+
+
+    def _open_AE_url (self):
+        """ open Github AirfoilEditor repo in Browser"""
+
+        link = "https://github.com/jxjo/AirfoilEditor"
+        QDesktopServices.openUrl(QUrl(link))
 
 
 
