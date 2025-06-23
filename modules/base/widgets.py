@@ -1365,7 +1365,8 @@ class Slider (Widget, QSlider):
         self._set_Qwidget ()
 
         # connect signals 
-        self.valueChanged.connect(self._on_changed)
+        # self.valueChanged.connect(self._on_changed)  - would be also set, if value is set into slider
+        self.sliderMoved.connect(self._on_changed)
 
 
     @override
@@ -1393,10 +1394,10 @@ class Slider (Widget, QSlider):
         self.setValue (self._slider_val)
 
 
-    def _on_changed(self):
+    def _on_changed(self, slider_val):
         """ slot - finished slider movement"""
 
-        self._slider_val = self.value()
+        self._slider_val = slider_val
         newVal = self._from_slider_to_val ()
         newVal = round(newVal, self._dec)                   # Qt sometimes has float artefacts 
         self._set_value (newVal)
