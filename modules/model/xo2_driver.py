@@ -78,7 +78,8 @@ class X_Program:
     """ 
     Abstract superclass - Proxy to execute eg Xoptfoil2 and Worker 
     
-        self will be executed in 'workingDir' which must be set if is not current dir
+        self will be executed in 'workingDir' which must be set 
+            if it can't be extracted from airfoil path
     """
     name        = 'my_program'
     version     = ''                                       # version of self - will be set in isReady
@@ -87,7 +88,7 @@ class X_Program:
     ready_msg   = ''                                       # ready or error message 
 
 
-    def __init__ (self, workingDir = None):
+    def __init__ (self, workingDir : str = None):
 
         if workingDir and not os.path.isdir (workingDir):
             raise ValueError (f"Working directory '{workingDir}' does not exist" )
@@ -146,10 +147,12 @@ class X_Program:
 
         # try to execute with -h help argument to get version 
 
-        try: 
-            returncode = self._execute ('-h', capture_output=True)
-        except: 
-            returncode = 1
+        returncode = self._execute ('-h', workingDir=self._get_workingDir(), capture_output=True)
+
+        # try: 
+        #     returncode = self._execute ('-h', workingDir=self._get_workingDir(), capture_output=True)
+        # except: 
+        #     returncode = 1
 
         # extract version and check version
         if returncode == 0 :
@@ -306,6 +309,11 @@ class X_Program:
             returncode: = 0 if no error
         """
 
+        if not os.path.isdir (workingDir):
+            returncode = 1
+            logger.error (f"Working directory '{workingDir}' does not exist" )
+            return returncode
+
         returncode  = 0 
         self._pipe_out_lines    = []                        # errortext lines from stderr when finished
         self._pipe_error_lines  = []                        # output lines from stdout when finished
@@ -325,9 +333,8 @@ class X_Program:
 
             # uses subproocess run which returns a completed process instance 
 
-            if workingDir:
-                curDir = os.getcwd()
-                os.chdir (workingDir)
+            curDir = os.getcwd()
+            os.chdir (workingDir)
 
             if capture_output:
                 # needed when running as pyinstaller .exe 
@@ -370,7 +377,7 @@ class X_Program:
 
         finally: 
 
-            if workingDir: os.chdir (curDir)
+            os.chdir (curDir)
 
         return  returncode
 
@@ -384,6 +391,9 @@ class X_Program:
         Returns:
             returncode: = 0 if no error
         """
+
+        if not os.path.isdir (workingDir):
+            raise ValueError (f"Working directory '{workingDir}' does not exist" )
 
         returncode  = 0 
         self._pipe_out_lines    = []                        # errortext lines from stderr when finished
@@ -405,9 +415,8 @@ class X_Program:
 
             # uses subproccess Popen instance to start a subprocess
 
-            if workingDir:
-                curDir = os.getcwd()
-                os.chdir (workingDir)
+            curDir = os.getcwd()
+            os.chdir (workingDir)
 
             if capture_output:
                 stdout = PIPE                               # output is piped to suppress window 
@@ -455,7 +464,7 @@ class X_Program:
 
         finally: 
 
-            if workingDir: os.chdir (curDir)
+            os.chdir (curDir)
 
         return  returncode
 
@@ -504,6 +513,21 @@ class X_Program:
         return exe_dir, ready_msg
 
 
+    def _get_workingDir (self, airfoil_path : str = None) -> str:
+        """ 
+        returns the actual working dir in which X_Program will be executed
+            A workingDir set for self will have presetence, otherwise it is
+            retrieved from airfoil_path or os current working dir is taken  
+        """
+
+        if self.workingDir:
+            return self.workingDir
+        elif airfoil_path and os.path.isfile (airfoil_path) and os.path.isabs(airfoil_path):
+            return os.path.dirname (airfoil_path)
+        else:
+            return os.getcwd()
+
+
 
 # ------------------------------------------------------------
 
@@ -535,7 +559,7 @@ class Xoptfoil2 (X_Program):
 
 
     def run (self, outname:str, input_file:str=None, seed_airfoil:str =None):
-        """ run self async 
+        """ run self async in self workingDir
 
         Args:
             outname: output name for generated airfoil
@@ -748,17 +772,20 @@ class Worker (X_Program):
         if not isinstance (re, list): re = [re]
         if not isinstance (ma, list): ma = [ma]
 
+        # working directory in which self will execute 
+
+        workingDir = self._get_workingDir (airfoil_pathFileName)
+
         # a temporary input file for polar generation is created
-        self._tmp_inpFile = self._generate_polar_inputFile (airfoil_pathFileName, 
-                                    re, ma, polarTypeNo, ncrit, autoRange, spec_al, valRange,
-                                    nPoints=nPoints) 
+
+        self._tmp_inpFile = self._generate_polar_inputFile (workingDir, 
+                                    re, ma, polarTypeNo, ncrit, autoRange, spec_al, valRange, nPoints=nPoints) 
         if not self._tmp_inpFile:
             raise RuntimeError (f"{self.name} polar generation failed: Couldn't create input file")
 
         # build args for worker 
 
-        args, workingDir = self._build_worker_args ('polar',airfoil1=airfoil_pathFileName, 
-                                                    inputfile=self._tmp_inpFile)
+        args = self._build_worker_args ('polar',airfoil1=airfoil_pathFileName, inputfile=self._tmp_inpFile)
 
         # .execute either sync or async
 
@@ -796,24 +823,25 @@ class Worker (X_Program):
             name = airfoil_pathFileName_abs if len(airfoil_pathFileName_abs) <= 40 else "..." + airfoil_pathFileName_abs[-35:]
             raise ValueError (f"Airfoil '{name}' does not exist")
 
+        # working directory in which self will execute 
+
+        workingDir = self._get_workingDir (airfoil_fileName)
+
         # a temporary input file for polar generation is created
 
-        self._tmp_inpFile = self._generate_flap_inputFile (self.workingDir, x_flap, y_flap, y_flap_spec, flap_angle)         
+        self._tmp_inpFile = self._generate_flap_inputFile (workingDir, x_flap, y_flap, y_flap_spec, flap_angle)         
         if not self._tmp_inpFile:
             raise RuntimeError (f"{self.name} setting flap failed: Couldn't create input file")
 
         # build args for worker 
 
-        args, workingDir = self._build_worker_args ('flap',
-                                                    airfoil1=airfoil_fileName, 
-                                                    inputfile=self._tmp_inpFile,
-                                                    outname=outname)
-
+        args = self._build_worker_args ('flap', airfoil1=airfoil_fileName, 
+                                                inputfile=self._tmp_inpFile,
+                                                outname=outname)
         # .execute  sync
 
         rc = self._execute (args, capture_output=True, workingDir=workingDir)
 
-        
         if rc: 
             raise RuntimeError (f"Worker set flap failed: {self.finished_errortext}")
         else: 
@@ -846,26 +874,15 @@ class Worker (X_Program):
 
     def _build_worker_args (self, action, actionArg='', airfoil1='', airfoil2='', outname='', inputfile=''):
         """ 
-        return worker args as list of strings and 
-        working dir extracted from airfoil1 if airfoil1 is not in current working dir 
+        return worker args as list of strings  
         """
 
-        airfoil1_dir, airfoil1_fileName = os.path.split(airfoil1)
-        _,            airfoil2_fileName = os.path.split(airfoil2)
-
-
-        if airfoil1_dir != '' and os.path.isabs(airfoil1_dir):
-            working_dir = airfoil1_dir
-            if (airfoil2 != ''):                                         # in this case also strip airfoil2 
-                _, airfoil2_fileName = os.path.split(airfoil2)
-        else:
-            working_dir = self._workingDir
+        airfoil1_fileName = os.path.basename(airfoil1)
+        airfoil2_fileName = os.path.basename(airfoil2)
 
         # info inputfile is in a dir - strip dir from path - local execution 
-        if (inputfile != ''):
-            _, local_inputfile = os.path.split(inputfile)
-        else: 
-            local_inputfile = '' 
+
+        local_inputfile = os.path.basename(inputfile) if inputfile else ''
 
         args = []
 
@@ -883,11 +900,12 @@ class Worker (X_Program):
         if (outname  ): args.extend(['-o',  outname]) 
         if (inputfile): args.extend(['-i',  local_inputfile])
 
-        return  args, working_dir
+        return  args
 
 
 
-    def _generate_polar_inputFile (self, airfoilPathFileName, 
+    def _generate_polar_inputFile (self, 
+                                 workingDir : str,         # if none self._workingDir is taken 
                                   reNumbers : list[float], maNumbers : list[float],
                                   polarType : int, ncrit : float,  
                                   autoRange : bool, spec_al: bool, valRange: list[float], 
@@ -911,11 +929,9 @@ class Worker (X_Program):
 
         tmpFilePath = None
 
-        airfoilPath, airfoilFileName = os.path.split(airfoilPathFileName)
-
         # create tmp input file 
 
-        with NamedTemporaryFile(mode="w", delete=False, dir=airfoilPath, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
+        with NamedTemporaryFile(mode="w", delete=False, dir=workingDir, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
 
             tmp.write ("&polar_generation\n")
             tmp.write ("  type_of_polar = %d\n" % polarType)  
@@ -948,13 +964,13 @@ class Worker (X_Program):
 
 
     def _generate_flap_inputFile (self, 
-                                  working_dir : str = None,         # if none self._workingDir is taken 
+                                 workingDir : str = None,         # if none self._workingDir is taken 
                                   x_flap : float = 0.75,
                                   y_flap : float = 0.0,
                                   y_flap_spec : str = 'y/c',
                                   flap_angle : float | list = 0.0, 
                                   ) -> str:
-        """ Generate a temporary polar input file for worker in working_dir
+        """ Generate a temporary polar input file for worker inworkingDir
 
         &operating_conditions                              ! options to describe the optimization task
             x_flap                 = 0.75                  ! chord position of flap 
@@ -968,21 +984,12 @@ class Worker (X_Program):
 
         tmpFilePath = None
 
-        if working_dir is None:
-            working_dir = self._workingDir
-
-        # sanity 
-
-        if not os.path.isdir (working_dir):
-            raise ValueError (f"Worker working directory {working_dir} does not exist")
-
-
         flap_angles = flap_angle if isinstance (flap_angle, list) else [flap_angle]
         y_flap_spec = 'y/t' if y_flap_spec == 'y/t' else 'y/c'
 
         # create tmp input file 
 
-        with NamedTemporaryFile(mode="w", delete=False, dir=working_dir, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
+        with NamedTemporaryFile(mode="w", delete=False, dir=workingDir, prefix=TMP_INPUT_NAME, suffix=TMP_INPUT_EXT) as tmp:
 
             tmp.write ("&operating_conditions\n")
             tmp.write (f"  x_flap = {x_flap:.2f}\n")  

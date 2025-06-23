@@ -231,7 +231,7 @@ class Case_Direct_Design (Case_Abstract):
             self.airfoil_designs.pop (i)
 
             # remove file 
-            os.remove (airfoil.pathFileName)
+            os.remove (airfoil.pathFileName_abs)
 
             if i < (len (self.airfoil_designs) - 1):
                 next_airfoil = self.airfoil_designs [i]

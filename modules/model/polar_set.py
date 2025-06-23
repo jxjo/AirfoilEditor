@@ -377,7 +377,7 @@ class Polar_Set:
     def airfoil (self) -> Airfoil: return self._airfoil
 
     @property
-    def airfoil_abs_pathFileName (self) -> str:
+    def airfoil_pathFileName_abs (self) -> str:
         """ returns absolute path of airfoil"""
         abs_path = None
         if self.airfoil:
@@ -397,14 +397,14 @@ class Polar_Set:
     def airfoil_ensure_being_saved (self):
         """ check and ensure that airfoil is saved to file (Worker needs it)"""
 
-        if os.path.isfile (self.airfoil_abs_pathFileName) and not self.airfoil.isModified:
+        if os.path.isfile (self.airfoil_pathFileName_abs) and not self.airfoil.isModified:
             pass 
         else: 
             if self.airfoil.isBezierBased:                      # for Bezier write only .bez - no dat
                 self.airfoil.save(onlyShapeFile=True)
             else: 
                 self.airfoil.save()
-            logging.debug (f'Airfoil {self.airfoil_abs_pathFileName} saved for polar generation') 
+            logging.debug (f'Airfoil {self.airfoil_pathFileName_abs} saved for polar generation') 
 
 
     @property
@@ -954,7 +954,7 @@ class Polar (Polar_Definition):
         try: 
             # polar file existing?  - if yes, load polar 
 
-            airfoil_pathFileName = self.polar_set.airfoil_abs_pathFileName
+            airfoil_pathFileName = self.polar_set.airfoil_pathFileName_abs
             polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
                                                 self.type, self.re, self.ma, self.ncrit)
 
@@ -1080,7 +1080,7 @@ class Polar_Task (Polar_Definition):
         self._myWorker  = None                          # Worker instance which does the job
         self._finalized = False                         # worker has done the job  
 
-        self._airfoil_pathFileName = None               # airfoil file 
+        self._airfoil_pathFileName_abs = None               # airfoil file 
 
         if polar:
             self.add_polar (polar) 
@@ -1185,7 +1185,7 @@ class Polar_Task (Polar_Definition):
             self._ma        = [polar.ma]
 
             self._polars     = [polar]
-            self._airfoil_pathFileName = polar.polar_set.airfoil_abs_pathFileName
+            self._airfoil_pathFileName_abs = polar.polar_set.airfoil_pathFileName_abs
 
         # collect all polars with same type, ncrit, specVar, valRange 
         # to allow Worker multi-threading 
@@ -1210,7 +1210,7 @@ class Polar_Task (Polar_Definition):
         self._myWorker = Worker ()
 
         try:
-            self._myWorker.generate_polar (self._airfoil_pathFileName, 
+            self._myWorker.generate_polar (self._airfoil_pathFileName_abs, 
                         self._type, self._re, self._ma, self._ncrit, 
                         autoRange=self._autoRange, spec=self._specVar, 
                         valRange=self._valRange, run_async=True, nPoints=self._nPoints)
