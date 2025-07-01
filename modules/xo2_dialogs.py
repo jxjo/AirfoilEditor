@@ -130,7 +130,7 @@ class Xo2_Select_Dialog (Dialog):
         if self._info_panel is None:    
             l = QGridLayout()
             r,c = 0, 0 
-            lab = Label    (l,r,c, height=170, colSpan=3, style=style.COMMENT, wordWrap=True,
+            lab = Label    (l,r,c, height=170, colSpan=3, wordWrap=True,
                     get="Airfoil optimization is based on <a href='https://github.com/jxjo/Xoptfoil2'>Xoptfoil2</a>, which will run in the background.<br><br>" +
                         "Xoptfoil2 is controlled via the Input file, whose paramters can be edited subsequently. "
                         "The Input file is equivalent to an Optimization Case in the AirfoilEditor." +
@@ -150,8 +150,7 @@ class Xo2_Select_Dialog (Dialog):
             r += 1
             SpaceR   (l,r,height=10, stretch=0)
             r += 1
-            Label    (l,r,c, colSpan=3, style=style.COMMENT, 
-                        get="After that you are ready for your own projects!")
+            Label    (l,r,c, colSpan=3, get="After that you are ready for your own projects!")
             r += 1
             SpaceR   (l,r,height=10, stretch=0)
 
@@ -675,7 +674,7 @@ class Xo2_Run_Dialog (Dialog):
     """ Dialog to run/watch Xoptfoil2"""
 
     _width  = (330, None)
-    _height = (380, None)
+    _height = (350, None)
 
     name = "Run"
 
@@ -777,7 +776,7 @@ class Xo2_Run_Dialog (Dialog):
         """ Diagram with design radus and improvement development  """
 
         _width  = (None, None)               # (min,max) 
-        _height = (150, None)                # (min,max)
+        _height = (140, None)                # (min,max)
 
 
         def __init__(self, *args, **kwargs):
@@ -838,6 +837,7 @@ class Xo2_Run_Dialog (Dialog):
 
         #self.setWindowFlags (self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint,)
         self.setWindowFlags (Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window | Qt.WindowType.WindowTitleHint)
+
         # no border for main layout 
 
         self._panel.layout().setContentsMargins (QMargins(0, 0, 0, 0))
@@ -960,8 +960,6 @@ class Xo2_Run_Dialog (Dialog):
 
             l = QGridLayout()
             r,c = 0, 0 
-            SpaceR (l, r, stretch=0, height=5) 
-            r += 1
             Label  (l,r,c,   get="Iterations / Designs")
             Label  (l,r,c+1, get=lambda: f" {self.xo2.nSteps}/{self.xo2.nDesigns} ", fontSize=size.HEADER)
             Label  (l,r,c+2, get=lambda: f"xfoil calculations {self.nxfoil_calcs}", 
@@ -975,7 +973,7 @@ class Xo2_Run_Dialog (Dialog):
                              style=lambda: style.GOOD if self._improved else style.NORMAL, 
                              styleRole=QPalette.ColorRole.Window) # background
             r += 1
-            SpaceR (l, r, stretch=0, height=5) 
+            SpaceR (l, r) 
 
             l.setColumnMinimumWidth (0,110)
             l.setColumnMinimumWidth (1,60)
@@ -997,8 +995,6 @@ class Xo2_Run_Dialog (Dialog):
 
             l = QGridLayout()
             r,c = 0, 0 
-            SpaceR (l, r, stretch=0, height=5) 
-            r += 1
             Label  (l,r,c,   get="... preparing and evaluating seed airfoil ...")
             r += 1
             SpaceR (l, r) 
@@ -1036,8 +1032,6 @@ class Xo2_Run_Dialog (Dialog):
 
             l = QGridLayout()
             r = 0
-            SpaceR (l, r, stretch=0, height=5) 
-            r += 1
             Label  (l,r,0,  get="Graceful stop request to Xoptfoil2.")
             r += 1
             Label  (l,r,0,  get=lambda: f"Final airfoil {self.case.outName} will be created ...")
@@ -1059,8 +1053,6 @@ class Xo2_Run_Dialog (Dialog):
 
             l = QGridLayout()
             r = 0
-            SpaceR (l, r, stretch=0, height=5) 
-            r += 1
             Label  (l,r,0,  get=lambda: f"{self.case.xo2.run_errortext}", height=(60,None), wordWrap=True)
             r += 1
             SpaceR (l, r) 
@@ -1080,8 +1072,6 @@ class Xo2_Run_Dialog (Dialog):
 
             l = QGridLayout()
             r,c = 0, 0 
-            SpaceR (l, r, stretch=0, height=5) 
-            r += 1
             Label  (l,r,c,   get="Iterations / Designs")
             Label  (l,r,c+1, get=lambda: f" {self.results.nSteps}/{self.results.nDesigns} ", fontSize=size.HEADER)
             Label  (l,r,c+2, get=lambda: f"xfoil calculations {self.nxfoil_calcs}", 
@@ -1093,7 +1083,7 @@ class Xo2_Run_Dialog (Dialog):
             Label  (l,r,c,   get="Improvement")
             Label  (l,r,c+1, get=lambda: f" {self.results.improvement:.5%} ", fontSize=size.HEADER)
             r += 1
-            SpaceR (l, r, stretch=0, height=5) 
+            SpaceR (l, r) 
 
             l.setColumnMinimumWidth (0,110)
             l.setColumnMinimumWidth (1,60)
@@ -1121,7 +1111,8 @@ class Xo2_Run_Dialog (Dialog):
 
         l.addWidget (self._diagram, 1,0,1,1) 
 
-        l.setRowMinimumHeight (0,150)  
+        l.setRowMinimumHeight (0,140)  
+        l.setRowMinimumHeight (1,140)  
         l.setRowStretch (1,1)  
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
@@ -1855,8 +1846,8 @@ class Xo2_Paneling_Dialog (Xo2_Abstract_Options_Dialog):
 class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist hicks_henne_options"""
 
-    _width  = (260, None)
-    _height = (260, None)
+    _width  = 260
+    _height = 280
 
     name = "Hicks-Henne Options"
 
@@ -1879,7 +1870,14 @@ class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
                      obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.nfunctions_bot,
                      toolTip="Number of Hicks-Henne functions") 
         r += 1
+        Label       (l,r,c, colSpan=4, style=style.COMMENT,
+                     get=lambda: f"... will be {self.hicks_henne_options.ndesign_var} design variables")        
+        r += 1
         SpaceR      (l,r)
+        r += 1
+        FieldF      (l,r,c, lab='Initial perturb', width=50, step=0.05, lim=(0.01,1),
+                     obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.initial_perturb,
+                    toolTip="Measure of how much initial solutions may deviate from seed") 
         r += 1
         CheckBox    (l,r,c, text="Smooth Seed",
                      obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.smooth_seed,
@@ -1887,9 +1885,6 @@ class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
                      toolTip="Create a Bezier based airfoil from seed airfoil prior to optimization")                        
         r += 1
         l.setRowStretch (r,2)
-        r += 1
-        Label (l,r,c, colSpan=4, style=style.COMMENT,
-               get=lambda: f"Will be {self.hicks_henne_options.ndesign_var} design variables")        
         l.setColumnMinimumWidth (0,70)
         l.setColumnStretch (4,2)
 
@@ -1900,14 +1895,18 @@ class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
 class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist bezier_options"""
 
-    _width  = (260, None)
-    _height = (220, None)
+    _width  = 260
+    _height = 250
 
     name = "Bezier Options"
 
     @property
     def bezier_options (self) -> Nml_bezier_options:
         return self.dataObject
+
+    @property
+    def input_file (self) -> Input_File:
+        return self.bezier_options._input_file
 
 
     def _init_layout (self) -> QGridLayout:
@@ -1916,19 +1915,25 @@ class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
         r,c = 0, 0
         Label (l,r,c, get="Bezier control points on ...", style=style.COMMENT, colSpan=4)
         r += 1
-        FieldI (l,r,c, lab='Top side', width=50, step=1, lim=(3,10),
-                obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_top,
-                toolTip="Number of Bezier control points") 
+        FieldI     (l,r,c, lab='Top side', width=50, step=1, lim=(3,10),
+                    obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_top,
+                    disable=self.input_file.airfoil_seed.isBezierBased,
+                    toolTip="Number of Bezier control points") 
         r += 1
-        FieldI (l,r,c, lab='Bottom side', width=50, step=1, lim=(3,10),
-                obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_bot,
-                toolTip="Number of Bezier control points") 
+        FieldI     (l,r,c, lab='Bottom side', width=50, step=1, lim=(3,10),
+                    obj=lambda: self.bezier_options, prop=Nml_bezier_options.ncp_bot,
+                    disable=self.input_file.airfoil_seed.isBezierBased,
+                    toolTip="Number of Bezier control points") 
+        r += 1
+        Label      (l,r,c, colSpan=4, style=style.COMMENT,
+                    get=lambda: f"... will be {self.bezier_options.ndesign_var} design variables")        
+        r += 1
+        FieldF     (l,r,c, lab='Initial perturb', width=50, step=0.05, lim=(0.01,1),
+                    obj=lambda: self.bezier_options, prop=Nml_bezier_options.initial_perturb,
+                    toolTip="Measure of how much initial solutions may deviate from seed") 
         r += 1
         l.setRowStretch (r,2)
-        r += 1
-        Label (l,r,c, colSpan=4, style=style.COMMENT,
-               get=lambda: f"Will be {self.bezier_options.ndesign_var} design variables")        
-        l.setColumnMinimumWidth (0,70)
+        l.setColumnMinimumWidth (0,80)
         l.setColumnStretch (4,2)
 
         return l

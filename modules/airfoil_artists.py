@@ -15,7 +15,7 @@ from base.artist                import *
 from base.common_utils          import *
 from base.spline                import Bezier, HicksHenne
 
-from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flapper
+from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flap_Setter
 from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
 from model.polar_set            import * 
 
@@ -606,15 +606,15 @@ class Flap_Artist (Artist):
                 return airfoil 
     
     @property
-    def flapper (self) -> Flapper:
-        return self.design_airfoil.flapper if self.design_airfoil else None 
+    def flap_setter (self) -> Flap_Setter:
+        return self.design_airfoil.flap_setter if self.design_airfoil else None 
 
 
     def _plot (self): 
     
-        if self.flapper is None: return 
+        if self.flap_setter is None: return 
 
-        flapped_airfoil = self.flapper.airfoil_flapped
+        flapped_airfoil = self.flap_setter.airfoil_flapped
         color = _color_airfoil ([], self.design_airfoil)
 
         if flapped_airfoil is not None:
@@ -632,17 +632,17 @@ class Flap_Artist (Artist):
             x = (1.0 + flapped_airfoil.x[0]) / 2
             y = flapped_airfoil.y[0] / 2
 
-            self._plot_point ((x,y), size=0,text=f"{self.flapper.flap_angle:.1f}°", anchor=(-0.1, 0.5))
+            self._plot_point ((x,y), size=0,text=f"{self.flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
 
         # plot hinge point 
 
-        x = self.flapper.x_flap
+        x = self.flap_setter.x_flap
 
         y_base = self.design_airfoil.geo.lower.yFn(x)
         thick  = self.design_airfoil.geo.thickness.yFn(x)
-        y = y_base + self.flapper.y_flap * thick 
+        y = y_base + self.flap_setter.y_flap * thick 
 
-        self._plot_point ((x,y), color=color, size=10,text=f"Hinge {self.flapper.x_flap:.1%}" )
+        self._plot_point ((x,y), color=color, size=10,text=f"Hinge {self.flap_setter.x_flap:.1%}" )
 
 
 

@@ -24,7 +24,7 @@ sys.path.append(Path(__file__).parent)
 
 from base.common_utils      import * 
 from base.spline            import HicksHenne
-from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
+from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, usedAs
 from model.airfoil          import GEO_BASIC, Line
 from model.polar_set        import * 
 from model.xo2_driver       import Xoptfoil2
@@ -32,7 +32,7 @@ from model.xo2_input        import GEO_OPT_VARS
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 #-------------------------------------------------------------------------------
@@ -481,7 +481,7 @@ class Reader_Abstract:
 
             n = self.read_results ()
 
-            # logging.debug (f"read {n} results after dirty in {self.__class__.__name__}")
+            logger.debug (f"read {n} results after dirty in {self.__class__.__name__}")
             self._results_could_be_dirty = False
         return self._results 
 
@@ -563,11 +563,11 @@ class Reader_Abstract:
                 else:
                     new_text = 'new '
                 if time_load < 0.01 and time_read < 0.005:
-                    logging.debug (f"{self} imported {n_new} {new_text}{object_name}  (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
+                    logger.debug (f"{self} imported {n_new} {new_text}{object_name}  (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
                 elif n_new == 1: 
-                    logging.warning (f"{self} importing {len(file_lines)} lines takes too long (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
+                    logger.warning (f"{self} importing {len(file_lines)} lines takes too long (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
             else: 
-                logging.warning (f"{self} nothing to import")
+                logger.warning (f"{self} nothing to import")
 
         return n_new
 
@@ -756,95 +756,6 @@ class Reader_OpPoints (Reader_Abstract):
         else:                                       #  there would be a gap in design list
             raise ValueError ("Add new design: Index %i doesn't fit" %idesign)
         return n_new
-
-
-class Reader_OpPoints_old (Reader_Abstract):
-    """
-    The Xoptfoil2 results for the operating points during an optimization 
-    """
-
-    filename = 'Design_OpPoints.csv'
-    objects_text  = ('set of op results', 'sets of op results')
-
-    def _load_results (self, file_lines):
-        """ Parse file_lines and create new design objects lines of the file freshly red into 
-
-        Arguments:
-            file_lines -- (new) lines of the file 
-        """
-        # File format 
-        #
-        #    No; iOp;      alpha;         cl;         cd;         cm;       xtrt;       xtrb;       dist;        dev;     flap;   weight
-        #     0;   1;  -3.713445;  -0.250000;   0.012932;  -0.037740;   0.982203;   0.026582;  -0.001832; -16.507213;   0.0000;     1.0
-        #     0;   2;  -2.236515;  -0.050000;   0.008851;  -0.046911;   0.956186;   0.533244;  -0.001791; -25.370629;   0.0000;     0.5
-
-        n_new = 0 
-        idesign_old = 0 
-        ops_results = []
-
-        for i, line in enumerate(file_lines):
-
-            vals = [val.strip() for val in line.split(';')]             # will remove all extra spaces
-
-            if vals[0] == 'No' and vals[1] == 'iOp':   # Header 
-                pass
-            else:
-                idesign = int (vals[0])
-
-                if idesign == idesign_old: 
-                    # same design group - add sub object to list 
-                    ops_results.append ([float(i) for i in vals[2:]])   # convert list to float
-
-                if idesign != idesign_old :  
-                    # new design group - flush old one 
-                    n_new += self.add_opPoints_result (idesign_old, ops_results)
-                    # start new one with current sub object
-                    idesign_old = idesign 
-                    ops_results = [[float(i) for i in vals[2:]]]   
-
-                if i == (len(file_lines)-1):
-                    # last record - flush current design group 
-                    n_new += self.add_opPoints_result (idesign, ops_results)               
-      
-        return n_new
-
-
-    def add_opPoints_result (self, idesign, ops_results_list):
-        """ add array of OpPoint_Result to designs """
-
-        n_new = 0 
-        if idesign == len (self._results):          # new, next design in list 
-
-            ops = []
-            for iop, op_result_list in enumerate (ops_results_list): 
-
-                if len(op_result_list) >= 10: 
-                    op_result = OpPoint_Result ()
-                    op_result.alpha     = op_result_list[0]
-                    op_result.cl        = op_result_list[1]
-                    op_result.cd        = op_result_list[2]
-                    op_result.cm        = op_result_list[3]
-                    op_result.xtrt      = op_result_list[4]
-                    op_result.xtrb      = op_result_list[5]
-                    op_result.distance  = op_result_list[6]
-                    op_result.deviation = op_result_list[7]
-                    op_result.flap      = op_result_list[8]
-                    op_result.weighting = op_result_list[9]
-                    ops.append(op_result)
-                else: 
-                    logger.error (f"Format of '{self.filename}' doesn't fit. Skipping op point data...")       
-
-            self._results.append(ops)   
-            n_new += 1  
-
-        elif idesign < len (self._results):         # we have it already 
-            pass                                     
-        elif len (self._results) == 0:              # we are already in error mode
-            pass
-        else:                                       #  there would be a gap in design list
-            raise ValueError ("Add new design: Index %i doesn't fit" %idesign)
-        return n_new
-
 
 
 

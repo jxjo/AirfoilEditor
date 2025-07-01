@@ -54,6 +54,8 @@ from airfoil_widgets        import *
 from airfoil_dialogs        import (Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog,
                                     Flap_Airfoil_Dialog)
 
+from airfoil_diagrams       import Diagram_Airfoil_Polar            # lazy import to avoid circular references 
+
 from xo2_dialogs            import (Xo2_Run_Dialog, Xo2_Select_Dialog, Xo2_OpPoint_Def_Dialog, Xo2_New_Dialog)
 
 import logging
@@ -125,14 +127,14 @@ class App_Main (QMainWindow):
         self._mode_optimize     = False                 # optimize mode of app 
         self._case              = None                  # design Case holding all designs 
 
-        self._data_panel        = None                  # main panels of app
-        self._panel_file        = None
+        self._panel_view        = None                  # main UI panels
+        self._panel_modify      = None
+        self._panel_optimize    = None
         self._diagram           = None
-        self._panel_lower       = None
 
-        self._xo2_panel         = None                 
         self._xo2_opPoint_def_dialog = None             # singleton for this dialog 
         self._xo2_run_dialog    = None                  # singleton for this dialog 
+
 
         # if called from other applcation (PlanformCreator) make it modal to this 
 
@@ -143,18 +145,22 @@ class App_Main (QMainWindow):
         
         self.setWindowIcon (Icon ('AE_ico.ico'))
 
-        # get initial window size from settings
+        # Qt color scheme, initial window size from settings
 
         Settings.belongTo (__file__, nameExtension=None, fileExtension= '.settings')
+
+        scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)           # either unknown (from System), Dark, Light
+        QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])            # set scheme of QT
+        Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)                   # set mode for Widgets 
+
         geometry = Settings().get('window_geometry', [])
         maximize = Settings().get('window_maximize', False)
         Win_Util.set_initialWindowSize (self, size_frac= (0.85, 0.80), pos_frac=(0.1, 0.1),
                                         geometry=geometry, maximize=maximize)
         
-        # load settings
+        # load other settings
 
         self._load_settings ()
-
 
         # if no initial airfoil file, try to get last openend airfoil file 
 
@@ -180,24 +186,23 @@ class App_Main (QMainWindow):
 
         Xoptfoil2().isReady (os.path.dirname(os.path.abspath(__file__)), min_version=self.XOPTFOIL2_MIN_VERSION)
 
-
         # init main layout of app
 
-        from airfoil_diagrams       import Diagram_Airfoil_Polar            # lazy import to avoid circular references 
+        l = QGridLayout () 
 
-        self._data_panel    = Container_Panel (title="Data panel", hide=lambda:     self.mode_optimize)
-        self._xo2_panel     = Container_Panel (title="Xo2 panel",  hide=lambda: not self.mode_optimize)
-        self._diagram       = Diagram_Airfoil_Polar (self, lambda: self.airfoils, 
-                                                     polar_defs_fn = lambda: self.polar_definitions,
-                                                     case_fn = lambda: self.case, 
-                                                     diagram_settings= Settings().get('diagram_settings', []))
+        l.addWidget (self.diagram,        0,0)
+        l.addWidget (self.panel_view,     2,0)
+        l.addWidget (self.panel_modify,   2,0)
+        l.addWidget (self.panel_optimize, 2,0)
 
-        l_main = self._init_layout() 
+        l.setRowStretch (0,1)
+        l.setRowMinimumHeight (1,5)
+        l.setSpacing (0)
+        l.setContentsMargins (QMargins(5, 5, 5, 5))
 
-        container = QWidget()
-        container.setLayout (l_main) 
-        self.setCentralWidget (container)
-
+        main = QWidget()
+        main.setLayout (l) 
+        self.setCentralWidget (main)
 
         # ---- signals and slots --------------------------------------------------------------
 
@@ -205,45 +210,45 @@ class App_Main (QMainWindow):
 
         if Worker.ready:
              self._watchdog = Watchdog (self) 
-             self._watchdog.sig_new_polars.connect       (self._diagram.on_new_polars)
+             self._watchdog.sig_new_polars.connect       (self.diagram.on_new_polars)
              self._watchdog.sig_xo2_new_state.connect    (self._on_new_xo2_state)            
              self._watchdog.sig_xo2_new_design.connect   (self._on_new_xo2_design)                   # new current, update diagram  
              self._watchdog.start()
 
         # connect diagram signals to slots of self
 
-        self._diagram.sig_airfoil_changed.connect           (self._on_airfoil_changed)
-        self._diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
-        self._diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
-        self._diagram.sig_airfoil_design_selected.connect   (self._on_airfoil_design_selected)
-        self._diagram.sig_opPoint_def_selected.connect      (self._on_xo2_opPoint_def_selected)     # inform dialog 
-        self._diagram.sig_opPoint_def_changed.connect       (self._on_xo2_opPoint_def_changed)      # inform dialog 
-        self._diagram.sig_opPoint_def_changed.connect       (self._on_xo2_input_changed)            # save to nml
-        self._diagram.sig_opPoint_def_dblClick.connect      (self.edit_opPoint_def)
+        self.diagram.sig_airfoil_changed.connect           (self._on_airfoil_changed)
+        self.diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
+        self.diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
+        self.diagram.sig_airfoil_design_selected.connect   (self._on_airfoil_design_selected)
+        self.diagram.sig_opPoint_def_selected.connect      (self._on_xo2_opPoint_def_selected)     # inform dialog 
+        self.diagram.sig_opPoint_def_changed.connect       (self._on_xo2_opPoint_def_changed)      # inform dialog 
+        self.diagram.sig_opPoint_def_changed.connect       (self._on_xo2_input_changed)            # save to nml
+        self.diagram.sig_opPoint_def_dblClick.connect      (self.edit_opPoint_def)
 
         # connect self signals to slots of diagram
 
-        self.sig_new_airfoil.connect            (self._diagram.on_airfoil_changed)
-        self.sig_new_design.connect             (self._diagram.on_new_design)
-        self.sig_airfoil_changed.connect        (self._diagram.on_airfoil_changed)
-        self.sig_airfoil_2_changed.connect      (self._diagram.on_airfoil_2_changed)
-        self.sig_bezier_changed.connect         (self._diagram.on_bezier_changed)
-        self.sig_panelling_changed.connect      (self._diagram.on_airfoil_changed)
-        self.sig_blend_changed.connect          (self._diagram.on_airfoil_changed)
-        self.sig_polar_set_changed.connect      (self._diagram.on_polar_set_changed)
-        self.sig_airfoils_ref_changed.connect   (self._diagram.on_airfoils_ref_changed)
+        self.sig_new_airfoil.connect            (self.diagram.on_airfoil_changed)
+        self.sig_new_design.connect             (self.diagram.on_new_design)
+        self.sig_airfoil_changed.connect        (self.diagram.on_airfoil_changed)
+        self.sig_airfoil_2_changed.connect      (self.diagram.on_airfoil_2_changed)
+        self.sig_bezier_changed.connect         (self.diagram.on_bezier_changed)
+        self.sig_panelling_changed.connect      (self.diagram.on_airfoil_changed)
+        self.sig_blend_changed.connect          (self.diagram.on_blend_changed)
+        self.sig_polar_set_changed.connect      (self.diagram.on_polar_set_changed)
+        self.sig_airfoils_ref_changed.connect   (self.diagram.on_airfoils_ref_changed)
 
-        self.sig_mode_optimize.connect          (self._diagram.on_mode_optimize)
-        self.sig_xo2_about_to_run.connect       (self._diagram.on_xo2_about_to_run)
-        self.sig_xo2_new_state.connect          (self._diagram.on_xo2_new_state)
-        self.sig_xo2_input_changed.connect      (self._diagram.on_xo2_new_state)
-        self.sig_new_case_optimize.connect      (self._diagram.on_new_case_optimize)
-        self.sig_xo2_opPoint_def_selected.connect (self._diagram.on_xo2_opPoint_def_selected)
+        self.sig_mode_optimize.connect          (self.diagram.on_mode_optimize)
+        self.sig_xo2_about_to_run.connect       (self.diagram.on_xo2_about_to_run)
+        self.sig_xo2_new_state.connect          (self.diagram.on_xo2_new_state)
+        self.sig_xo2_input_changed.connect      (self.diagram.on_xo2_new_state)
+        self.sig_new_case_optimize.connect      (self.diagram.on_new_case_optimize)
+        self.sig_xo2_opPoint_def_selected.connect (self.diagram.on_xo2_opPoint_def_selected)
 
-        self.sig_enter_blend.connect            (self._diagram.on_blend_airfoil)
-        self.sig_enter_panelling.connect        (self._diagram.on_enter_panelling)
-        self.sig_enter_flapping.connect         (self._diagram.on_enter_flapping)
-        self.sig_flap_changed.connect           (self._diagram.on_flap_changed)
+        self.sig_enter_blend.connect            (self.diagram.on_blend_airfoil)
+        self.sig_enter_panelling.connect        (self.diagram.on_enter_panelling)
+        self.sig_enter_flapping.connect         (self.diagram.on_enter_flapping)
+        self.sig_flap_changed.connect           (self.diagram.on_flap_changed)
 
 
     @override
@@ -251,85 +256,87 @@ class App_Main (QMainWindow):
         return f"<{type(self).__name__}>"
 
 
-    def _init_layout (self): 
-        """ init main layout with the different panels """
+    @property
+    def panel_view (self) -> Container_Panel:
+        """ lower UI main panel - view mode """
+        if self._panel_view is None: 
 
-        #  ||               lower                         >||
-        #  || file panel ||        data panel             >||
-        #                 | Geometry  | Coordinates | ... >| 
+            # lazy import to avoid circular references 
+            from airfoil_panels      import (Panel_File_View, Panel_Geometry, Panel_LE_TE, Panel_Panels, 
+                                             Panel_Bezier, Panel_Flap) 
 
-        # lazy import to avoid circular references 
-        from xo2_panels             import (Panel_Xo2_Advanced, Panel_Xo2_Case, Panel_Xo2_Curvature,
-                                            Panel_Xo2_Geometry_Targets, Panel_Xo2_Operating_Conditions, Panel_Xo2_Operating_Points)
+            l = QHBoxLayout()
+            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, height=190))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil))
+            l.addStretch (1)
 
-        l_xo2 = QHBoxLayout()        
-        l_xo2.addWidget (Panel_Xo2_Case                    (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case))
-        l_xo2.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case))
-        
-        l_xo2.setContentsMargins (QMargins(0, 0, 0, 0))
-        self._xo2_panel.setLayout (l_xo2)
+            self._panel_view = Container_Panel (layout = l, hide=lambda: not self.mode_view)
 
-        # lazy import to avoid circular references 
-        from airfoil_panels      import (Panel_Bezier,Panel_Bezier_Match, 
-                                         Panel_Geometry, Panel_LE_TE, Panel_Panels, Panel_Flap) 
-
-        l_data = QHBoxLayout()        
-        l_data.addWidget (Panel_Geometry        (self, lambda: self.airfoil))
-        l_data.addWidget (Panel_Panels          (self, lambda: self.airfoil))
-        l_data.addWidget (Panel_LE_TE           (self, lambda: self.airfoil))
-        l_data.addWidget (Panel_Flap            (self, lambda: self.airfoil))
-        l_data.addWidget (Panel_Bezier          (self, lambda: self.airfoil))
-        l_data.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil))
-        l_data.setContentsMargins (QMargins(0, 0, 0, 0))
-        self._data_panel.setLayout (l_data)
-
-        l_lower = QGridLayout()
-        l_lower.addWidget (self.panel_file, 0, 0, 1, 1)
-        l_lower.addWidget (self._data_panel, 0, 1, 1, 1)
-        l_lower.addWidget (self._xo2_panel , 0, 1, 1, 1)
-        l_lower.setHorizontalSpacing (5)
-        #l_lower.setColumnStretch (1,1)
-        l_lower.setColumnStretch (2,2)
-        l_lower.setContentsMargins (QMargins(0, 0, 0, 0))
-
-        self._panel_lower = QWidget ()
-        self._panel_lower.setMinimumHeight(180)
-        self._panel_lower.setMaximumHeight(180)
-        self._panel_lower.setLayout (l_lower)
-
-        # main layout with diagram panel and lower 
-
-        l_main = QVBoxLayout () 
-        l_main.addWidget (self._diagram, stretch=2)
-        l_main.addWidget (self._panel_lower)
-        l_main.setContentsMargins (QMargins(5, 5, 5, 5))
-
-        return l_main 
+        return self._panel_view 
 
 
     @property
-    def panel_file (self) -> Container_Panel:
-        """ UI file panel"""
-        if self._panel_file is None: 
-
-            self._panel_file    = Container_Panel (title="File panel", width=250)
+    def panel_modify (self) -> Container_Panel:
+        """ lower UI main panel - modifiy mode """
+        if self._panel_modify is None: 
 
             # lazy import to avoid circular references 
-            from airfoil_panels         import Panel_File_Modify,Panel_File_View
-            from xo2_panels             import Panel_File_Optimize
+            from airfoil_panels      import (Panel_File_Modify, Panel_Geometry, Panel_LE_TE, Panel_Panels, 
+                                             Panel_Flap, Panel_Bezier, Panel_Bezier_Match) 
 
-            l_file = QHBoxLayout()
-            l_file.addWidget (Panel_File_Modify     (self, lambda: self.airfoil))
-            l_file.addWidget (Panel_File_Optimize   (self, lambda: self.case))
-            l_file.addWidget (Panel_File_View       (self, lambda: self.airfoil))
-            l_file.setContentsMargins (QMargins(0, 0, 0, 0))
-            self.panel_file.setLayout (l_file)
+            l = QHBoxLayout()
+            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy_layout=True))
+            l.addStretch (1)
 
-        return self._panel_file 
+            self._panel_modify    = Container_Panel (layout = l, hide=lambda: not self.mode_modify)
+
+        return self._panel_modify 
+
+
+    @property
+    def panel_optimize (self) -> Container_Panel:
+        """ lower UI main panel - optimize mode """
+        if self._panel_optimize is None: 
+
+            # lazy import to avoid circular references 
+            from xo2_panels             import (Panel_File_Optimize, Panel_Xo2_Advanced, Panel_Xo2_Case, Panel_Xo2_Curvature,
+                                                Panel_Xo2_Geometry_Targets, Panel_Xo2_Operating_Conditions, Panel_Xo2_Operating_Points)
+
+            l = QHBoxLayout()        
+            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy_layout=True))
+            l.addStretch (1)
+
+            self._panel_optimize = Container_Panel (layout = l, hide=lambda: not self.mode_optimize or self._xo2_run_dialog)
+
+        return self._panel_optimize 
+
+
+    @property
+    def diagram (self) -> Diagram_Airfoil_Polar:
+        """ the upper diagram area"""
+        if self._diagram is None: 
+
+            self._diagram       = Diagram_Airfoil_Polar (self, lambda: self.airfoils, 
+                                                        polar_defs_fn = lambda: self.polar_definitions,
+                                                        case_fn = lambda: self.case, 
+                                                        diagram_settings= Settings().get('diagram_settings', []))
+        return self._diagram
 
 
     @property
@@ -532,6 +539,13 @@ class App_Main (QMainWindow):
         """ the original airfoil during modify mode"""
         return self._airfoil_org if self.mode_modify else None
 
+
+    @property
+    def mode_view (self) -> bool: 
+        """ True if self is in view mode"""
+        return not (self.mode_modify or self.mode_bezier or self.mode_optimize)
+
+
     @property
     def mode_modify (self) -> bool: 
         """ True if self is modifiy mode"""
@@ -555,7 +569,7 @@ class App_Main (QMainWindow):
     @property
     def mode_bezier (self) -> bool:
         """ True if self is in mode_modify and geo is Bezier """
-        return self.mode_modify and self.airfoil.geo.isBezier
+        return self.mode_modify and self.airfoil.isBezierBased
 
 
     @property
@@ -681,9 +695,9 @@ class App_Main (QMainWindow):
 
         logger.debug (f"{self} refresh main panels")
 
-        self._xo2_panel.refresh()
-        self._data_panel.refresh()
-        self.panel_file.refresh()
+        self.panel_view.refresh()
+        self.panel_modify.refresh()
+        self.panel_optimize.refresh()
 
 
     def refresh_polar_sets (self, silent=False):
@@ -701,7 +715,7 @@ class App_Main (QMainWindow):
                 airfoil.set_polarSet (new_polarSet)
 
         if not silent and changed: 
-            self._xo2_panel.refresh()
+            self.refresh()
             self.sig_polar_set_changed.emit()
 
 
@@ -842,6 +856,7 @@ class App_Main (QMainWindow):
 
         dialog.sig_blend_changed.connect (self.sig_blend_changed.emit)
         dialog.sig_airfoil_2_changed.connect (self.set_airfoil_2)
+
         dialog.exec()     
 
         if dialog.airfoil2 is not None: 
@@ -934,15 +949,37 @@ class App_Main (QMainWindow):
             
             next_airfoil = get_next_airfoil_in_dir(self.airfoil, example_if_none=True)
 
-            os.remove (self.airfoil.pathFileName_abs)
-            Case_Direct_Design (self.airfoil).close(remove_designs=True)        # remove temp files and dir 
+            self.do_delete_temp_files (silent=True)
+            os.remove (self.airfoil.pathFileName_abs)                               # remove airfoil
 
-            self.set_airfoil (next_airfoil)                                     # try to set on next airfoil
+            self._toast_message (f"Airfoil {self.airfoil.fileName} deleted", toast_style=style.GOOD)
+            self.set_airfoil (next_airfoil)                                         # try to set on next airfoil
 
             if next_airfoil.isExample:
                button = MessageBox.info (self, "Delete airfoil", "This was the last airfoil in the directory.<br>" + \
                                                "Showing Example airfoil") 
 
+
+    def do_delete_temp_files (self, silent=False): 
+        """ delete all temp files and directories of current airfoil ..."""
+
+        if not os.path.isfile (self.airfoil.pathFileName_abs): return 
+
+        delete = True 
+
+        if not silent: 
+            text = f"All temporary files and directories of Airfoil <b>{self.airfoil.fileName}</b> will be deleted."
+            button = MessageBox.warning (self, "Delete airfoil", text)
+            if button != QMessageBox.StandardButton.Ok:
+                delete = False
+        
+        if delete: 
+            Case_Direct_Design.remove_design_dir (self.airfoil.pathFileName_abs)    # remove temp design files and dir 
+            Worker.remove_polarDir (self.airfoil.pathFileName_abs)                  # remove polar dir 
+            Xoptfoil2.remove_resultDir (self.airfoil.pathFileName_abs)              # remove Xoptfoil result dir 
+
+            if not silent:
+                self._toast_message (f"Temporary files of Airfoil {self.airfoil.fileName} deleted", toast_style=style.GOOD)
 
 
     def edit_opPoint_def (self, parent:QWidget, parentPos:Tuple, dialogPos:Tuple):
@@ -982,7 +1019,7 @@ class App_Main (QMainWindow):
 
         # open dialog 
 
-        diag = Xo2_Run_Dialog (self.panel_file, self.case, parentPos=(0.1,0.8), dialogPos=(0,1))
+        diag = Xo2_Run_Dialog (self.panel_optimize, self.case, parentPos=(0.02,0.8), dialogPos=(0,1))
 
         self._xo2_run_dialog = diag
 
@@ -997,16 +1034,11 @@ class App_Main (QMainWindow):
 
         self._watchdog.set_case_optimize (lambda: self.case)
 
-        self._watchdog.sig_xo2_new_state.connect        (self._data_panel.refresh)
-        self._watchdog.sig_xo2_new_state.connect        (self.panel_file.refresh)
+        self._watchdog.sig_xo2_new_state.connect        (self.panel_optimize.refresh)
         self._watchdog.sig_xo2_new_state.connect        (diag.on_results)
         self._watchdog.sig_xo2_new_design.connect       (diag.on_results)
         self._watchdog.sig_xo2_new_step.connect         (diag.on_new_step)
         self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
-
-        # hide lower panel 
-         
-        self._panel_lower.hide()
 
         # run immedately if ready and not finished (a re-run) 
         
@@ -1025,8 +1057,7 @@ class App_Main (QMainWindow):
 
         diag = self._xo2_run_dialog
 
-        self._watchdog.sig_xo2_new_state.disconnect     (self._data_panel.refresh)
-        self._watchdog.sig_xo2_new_state.disconnect     (self.panel_file.refresh)
+        self._watchdog.sig_xo2_new_state.disconnect     (self.panel_optimize.refresh)
 
         self._watchdog.sig_xo2_new_state.disconnect     (diag.on_results)
         self._watchdog.sig_xo2_new_design.disconnect    (diag.on_results)
@@ -1040,9 +1071,7 @@ class App_Main (QMainWindow):
 
         # show again lower panel 
          
-        self._panel_lower.show()
-        self._xo2_panel.refresh()                   # show final airfoil 
-        self.panel_file.refresh()                   # enable file panel again 
+        self.panel_optimize.refresh()                   # show final airfoil 
 
 
     def optimize_run (self): 
@@ -1063,6 +1092,7 @@ class App_Main (QMainWindow):
             # clear previous results - prepare UI 
 
             case.clear_results ()
+            self._watchdog.reset_watch_optimize ()
             self.set_airfoil (None, silent=True)
             self.sig_xo2_about_to_run.emit()
             
@@ -1070,9 +1100,6 @@ class App_Main (QMainWindow):
 
             if self._xo2_opPoint_def_dialog:
                 self._xo2_opPoint_def_dialog.close()
-
-            # self.panel_file.hide()
-            # self._xo2_panel.set_visibilty(False)
 
             # let's go
 
@@ -1131,7 +1158,7 @@ class App_Main (QMainWindow):
 
         if self._xo2_opPoint_def_dialog:
             self._xo2_opPoint_def_dialog.refresh_current ()
-            self.sig_xo2_opPoint_def_selected.emit()
+        self.sig_xo2_opPoint_def_selected.emit()
         self.refresh()            
 
 
@@ -1183,12 +1210,14 @@ class App_Main (QMainWindow):
 
     def _toast_message (self, msg, toast_style = style.HINT):
 
-        if self.mode_optimize:
-            parent = self._xo2_panel
-        else: 
-            parent = self._data_panel
+        # if self.mode_optimize:
+        #     parent = self._xo2_panel
+        # else: 
+        #     parent = self._data_panel
 
-        Toaster.showMessage (parent, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(0, 0, 0, 0),
+        parent = self
+
+        Toaster.showMessage (parent, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(10, 10, 10, 10),
                              toast_style=toast_style)
 
 
@@ -1236,7 +1265,7 @@ class App_Main (QMainWindow):
         toDict (settings,'polar_definitions', def_list)
 
         # save polar diagram settings 
-        toDict (settings,'diagram_settings', self._diagram._as_dict_list())
+        toDict (settings,'diagram_settings', self.diagram._as_dict_list())
 
         Settings().write_dataDict (settings)
 
@@ -1383,10 +1412,11 @@ class Watchdog (QThread):
 
             if id(case.xo2) != self._xo2_id:
                 case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
-                self._xo2_id = id(case.xo2)
-                self._xo2_state = case.xo2.state
-                self._xo2_nDesigns = case.xo2.nDesigns
-                self._xo2_nSteps = case.xo2.nSteps                              # new design will also update nsteps
+                self._xo2_id        = id(case.xo2)
+                self._xo2_state     = case.xo2.state
+                self._xo2_nDesigns  = case.xo2.nDesigns
+                self._xo2_nSteps    = case.xo2.nSteps                           # new design will also update nsteps
+                self.sig_xo2_new_state.emit()                                   # ensure, UI starts with current state 
                 return 
 
             # detect state change of new design and siganl (if not first)
@@ -1419,11 +1449,15 @@ class Watchdog (QThread):
         """ set Case_Optimize to watch"""
         if (case_fn and isinstance (case_fn(), Case_Optimize)) or case_fn is None:
             self._case_optimize_fn = case_fn
-            self._xo2_state        = None                           # last run state of xo2
-            self._xo2_id           = None                           # instance id of xo2 for change detection
-            self._xo2_nDesigns     = 0                              # last actual design    
-            self._xo2_nSteps       = 0                              # last actual steps    
+            self.reset_watch_optimize ()
 
+
+    def reset_watch_optimize (self):
+        """ reset local state of optimization watch"""
+        self._xo2_state        = None                           # last run state of xo2
+        self._xo2_id           = None                           # instance id of xo2 for change detection
+        self._xo2_nDesigns     = 0                              # last actual design    
+        self._xo2_nSteps       = 0                              # last actual steps    
 
 
     @override
@@ -1498,21 +1532,11 @@ if __name__ == "__main__":
     else: 
         initial_file = None
 
-    # test ---
-    # initial_file = "JX-GS3-30_v2.xo2"
-
     # init Qt Application and style  
 
     app = QApplication(sys.argv)
     app.setStyle('fusion')
 
-    # set dark / light mode for widgets depending on system mode 
-
-    scheme = QGuiApplication.styleHints().colorScheme()
-    Widget.light_mode = not (scheme == Qt.ColorScheme.Dark)
-
-    Main = App_Main (initial_file)
-    Main.show()
+    main = App_Main (initial_file)
+    main.show()
     app.exec()
-
-    

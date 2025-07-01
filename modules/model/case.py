@@ -118,6 +118,14 @@ class Case_Direct_Design (Case_Abstract):
     A Direct Design Case: Manual modifications of an airfoil 
     """
 
+    @staticmethod
+    def remove_design_dir (airfoil_pathFileName : str):
+        """ remove the design dir of airfoil_pathFileName"""
+
+        design_dir = f"{os.path.splitext(airfoil_pathFileName)[0]}{Case_Abstract.DESIGN_DIR_EXT}"
+        shutil.rmtree (design_dir, ignore_errors=True)
+
+
     def __init__(self, airfoil: Airfoil):
 
         super().__init__()
@@ -322,7 +330,8 @@ class Case_Direct_Design (Case_Abstract):
             remove = remove_designs 
 
         if remove: 
-            shutil.rmtree (self.design_dir_abs, ignore_errors=True)
+            airfoil_pathFileName = os.path.join(self.workingDir, self._airfoil_seed.pathFileName)
+            Case_Direct_Design.remove_design_dir (airfoil_pathFileName)
 
 
     # ---------------------------------

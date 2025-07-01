@@ -32,6 +32,7 @@
 import os
 import sys
 import html 
+from copy                   import copy 
 from typing                 import Tuple, override
 from enum                   import StrEnum
 from pathlib                import Path
@@ -44,8 +45,8 @@ from base.common_utils      import *
 from base.math_util         import * 
 from base.spline            import Spline1D, Spline2D
 
-from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
-from model.airfoil          import GEO_BASIC, GEO_SPLINE, usedAs
+from model.airfoil          import Airfoil, Airfoil_Bezier
+from model.airfoil          import Flap_Definition
 from model.xo2_driver       import Worker, file_in_use   
 
 
@@ -109,7 +110,7 @@ class Polar_Definition:
     VAL_RANGE_ALPHA = [-4.0, 13.0, 0.25]
     VAL_RANGE_CL    = [-0.2,  1.2, 0.05]
 
-    def __init__(self, dataDict=None):
+    def __init__(self, dataDict : dict = None):
         
         self._ncrit     = fromDict (dataDict, "ncrit",    7.0)
         self._autoRange = fromDict (dataDict, "autoRange",True)
@@ -119,6 +120,9 @@ class Polar_Definition:
        
         self._re        = fromDict (dataDict, "re",       400000)             
         self._ma        = fromDict (dataDict, "mach",     0.0)
+
+        flap_dict       = fromDict (dataDict, "flap",     None)
+        self._flap_def  = Flap_Definition (dataDict=flap_dict) if flap_dict else None
 
         self._active    = fromDict (dataDict, "active",   True)             # a polar definition can be in-active
 
@@ -141,8 +145,23 @@ class Polar_Definition:
         toDict (d, "autoRange",      self.autoRange) 
         toDict (d, "valRange",       self.valRange) 
         toDict (d, "active",         self.active) 
+
+        if self._flap_def:
+            toDict (d, "flap", self._flap_def._as_dict ())
         return d
 
+
+    def _get_label (self, polarType, re, ma, ncrit, flap_def : Flap_Definition =None): 
+        """ return a label of these polar variables"""
+        if ma or flap_def:                                                  # short Version                    
+            ncirt_str = f" N {ncrit:.2f}".rstrip('0').rstrip('.') 
+        else: 
+            ncirt_str = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
+        ma_str   = f" M {ma:.2f}".rstrip('0').rstrip('.') if ma else ""
+        flap_str = f" F {flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
+
+        return f"{polarType} Re {int(re/1000)}k{ma_str}{ncirt_str}{flap_str}"
+    
 
     @property
     def active (self) -> bool:
@@ -286,7 +305,7 @@ class Polar_Definition:
     @property
     def name (self): 
         """ returns polar name as a label  """
-        return Polar.get_label(self.type, self.re, self.ma, self.ncrit)
+        return self._get_label (self.type, self.re, self.ma, self.ncrit, self.flap_def)
 
     @property
     def name_long (self):
@@ -307,6 +326,26 @@ class Polar_Definition:
             return self_dict == aDef_dict
         else:
             return False
+
+    @property
+    def is_flapped (self) -> bool:
+        """ True if self has a flap definition"""
+        return isinstance (self._flap_def, Flap_Definition)
+    
+    def set_is_flapped (self, aBool : bool):
+        if aBool: 
+            self.set_flap_def (Flap_Definition())
+        else: 
+            self.set_flap_def (None)
+    
+    @property
+    def flap_def (self) -> Flap_Definition:
+        """ an optional flap definition of self"""
+        return self._flap_def 
+    
+    def set_flap_def (self, aDef : Flap_Definition | None):
+        self._flap_def = aDef
+
 
 #------------------------------------------------------------------------------
 
@@ -404,7 +443,7 @@ class Polar_Set:
                 self.airfoil.save(onlyShapeFile=True)
             else: 
                 self.airfoil.save()
-            logging.debug (f'Airfoil {self.airfoil_pathFileName_abs} saved for polar generation') 
+            logger.debug (f'Airfoil {self.airfoil_pathFileName_abs} saved for polar generation') 
 
 
     @property
@@ -644,19 +683,6 @@ class Polar (Polar_Definition):
                 |--- Polar    <-- Polar_Definition
     """
 
-    @classmethod
-    def get_label (cls, polarType, re, ma, ncrit): 
-        """ return a label of these polar variables"""
-        if ma:
-            maString    = f" M {ma:.2f}".rstrip('0').rstrip('.') 
-            ncritString = f" N {ncrit:.2f}".rstrip('0').rstrip('.') 
-        else: 
-            maString    = ""
-            ncritString = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
-        return f"{polarType} Re {int(re/1000)}k{maString}{ncritString}"
-
-
-
     def __init__(self, mypolarSet: Polar_Set, 
                        polar_def : Polar_Definition = None, 
                        re_scale = 1.0):
@@ -702,6 +728,7 @@ class Polar (Polar_Definition):
                 self.set_re (re_scaled)
                 self.set_ma (ma_scaled)
 
+            self.set_flap_def   (copy (polar_def.flap_def))
 
     def __repr__(self) -> str:
         """ nice print string wie polarType and Re """
@@ -953,15 +980,17 @@ class Polar (Polar_Definition):
 
         try: 
             # polar file existing?  - if yes, load polar 
+            flap_angle = self.flap_def.flap_angle if self.is_flapped else None
 
             airfoil_pathFileName = self.polar_set.airfoil_pathFileName_abs
             polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
-                                                self.type, self.re, self.ma, self.ncrit)
+                                                self.type, self.re, self.ma, self.ncrit,
+                                                flap_angle=flap_angle)
 
             if polar_pathFileName and not file_in_use (polar_pathFileName): 
 
                 self._import_from_file(polar_pathFileName)
-                logging.debug (f'{self} loaded for {self.polar_set.airfoil}') 
+                logger.debug (f'{self} loaded for {self.polar_set.airfoil}') 
 
         except (RuntimeError) as exc:  
 
@@ -989,7 +1018,7 @@ class Polar (Polar_Definition):
             # scan for airfoil-name
             if  line.find(airfoilNameTag) >= 0:
                 splitline = line.split(airfoilNameTag)
-                self.airfoilname = splitline[1].strip()
+                airfoilname = splitline[1].strip()
             # scan for Re-Number and ncrit
             if  line.find(reTag) >= 0:
                 splitline = line.split(reTag)
@@ -1108,15 +1137,15 @@ class Polar_Task (Polar_Definition):
         n_running   = 0 
         n_finalized = 0 
 
-        for task in cls.instances [:]:
+        for task in cls.instances [:]:                              # copy as we modify list 
             if task.isRunning():
                 n_running += 1
             elif task._finalized:                                   # task finalized - remove from list 
-                task._finalized += 1
+                n_finalized += 1
                 cls.instances.remove (task)
 
         if len (cls.instances):
-            logger.debug (f"-- {cls.__name__} {len (cls.instances)} instances, {n_running} running,  {n_finalized} finalized")
+            logger.debug (f"-- {cls.__name__} {len (cls.instances)} instances, {n_running} running, {n_finalized} finalized")
 
         return cls.instances
 
@@ -1184,6 +1213,8 @@ class Polar_Task (Polar_Definition):
             self._re        = [polar.re]             
             self._ma        = [polar.ma]
 
+            self._flap_angle = [polar.flap_def.flap_angle] if polar.is_flapped else None
+
             self._polars     = [polar]
             self._airfoil_pathFileName_abs = polar.polar_set.airfoil_pathFileName_abs
 
@@ -1213,7 +1244,9 @@ class Polar_Task (Polar_Definition):
             self._myWorker.generate_polar (self._airfoil_pathFileName_abs, 
                         self._type, self._re, self._ma, self._ncrit, 
                         autoRange=self._autoRange, spec=self._specVar, 
-                        valRange=self._valRange, run_async=True, nPoints=self._nPoints)
+                        valRange=self._valRange, run_async=True,
+                        flap_angle=self._flap_angle, 
+                        nPoints=self._nPoints)
             logger.debug (f"{self} started")
 
 
@@ -1299,18 +1332,6 @@ class Polar_Splined (Polar_Definition):
             --> Polar   
     """
 
-    @classmethod
-    def get_label (cls, polarType, re, ma, ncrit): 
-        """ return a label of these polar variables"""
-        if ma:
-            maString = f" Ma {ma:.2f}".rstrip('0').rstrip('.') 
-        else: 
-            maString = ""
-        ncritString = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
-        return f"{polarType} Re {int(re/1000)}k{maString}{ncritString}"
-
-
-
     def __init__(self, mypolarSet: Polar_Set, polar_def : Polar_Definition = None):
         """
         Main constructor for new polar which belongs to a polar set 
@@ -1350,11 +1371,6 @@ class Polar_Splined (Polar_Definition):
         self._y                     = None   # spline knots - y coordinates  
         self._yVar                  = None   # yVar like CD 
 
-
-    def __repr__(self) -> str:
-        # overwrite to get a nice print string wie polarType and Re
-        return f"'{Polar_Splined.get_label ('Splined', self.re, self.ma, self.ncrit)}'"
-
     #--------------------------------------------------------
 
     @property
@@ -1387,7 +1403,7 @@ class Polar_Splined (Polar_Definition):
         self._x  = []  
         self._y  = []
 
-        logging.debug (f"spline x: {self._xVar}   y: {self._yVar}")
+        logger.debug (f"spline x: {self._xVar}   y: {self._yVar}")
 
         for op in opPoints_def:  
             x,y = op.xyValues_for_xyVars ((self._xVar, self._yVar)) 
@@ -1411,7 +1427,7 @@ class Polar_Splined (Polar_Definition):
             else: 
                 boundary = "natural"
             self._spline = Spline1D (self._x, self._y, boundary=boundary)
-            logging.debug (f"{self} New {boundary} spline with {len (self._x)} knots")
+            logger.debug (f"{self} New {boundary} spline with {len (self._x)} knots")
         return self._spline
 
 

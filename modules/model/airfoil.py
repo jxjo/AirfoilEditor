@@ -112,7 +112,7 @@ class Airfoil:
         self._propertyDict   = {}                           # multi purpose extra properties for an Airfoil
         self._file_datetime  = None                         # modification datetime of file 
 
-        self._flapper        = None                         # proxy controller to flap self using Worker
+        self._flap_setter    = None                         # proxy controller to flap self using Worker
 
         # pathFileName must exist if no coordinates were given 
 
@@ -522,13 +522,13 @@ class Airfoil:
         """ path including working dir and filename of airfoil like '/root/examples/JX-GT-15.dat' """
 
         if self.workingDir:
-            pathFileName =  os.path.join(self.workingDir, self.pathFileName)
+            pathFileName_abs =  os.path.join(self.workingDir, self.pathFileName)
         else: 
-            pathFileName =  self._pathFileName
+            pathFileName_abs =  self._pathFileName
         
-        if not os.path.isabs (pathFileName):
-            pathFileName = os.path.abspath(self.pathFileName_abs)       # will insert cwd 
-        return pathFileName
+        if not os.path.isabs (pathFileName_abs):
+            pathFileName_abs = os.path.abspath(self.pathFileName)       # will insert cwd 
+        return pathFileName_abs
 
 
     def set_pathName (self, aDir : str, noCheck=False):
@@ -907,27 +907,27 @@ class Airfoil:
 
 
     @property
-    def flapper (self) -> 'Flapper':
+    def flap_setter (self) -> 'Flap_Setter':
         """ proxy controller to flap self using Worker"""
 
-        if self._flapper is None and not self.isFlapped: 
-            self._flapper = Flapper (self)
-        return self._flapper 
+        if self._flap_setter is None and not self.isFlapped: 
+            self._flap_setter = Flap_Setter (self)
+        return self._flap_setter 
 
 
     def do_flap (self):
         """ flap self based on current 'flapper' data"""
 
-        if self._flapper is None: return 
+        if self._flap_setter is None: return 
 
         # run worker - read flapped airfoil 
-        self.flapper.set_flap ()
+        self.flap_setter.set_flap ()
 
-        if self.flapper.airfoil_flapped:
+        if self.flap_setter.airfoil_flapped:
 
             # flapping was successful - update geometry - will update self
-            x,y        = self.flapper.airfoil_flapped.x, self.flapper.airfoil_flapped.y
-            flap_angle = self.flapper.flap_angle
+            x,y        = self.flap_setter.airfoil_flapped.x, self.flap_setter.airfoil_flapped.y
+            flap_angle = self.flap_setter.flap_angle
 
             self.geo.set_flapped_data (x,y, flap_angle)
 
@@ -1033,7 +1033,7 @@ class Airfoil_Bezier(Airfoil):
 
     @override
     @property
-    def flapper (self) -> 'Flapper':
+    def flap_setter (self) -> 'Flap_Setter':
         """ proxy controller to flap self using Worker"""
         # do not flap Bezier
         return None 
@@ -1273,7 +1273,7 @@ class Airfoil_Hicks_Henne(Airfoil):
 
     @override
     @property
-    def flapper (self) -> 'Flapper':
+    def flap_setter (self) -> 'Flap_Setter':
         """ proxy controller to flap self using Worker"""
         # do not flap Hicks-Henne
         return None 
@@ -1436,49 +1436,35 @@ class Airfoil_Hicks_Henne(Airfoil):
 #--------------------------------------------------------------------------
 
 
-class Flapper:
+class Flap_Definition:
     """ 
 
-    Proxy to flap an airfoil using Worker 
+    Defines the geometry of a flap 
 
     With set_flap a flapped version of the original airfoil is returned   
 
     """
 
-    def __init__(self, airfoil_base : Airfoil):
+    def __init__(self, dataDict : dict = None):
         """
-        constructor for new Flapper to handle flapping of an airfoil
-
-        Args:
-            airfoil_base:   an unflapped airfoil to flap 
         """
 
-        if airfoil_base.isBezierBased or airfoil_base.isHicksHenneBased:
-            raise ValueError ("Only .dat files can be flapped")
-        
-        if airfoil_base.isFlapped:
-            raise ValueError ("A flapped airfoil cannot be flapped")
-        
-        self._worker_workingDir  = airfoil_base.pathName_abs                # working dir of Worker!
-        self._base_fileName      = airfoil_base.fileName
-        self._base_fileName_stem = airfoil_base.fileName_stem
-
-        self._airfoil_flapped = None                    # flapped version of airfoil_org 
-
-        self._x_flap = 0.75 
-        self._y_flap = 0.0 
-        self._y_flap_spec = 'y/t'
-        self._flap_angle = 0.0 
+        self._x_flap        = fromDict (dataDict, "x_flap", 0.75)
+        self._y_flap        = fromDict (dataDict, "y_flap", 0.0) 
+        self._y_flap_spec   = fromDict (dataDict, "y_flap_spec", 'y/t')
+        self._flap_angle    = fromDict (dataDict, "flap_angle", 0.0) 
 
 
-    @property
-    def airfoil_base_fileName (self) -> str:
-        return self._base_fileName
+    def _as_dict (self):
+        """ returns a data dict with the parameters of self """
 
-    @property
-    def airfoil_flapped (self) -> Airfoil:
-        """ airfoil org being flapped - None if not """
-        return self._airfoil_flapped
+        d = {}
+        toDict (d, "x_flap",        self.x_flap)                  
+        toDict (d, "y_flap",        self.y_flap) 
+        toDict (d, "y_flap_spec",   self.y_flap_spec) 
+        toDict (d, "flap_angle",    self.flap_angle) 
+        return d
+
 
     @property
     def x_flap (self) -> float: 
@@ -1508,7 +1494,49 @@ class Flapper:
     def set_flap_angle (self, aVal : float):
         self._flap_angle = clip (aVal, -20.0, 20.0)
 
-    # ---------------------
+
+
+class Flap_Setter (Flap_Definition):
+    """ 
+
+    Proxy to flap an airfoil using Worker 
+
+    With set_flap a flapped version of the original airfoil is returned   
+
+    """
+
+    def __init__(self, airfoil_base : Airfoil):
+        """
+        constructor for new Flapper to handle flapping of an airfoil
+
+        Args:
+            airfoil_base:   an unflapped airfoil to flap 
+        """
+
+        super().__init__()
+        
+        if airfoil_base.isBezierBased or airfoil_base.isHicksHenneBased:
+            raise ValueError ("Only .dat files can be flapped")
+        
+        if airfoil_base.isFlapped:
+            raise ValueError ("A flapped airfoil cannot be flapped")
+        
+        self._worker_workingDir  = airfoil_base.pathName_abs                # working dir of Worker!
+        self._base_fileName      = airfoil_base.fileName
+        self._base_fileName_stem = airfoil_base.fileName_stem
+
+        self._airfoil_flapped = None                    # flapped version of airfoil_org 
+
+
+    @property
+    def airfoil_base_fileName (self) -> str:
+        return self._base_fileName
+
+    @property
+    def airfoil_flapped (self) -> Airfoil:
+        """ airfoil org being flapped - None if not """
+        return self._airfoil_flapped
+
 
     def set_flap (self, flap_angle=None, outname : str=None) -> Airfoil:
         """ 
@@ -1559,19 +1587,19 @@ class Flapper:
 
 if __name__ == "__main__":
 
-    # test flap set 
+    # # test flap set 
 
-    from airfoil_examples import Example
+    # from airfoil_examples import Example
 
-    Worker().isReady (Path.cwd(), min_version='1.0.5')
+    # Worker().isReady (Path.cwd(), min_version='1.0.5')
 
-    airfoil = Example(geometry = GEO_SPLINE) 
-    # airfoil.geo.repanel (nPanels=300)
-    airfoil.save() 
+    # airfoil = Example(geometry = GEO_SPLINE) 
+    # # airfoil.geo.repanel (nPanels=300)
+    # airfoil.save() 
 
-    flapper = Flapper (airfoil)
-    for angle in np.arange (-10,10, 1.0):
-        flapper.set_flap (angle) 
+    # flapper = Flap_Setter (airfoil)
+    # for angle in np.arange (-10,10, 1.0):
+    #     flapper.set_flap (angle) 
     # for y in np.arange (0,1, 0.1):
     #     flapper.set_y_flap (y)
     #     flapper.set_flap (15, outname=f"{airfoil.fileName}_y{y:.1f}") 

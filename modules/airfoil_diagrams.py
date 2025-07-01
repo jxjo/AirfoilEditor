@@ -20,14 +20,400 @@ from model.xo2_results      import OpPoint_Result
 from model.xo2_controller   import xo2_state
 
 from airfoil_artists        import *
-from airfoil_panels      import Panel_Polar_Defs, Panel_Airfoils 
+from airfoil_widgets        import Airfoil_Select_Open_Widget
 
 from xo2_artists            import *
 
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+#-------------------------------------------------------------------------------
+# Helper Panels   
+#-------------------------------------------------------------------------------
+
+
+class Panel_Airfoils (Edit_Panel):
+    """ 
+    Panel to show active airfoils 
+    - add, delete, edit reference airfoils
+    
+    """
+
+    name = "Airfoils"   
+
+    sig_airfoil_ref_changed      = pyqtSignal(object, object)    # changed reference airfoil 
+    sig_airfoils_to_show_changed = pyqtSignal()                  # changed show filter 
+    sig_airfoil_design_selected  = pyqtSignal(int)               # an airfoil design iDesign was selected in the Combobox
+
+    _main_margins  = (10, 5, 0, 5)                 # margins of Edit_Panel
+
+
+    def __init__(self, *args, airfoil_designs_fn=None, **kwargs):
+
+        self._airfoil_designs_fn = airfoil_designs_fn
+        self._show_reference_airfoils = None                    # will be set in init_layout
+        self._show_design_airfoils = True                       # show all design airfoils on/off
+
+        super().__init__(*args, **kwargs)
+
+        # ensure design airfoil is set
+        if self.airfoil_design:
+            self.airfoil_design.set_property ("show", self.show_design_airfoils)
+
+    # ---------------------------------------------
+
+    @property
+    def airfoils (self) -> list[Airfoil]: 
+        return self.dataObject
+
+    @property
+    def airfoil_designs (self) -> list [Airfoil]:
+        """ airfoil designs of case modify or optimize """
+        return self._airfoil_designs_fn() if self._airfoil_designs_fn else []
+
+    @property
+    def airfoil_design (self) -> Airfoil:
+        """ the current design airfoil if available"""
+        for airfoil in self.airfoils:
+            if airfoil.usedAs == usedAs.DESIGN:
+                return airfoil
+
+    @property 
+    def show_reference_airfoils (self) -> bool: 
+        return self._show_reference_airfoils
+    
+    def set_show_reference_airfoils (self, show : bool): 
+
+        self._show_reference_airfoils = show 
+        if not show:
+            for iair, airfoil in enumerate (self.airfoils):
+                if airfoil.usedAs == usedAs.REF:
+                    self.set_show_airfoil (show, iair)
+
+        self.refresh()
+
+    def reset_show_reference_airfoils (self):
+        """ set swow switch to initial state""" 
+        # will be set in init_layout
+        self._show_reference_airfoils = None
+
+        
+    @property 
+    def show_design_airfoils (self) -> bool: 
+        return self._show_design_airfoils
+      
+
+    def _n_REF (self) -> int:
+        """ number of reference airfoils"""
+        n = 0 
+        for airfoil in self.airfoils:
+            if airfoil.usedAs == usedAs.REF: n += 1
+        return n
+
+
+    def _DESIGN_in_list (self) -> bool:
+        """ true if NORMAL airfoil can be switched on/off"""
+        for airfoil in self.airfoils:
+            if airfoil.usedAs == usedAs.DESIGN: 
+                return False
+        return True
+
+
+    @override
+    def _init_layout (self): 
+
+        # switch on reference airfoils if there is one 
+        if self._show_reference_airfoils is None: 
+            self._show_reference_airfoils = self._n_REF() > 0
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        iRef = 0
+
+        for iair, airfoil in enumerate (self.airfoils):
+
+            #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
+
+            if airfoil.usedAs == usedAs.NORMAL :
+                CheckBox    (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
+                             disable=lambda: self._DESIGN_in_list(), toolTip="Show/Hide airfoil in diagram")
+                Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
+                             toolTip=airfoil.info_as_html)
+                r += 1
+
+            elif airfoil.usedAs == usedAs.DESIGN:                
+                CheckBox    (l,r,c  , width=18, get=lambda: self.show_design_airfoils, set=self.set_show_design_airfoils,
+                             toolTip="Show/Hide Design airfoils in diagram")
+                if self.airfoil_designs:
+                    ComboBox    (l,r,c+1, width=155, get=lambda: self.airfoil_design.fileName if self.airfoil_design else None,
+                                 set=self._on_airfoil_design_selected,
+                                 options= lambda: [airfoil.fileName for airfoil in self.airfoil_designs],  
+                                 toolTip=f"Select a Design out of list of airfoil designs")
+                else: 
+                    Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
+                                 toolTip=airfoil.info_as_html)
+                r += 1
+
+            elif airfoil.usedAs in [usedAs.SECOND, usedAs.SEED, usedAs.FINAL, usedAs.DESIGN]:
+                CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
+                             toolTip="Show/Hide airfoil in diagram")
+                Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
+                             style=lambda i=iair: style.GOOD if self.airfoil(i).usedAs == usedAs.FINAL else style.NORMAL,
+                             toolTip=airfoil.info_as_html)
+                r += 1
+
+        CheckBox (l,r,c, colSpan=4, text="Reference airfoils", 
+                  get=lambda: self.show_reference_airfoils,
+                  set=self.set_show_reference_airfoils,
+                  toolTip="Activate additional reference airfoils to show in diagram") 
+        
+        if self.show_reference_airfoils:
+
+            r += 1
+            for iair, airfoil in enumerate (self.airfoils):
+
+                if iair == 4: 
+                    pass
+                if airfoil.usedAs == usedAs.REF:
+                    iRef += 1
+                    CheckBox   (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
+                                toolTip="Show/Hide airfoil in diagram")
+
+                    Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
+                                    get=self.airfoil, set=self.set_airfoil, id=iair,
+                                    initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
+                                    toolTip=airfoil.info_as_html)
+
+                    ToolButton (l,r,c+2, icon=Icon.DELETE, set=self.delete_airfoil, id=iair,
+                                toolTip="Remove this airfoil as reference")
+                    r += 1
+
+            # add new reference as long as < max REF airfoils 
+            if self._n_REF() < 3:
+                Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
+                                get=None, set=self.set_airfoil, id=iair+1,
+                                initialDir=self.airfoils[-1], addEmpty=True,
+                                toolTip=f"New reference airfoil {iRef+1}")
+                r +=1
+            SpaceR (l,r,stretch=0)
+
+        l.setColumnMinimumWidth (c  ,18)
+        l.setColumnMinimumWidth (c+2,ToolButton._width)
+        l.setColumnStretch (c+1,2)
+
+        return l 
+
+
+    def airfoil (self, id : int):
+        """ get airfoil with index id from list"""
+        return self.airfoils[id]
+
+    def set_airfoil (self, new_airfoil : Airfoil|None = None, id : int = None):
+        """ set airfoil with index id from list"""
+
+        if new_airfoil is None: return
+
+        if id < len(self.airfoils): 
+            cur_airfoil = self.airfoils[id]
+        else: 
+            cur_airfoil = None                                  # will add new_airfoil 
+        self.sig_airfoil_ref_changed.emit(cur_airfoil, new_airfoil)
+
+
+    def show_airfoil (self, id : int) -> bool:
+        """ is ref airfoil with id active"""
+        return self.airfoils[id].get_property ("show", True)
+
+
+    def set_show_airfoil (self, aBool, id : int):
+        """ set ref airfoil with index id active"""
+        self.airfoils[id].set_property ("show", aBool)
+        self.sig_airfoils_to_show_changed.emit()
+
+
+    def set_show_design_airfoils (self, show : bool): 
+
+        self._show_design_airfoils = show 
+
+        self.airfoil_design.set_property ("show", show)
+        self.sig_airfoils_to_show_changed.emit()
+
+
+    def delete_airfoil (self, id : int):
+        """ delete ref airfoil with index idef from list"""
+
+        if len(self.airfoils) == 0: return 
+
+        airfoil = self.airfoils[id]
+
+        # only REF airfoils can be deleted 
+        if airfoil.usedAs == usedAs.REF:
+            self.sig_airfoil_ref_changed.emit (airfoil, None)
+
+
+    def _on_airfoil_design_selected (self, fileName):
+        """ callback of combobox when an airfoil design was selected"""
+
+        # signal app of new selected current design airfoil 
+        for iDesign, airfoil in enumerate (self.airfoil_designs):
+            if airfoil.fileName == fileName:
+                airfoil.set_property ("show", self.show_design_airfoils)
+                self.sig_airfoil_design_selected.emit (iDesign)
+                break
+
+
+    @override
+    def refresh (self, reinit_layout=False):
+        """ refreshes all Widgets on self """
+
+        # ensure (new) show of design airfoil is set accordingly
+        if self.airfoil_design:
+            self.airfoil_design.set_property ("show", self.show_design_airfoils)
+
+        # rebuild layout with new airfoil entries 
+        logger.debug (f"{self} refresh with reinit layout")
+
+        # layout has to be rebuild to show updated list of airfoils
+        # strange: the old widgets are not deleted on the screen
+        #          -> let the event loop calm down ...
+        QTimer.singleShot (50, self._set_panel_layout)
+
+
+
+class Panel_Polar_Defs (Edit_Panel):
+    """ Panel to add, delete, edit polar definitions """
+
+    name = None                                         # suppress header
+
+    sig_polar_def_changed = pyqtSignal()                # polar definition changed 
+
+
+    def __init__(self, *args, mode_optimize_fn=None, **kwargs):
+
+        self._mode_optimize_fn = mode_optimize_fn
+
+        # no margins 
+        super().__init__(*args, main_margins=(0,0,0,0), panel_margins=(0,0,0,0), **kwargs)
+
+    # ---------------------------------------------
+
+    @property
+    def mode_optimize (self) -> bool:
+        """ in mode optimize a different layout is active """
+        if callable (self._mode_optimize_fn):
+            return self._mode_optimize_fn()
+        else: 
+            return False
+
+
+    @property
+    def polar_defs (self) -> list[Polar_Definition]: 
+        return self.dataObject
+
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+
+        for idef, polar_def in enumerate (self.polar_defs):
+
+            #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
+            w = CheckBox   (l,r,c  , width=20,  get=lambda p=polar_def: p.active, set=polar_def.set_active,
+                            toolTip="Show/Hide this polar in diagram")  
+            w.sig_changed.connect (self._on_polar_def_changed)
+
+            Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name)
+
+            ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self.edit_polar_def,   id=idef,
+                            toolTip="Change the settings of this polar definition",  
+                            hide=lambda: self.mode_optimize)            # if optimize, polar defs are created dynamically - no edit
+            ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_polar_def, id=idef,
+                            toolTip="Delete this polar definition",  
+                            hide=lambda: (len(self.polar_defs) <= 1) or self.mode_optimize)
+            r += 1
+
+        if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS and (not self.mode_optimize):
+            ToolButton (l,r,c+1, icon=Icon.ADD,  
+                            toolTip="Add a new polar definition",  
+                            set=self.add_polar_def)
+            r += 1
+
+        l.setColumnStretch (c+1,2)
+        l.setColumnMinimumWidth (c+2,20)
+
+        return l 
+
+
+    def edit_polar_def (self, id : int):
+        """ edit polar definition with index idef"""
+
+        from airfoil_dialogs import Polar_Definition_Dialog
+        diag = Polar_Definition_Dialog (self, self.polar_defs[id], dx=260, dy=-150)
+        diag.exec()
+
+        # sort polar definitions ascending re number 
+        self.polar_defs.sort (key=lambda aDef : aDef.re)
+
+        self._on_polar_def_changed ()
+
+
+    def delete_polar_def (self, id : int):
+        """ delete polar definition with index idef"""
+
+        # at least one polar def needed
+        if len(self.polar_defs) <= 1: return 
+
+        del self.polar_defs[id]
+
+        self._on_polar_def_changed ()
+
+
+    def add_polar_def (self):
+        """ add a new polar definition"""
+
+        from copy  import copy 
+
+        # increase re number for the new polar definition
+        if self.polar_defs:
+            new_polar_def  = copy (self.polar_defs[-1])
+            new_polar_def.set_re (new_polar_def.re + 100000)
+            new_polar_def.set_active(True)
+        else: 
+            new_polar_def = Polar_Definition()
+
+        self.polar_defs.append (new_polar_def)
+
+        # open edit dialog for new def 
+
+        self.edit_polar_def (len(self.polar_defs)-1)
+
+
+    def _on_polar_def_changed (self):
+        """ handle changed polar def - inform parent"""
+
+        # ensure if only 1 polardef, this has to be active 
+        if len(self.polar_defs) == 1 and not self.polar_defs[0].active:
+            self.polar_defs[0].set_active(True)
+
+        # ensure local refresh - as global will only watch for active polars 
+        self.refresh()
+
+        # signal parent - which has to refresh self to apply changed items 
+        self.sig_polar_def_changed.emit()
+
+
+    @override
+    def refresh(self, reinit_layout=False):
+        """ refreshes all Widgets on self """
+
+        super().refresh(reinit_layout=True)
+        # layout has to be rebuild to show updated list of polar defs
+        # strange: on slow machine ghost widgets flash up. 
+        #          -> let the event loop calm down ...
+        #QTimer.singleShot (50, self._set_panel_layout)
+
 
 
 #-------------------------------------------------------------------------------
@@ -1291,6 +1677,15 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on airfoil changed")
         self.refresh(also_viewRange=False)
+
+
+    def on_blend_changed (self):
+        """ slot to handle blending of airfoil changed signal """
+
+        logger.debug (f"{str(self)} on blend changed")
+        for item in self.diagram_items:
+            if item.isVisible(): 
+                item.refresh()
 
 
     def on_new_design (self):

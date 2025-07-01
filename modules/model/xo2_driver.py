@@ -122,7 +122,6 @@ class X_Program:
             min_version: check fpr min version number 
         """
 
-
         # ready already checked? 
 
         if self.ready: return True
@@ -149,10 +148,6 @@ class X_Program:
 
         returncode = self._execute ('-h', workingDir=self._get_workingDir(), capture_output=True)
 
-        # try: 
-        #     returncode = self._execute ('-h', workingDir=self._get_workingDir(), capture_output=True)
-        # except: 
-        #     returncode = 1
 
         # extract version and check version
         if returncode == 0 :
@@ -240,16 +235,18 @@ class X_Program:
 
         if self._tmp_inpFile:            # remove tmpfile of worker 
             try: 
+
                 os.remove(self._tmp_inpFile) 
+                self._tmp_inpFile = None 
+
             except OSError as exc: 
                 if iretry < 5: 
                     iretry +=1
-                    logger.debug (f"{self} Could not delete tmp input file '{self._tmp_inpFile}' - Retry {iretry}")
+                    logger.warning (f"{self} Could not delete tmp input file '{self._tmp_inpFile}' - Retry {iretry}")
                     time.sleep (0.1)
                     self.remove_tmp_file (iretry=iretry)
                 else: 
                     logger.error (f"Could not delete tmp input file '{self._tmp_inpFile}' - {exc}")
-            self._tmp_inpFile = None 
 
 
     @property
@@ -315,8 +312,8 @@ class X_Program:
             return returncode
 
         returncode  = 0 
-        self._pipe_out_lines    = []                        # errortext lines from stderr when finished
-        self._pipe_error_lines  = []                        # output lines from stdout when finished
+        self._pipe_out_lines    = []                        # output lines from stderr when finished
+        self._pipe_error_lines  = []                        # errortext lines from stdout when finished
 
         # build list of args needed by subprocess.run 
 
@@ -344,10 +341,9 @@ class X_Program:
                 else: 
                     flags  = 0                      # posix must be 0       
 
-            logger.debug (f"==> {self.name} run sync: '{args}'")
+            logger.debug (f"==> {self.name} run sync: '{args}' in: {workingDir}")
 
-            process = run (arg_list, text=True, 
-                                    capture_output=capture_output, creationflags=flags)
+            process = run (arg_list, text=True, capture_output=capture_output, creationflags=flags)
 
             returncode  = process.returncode
 
@@ -366,7 +362,7 @@ class X_Program:
 
             if capture_output and process.stdout: 
                 self._pipe_out_lines = process.stdout.split ("\n")
-                # logger.debug (f"==> {self.name} stdout: {"\n".join (self._pipe_out_lines)}")
+                logger.debug (f"==> {self.name} stdout: {"\n".join (self._pipe_out_lines)}")
 
         except FileNotFoundError as exc:
 
@@ -522,7 +518,7 @@ class X_Program:
 
         if self.workingDir:
             return self.workingDir
-        elif airfoil_path and os.path.isfile (airfoil_path) and os.path.isabs(airfoil_path):
+        elif airfoil_path and os.path.isfile (airfoil_path) : # and os.path.isabs(airfoil_path)
             return os.path.dirname (airfoil_path)
         else:
             return os.getcwd()
@@ -547,6 +543,15 @@ class Xoptfoil2 (X_Program):
     STILL_ALIVE = 10                                # max. age in seconds of run_control
 
     RESULT_DIR_POSTFIX = '_temp'                    # result directory of Xoptfoil2 postfix of 'outname'
+
+    @staticmethod
+    def remove_resultDir (airfoil_pathFileName : str, only_if_older = False):
+        """ 
+        deletes the Xoptfoil2 result directory 
+        """ 
+
+        resultDir = str(Path(airfoil_pathFileName).with_suffix('')) + Xoptfoil2.RESULT_DIR_POSTFIX
+        shutil.rmtree(resultDir, ignore_errors=True)
 
 
     @property
@@ -656,28 +661,40 @@ class Worker (X_Program):
     # -- static methods --------------------------------------------
 
     @staticmethod
-    def remove_polarDir (airfoilPath, polarDir, only_if_older = False):
+    def get_polarDir (airfoil_pathFileName : str) -> str:
+        """ returns polar directory of airfoil having airfoil_pathFileName"""
+
+        return str(Path(airfoil_pathFileName).with_suffix('')) + '_polars'
+
+
+    @staticmethod
+    def remove_polarDir (airfoil_pathFileName : str, only_if_older = False):
         """ 
-        deletes polar directory of airfoilPathFileName
-        If only_if_older the directory is not removed if it is younger than the airfoil
+        deletes polar directory 
+        If only_if_older the directory is not removed if it is younger than of airfoilPathFileName
         """ 
+
+        polarDir = Worker.get_polarDir (airfoil_pathFileName) if airfoil_pathFileName else None
 
         # sanity check 
         if not os.path.isdir(polarDir): return 
 
         remove = True 
 
-        if only_if_older and os.path.isfile(airfoilPath):
+        if only_if_older:
+            if os.path.isfile(airfoil_pathFileName):
 
-            # compare datetime of airfoil file and polar dir 
-            ts = os.path.getmtime(polarDir)                 # file modification timestamp of a file
-            polarDir_dt = datetime.datetime.fromtimestamp(ts)        # convert timestamp into DateTime object
+                # compare datetime of airfoil file and polar dir 
+                ts = os.path.getmtime(polarDir)                 # file modification timestamp of a file
+                polarDir_dt = datetime.datetime.fromtimestamp(ts)        # convert timestamp into DateTime object
 
-            ts = os.path.getmtime(airfoilPath)              # file modification timestamp of a file
-            airfoil_dt = datetime.datetime.fromtimestamp(ts)         # convert timestamp into DateTime object
+                ts = os.path.getmtime(airfoil_pathFileName)              # file modification timestamp of a file
+                airfoil_dt = datetime.datetime.fromtimestamp(ts)         # convert timestamp into DateTime object
 
-            # add safety seconds (async stuff?) 
-            if (airfoil_dt < (polarDir_dt + datetime.timedelta(seconds=2))):
+                # add safety seconds (async stuff?) 
+                if (airfoil_dt < (polarDir_dt + datetime.timedelta(seconds=2))):
+                    remove = False 
+            else: 
                 remove = False 
 
         if remove: 
@@ -686,20 +703,29 @@ class Worker (X_Program):
 
     @staticmethod
     def get_existingPolarFile (airfoil_pathFileName, 
-                               polarType : str, re :float, ma : float, ncrit : float) -> str:
+                               polarType : str, re :float, ma : float, ncrit : float,
+                               flap_angle : float = None) -> str:
         """ 
         Get pathFileName of polar file if it exists 
         """ 
 
         polar_pathFileName = None
 
+        if flap_angle:
+
+            # change airfoil path to the new flapped airfoil generated by worker 
+            p = Path(airfoil_pathFileName)
+            new_name = p.stem + f"_f{flap_angle:+.1f}".rstrip('0').rstrip('.')  + p.suffix
+            p = p.with_name (new_name)
+            airfoil_pathFileName = str(p)
+
+            # as Worker generates flapped airfoil *after* polar, the polar file would be older ... 
+        else: 
+            # remove a maybe older polarDir
+            Worker.remove_polarDir (airfoil_pathFileName, only_if_older=True)    
+
         # build name of polar dir from airfoil file 
-        polarDir = str(Path(airfoil_pathFileName).with_suffix('')) + '_polars'
-
-        # remove a maybe older polarDir
-        Worker.remove_polarDir (airfoil_pathFileName, polarDir, only_if_older=True)    
-
-        # no polarDir - no polarFile 
+        polarDir = Worker.get_polarDir (airfoil_pathFileName)
         if os.path.isdir (polarDir):            
 
             # build the typical xfoil filename like T1_Re0.500_M0.00_N7.0.txt
@@ -749,6 +775,7 @@ class Worker (X_Program):
                         ma : float | list, 
                         ncrit : float,
                         autoRange = True, spec = 'alpha', valRange= [-3, 12, 0.25], 
+                        flap_angle : float | list = 0.0, x_flap=0.75, y_flap=0, y_flap_spec='y/t',
                         nPoints=None, run_async = True) -> int:
         """ 
         Generate polar for airfoilPathFileName in directory of airfoil.
@@ -771,6 +798,10 @@ class Worker (X_Program):
 
         if not isinstance (re, list): re = [re]
         if not isinstance (ma, list): ma = [ma]
+        if flap_angle:
+            if not isinstance (flap_angle, list): flap_angle = [flap_angle]
+        else: 
+            flap_angle=None
 
         # working directory in which self will execute 
 
@@ -779,13 +810,20 @@ class Worker (X_Program):
         # a temporary input file for polar generation is created
 
         self._tmp_inpFile = self._generate_polar_inputFile (workingDir, 
-                                    re, ma, polarTypeNo, ncrit, autoRange, spec_al, valRange, nPoints=nPoints) 
+                                    re, ma, polarTypeNo, ncrit, autoRange, spec_al, valRange,
+                                    flap_angles=flap_angle, x_flap=x_flap, y_flap=y_flap, y_flap_spec=y_flap_spec,
+                                    nPoints=nPoints) 
         if not self._tmp_inpFile:
             raise RuntimeError (f"{self.name} polar generation failed: Couldn't create input file")
 
         # build args for worker 
 
-        args = self._build_worker_args ('polar',airfoil1=airfoil_pathFileName, inputfile=self._tmp_inpFile)
+        if flap_angle:
+            outname = Path(os.path.basename(airfoil_pathFileName)).stem
+        else: 
+            outname=None
+
+        args = self._build_worker_args ('polar',airfoil1=airfoil_pathFileName, inputfile=self._tmp_inpFile, outname=outname)
 
         # .execute either sync or async
 
@@ -797,7 +835,7 @@ class Worker (X_Program):
 
             returncode = self._execute       (args, capture_output=True, workingDir=workingDir)
 
-            self.remove_tmp_file (self._tmp_inpFile)         
+            self.remove_tmp_file ()         
         
         if returncode: 
             raise RuntimeError (f"Worker polar generation failed for {airfoil_pathFileName}")
@@ -817,11 +855,22 @@ class Worker (X_Program):
         Returns fileName of flapped airfoil in working Dir  
         """ 
 
-        airfoil_pathFileName_abs = os.path.join(self.workingDir, airfoil_fileName)
+        # sanity check airfoil_file 
+
+        if self.workingDir:
+            airfoil_pathFileName_abs = os.path.join(self.workingDir, airfoil_fileName)
+        else: 
+            airfoil_pathFileName_abs = airfoil_fileName
 
         if not os.path.isfile(airfoil_pathFileName_abs): 
             name = airfoil_pathFileName_abs if len(airfoil_pathFileName_abs) <= 40 else "..." + airfoil_pathFileName_abs[-35:]
             raise ValueError (f"Airfoil '{name}' does not exist")
+
+        # name of the generated airfoil needed
+
+        if not outname: 
+            raise ValueError (f"Set Flap - outname is missing")
+
 
         # working directory in which self will execute 
 
@@ -845,7 +894,7 @@ class Worker (X_Program):
         if rc: 
             raise RuntimeError (f"Worker set flap failed: {self.finished_errortext}")
         else: 
-            self.remove_tmp_file (self._tmp_inpFile)         
+            self.remove_tmp_file ()         
 
             flapped_fileName = outname + ".dat"
             # check if flapped airfoil was created  
@@ -905,11 +954,13 @@ class Worker (X_Program):
 
 
     def _generate_polar_inputFile (self, 
-                                 workingDir : str,         # if none self._workingDir is taken 
+                                  workingDir : str,         # if none self._workingDir is taken 
                                   reNumbers : list[float], maNumbers : list[float],
                                   polarType : int, ncrit : float,  
                                   autoRange : bool, spec_al: bool, valRange: list[float], 
-                                  nPoints = None) -> str:
+                                  nPoints = None,
+                                  flap_angles : list[float] = None, x_flap=None, y_flap=None, y_flap_spec=None,
+                                   ) -> str:
         """ Generate a temporary polar input file for worker like this 
 
         &polar_generation
@@ -924,6 +975,13 @@ class Worker (X_Program):
         &xfoil_run_options
             ncrit = 7.0
         /
+        &operating_conditions                          ! options to describe the optimization task
+        x_flap                 = 0.75                  ! chord position of flap 
+        y_flap                 = 0.0                   ! vertical hinge position 
+        y_flap_spec            = 'y/c'                 ! ... in chord unit or 'y/t' relative to height
+        flap_angle             = 0.0                   ! list of flap angles to be set
+
+
         Returns: 
             pathFilename of input file  """
 
@@ -951,6 +1009,14 @@ class Worker (X_Program):
             tmp.write ("&xfoil_run_options\n")
             tmp.write ("  ncrit = %.1f\n" % ncrit)  
             tmp.write ("/\n")
+
+            if flap_angles:
+                tmp.write ("&operating_conditions\n")
+                tmp.write (f"  x_flap = {x_flap}\n")  
+                tmp.write (f"  y_flap = {y_flap}\n")  
+                tmp.write (f"  y_flap_spec = '{y_flap_spec}'\n")  
+                tmp.write (f"  flap_angle = {', '.join(str(f) for f in flap_angles)}\n") 
+                tmp.write ("/\n")
 
             if nPoints is not None: 
                 tmp.write ("&paneling_options\n")
@@ -1012,9 +1078,8 @@ class Worker (X_Program):
 if __name__ == "__main__":
 
     # init logging 
-
-    logging.basicConfig(format='%(levelname)-8s- %(message)s', 
-                        level=logging.DEBUG)  # DEBUG or WARNING
+    from base.common_utils      import init_logging
+    init_logging (level= logging.DEBUG)
 
 
     Worker().isReady (project_dir="..\\..", min_version='1.0.3')
@@ -1037,10 +1102,12 @@ if __name__ == "__main__":
         # ------- sync test ---------------------------------------------
 
         try: 
-            worker.generate_polar (airfoil, 'T1', 700000, 0.0, 8.0, run_async=False)
-            logger.info ("\n".join (worker._pipe_out_lines))
+            worker.generate_polar (airfoil, 'T1', 700000, 0.0, 8.0, flap_angle=5.12, run_async=False)
 
-            polar_file = worker.get_existingPolarFile (airfoil, 'T1', 700000, 0.0, 8.0)
+            worker.generate_polar (airfoil, 'T1', 700000, 0.0, 8.0, run_async=False)
+
+            logger.info ("\n".join (worker._pipe_out_lines))
+            polar_file = worker.get_existingPolarFile (airfoil, 'T1', 700000, 0.0, 8.0, flap_angle=5.12)
 
             if polar_file:
                 logger.info  (f"polar file found: {polar_file}")
@@ -1048,7 +1115,7 @@ if __name__ == "__main__":
                 logger.error (f"polar file not found")
 
             worker.finalize ()
-            worker.remove_polarDir (airfoil, polarDir)
+            worker.remove_polarDir (airfoil)
 
         except ValueError as exc:
             logger.error (f"{exc}")
@@ -1072,7 +1139,6 @@ if __name__ == "__main__":
                 logger.debug (f"{worker} waiting: {secs}s")
 
             if worker.finished_returncode == 0:
-                logger.info ("\n".join (worker._pipe_out_lines))
 
                 polar_file = worker.get_existingPolarFile (airfoil, 'T1', 700000, 0.0, 8.0)
 
@@ -1084,7 +1150,7 @@ if __name__ == "__main__":
                 logger.error (f"{worker}: {worker.finished_errortext}")
 
             worker.finalize ()
-            worker.remove_polarDir (airfoil, polarDir)
+            worker.remove_polarDir (airfoil)
 
         except ValueError as exc:
             logger.error (f"{exc}")

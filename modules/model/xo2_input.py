@@ -25,7 +25,7 @@ from base.common_utils      import *
 from base.spline            import HicksHenne
 
 from model.polar_set        import * 
-from model.airfoil          import Airfoil, GEO_BASIC
+from model.airfoil          import Airfoil, GEO_BASIC, usedAs
 from model.airfoil_geometry import Geometry_Bezier
 from model.airfoil_examples import Example
 
@@ -1489,7 +1489,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             elif opPoint_def.optType == OPT_MAX and opPoint_def.optVar == var.XTRT:
                 opt = 'max-xtr'
             else:
-                logging.debug ("Unknown optType, optVar combination - using default optimization type")
+                logger.debug ("Unknown optType, optVar combination - using default optimization type")
                 opt = 'min-drag'
                 
             optimization_types.append(opt)

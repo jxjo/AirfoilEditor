@@ -22,7 +22,7 @@ from base.math_util         import nelder_mead, derivative1
 from base.widgets           import * 
 from base.panels            import Dialog
 
-from model.airfoil          import Airfoil, Flapper
+from model.airfoil          import Airfoil, Flap_Setter, Flap_Definition
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline, Curvature_Abstract
 from model.polar_set        import Polar_Definition, polarType, var
@@ -190,12 +190,12 @@ class Blend_Airfoil_Dialog (Dialog):
 
     def __init__ (self, parent : QWidget, 
                   airfoil  : Airfoil, 
-                  airfoil1 : Airfoil,
+                  airfoil_org : Airfoil,                # airfoil which will be blended...
                   **kwargs): 
 
-        self._airfoil  = airfoil 
-        self._airfoil1 = airfoil1
-        self._airfoil2 = None
+        self._airfoil     = airfoil 
+        self._airfoil_org = airfoil_org
+        self._airfoil2    = None
         self._airfoil2_copy = None
         
         self._blendBy  = 0.5                            # initial blend value 
@@ -218,7 +218,7 @@ class Blend_Airfoil_Dialog (Dialog):
         Label  (l,r,3, get="Blended")
         Label  (l,r,6, get="Airfoil 2")
         r += 1 
-        Field  (l,r,1, get=self._airfoil1.name, width = 130)
+        Field  (l,r,1, get=self._airfoil_org.fileName, width = 130)
         SpaceC (l,2, width=10, stretch=0)
         Slider (l,r,3, width=110, lim=(0,1), get=lambda: self.blendBy,
                        set=self._set_blendBy, disable=lambda: self._airfoil2 is None)
@@ -226,7 +226,8 @@ class Blend_Airfoil_Dialog (Dialog):
                        set=self._set_blendBy, disable=lambda: self.airfoil2 is None)
         SpaceC (l,5, width=10, stretch=0)
         Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
-                                    get=lambda: self.airfoil2, set=self._set_airfoil2)
+                                    get=lambda: self.airfoil2, set=self._set_airfoil2,
+                                    initialDir=self._airfoil_org)
 
         SpaceC (l,7, width=5)
         r += 1
@@ -246,7 +247,7 @@ class Blend_Airfoil_Dialog (Dialog):
 
         # Blend with new blend value - use copy as airfoil2 could be normalized
         if self._airfoil2_copy is not None: 
-            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2_copy.geo, 
+            self._airfoil.geo._blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, ensure_fast=True)
             self.sig_blend_changed.emit()
 
@@ -267,7 +268,7 @@ class Blend_Airfoil_Dialog (Dialog):
         self._airfoil2_copy = aAirfoil.asCopy()
 
         if aAirfoil is not None: 
-            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2_copy.geo, 
+            self._airfoil.geo._blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, ensure_fast=True)
             self.sig_blend_changed.emit()
 
@@ -415,13 +416,13 @@ class Flap_Airfoil_Dialog (Dialog):
 
 
     @property
-    def flapper (self) -> Flapper:
-        return self._airfoil.flapper
+    def flap_setter (self) -> Flap_Setter:
+        return self._airfoil.flap_setter
 
     @property
     def has_been_flapped (self) -> bool:
         """ True if flap was set in this dialog """
-        return self._has_been_flapped and self.flapper.flap_angle != 0.0  
+        return self._has_been_flapped and self.flap_setter.flap_angle != 0.0  
 
 
     def _init_layout(self) -> QLayout:
@@ -431,22 +432,22 @@ class Flap_Airfoil_Dialog (Dialog):
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
         FieldF  (l,r,c, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
-                        obj=self.flapper, prop=Flapper.x_flap)
+                        obj=self.flap_setter, prop=Flap_Setter.x_flap)
         Slider  (l,r,c+3, colSpan=2, width=120,  
                         lim=(0.0, 1), dec=2,  
-                        obj=self.flapper, prop=Flapper.x_flap)
+                        obj=self.flap_setter, prop=Flap_Setter.x_flap)
         r += 1
         FieldF  (l,r,c, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
-                        obj=self.flapper, prop=Flapper.y_flap)
-        Label   (l,r,c+3, get="of thickness")
+                        obj=self.flap_setter, prop=Flap_Setter.y_flap)
+        Label   (l,r,c+3, get="of thickness", style=style.COMMENT)
         r += 1
         SpaceR  (l, r, stretch=1, height=10) 
         r += 1
         FieldF  (l,r,c, lab="Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
-                        obj=self.flapper, prop=Flapper.flap_angle)
+                        obj=self.flap_setter, prop=Flap_Setter.flap_angle)
         Slider  (l,r,c+3, colSpan=2, width=120,  
                         lim=(-20,20), dec=2,  
-                        obj=self.flapper, prop=Flapper.flap_angle)
+                        obj=self.flap_setter, prop=Flap_Setter.flap_angle)
         r += 1
         SpaceR  (l, r, stretch=3) 
         r += 1
@@ -466,7 +467,7 @@ class Flap_Airfoil_Dialog (Dialog):
         """ slot a input field changed - repanel and refresh"""
 
         self.refresh()
-        self.flapper.set_flap()
+        self.flap_setter.set_flap()
 
         self._has_been_flapped = True                   # for change detection 
         self.sig_new_flap_settings.emit()               # inform parent -> diagram update
@@ -1169,8 +1170,8 @@ class Matcher (QThread):
 class Polar_Definition_Dialog (Dialog):
     """ Dialog to edit a single polar definition"""
 
-    _width  = 450
-    _height = 240
+    _width  = 460
+    _height = (300, None)
 
     name = "Edit Polar Definition"
 
@@ -1183,7 +1184,7 @@ class Polar_Definition_Dialog (Dialog):
 
         if small_mode:
             self._height = 160
-            self._width  = 420
+            self._width  = 430
 
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
@@ -1192,6 +1193,11 @@ class Polar_Definition_Dialog (Dialog):
     @property
     def polar_def (self) -> Polar_Definition:
         return self._polar_def
+
+    @property
+    def flap_def (self) -> Flap_Definition:
+        return self.polar_def.flap_def if self.polar_def else None
+
 
     def _init_layout(self) -> QLayout:
 
@@ -1207,13 +1213,13 @@ class Polar_Definition_Dialog (Dialog):
         c += 1
         FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=1,
                         obj=self.polar_def, prop=Polar_Definition.ma)
-        l.setColumnMinimumWidth (c,40)
+        l.setColumnMinimumWidth (c,45)
         c += 2
         SpaceC  (l,c, width=10)
         c += 1
         FieldF (l,r,c, lab="Ncrit", width=60, step=1, lim=(1, 20), dec=1,
                         obj=self.polar_def, prop=Polar_Definition.ncrit)
-        l.setColumnMinimumWidth (c,40)
+        l.setColumnMinimumWidth (c,45)
         c += 2
         SpaceC  (l,c, width=10, stretch=5)
 
@@ -1225,7 +1231,25 @@ class Polar_Definition_Dialog (Dialog):
         
         if not self._small_mode:
             r += 1
-            SpaceR (l, r, stretch=0, height=20) 
+            SpaceR (l, r, height=5, stretch=3) 
+            r += 1 
+            CheckBox (l,r,c, text=f"Set flap just for this polar - soon to come", colSpan=7,
+                            obj=self.polar_def, prop=Polar_Definition.is_flapped,
+                            disable=True)
+            r += 1
+            FieldF  (l,r,c, lab="Flap Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
+                            obj=lambda: self.flap_def, prop=Flap_Definition.flap_angle,
+                            hide=lambda: not self.polar_def.is_flapped)
+            FieldF  (l,r,c+3, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
+                            obj=lambda: self.flap_def, prop=Flap_Definition.x_flap,
+                            hide=lambda: not self.polar_def.is_flapped)
+            FieldF  (l,r,c+6, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
+                            obj=lambda: self.flap_def, prop=Flap_Definition.y_flap,
+                            hide=lambda: not self.polar_def.is_flapped)
+            # Label   (l,r,c+10, get="of thickness", style=style.COMMENT)
+
+            r += 1
+            SpaceR (l, r, height=5, stretch=3) 
             r += 1 
             CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
                             get=self.polar_def.autoRange)
@@ -1239,7 +1263,7 @@ class Polar_Definition_Dialog (Dialog):
             Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
                             get="The smaller the value, the more time is needed")
         r += 1
-        SpaceR (l, r, height=5) 
+        SpaceR (l, r, height=5, stretch=3) 
 
         return l
 

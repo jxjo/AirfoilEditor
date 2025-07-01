@@ -142,15 +142,16 @@ class Panel_Abstract (QWidget):
     # ------------------------------------------------------
 
     def __init__(self,  
-                 parent=None,
-                 getter= None, 
+                 app = None,
+                 getter = None, 
                  width=None, 
                  hide=None,                                     # either callable or bool
                  height=None, 
                  title=None, **kwargs):
-        super().__init__(parent=parent, **kwargs)
+        # super().__init__(parent=app, **kwargs)
+        super().__init__( **kwargs)
 
-        self._parent = parent
+        self._app = app
         self._getter = getter
 
         if width is not None: 
@@ -235,14 +236,28 @@ class Container_Panel (Panel_Abstract):
     Panel as container for other (Edit) panels  
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, 
+                 layout : QLayout | None = None,
+                 margins  : tuple = (0,0,0,0), 
+                 spacing : int = 5,            
+                 **kwargs):
         super().__init__(*args, **kwargs)
 
-        
+        if layout:
+            layout.setContentsMargins (QMargins(*margins))  
+            layout.setSpacing (spacing) 
+            self.setLayout (layout)
+
+        # initial visibility 
+
+        if not self.shouldBe_visible:         
+            self.setVisible (False)             # setVisible(True) results in a dummy window on startup 
 
 
     def refresh (self):
         """ refresh all child Panels self"""
+
+        show_now = self.isHidden () and self.shouldBe_visible
 
         self.setVisible (self.shouldBe_visible)
 
@@ -260,7 +275,7 @@ class Container_Panel (Panel_Abstract):
                 if sip.isdeleted (p):
                     logger.warning (f"{p} {hex(id(p))} (visible) already deleted")
                 else:
-                    if p.shouldBe_visible: p.refresh() 
+                    if p.shouldBe_visible: p.refresh (reinit_layout=show_now) 
 
 
 
@@ -274,6 +289,7 @@ class Edit_Panel (Panel_Abstract):
 
     def __init__(self, *args, 
                  layout : QLayout | None = None,
+                 lazy_layout = False, 
                  switchable : bool = False,
                  switched_on : bool = True, 
                  on_switched = None, 
@@ -325,7 +341,9 @@ class Edit_Panel (Panel_Abstract):
 
         self._panel  = QWidget() 
         self._initial_layout = layout 
-        self._set_panel_layout () 
+
+        if not lazy_layout: 
+            self._set_panel_layout () 
 
         # main layout with title and panel 
 
@@ -420,9 +438,8 @@ class Edit_Panel (Panel_Abstract):
                 logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
 
             # refresh widgets of self only if visible 
-            if self.isVisible():
-                self.refresh_widgets (self._isDisabled)
-                logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
+            self.refresh_widgets (self._isDisabled)
+            logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
 
 
     def refresh_widgets (self, disable : bool):
@@ -445,8 +462,11 @@ class Edit_Panel (Panel_Abstract):
 
         # remove and rebuild only in case of _init_layout done in a subclass
 
-        if not self._initial_layout:
+        if self._initial_layout:
 
+            layout = self._initial_layout
+
+        else:
             if self._panel.layout() is not None:
                 self._clear_existing_panel_layout ()
 
@@ -458,9 +478,6 @@ class Edit_Panel (Panel_Abstract):
                 layout = QVBoxLayout()               
                 wdt = QLabel ("This shouldn't be visible")
                 layout.addWidget (wdt)
-
-        else: 
-            layout = self._initial_layout
 
         layout.setContentsMargins (QMargins(*self._panel_margins))   # inset left 
         layout.setSpacing(2)
@@ -792,24 +809,25 @@ class Toaster (QFrame):
 
         self.label = QLabel(message)
         self.layout().addWidget(self.label)
-        self.layout().setContentsMargins (QMargins(40, 5, 40, 5))
+        self.layout().setContentsMargins (QMargins(30, 7, 30, 7))
 
         # set background color style 
 
         if toast_style in [style.WARNING, style.ERROR, style.COMMENT, style.GOOD, style.HINT]:
 
             palette : QPalette = self.palette()
-            if Widget.light_mode:
-                index = Widget.LIGHT_INDEX
-            else: 
-                index = Widget.DARK_INDEX
+            index = Widget.LIGHT_INDEX if Widget.light_mode else Widget.DARK_INDEX
             color = QColor (toast_style.value[index])
 
             # adapt color 
 
             h,s,l,a = color.getHsl()
-            s = int(s*0.8)                                  # less saturation (more gray) 
-            l = int(l*1.4)                                  # lighter 
+            if Widget.light_mode:
+                s = int(s*0.8)                                  # less saturation (more gray) 
+                l = int(l*1.4)                                  # lighter 
+            else:
+                s = int(s*0.8)                                  # less saturation (more gray) 
+                l = int(l*0.5)                                  # darker 
             color.setHsl (h, s, l, a)
 
             palette.setColor(QPalette.ColorRole.Window, color)
@@ -876,8 +894,8 @@ class Dialog (QDialog):
                  getter = None, 
                  width  : int | None =None, 
                  height : int | None =None, 
-                 dialogPos : tuple = (0.5,0.5),          # reference point for positioning - (0,0) is upper, left corner
-                 parentPos : tuple = (0.5,0.5),          # position anchor in parent - (0,0) is upper, left corner
+                 dialogPos : tuple = (0.4,0.5),          # reference point for positioning - (0,0) is upper, left corner
+                 parentPos : tuple = (0.3,0.6),          # position anchor in parent - (0,0) is upper, left corner
                  dx : int | None = None, 
                  dy : int | None = None, 
                  title=None, 

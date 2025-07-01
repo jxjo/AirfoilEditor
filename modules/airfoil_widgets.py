@@ -33,7 +33,7 @@ class mode_color:
     """ colors as kwargs for the different modes """
 
     MODIFY        = {'color': 'deeppink',          'alpha' : 0.2 }
-    OPTIMIZE      = {'color': 'mediumspringgreen', 'alpha' : 0.2 }  # darkturquoise
+    OPTIMIZE      = {'color': 'mediumspringgreen', 'alpha' : 0.2 }   
 
 
 # ----- common methods -----------
@@ -220,14 +220,14 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             self._icon_widget =   ToolButton (l, icon=Icon.OPEN, set=self._open_airfoil, signal=False,
                                                 hide=self.no_files_here,
                                                 toolTip="Select an airfoil in a different directory")
-            # l.insertStretch (-1)
+            l.insertStretch (-1)
 
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
         if self.no_files_here():                                # show only open button
             l.setSpacing (0)
-            l.setStretch (0,0)
-            l.setStretch (2,2)
+            # l.setStretch (0,0)
+            # l.setStretch (2,2)
         else:                                                   # combobox with open 
             l.setSpacing (1)
             l.setStretch (0,2)

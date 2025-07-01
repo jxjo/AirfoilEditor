@@ -25,7 +25,7 @@ from PyQt6.QtWidgets    import (
                             QLabel, QToolButton, QCheckBox,
                             QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
                             QSizePolicy)
-from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon
+from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon, QAction
 
 
 
@@ -352,11 +352,10 @@ class Widget:
 
         self._style_getter = style 
         self._style = None 
-        self._style_role = styleRole                # apply to background or text 
+        self._style_role = styleRole                        # apply to background or text 
         self._font = fontSize
 
-        self._palette_normal = None                 # will be copy of palette - for style reset  
-        self._palette_normal = self._initial_palette()
+        self._palette_normal = self._initial_palette()      # will be copy of palette - for style reset  
 
         # emit signal 
 
@@ -421,7 +420,7 @@ class Widget:
 
     def refresh (self, disable : bool|None = False):
         """
-        Refesh self by re-reading the 'getter' path 
+        Refresh self by re-reading the 'getter' path 
             - disable: optional overwrite of widgets internal disable state  
         """
 
@@ -984,17 +983,17 @@ class Label (Widget, QLabel):
 
        # self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
 
+
     @override
     def _initial_palette(self) -> QPalette | None:
         """ returns initial normal palette of self"""
 
-        if not self.light_mode:
-            # dark mode: make labels a little darker (not white)      
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make labels a little darker (not white)   
             palette =  self.palette()
-            palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
-            return palette
-        else: 
-            return None 
+            color = palette.color(QPalette.ColorRole.WindowText).darker (150)
+            palette.setColor(QPalette.ColorRole.WindowText,color)
+        return palette
 
 
     def _set_Qwidget (self, **kwargs):
@@ -1063,9 +1062,10 @@ class Field (Field_With_Label, QLineEdit):
         color.setAlphaF (0.3)
         palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, color)
 
-        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
-        color = color.darker (180)
-        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+        if self.light_mode:
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
 
         return palette
 
@@ -1156,9 +1156,10 @@ class FieldI (Field_With_Label, QSpinBox):
 
         palette =  self.palette()
 
-        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
-        color = color.darker (180)
-        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+        if self.light_mode:
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
 
         return palette
 
@@ -1281,9 +1282,10 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
 
         palette =  self.palette()
 
-        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
-        color = color.darker (180)
-        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+        if self.light_mode:
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
 
         return palette
 
@@ -1466,7 +1468,18 @@ class Button (Widget, QPushButton):
     def __repr__(self) -> str:
         text = f" '{str(self._text)}'" if self._text is not None else ''
         return f"<{type(self).__name__}{text}>"
-    
+
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make labels a little darker (not white)   
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
+            palette.setColor(QPalette.ColorRole.ButtonText,color)
+        return palette
+
 
     @override
     def _get_properties (self): 
@@ -1565,6 +1578,87 @@ class MenuButton (Button, QPushButton):
             self._disabled = True 
 
 
+    @override
+    def refresh(self, disable = False):
+        """ overridden to also refresh MenuAction"""
+        super().refresh(disable)
+    
+        for menuAction in self._menu.actions():
+            if isinstance (menuAction, MenuAction):
+                menuAction.refresh()
+
+
+class MenuAction (QAction):
+    """
+    Menu item - QAction subclass to make it compatible with WIdget  
+    
+
+    """
+    def __init__(self, 
+                 text,                                              # menu text
+                 parent,                                            # strange: QAction (still) needs a dummy parent
+                 set = None,                                        # slot to be triggered 
+                 disable = None,
+                 toolTip = None,
+                 **kwargs):
+        super().__init__(text, parent, **kwargs)
+
+        # conect self triggered to 'set' 
+         
+        if callable (set):
+            self.triggered.connect(set)
+        else:
+            raise ValueError(f"{self} set method isn't callable")
+
+        # init disable 
+
+        self._disabled_getter = None
+        if isinstance(disable, bool):
+            self._disabled   = disable                     
+        elif callable (disable):
+            self._disabled   = None                          
+            self._disabled_getter = disable
+        else: 
+            self._disabled   = False                                # default values 
+
+        self._disabled  = self._get_value (self._disabled_getter, default=self._disabled)
+        self.setDisabled (self._disabled)
+
+        # tooltip 
+
+        if toolTip: 
+            self.setToolTip (toolTip)
+
+
+
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__} {self.text()}>"
+
+
+    def refresh (self):
+        """ Refresh self disable state """
+
+        self._disabled  = self._get_value (self._disabled_getter, default=self._disabled)
+        self.setDisabled (self._disabled)
+
+
+    def _get_value(self, getter, default=None):
+        """ Read the value. 'getter' shall be bound method. 'default' is taken, if 'getter' results in None  """
+
+        try: 
+            if callable(getter):                            # getter is a bound method ?
+                val =  getter()                             # normal callback
+            else:                                           # ... no - getter is base type 
+                val =  getter 
+        except AttributeError:                              # access path of getter could be currently None
+            val = None 
+
+        if val is None and default is not None: 
+            val = default
+
+        return val 
+
+
 
 class CheckBox (Widget, QCheckBox):
     """
@@ -1619,12 +1713,16 @@ class CheckBox (Widget, QCheckBox):
     def _initial_palette(self):
         """ returns initial normal palette of self"""
 
+        palette =  self.palette()
 
         if not self.light_mode:
             palette =  self.palette()
-            palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
-        else: 
-            palette = None
+            color = palette.color(QPalette.ColorRole.WindowText).darker (140)
+            palette.setColor(QPalette.ColorRole.WindowText,color)
+
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, color)
 
         return palette
 
@@ -1661,6 +1759,18 @@ class ComboBox (Field_With_Label, QComboBox):
 
         # connect signals 
         self.activated.connect(self._on_selected)
+
+
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make text a little darker (not white)   
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
+            palette.setColor(QPalette.ColorRole.ButtonText,color)
+        return palette
 
 
     def _get_properties (self): 
@@ -1739,6 +1849,18 @@ class ComboSpinBox (Field_With_Label, QComboBox):
         # connect signals 
         self.activated.connect(self._on_selected)
         # self.currentTextChanged.connect(self._on_selected)
+
+
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make text a little darker (not white)   
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
+            palette.setColor(QPalette.ColorRole.ButtonText,color)
+        return palette
 
 
     @override
@@ -1863,8 +1985,13 @@ class ListBox (Field_With_Label, QListWidget):
 
         self.clear()                                
         for item_text in self._options:
-             item = QListWidgetItem (item_text, self)
-             item.setSizeHint (QSize (0, self._item_height))
+            item = QListWidgetItem (item_text, self)
+            item.setSizeHint (QSize (0, self._item_height))
+
+            # adapt foreground color of list items 
+            if not self.light_mode:
+                color = QColor("#BBBBBB")                       # hack - item.foreground().color() doesn't work
+                item.setForeground (color)
 
         # set current item if not disabled 
         if not (self._disabled or self._disable_in_refresh):

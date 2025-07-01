@@ -2368,18 +2368,26 @@ class Geometry ():
     def _blend (self, geo1_in : 'Geometry', geo2_in : 'Geometry', blendBy, ensure_fast=False):
         """ blends (blends) self out of two geometries depending on the blendBy factor"""
 
-        geo1 = geo1_in
-        geo2 = geo2_in
-
+        # ensure normalized - to this on a copy 
+        
+        if not geo1_in._isNormalized():
+            geo1 = self.__class__(np.copy(geo1_in.x), np.copy(geo1_in.y))
+            geo1.normalize()
+        else: 
+            geo1 = geo1_in
+        if not geo2_in._isNormalized():
+            geo2 = self.__class__(np.copy(geo2_in.x), np.copy(geo2_in.y))
+            geo2.normalize()
+        else: 
+            geo2 = geo2_in
+        
         # with ensure_fast use just Geometry basic 
+
         if ensure_fast:
             if geo1_in.__class__ != Geometry:
-                geo1 = Geometry (np.copy(geo1_in.x), np.copy(geo1_in.y))
+                geo1 = Geometry (np.copy(geo1.x), np.copy(geo1.y))
             if geo2_in.__class__ != Geometry:
-                geo2 = Geometry (np.copy(geo2_in.x), np.copy(geo2_in.y))
-
-        if not geo1._isNormalized(): geo1.normalize()
-        if not geo2._isNormalized(): geo2.normalize()
+                geo2 = Geometry (np.copy(geo2.x), np.copy(geo2.y))
 
         blendBy = max (0.0, blendBy)
         blendBy = min (1.0, blendBy)

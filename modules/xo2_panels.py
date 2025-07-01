@@ -15,9 +15,8 @@ from PyQt6.QtWidgets        import QDialog, QFileDialog
 from base.widgets           import * 
 from base.panels            import Edit_Panel, Toaster, MessageBox
 
-from airfoil_dialogs        import Airfoil_Info_Dialog
+from airfoil_dialogs        import Airfoil_Info_Dialog, Polar_Definition_Dialog
 from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
-from airfoil_panels      import Polar_Definition_Dialog
 
 from xo2_dialogs            import *
 
@@ -43,7 +42,7 @@ class Panel_Xo2_Abstract (Edit_Panel):
 
     @property
     def app (self) -> App_Main:
-        return self._parent 
+        return self._app 
     
     @property
     def case (self) -> Case_Optimize:
@@ -404,7 +403,7 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ListBox    (l,r,c, width=None, rowSpan=4, height=(50,None),
+        ListBox    (l,r,c, width=None, rowSpan=4, height=140,
                     get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
                     set=self.set_cur_opPoint_def_from_label,
                     signal=False,                                               # do not signal xo2_input changed

@@ -244,7 +244,7 @@ class Settings (Parameters):
         sets 'key' with 'value' into settings
 
         Args:
-            :key: the key to look for       \n
+            :key: the key to look for       
             :value: the value to set 
         """
         dataDict = self.get_dataDict ()
