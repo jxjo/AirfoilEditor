@@ -153,14 +153,11 @@ class Polar_Definition:
 
     def _get_label (self, polarType, re, ma, ncrit, flap_def : Flap_Definition =None): 
         """ return a label of these polar variables"""
-        if ma or flap_def:                                                  # short Version                    
-            ncirt_str = f" N {ncrit:.2f}".rstrip('0').rstrip('.') 
-        else: 
-            ncirt_str = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
-        ma_str   = f" M {ma:.2f}".rstrip('0').rstrip('.') if ma else ""
-        flap_str = f" F {flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
+        ncirt_str = f" N{ncrit:.2f}".rstrip('0').rstrip('.') 
+        ma_str    = f" M{ma:.2f}".rstrip('0').rstrip('.') if ma else ""
+        flap_str  = f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
 
-        return f"{polarType} Re {int(re/1000)}k{ma_str}{ncirt_str}{flap_str}"
+        return f"{polarType} Re{int(re/1000)}k{ma_str}{ncirt_str}{flap_str}"
     
 
     @property
@@ -979,13 +976,22 @@ class Polar (Polar_Definition):
         if self.isLoaded: return 
 
         try: 
-            # polar file existing?  - if yes, load polar 
-            flap_angle = self.flap_def.flap_angle if self.is_flapped else None
+            # polar file existing?  - if yes, load polar
+            if self.is_flapped:
+                flap_angle  = self.flap_def.flap_angle 
+                x_flap      = self.flap_def.x_flap
+                y_flap      = self.flap_def.y_flap
+                y_flap_spec = self.flap_def.y_flap_spec
+            else:
+                flap_angle  = None 
+                x_flap      = None
+                y_flap      = None
+                y_flap_spec = None
 
             airfoil_pathFileName = self.polar_set.airfoil_pathFileName_abs
             polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
                                                 self.type, self.re, self.ma, self.ncrit,
-                                                flap_angle=flap_angle)
+                                                flap_angle, x_flap, y_flap, y_flap_spec)
 
             if polar_pathFileName and not file_in_use (polar_pathFileName): 
 
@@ -1077,7 +1083,7 @@ class Polar (Polar_Definition):
 #------------------------------------------------------------------------------
 
 
-class Polar_Task (Polar_Definition):
+class Polar_Task:
     """ 
     Single Task for Worker to generate polars based on paramters
     May generate many polars having same ncrit and type    
@@ -1098,10 +1104,17 @@ class Polar_Task (Polar_Definition):
         self._autoRange = None
         self._specVar   = None
         self._valRange  = None
-        self._type      = None
-       
+        self._type      = None 
         self._re        = []             
         self._ma        = []
+
+        self._flap_def    = None
+        self._x_flap      = None
+        self._y_flap      = None
+        self._y_flap_spec = None
+        self._flap_angle  = []
+
+        self._flap_def  = None
 
         self._nPoints   = None                          # speed up polar generation with limited coordinate points
 
@@ -1119,7 +1132,7 @@ class Polar_Task (Polar_Definition):
 
     def __repr__(self) -> str:
         """ nice representation of self """
-        return f"<{type(self).__name__} of {self._type} Re {self._re} Ma {self._ma} Ncrit {self._ncrit}>"
+        return f"<{type(self).__name__} of {self._type} Re {self._re} Ma {self._ma} Ncrit {self._ncrit} Flap {self._flap_angle}>"
 
     #---------------------------------------------------------------
 
@@ -1204,16 +1217,20 @@ class Polar_Task (Polar_Definition):
         taken_over = True 
         
         if not self._re: 
-            self._ncrit     = polar.ncrit
-            self._autoRange = polar.autoRange
-            self._specVar   = polar.specVar
-            self._valRange  = polar.valRange
-            self._type      = polar.type
+            self._ncrit      = polar.ncrit
+            self._autoRange  = polar.autoRange
+            self._specVar    = polar.specVar
+            self._valRange   = polar.valRange
+            self._type       = polar.type
         
-            self._re        = [polar.re]             
-            self._ma        = [polar.ma]
+            self._re         = [polar.re]             
+            self._ma         = [polar.ma]
 
-            self._flap_angle = [polar.flap_def.flap_angle] if polar.is_flapped else None
+            self._flap_def   = polar.flap_def
+            self._x_flap     = polar.flap_def.x_flap      if polar.flap_def else None
+            self._y_flap     = polar.flap_def.y_flap      if polar.flap_def else None
+            self._y_flap_spec= polar.flap_def.y_flap_spec if polar.flap_def else None
+            self._flap_angle = [polar.flap_def.flap_angle] if polar.flap_def else []
 
             self._polars     = [polar]
             self._airfoil_pathFileName_abs = polar.polar_set.airfoil_pathFileName_abs
@@ -1222,10 +1239,13 @@ class Polar_Task (Polar_Definition):
         # to allow Worker multi-threading 
         elif  self._type==polar.type and self._ncrit == polar.ncrit and \
               self._autoRange == polar.autoRange and \
-              self._specVar == polar.specVar and self._valRange == polar.valRange:
+              self._specVar == polar.specVar and self._valRange == polar.valRange and \
+              Flap_Definition.have_same_hinge (self._flap_def, polar.flap_def):
             
             self._re.append (polar.re)
             self._ma.append (polar.ma)
+            if polar.is_flapped:
+                self._flap_angle.append (polar.flap_def.flap_angle)
 
             self._polars.append (polar)
 
@@ -1245,7 +1265,8 @@ class Polar_Task (Polar_Definition):
                         self._type, self._re, self._ma, self._ncrit, 
                         autoRange=self._autoRange, spec=self._specVar, 
                         valRange=self._valRange, run_async=True,
-                        flap_angle=self._flap_angle, 
+                        flap_angle=self._flap_angle, x_flap=self._x_flap, y_flap=self._y_flap, 
+                        y_flap_spec=self._y_flap_spec, 
                         nPoints=self._nPoints)
             logger.debug (f"{self} started")
 

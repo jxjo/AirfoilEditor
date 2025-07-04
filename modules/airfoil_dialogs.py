@@ -1233,9 +1233,8 @@ class Polar_Definition_Dialog (Dialog):
             r += 1
             SpaceR (l, r, height=5, stretch=3) 
             r += 1 
-            CheckBox (l,r,c, text=f"Set flap just for this polar - soon to come", colSpan=7,
-                            obj=self.polar_def, prop=Polar_Definition.is_flapped,
-                            disable=True)
+            CheckBox (l,r,c, text=f"Set flap just for this polar", colSpan=7,
+                            obj=self.polar_def, prop=Polar_Definition.is_flapped)
             r += 1
             FieldF  (l,r,c, lab="Flap Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
                             obj=lambda: self.flap_def, prop=Flap_Definition.flap_angle,

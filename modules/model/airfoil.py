@@ -290,17 +290,10 @@ class Airfoil:
 
     @property
     def name_to_show (self) -> str: 
-        """ name of airfoil - for DESIGN use a modified name"""
+        """ public name of airfoil - use fileName.stem - limited to 47 chars"""
 
-        # if self.name.find("_mods:") != -1:
-        #     # for DESIGN airfoil build name string 
-        #     name = self.name  if len(self.name) <= 18 else f"{self.name[:18]}..."
-        #     return f"{name} - {self.fileName_stem}"
-
-        if self.usedAsDesign:
-            return f"{self.fileName_stem}"
-        else:
-            return self._name if len(self._name) <= 47 else f"{self._name[:47]}..."
+        name = self.fileName_stem
+        return name if len(name) <= 47 else f"{name[:47]}..."
 
 
     def set_name (self, newName, reset_original=False):
@@ -1445,6 +1438,22 @@ class Flap_Definition:
 
     """
 
+    @staticmethod
+    def have_same_hinge (flap_def1 : 'Flap_Definition', flap_def2 : 'Flap_Definition') -> bool:
+        """
+        Compare 2 flap definitions if they have the same hinge definition
+        Return True if they are the same or both have no flap_def1
+        """
+        if flap_def1 and flap_def2:
+            return  flap_def1.x_flap == flap_def2.x_flap and \
+                    flap_def2.y_flap == flap_def2.y_flap and \
+                    flap_def1.y_flap_spec == flap_def2.y_flap_spec
+        elif flap_def1 is None and flap_def2 is None:
+            return True
+        else: 
+            return False
+        
+
     def __init__(self, dataDict : dict = None):
         """
         """
@@ -1464,6 +1473,16 @@ class Flap_Definition:
         toDict (d, "y_flap_spec",   self.y_flap_spec) 
         toDict (d, "flap_angle",    self.flap_angle) 
         return d
+
+    @property
+    def name_suffix (self) -> str:
+        """ 
+        fileName suffix for being flapped like 
+            '_f5.1' for defaults or 
+            '_f-1.4_xf0.72_yf0.5_yspecYC' for non default values
+        """
+
+        return Worker.flapped_suffix (self.flap_angle, self.x_flap, self.y_flap, self.y_flap_spec)
 
 
     @property
@@ -1554,11 +1573,6 @@ class Flap_Setter (Flap_Definition):
         if flap_angle is not None: 
             self.set_flap_angle (flap_angle)
         if self.flap_angle == 0.0: return
-
-        # build filename for new airfoil created by Worker 
-
-        if not outname: 
-            outname=f"{self._base_fileName_stem}_x{self.x_flap:.2f}_y{self.y_flap:.2f}_f{self.flap_angle:.2f}"
 
         # run Worker 
 

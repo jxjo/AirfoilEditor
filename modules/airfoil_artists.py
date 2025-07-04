@@ -1162,7 +1162,7 @@ class Polar_Artist (Artist):
 
         # build nice label 
 
-        label = f"{_label_airfoil (airfoils, airfoil)} {polar.re_asK}k" 
+        label = f"{_label_airfoil (airfoils, airfoil)} - {polar.name}" 
 
         if not polar.isLoaded:
             label = label + ' generating'                       # async polar generation  

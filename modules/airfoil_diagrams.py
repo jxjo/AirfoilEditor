@@ -1450,10 +1450,12 @@ class Diagram_Airfoil_Polar (Diagram):
 
         if Worker.ready:
             r += 1
+            default_settings = [{"xyVars" : (var.CD,var.CL)}, {"xyVars" : (var.CL,var.GLIDE)}]
+
             for iItem in [0,1]:
             # create Polar items with init values from settings 
 
-                dataDict = self._diagram_settings[iItem] if len(self._diagram_settings) > iItem else {"xyVars" : (var.CD,var.CL)}
+                dataDict = self._diagram_settings[iItem] if len(self._diagram_settings) > iItem else default_settings[iItem]
                 xyVars = dataDict ["xyVars"]
 
                 item = Diagram_Item_Polars (self, getter=self.airfoils, xyVars=xyVars, 
@@ -1486,7 +1488,8 @@ class Diagram_Airfoil_Polar (Diagram):
 
         # optimization panel 
 
-        layout.addWidget (self.optimization_panel,stretch=0)
+        if Worker.ready and Xoptfoil2.ready:
+            layout.addWidget (self.optimization_panel,stretch=0)
 
         # diagram items panel
 
@@ -1571,7 +1574,8 @@ class Diagram_Airfoil_Polar (Diagram):
     @property 
     def show_xo2_opPoint_def (self) -> bool:
         """ show opPoint definitions"""
-        return self._get_artist (Xo2_OpPoint_Defs_Artist)[0].show
+        artists = self._get_artist (Xo2_OpPoint_Defs_Artist)
+        return artists[0].show if artists else False 
 
     def set_show_xo2_opPoint_def (self, aBool : bool, refresh=True):
         self._show_artist (Xo2_OpPoint_Defs_Artist, aBool, refresh=refresh)

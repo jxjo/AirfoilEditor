@@ -70,7 +70,7 @@ logger.setLevel(logging.DEBUG)
 
 
 APP_NAME         = "Airfoil Editor"
-APP_VERSION      = "4.0 dev Optimizer"
+APP_VERSION      = "4.0 beta"
 
 
 class App_Main (QMainWindow):
@@ -80,7 +80,7 @@ class App_Main (QMainWindow):
 
     name = APP_NAME  
 
-    WORKER_MIN_VERSION         = '1.0.5'
+    WORKER_MIN_VERSION         = '1.0.6'
     XOPTFOIL2_MIN_VERSION      = '1.0.5'
 
 
