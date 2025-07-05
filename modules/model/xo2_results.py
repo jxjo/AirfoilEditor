@@ -48,8 +48,9 @@ class Xo2_Results:
 
         self._outName       = outName                                           # xo2 result airfoil fielName (withput extension) 
         self._workingDir    = workingDir                                        # working dir of optimizer
-        self._resultDir_rel = outName + Xoptfoil2.RESULT_DIR_POSTFIX            # directory where the designs are generated
-        self._resultDir     = os.path.join (workingDir, self._resultDir_rel)    # directory where the designs are generated
+
+        resultDir_rel       = outName + Xoptfoil2.RESULT_DIR_POSTFIX            # directory where the designs are generated
+        self._resultDir     = os.path.join (workingDir, resultDir_rel)          # directory where the designs are generated
 
         # optionally remove existing result_dir 
 
@@ -86,11 +87,6 @@ class Xo2_Results:
     def workingDir (self): 
         """ working dir of optimizer - absolut"""
         return self._workingDir
-
-    @property
-    def resultDir_rel (self): 
-        """ directory with optimizer results - relativ to working dir"""
-        return self._resultDir_rel
 
     @property
     def resultDir (self): 
@@ -185,11 +181,11 @@ class Xo2_Results:
     def time_running (self) -> str:
         """ returns hours, minutes, seconds how long self is (or was) running as string hh:mm:ss"""
 
-        ref_file_dt   = self._get_dateTime_ref_file ()
+        last_write_dt = self.date_time_last_write
         result_dir_dt = self._get_dateTime_resultDir ()
 
-        if ref_file_dt and result_dir_dt:
-            delta = ref_file_dt - result_dir_dt
+        if last_write_dt and result_dir_dt:
+            delta = last_write_dt - result_dir_dt
             hours, remainder = divmod(delta.total_seconds(), 3600)
             minutes, seconds = divmod(remainder, 60)
         else:
@@ -199,7 +195,11 @@ class Xo2_Results:
             return f"{int(hours)}:{int(minutes)}:{int(seconds):02d}"
         else: 
             return f"{int(minutes)}:{int(seconds):02d}"
-        
+
+    @property
+    def date_time_last_write (self) -> datetime:
+        """ youngest date of written results"""
+        return self._get_dateTime_ref_file()        
 
     @property
     def steps (self) -> list ['Optimization_History_Entry']:

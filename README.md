@@ -151,7 +151,7 @@ or
 Download python sources from [releases](https://github.com/jxjo/AirfoilEditor/releases) or clone the repository and install 
 
 ```
-pip3 install pyqt6
+pip3 install pyqt6     (min Version 6.9.1)
 pip3 install numpy
 pip3 install pyqtgraph 
 pip3 install termcolor

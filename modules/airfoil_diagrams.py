@@ -590,7 +590,8 @@ class Diagram_Item_Airfoil (Diagram_Item):
             elif not mods and airfoil.isBezierBased:
                 subtitle = 'Based on 2 Bezier curves'
             else: 
-                subtitle = "" 
+                # show name if it differs from name to show 
+                subtitle = airfoil.name if airfoil.name != airfoil.name_to_show else ''
 
             super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
 

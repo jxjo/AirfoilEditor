@@ -307,7 +307,7 @@ class X_Program:
             returncode: = 0 if no error
         """
 
-        if not os.path.isdir (workingDir):
+        if workingDir and not os.path.isdir (workingDir):
             returncode = 1
             logger.error (f"Working directory '{workingDir}' does not exist" )
             return returncode
@@ -332,7 +332,8 @@ class X_Program:
             # uses subproocess run which returns a completed process instance 
 
             curDir = os.getcwd()
-            os.chdir (workingDir)
+            if workingDir:
+                os.chdir (workingDir)
 
             if capture_output:
                 # needed when running as pyinstaller .exe 
@@ -389,7 +390,7 @@ class X_Program:
             returncode: = 0 if no error
         """
 
-        if not os.path.isdir (workingDir):
+        if workingDir and not os.path.isdir (workingDir):
             raise ValueError (f"Working directory '{workingDir}' does not exist" )
 
         returncode  = 0 
@@ -413,7 +414,8 @@ class X_Program:
             # uses subproccess Popen instance to start a subprocess
 
             curDir = os.getcwd()
-            os.chdir (workingDir)
+            if workingDir:
+                os.chdir (workingDir)
 
             if capture_output:
                 stdout = PIPE                               # output is piped to suppress window 

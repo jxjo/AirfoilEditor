@@ -642,20 +642,33 @@ class Xo2_Transition_Artist (Artist):
     #               y
 
     @staticmethod
-    def _symbol_transition_up ():
+    def _symbol_transition_right ():
         path = QPainterPath()
-        coords = [(-0.125, 0.125), (0, 0), (0.125, 0.125),
-                    (0.05, 0.125), (0.05, 0.5), (-0.05, 0.5), (-0.05, 0.125)]
+        # coords = [(-0.125, 0.125), (0, 0), (0.125, 0.125),
+        #             (0.05, 0.125), (0.05, 0.5), (-0.05, 0.5), (-0.05, 0.125)]
+        coords = [
+                (0,0),
+                (0,0.125),
+                (-0.04, 0.125),
+                (-0.04, -0.125),
+                (0, -0.125),
+                (0,0),
+                (0.05, 0.075),
+                (0.15, -0.075),
+                (0.25, 0.075),
+                (0.35, -0.075),
+                (0.4, 0)]
         path.moveTo(*coords[0])
         for x,y in coords[1:]:
             path.lineTo(x, y)
-        path.closeSubpath()
+        # path.closeSubpath()
         return path
-    tr : QTransform = QTransform()
-    tr.rotate(90)                                   # because y is downward
-    tr.translate (0,-0.5)                          # translate is after rotation ...
+    # tr : QTransform = QTransform()
+    # tr.rotate(90)                                   # because y is downward
+    # tr.translate (0,-0.5)                          # translate is after rotation ...
 
-    SYMBOL_TRANSITION_RIGHT  = tr.map (_symbol_transition_up())                         
+    # SYMBOL_TRANSITION_RIGHT  = tr.map (_symbol_transition_up())                         
+    SYMBOL_TRANSITION_RIGHT  = _symbol_transition_right()                         
 
     # ----------------
 
@@ -680,7 +693,7 @@ class Xo2_Transition_Artist (Artist):
 
         color  = _color_airfoil ([], airfoil).darker (120) 
         symbol = self.SYMBOL_TRANSITION_RIGHT
-        size   = 30
+        size   = 40
         brush  = QColor ("black")
         fill   = QColor ("black")
         fill.setAlphaF (0.5) 
@@ -694,7 +707,7 @@ class Xo2_Transition_Artist (Artist):
                 y = y + 0.008 if side.isUpper else y - 0.008
 
                 text   = f"{iop+1}"
-                anchor = (0.5, 1.1) if side.isUpper else (0.5, -0.1)
+                anchor = (0.5, 1.2) if side.isUpper else (0.5, -0.2)
 
                 self._plot_point (x,y, color=color, symbol=symbol, size=size, brush=brush, 
                                   text=text, textColor=color, anchor=anchor, textFill=fill, name=legend_name)

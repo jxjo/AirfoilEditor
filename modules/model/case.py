@@ -3,9 +3,9 @@
 
 import os
 import fnmatch      
-import shutil      
-import datetime 
+import shutil   
 
+from datetime               import datetime
 from pathlib                import Path
 from typing                 import override
 
@@ -521,19 +521,15 @@ class Case_Optimize (Case_Abstract):
 
         isFinished = False
 
-        try: 
-            if os.path.isfile (self.input_file.pathFileName) and \
-               os.path.isdir  (self.results.resultDir) and \
-               self.xo2.isReady and \
-               self.airfoil_final is not None: 
-                                
-                results_dir_dt = datetime.datetime.fromtimestamp(os.path.getmtime(self.results.resultDir))
-                airfoil_dt     = datetime.datetime.fromtimestamp(os.path.getmtime(self.airfoil_final.pathFileName_abs))
+        if os.path.isfile (self.input_file.pathFileName) and \
+            self.results.date_time_last_write and \
+            self.xo2.isReady and \
+            self.airfoil_final is not None: 
+                            
+            airfoil_dt     = datetime.fromtimestamp(os.path.getmtime(self.airfoil_final.pathFileName_abs))
 
-                if airfoil_dt > results_dir_dt:
-                    isFinished = True
-        except:
-            pass
+            if airfoil_dt > self.results.date_time_last_write:
+                isFinished = True
 
         return isFinished
 
