@@ -1543,7 +1543,7 @@ class ToolButton (Widget, QToolButton):
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
 
-        self.setAutoRaise (True)
+        self.setAutoRaise (True)            # button frame only on focus
 
         if self._icon_name is not None: 
 
@@ -1591,8 +1591,6 @@ class MenuButton (Button, QPushButton):
 class MenuAction (QAction):
     """
     Menu item - QAction subclass to make it compatible with WIdget  
-    
-
     """
     def __init__(self, 
                  text,                                              # menu text

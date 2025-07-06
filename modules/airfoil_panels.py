@@ -103,7 +103,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
 class Panel_File_View (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
-    name = 'File'
+    name = 'View Mode'
 
 
     @override
@@ -167,15 +167,23 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
         menue.addAction (MenuAction ("As Bezier based", self, set=self.app.new_as_Bezier, 
                                      disable=lambda: self.airfoil.isBezierBased,
-                                     toolTip="Create new Bezier airfoil based on current airfoil"))
+                                     toolTip="Create new Bezier based airfoil of current airfoil"))
         menue.addSeparator ()
-        menue.addAction (MenuAction ("Save as...", self, set=self.app.do_save_as))
-        menue.addAction (MenuAction ("Rename...", self, set=self.app.do_rename))
-        menue.addAction (MenuAction ("Delete", self, set=self.app.do_delete))
-        menue.addAction (MenuAction ("Delete temp files", self, set=self.app.do_delete_temp_files))
+        menue.addAction (MenuAction ("Save as...", self, set=self.app.do_save_as,
+                                     toolTip="Create a copy of the current airfoil with new name and filename"))
+        menue.addAction (MenuAction ("Rename...", self, set=self.app.do_rename,
+                                     toolTip="Rename name and/or filename of current airfoil"))
+        menue.addAction (MenuAction ("Delete", self, set=self.app.do_delete,
+                                     toolTip="Delete current airfoil including all temporary files created by the AirfoilEditor"))
+        menue.addAction (MenuAction ("Delete temp files", self, set=self.app.do_delete_temp_files,
+                                     toolTip="Delete all temporary files created by the AirfoilEditor just to have a clean directoy again"))
         menue.addSeparator ()
-        menue.addAction (MenuAction ("Readme on Github", self, set=self._open_AE_url))
-        menue.addAction (MenuAction ("Releases on Github", self, set= self._open_releases_url))
+        menue.addAction (MenuAction ("Readme on Github", self, set=self._open_AE_url,
+                                     toolTip="Open the Github README file of the AirfoilEditor in a browser"))
+        menue.addAction (MenuAction ("Releases on Github", self, set= self._open_releases_url,
+                                     toolTip="Open the Github page with the actual release of the AirfoilEditor"))
+
+        menue.setToolTipsVisible(True)
 
         return menue
 
@@ -235,7 +243,7 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
                              options=self.airfoil_fileNames,
                              signal=False)
         ToolButton   (l,r,c+2, icon=Icon.DELETE, set=self.remove_current_airfoil,
-                      disable=lambda: self.case.get_i_from_design (self.airfoil) == 0)
+                      hide=lambda: len(self.case.airfoil_designs) == 1)
         r += 1
         SpaceR (l,r)
         l.setRowStretch (r,2)

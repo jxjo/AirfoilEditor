@@ -133,9 +133,13 @@ class Case_Direct_Design (Case_Abstract):
         self._airfoil_seed = airfoil
         self._workingDir   = airfoil.pathName_abs 
 
-        # create design directory 
+        # create design directory or read existing designs 
         if not os.path.isdir (self.design_dir_abs):
             os.makedirs(self.design_dir_abs)
+        else:
+            self._airfoil_designs = self._read_all_designs(self.design_dir, self.workingDir,
+                                                            prefix=self.DESIGN_NAME_BASE,
+                                                            extension=self.airfoil_seed.fileName_ext)
 
 
     @property
@@ -160,10 +164,6 @@ class Case_Direct_Design (Case_Abstract):
     @property
     def airfoil_designs (self) -> list[Airfoil]: 
         """ list of airfoil designs"""
-        if not self._airfoil_designs: 
-            self._airfoil_designs = self._read_all_designs(self.design_dir, self.workingDir,
-                                                            prefix=self.DESIGN_NAME_BASE,
-                                                            extension=self.airfoil_seed.fileName_ext)
         return self._airfoil_designs 
       
 
