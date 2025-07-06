@@ -243,7 +243,7 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
                              options=self.airfoil_fileNames,
                              signal=False)
         ToolButton   (l,r,c+2, icon=Icon.DELETE, set=self.remove_current_airfoil,
-                      hide=lambda: len(self.case.airfoil_designs) == 1)
+                      hide=lambda: self.case.get_i_from_design (self.airfoil) == 0) # hide Design 0 
         r += 1
         SpaceR (l,r)
         l.setRowStretch (r,2)
