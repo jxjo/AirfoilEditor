@@ -497,6 +497,11 @@ class Curvature_Abstract:
         return float(self.upper.y[-1])
 
     @property
+    def max_te (self) -> float:
+        """ max value at upper or lower side """
+        return abs(max (self.at_upper_te, self.at_lower_te))
+
+    @property
     def at_lower_te (self) -> float: 
         """ value of curvature at lower TE  """
         return float(self.lower.y[-1])

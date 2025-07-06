@@ -327,6 +327,13 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.02,
                 obj=lambda: self.geo, prop=Geometry.le_radius,
                 disable=lambda: self.airfoil.isBezierBased)
+        r += 1
+        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.te_gap)
+        r += 1
+        SpaceR (l,r, height=5)
+        r += 1
+        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
 
         r,c = 0, 2 
         SpaceC (l,c, stretch=0)
@@ -339,17 +346,27 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 obj=lambda: self.geo, prop=Geometry.max_camb_x,
                 disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
         r += 1
-        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
-                obj=lambda: self.geo, prop=Geometry.te_gap)
+        FieldF (l,r,c, lab="LE curv", width=75, dec=0, disable=True,
+                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_around_le)
         r += 1
-        SpaceR (l,r, height=5)
-        r += 1
-        Label  (l,r,0,colSpan=4, get=lambda : "Geometry " + self.geo.description, style=style.COMMENT, height=(None,None))
+        FieldF (l,r,c, lab="TE curv", width=75, dec=0, disable=True,
+                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_te,
+                style=lambda: style.NORMAL if self.geo.curvature.max_te <2 else style.WARNING)
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnMinimumWidth (3,60)
         l.setColumnStretch (5,2)
         return l 
+
+
+    def _messageText (self): 
+        """ text to show at bottom of panel"""
+
+        if self.geo.curvature.max_te >= 2:
+            text = f"- Curvature at trailing edge is quite high"
+        else:
+            text = f"Geometry {self.geo.description}"
+        return text 
 
 
 

@@ -115,7 +115,9 @@ class Polar_Definition:
         self._ncrit     = fromDict (dataDict, "ncrit",    7.0)
         self._autoRange = fromDict (dataDict, "autoRange",True)
         self._valRange  = fromDict (dataDict, "valRange", self.VAL_RANGE_ALPHA)
+        self._specVar   = None 
         self.set_specVar (fromDict (dataDict, "specVar",  var.ALPHA))       # it is a enum
+        self._type      = None 
         self.set_type    (fromDict (dataDict, "type",     polarType.T1))    # it is a enum
        
         self._re        = fromDict (dataDict, "re",       400000)             
@@ -155,7 +157,11 @@ class Polar_Definition:
         """ return a label of these polar variables"""
         ncirt_str = f" N{ncrit:.2f}".rstrip('0').rstrip('.') 
         ma_str    = f" M{ma:.2f}".rstrip('0').rstrip('.') if ma else ""
-        flap_str  = f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
+        if flap_def:
+            flap_str  = f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
+            flap_str += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
+        else:
+            flap_str = ""
 
         return f"{polarType} Re{int(re/1000)}k{ma_str}{ncirt_str}{flap_str}"
     
@@ -692,6 +698,7 @@ class Polar (Polar_Definition):
             re_scale: will scale (down) polar reynolds and mach number of self
 
         """
+        super().__init__()
         self._polar_set = mypolarSet
         self._re_scale  = re_scale
 
@@ -725,7 +732,9 @@ class Polar (Polar_Definition):
                 self.set_re (re_scaled)
                 self.set_ma (ma_scaled)
 
-            self.set_flap_def   (copy (polar_def.flap_def))
+            # sanity - no polar with flap angle == 0.0 
+            if polar_def.flap_def and polar_def.flap_def.flap_angle != 0.0:
+                self.set_flap_def   (copy (polar_def.flap_def))
 
     def __repr__(self) -> str:
         """ nice print string wie polarType and Re """

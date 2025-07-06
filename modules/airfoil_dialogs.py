@@ -1284,6 +1284,17 @@ class Polar_Definition_Dialog (Dialog):
         return buttonBox 
 
 
+    @override
+    def reject(self): 
+        """ close or x-Button pressed"""
+
+        # ensure no flap def with flap angle == 0.0 
+        if self.flap_def and self.flap_def.flap_angle == 0.0:
+            self.polar_def.set_is_flapped (False) 
+
+        # normal close 
+        super().reject()
+
 
 class Airfoil_Info_Dialog (Dialog):
     """ small info dialog for airfoil properties"""
