@@ -660,9 +660,9 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
                 text.append("- Leading edge is not at 0,0")
         if not self.airfoil.isFlapped:
             if self.geo.te[0] != 1.0 or self.geo.te[2] != 1.0 : 
-                text.append("- Trailing edge is not at 1")
+                text.append("- Trailing edge is not at x=1.0")
             if self.geo.te[1] != -self.geo.te[3]: 
-                text.append("- Trailing not symmetric")
+                text.append("- Trailing edge is not at y=0.0")
 
         if not text:
             if self.geo.isSymmetrical: 
