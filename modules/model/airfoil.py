@@ -1540,16 +1540,16 @@ class Flap_Setter (Flap_Definition):
         if airfoil_base.isFlapped:
             raise ValueError ("A flapped airfoil cannot be flapped")
         
-        self._worker_workingDir  = airfoil_base.pathName_abs                # working dir of Worker!
-        self._base_fileName      = airfoil_base.fileName
-        self._base_fileName_stem = airfoil_base.fileName_stem
+        self._worker_workingDir  = airfoil_base.pathName_abs        # working dir of Worker!
+        self._base_copy          = airfoil_base.asCopy ()           # copy as parent will change!
 
-        self._airfoil_flapped = None                    # flapped version of airfoil_org 
+        self._airfoil_flapped    = None                             # flapped version of airfoil_org 
 
 
     @property
-    def airfoil_base_fileName (self) -> str:
-        return self._base_fileName
+    def airfoil_base (self) -> Airfoil:
+        """ the initial, unflapped airfoil"""
+        return self._base_copy
 
     @property
     def airfoil_flapped (self) -> Airfoil:
@@ -1578,7 +1578,7 @@ class Flap_Setter (Flap_Definition):
 
         worker = Worker(self._worker_workingDir)
 
-        flapped_fileName = worker.set_flap (self._base_fileName, 
+        flapped_fileName = worker.set_flap (self.airfoil_base.fileName, 
                                         x_flap = self.x_flap, y_flap = self.y_flap, y_flap_spec = self.y_flap_spec,
                                         flap_angle = self.flap_angle,
                                         outname = outname )

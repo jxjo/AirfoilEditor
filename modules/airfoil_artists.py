@@ -625,7 +625,7 @@ class Flap_Artist (Artist):
             label = f"{self.design_airfoil.name_to_show} flapped"
 
             self._plot_dataItem  (flapped_airfoil.x, flapped_airfoil.y, name=label, pen = pen, 
-                                    antialias = False, zValue=1)
+                                    antialias = False, zValue=5)
 
             # plot flap angle 
 
@@ -634,12 +634,13 @@ class Flap_Artist (Artist):
 
             self._plot_point ((x,y), size=0,text=f"{self.flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
 
-        # plot hinge point 
+        # plot hinge point at the initial, unflapped airfoil
 
         x = self.flap_setter.x_flap
+        airfoil_base = self.flap_setter.airfoil_base
 
-        y_base = self.design_airfoil.geo.lower.yFn(x)
-        thick  = self.design_airfoil.geo.thickness.yFn(x)
+        y_base = airfoil_base.geo.lower.yFn(x)
+        thick  = airfoil_base.geo.thickness.yFn(x)
         y = y_base + self.flap_setter.y_flap * thick 
 
         self._plot_point ((x,y), color=color, size=10,text=f"Hinge {self.flap_setter.x_flap:.1%}" )

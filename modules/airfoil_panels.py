@@ -478,8 +478,12 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     def _set_flap_disabled (self) -> bool:
         """ True if set flap is not possible"""
 
-        if self.geo.isBezier or self.geo.isHicksHenne: return True 
-        return not self.airfoil.flap_setter                       # no flapper, no set flap 
+        if self.geo.isBezier or self.geo.isHicksHenne: 
+            return True
+        elif self.mode_modify:
+            return not self.airfoil.flap_setter                       # no flapper, no set flap 
+        else:
+            return True
 
 
     def _init_layout (self):
@@ -501,7 +505,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
                 FieldF (l,r,c, lab="Flap Angle", width=50, dec=1, unit='°', get=lambda: flap_setter.flap_angle)
                 r +=1
                 Field (l,r,c, lab="Based on", width=120,
-                       get=flap_setter.airfoil_base_fileName)
+                       get=flap_setter.airfoil_base.fileName)
                 r += 1
                 SpaceR (l,r, stretch=2)
                 r += 1
