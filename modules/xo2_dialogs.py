@@ -140,13 +140,18 @@ class Xo2_Select_Dialog (Dialog):
             lab.setOpenExternalLinks(True)
 
             r += 1
-            for example_file, example_path in self._get_example_files (self.EXAMPLE_DIR).items():
-                #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
-                Button   (l,r,c,   width=100, text=Path(example_file).stem, 
-                          set=lambda p=example_path: self._open_example_case (p))
-                c += 1 
-                if c > 2: break
-            c = 0
+            examples_dict = self._get_example_files (self.EXAMPLE_DIR)
+            if examples_dict:
+                for example_file, example_path in examples_dict.items():
+                    #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
+                    Button   (l,r,c,   width=100, text=Path(example_file).stem, 
+                            set=lambda p=example_path: self._open_example_case (p))
+                    c += 1 
+                    if c > 2: break
+                c = 0
+            else:
+               Label    (l,r,c, colSpan=3, style=style.ERROR,
+                         get=f"No examples found in directory {self.EXAMPLE_DIR}") 
             r += 1
             SpaceR   (l,r,height=10, stretch=0)
             r += 1

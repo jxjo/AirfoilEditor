@@ -1,0 +1,96 @@
+![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
+
+### Version 4
+
+---
+
+The **AirfoilEditor** serves as a fast airfoil viewer and an advanced geometry editor including Xoptfoil2-based optimization. The App provides three operating modes:
+
+#### View
+* Browse and view airfoils in subdirectories
+* Analyse curvature of airfoil surface
+* Show polars generated using XFOIL
+
+#### Modify
+* Repanel and normalize airfoils
+* Adjust thickness, camber, high points, and trailing edge gap
+* Blend two airfoils
+* Set flap
+* Generate airfoil replicas using Bezier curves.
+
+#### Optimize
+* User Interface for Xoptfoil2
+* Graphical definition of polar based objectives
+* View results while optimizing
+
+The app was initially developed to address artefacts found in other tools like Xflr5 when using xfoil geometry routines. The aim has been an intuitive, user-friendly experience that encourages exploration.
+The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. Linux and MacOS users are required to compile the underlying programs for polar viewing and airfoil optimization - see 'Installation' for details.
+
+
+![AE](images/AirfoilEditor_app.png "AirfoilEditor App")
+
+# Basic Concepts
+
+## Geometry of an Airfoil
+
+The **AirfoilEditor** utilises various strategies to represent the geometry of an airfoil.
+
+* 'Linear interpolation' – Using the point coordinates from the airfoils '.dat' file, intermediate points are calculated through linear interpolation. Used for quick previews and simple tasks.
+
+* 'Cubic spline interpolation' – A cubic spline is created from the airfoil's point coordinates, enabling precise interpolation of intermediate points.
+
+* 'Bezier curve' – An airfoil is modeled using two Bezier curves, one for the upper surface and one for the lower surface. Nelder-Mead optimization is used to fit these Bezier curves to an existing airfoil profile.
+
+Spline interpolation is applied to determine the position of the actual leading edge, which can vary from the coordinate-based leading edge defined as the point with the smallest x-value. Airfoil normalization iteratively rotates, stretches, and shifts the airfoil so its leading edge based on the spline is at (0,0) and trailing edge at (1,0).
+
+For thickness and camber geometry operations, the airfoil is divided into two separate splines that represent the thickness and camber distributions. To shift the high point of thickness or camber, a mapping spline - similar to that in xfoil - is applied to the thickness or camber spline. The airfoil is then reconstructed from the adjusted thickness and camber spline.
+This method is also used to adjust the highpoints of both the upper and lower surfaces of the airfoil, allowing for separate modification of each side.
+
+
+![AE](images/thickness_camber.png "thickness and camber spline")
+
+## Curvature
+
+On of the major views on an airfoil in the AirfoilEditor is the curvature of the airfoils surface. It allows a quick assessment of the surface quality and to detect artefacts like a 'spoiler' at the trailing edge which is quite common.
+
+> [!TIP]
+Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) for more information about an airfoils geometry.  
+
+![AE](images/curvature.png "curvature")
+
+
+## Bezier based airfoils
+
+Beside .dat files the AirfoilEditor seamlessly handles .bez files defining a Bezier based airfoil. 
+While a ‘normal’ airfoil is defined by coordinate points, a Bezier based airfoil is defined by two Bezier curves for upper and lower side. 
+
+A Bezier curve itself is defined by control points. One significant benefit of utilising a Bezier curve is its ability to provide a consistently smooth curvature along the airfoil surface.   
+
+The AirfoilEditor supports a manual mode, where the control points can be moved with the mouse to create the desired airfoil and an automatic mode with a match function:
+The match function fits the Bezier curve to an existing airfoil as accurately as possible. For this a simplex optimization (Nelder Mead) is performed to
+
+* minimize the norm2 deviation between the Bezier curve and a target airfoil
+* align the curvature of the Bezier curve at leading and trailing to the curvature of the target.
+* ensure the curvature at leading edge on upper and lower side is equal
+
+![AE](images/match_bezier.png "match bezier")
+
+
+## Polars of an Airfoil
+
+To generate the polars of an airfoil the **AirfoilEditor** uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). On of the Worker actions is the multi-threaded creation of a polar set using Xfoil.
+
+For polar generation the auto_range feature of the Worker is applied which optimizes the alpha range of the polar to show the complete T1 polar from cl_min to cl_max of the airfoil. For T2 polars (constant lift) the range starts right above cl=0.0 to cl_max.
+
+### Polars on Demand
+
+Within the app, a polar is generated on demand, specifically at the time it needs to be displayed, and this occurs asynchronously in a background task. Each polar is stored in an individual file using the Xfoil polar format. 
+
+This method enables the sequential review of airfoils or airfoil designs, displaying the polars without requiring additional user input.
+
+### Flapped Polars
+
+A polar can be ‘flapped’, meaning the airfoil has temporary flaps set before XFOIL computes the polar data.
+
+A ‘flapped polar’ is convenient when different airfoils should be compared having set a certain flap angle. 
+In difference, a flap can be configured for an individual airfoil and saved as a separate airfoil file. This latter method is typically applied when the modified airfoil needs to be used in additional software, such as Xflr5 (see ‘Modification of an Airfoil’) 
