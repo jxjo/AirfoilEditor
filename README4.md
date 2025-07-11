@@ -19,7 +19,7 @@ The **AirfoilEditor** serves as a fast airfoil viewer and an advanced geometry e
 * Generate airfoil replicas using Bezier curves.
 
 #### Optimize
-* User Interface for Xoptfoil2
+* User Interface of [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
 * Graphical definition of polar based objectives
 * View results while optimizing
 
@@ -27,7 +27,7 @@ The app was initially developed to address artefacts found in other tools like X
 The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. Linux and MacOS users are required to compile the underlying programs for polar viewing and airfoil optimization - see 'Installation' for details.
 
 
-![AE](images/AirfoilEditor_App.png "AirfoilEditor App")
+![AE](images/AirfoilEditor_App_dark.png "AirfoilEditor App")
 
 # Basic Concepts
 
@@ -138,3 +138,41 @@ One of the possible modifications is to set a trailing edge flap – either perm
 ![AE](images/set_flap.png "Setting flap")
 
 Remark: As a flap may not be set on an already ‘flapped’ airfoil, the app remembers the initial unflapped design airfoil. This enables multiple sequential flap settings to be applied during a design session.
+
+## Bezier based Airfoils
+
+Bezier-based airfoils can also be adjusted in ‘Modify Mode’. As the geometry of such an airfoil is defined by two Bezier curves for the upper and lower side, the typical geometry parameters like ‘thickness’ cannot be changed directly. 
+
+Instead, the control points of the Bezier curves can be moved with mouse directly in the diagram.
+Each modification results in a new 'Design' with newly generated polars. This allows for observation of how adjustments to the Bezier curve impact the polar.
+
+The optional match function fits the Bezier curve to an existing airfoil as accurately as possible. 
+
+![AE](images/match_bezier.png)
+
+
+# 3. Optimization Mode
+
+In ‘Optimization Mode’, the **AirfoilEditor** serves as a wrapper for [Xoptfoil2](https://github.com/jxjo/Xoptfoil2).
+
+Xoptfoil2 is a particle swarm based airfoil optimizer which supports different ‘shaping methods’ to modify the airfoil during optimization: 
+
+*	Hicks-Henne shape functions
+*	Bezier curve defining the shape
+*	Geometry parameters like maximum thickness and its position
+
+The **AirfoilEditor** covers all steps needed for airfoil optimization with Xoptfoil2: 
+
+*	Define an optimization case with the objectives and boundary conditions
+*	Run, control and watch an optimization  
+*	Analyse the results 
+*	Improve the specifications and re-run
+
+Compared to manual editing the input file of Xoptfoil2, the user interface greatly streamlines the process of defining and entering operating points being objectives of the optimization.
+
+Multiple versions of an optimization case can be created, making it easier to finally select the best version  at the end of the optimization sessions.
+
+> [!IMPORTANT]
+> Before you start your own airfoil optimizations with the **AirfoilEditor**, you should fully understand the key concepts of Xoptfoil2 and the special terms like ‘seed airfoil’ or ‘operating point’. 
+> Please read carefully the chapters [Getting Started](https://jxjo.github.io/Xoptfoil2/docs/getting_started) and [Airfoil Optimization](https://jxjo.github.io/Xoptfoil2/docs/airfoil_optimization) of the Xoptfoil2  documentation. 
+>You will find the example of ‘Getting Started’ is ready to go in the AirfoilEditor making it easy to watch and modify your first optimization. 
