@@ -90,7 +90,51 @@ This method enables the sequential review of airfoils or airfoil designs, displa
 
 ### Flapped Polars
 
-A polar can be ‘flapped’, meaning the airfoil has temporary flaps set before XFOIL computes the polar data.
+A polar can be ‘flapped’, meaning the airfoil has temporary flaps set before XFOIL computes the polar data. 
+A ‘flapped polar’ is convenient when different airfoils should be compared having set a certain flap angle as setting a flap and calculating the associated polar is done on the fly.
 
-A ‘flapped polar’ is convenient when different airfoils should be compared having set a certain flap angle. 
-In difference, a flap can be configured for an individual airfoil and saved as a separate airfoil file. This latter method is typically applied when the modified airfoil needs to be used in additional software, such as Xflr5 (see ‘Modification of an Airfoil’) 
+In difference, a flap can be configured in 'Modify Mode' for an individual airfoil and saved as a separate airfoil. This method is used when the modified flapped airfoil is needed for further processing for example in Xflr5. (see ‘Modification of an Airfoil’) 
+
+
+![AE](images/polars.png "polars flapp")
+
+# 1. View Mode
+
+Upon launch, AirfoilEditor opens in ‘View Mode’, which serves as the app’s default mode. 
+
+The ‘View Mode’ provides an overview of the geometric properties and polars of an airfoil. Since all airfoil parameters are read-only, there is no risk of making unintended changes to the airfoil file.
+
+Using the mouse wheel on the airfoil selection combo box allows for quick browsing of the airfoils within a subdirectory to locate a specific airfoil efficiently.
+
+![AE](images/view_mode.png "View Mode of AirfoilEditor")
+
+The inclusion of additional reference airfoils enables comparison between the current airfoil and other airfoils.
+
+
+# 2. Modify Mode
+
+To change the geometry of an airfoil, the 'Modify Mode' is entered by pressing the 'Modify' button.
+
+In the ‘Modify Mode’ a lot of airfoil parameters can be changed either by entering new values in the data fields or by moving helper points in the diagram. 
+
+![AE](images/modify_mode.png "Modify Mode of AirfoilEditor")
+
+## Airfoil Designs
+
+A key feature of the AirfoilEditor is that every modification creates a new ‘Design’ version of the airfoil.
+
+Such a ‘Design’ airfoil is saved in a subdirectory related to the original airfoil. This allows to leave the ‘Modify Mode’, re-enter later and find all the Designs of the last session. 
+At every time you may step through the created Designs and compare the changes and the effects of the modifications on the polar.   
+
+As the polar(s) of each Design is created automatically, it becomes very easy to see how airfoil modifications relate to polar changes. 
+
+> [!TIP]
+Adjust the camber highpoint position and observe its impact on polars at different Reynolds numbers. This approach helps you understand airfoil geometry interactively…
+
+## Setting Flap
+
+One of the possible modifications is to set a trailing edge flap – either permanently or just to assess to the influence of a flap setting on the polar of the airfoil.
+
+![AE](images/set_flap.png "Setting flap")
+
+Remark: As a flap may not be set on an already ‘flapped’ airfoil, the app remembers the initial unflapped design airfoil. This enables multiple sequential flap settings to be applied during a design session.
