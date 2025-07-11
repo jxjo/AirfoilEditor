@@ -27,7 +27,7 @@ The app was initially developed to address artefacts found in other tools like X
 The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. Linux and MacOS users are required to compile the underlying programs for polar viewing and airfoil optimization - see 'Installation' for details.
 
 
-![AE](images/AirfoilEditor_app.png "AirfoilEditor App")
+![AE](images/AirfoilEditor_App.png "AirfoilEditor App")
 
 # Basic Concepts
 
