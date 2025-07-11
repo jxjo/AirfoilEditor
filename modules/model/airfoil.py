@@ -520,7 +520,7 @@ class Airfoil:
             pathFileName_abs =  self._pathFileName
         
         if not os.path.isabs (pathFileName_abs):
-            pathFileName_abs = os.path.abspath(self.pathFileName)       # will insert cwd 
+            pathFileName_abs = os.path.abspath(pathFileName_abs)       # will insert cwd 
         return pathFileName_abs
 
 
