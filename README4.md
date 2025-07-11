@@ -184,3 +184,66 @@ The main task when setting up a new optimization case is to define the ‘operat
 
 Within the polar diagram of the AirfoilEditor operating points can be added, deleted or moved with the mouse. A little dialog allows to enter additional specifications for the selected operating point.
 
+<img src="images/optimization_op_point_def.png" alt="Operating Point Definition" width="600">
+
+If a different polar (e.g. Reynolds Number) is defined for an operating point, this polar will be automatically added to the list of polars and displayed in the diagram.
+
+An individual weighting is visualized by the size of the symbol in the diagram.
+
+In the lower data panel of the AirfoilEditor nearly all of the numerous options of Xoptfoil2 can be modified according to the needs of the optimization. 
+
+The button ‘Input File’ opens a text editor with the current Xoptfoil2 input file which would be used for the optimization. The input file may be tweaked with this editor (or an external editor) to cover special situations.  
+
+Once the definition of the optimization case is finished, the optimization is ready to go.
+
+
+## Run an Optimization 
+
+When an optimization is started, the diagram area of the AirfoilEditor is automatically maximized to have full view of what is happening during the optimization. 
+
+As the Xoptfoil2 optimization is a background task, you may change the view settings, pan and zoom the diagram to your needs while the optimization is running.
+
+![Optimization Run](images/optimization_run.png)
+
+
+When the optimization is finished a new, final airfoil will be created. 
+
+You may have a look at the numerous Designs of the optimization process, analyse the properties of the final airfoil and if necessary, change the objectives of the optimization and re-run the optimization. 
+
+Doing such iterations it is very helpful to create a new version when changing the parameters of the optimization. This allows to roll back to a former version which might have been better.    
+   
+
+# Installation
+
+## Windows Easy Setup
+
+A pre-build Windows App including Worker.exe for polar generation and Xoptfoil2.exe for airfoil optimization is available in the releases section
+
+## Windows Advanced Setup
+
+If you already have installed the actual Python version on your PC, it is advantageous to run the AirfoilEditor directly as a Python script. This will startup the app much faster than using the .exe file 
+1.	Download python sources from releases or clone the repository
+2.	Install
+```
+pip3 install pyqt6
+pip3 install numpy
+pip3 install pyqtgraph 
+pip3 install termcolor
+```
+3.	Run ‘python AirfoilEditor’
+
+## Linux and MacOS
+
+1.	Download python sources from releases or clone the repository
+2.	Install
+```
+pip3 install pyqt6
+pip3 install numpy
+pip3 install pyqtgraph 
+pip3 install termcolor
+```
+3.	To use polar generationand airfoil optimization you  have to compile the Worker.exe and Xoptfoil.exe of the Xoptfoil2 project and copy the program either into /usr/local/bin or into the sub folder ./assets/linux of the AirfoilEditor. In the second case the execute permission has to be set with ‘chmod +x Worker’ and ‘chmod +x Xoptfoil2’.
+4.	Run ‘python AirfoilEditor’
+
+> [!TIP]
+For Windows: Use the "Open with ..." Explorer command to connect the AirfoilEditor.exe to the file extension .dat. Later a double click on an airfoil dat-file will open the AirfoilEditor and you can browse through the files in the directory (if you are using the Python version, create a little batch job to open an airfoils dat-file)
