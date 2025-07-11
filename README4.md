@@ -176,3 +176,11 @@ Multiple versions of an optimization case can be created, making it easier to fi
 > Before you start your own airfoil optimizations with the **AirfoilEditor**, you should fully understand the key concepts of Xoptfoil2 and the special terms like ‘seed airfoil’ or ‘operating point’. 
 > Please read carefully the chapters [Getting Started](https://jxjo.github.io/Xoptfoil2/docs/getting_started) and [Airfoil Optimization](https://jxjo.github.io/Xoptfoil2/docs/airfoil_optimization) of the Xoptfoil2  documentation. 
 >You will find the example of ‘Getting Started’ is ready to go in the AirfoilEditor making it easy to watch and modify your first optimization. 
+
+
+## Setting up an Optimization Case
+
+The main task when setting up a new optimization case is to define the ‘operating points’ on a (virtual) polar and to choose the type of objective for each of this operating points. 
+
+Within the polar diagram of the AirfoilEditor operating points can be added, deleted or moved with the mouse. A little dialog allows to enter additional specifications for the selected operating point.
+
