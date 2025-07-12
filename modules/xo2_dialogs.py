@@ -1387,7 +1387,7 @@ class Xo2_Description_Dialog (Dialog):
 class Xo2_OpPoint_Def_Dialog (Dialog):
     """ Dialog to view / edit current opPoint definition """
 
-    _width  = (320, None)
+    _width  = (330, None)
     _height = (210, 210)
 
     name = "Operating Point Definition"
@@ -1485,12 +1485,20 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     toolTip="Type of optimization for this Operating Point")
         FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.00001, 
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue,
-                    hide=lambda: not (self.opPoint_def.isTarget_type and self.opPoint_def.optVar==var.CD),
+                    hide=lambda: not (self.opPoint_def.isTarget_type and \
+                                      self.opPoint_def.optVar==var.CD and \
+                                      not self.opPoint_def.optValue_isFactor),
                     toolTip="Target value to achieve")
         FieldF   (l,r,c+2, width=70, dec=2, lim=(0.0,200), step=0.01, 
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue,
-                    hide=lambda: not (self.opPoint_def.isTarget_type and self.opPoint_def.optVar!=var.CD),
+                    hide=lambda: not (self.opPoint_def.isTarget_type and \
+                                      self.opPoint_def.optVar!=var.CD or \
+                                      self.opPoint_def.optValue_isFactor),
                     toolTip="Target value to achieve")
+        CheckBox (l,r,c+4, text="Factor",
+                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue_isFactor,
+                    hide=lambda: not self.opPoint_def.isTarget_type,
+                    toolTip="Target value should be a factor to value of seed airfoil")
         r += 1
         SpaceR   (l,r, stretch=0)
         r += 1
@@ -1501,7 +1509,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting_abs,
                     hide=lambda: not self.individual_weighting,
                     toolTip="An individual weighting for this Operating Point")
-        CheckBox (l,r,c+3, text="Fix", align=ALIGN_RIGHT,
+        CheckBox (l,r,c+4, text="Fixed",
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting_fixed,
                     hide=lambda: not self.individual_weighting or not self.opPoint_defs.dynamic_weighting,
                     toolTip="Fix this weighting during Dynamic Weighting")
@@ -1514,7 +1522,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     hide=lambda: not self.individual_polar,
                     toolTip="Edit the individual polar definition")
 
-        ComboBox (l,r,c+2, colSpan=2,
+        ComboBox (l,r,c+2, colSpan=3,
                     get=lambda: self.opPoint_def.polar_def.name if self.opPoint_def.polar_def else None,
                     set=self.set_polar_def_by_name,
                     options=lambda: [polar_def.name for polar_def in self.polar_defs_without_default],
@@ -1526,19 +1534,20 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     get=lambda: self.individual_flap, set=self.set_individual_flap,
                     disable=lambda: not self.opPoint_defs.use_flap,
                     toolTip="Set an individual flap angle for this Operating Point")
-        FieldF   (l,r,c+2, width=70, step=0.2, lim=(-15,15), dec=1, unit='°',
+        FieldF   (l,r,c+2, width=70, step=0.2, lim=(-15,15), dec=1, unit='°', colSpan=2,
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_angle,
                     hide=lambda: not self.individual_flap,
                     toolTip="An individual flap angle of this Operating Point")
         r += 1
-        CheckBox (l,r,c, text="Flap Optimize", colSpan=2,
+        CheckBox (l,r,c, text="Flap Optimize", colSpan=3,
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_optimize,
                     disable=lambda: not self.opPoint_defs.use_flap,
                     toolTip="Optimize flap angle at this Operating Point")
         r += 1
         l.setRowStretch (r,5)
         l.setColumnMinimumWidth (0,40)
-        l.setColumnStretch (3,2)
+        l.setColumnMinimumWidth (3,5)
+        l.setColumnStretch (4,3)
 
         return l
 

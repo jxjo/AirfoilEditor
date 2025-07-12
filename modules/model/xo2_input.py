@@ -696,7 +696,7 @@ class OpPoint_Definition:
         return f"<{type(self).__name__} {self.labelLong_for()}>"
 
 
-    def _get_labelLong (self, optVar:var, optValue:float, fix=False): 
+    def _get_labelLong (self, optType: str, optVar:var, optValue:float, fix=False): 
         """ 
         long label including spec like 'cl: 0.2  target-cd: .00123 600k N7'
             if fix=True 0-decimals are not cutted
@@ -725,15 +725,15 @@ class OpPoint_Definition:
             ncritText = f"  N{int(self._ncrit)}" 
         else:
             ncritText = ''
-        return iPoint + specText + self._get_opt_label (optVar, optValue, fix=fix) + reText + ncritText
+        return iPoint + specText + self._get_opt_label (optType, optVar, optValue, fix=fix) + reText + ncritText
 
 
-    def _get_opt_label (self, optVar : var, optValue : float, fix=False): 
+    def _get_opt_label (self, optType : str, optVar : var, optValue : float, fix=False): 
         """ short label like 'target-cd: .00123' or 'Min-cd' 
             if fix=True 0-decimals are not cutted """
 
 
-        if self.optType == OPT_TARGET:
+        if optType == OPT_TARGET:
 
             if optValue is None: 
                 return ""
@@ -757,11 +757,10 @@ class OpPoint_Definition:
                     fix = False                                             # always cut 0   
                 else:       
                     valstr = (f"{optValue:4.2f}")[1:]                       # remove leading 0 
-                valstr = "%4.2f" % optValue
-            elif self.optVar == var.CM:
-                valstr = "%5.3f" % optValue
+            elif optVar == var.CM:
+                valstr = f"{optValue:5.3f}"
             else:
-                valstr = "%5.3f" % optValue
+                valstr = f"{optValue:5.3f}"
 
             if not fix: 
                 valstr = (f"{valstr}").rstrip('0')                          # remove trailing 0
@@ -769,7 +768,7 @@ class OpPoint_Definition:
 
             return f"targ-{optVar} {valstr}"
         else: 
-            return f"{self.optType}-{optVar}"
+            return f"{optType}-{optVar}"
 
 
     @property
@@ -1069,13 +1068,13 @@ class OpPoint_Definition:
     @property
     def label (self): 
         """ short label like 'target-cd: .00123' or 'Min-cd' """
-        return self._get_opt_label(self.optVar, self.optValue)
+        return self._get_opt_label(self.optType, self.optVar, self.optValue)
 
 
     @property
     def labelLong (self): 
         """ long label including spec like 'cl: 0.2  target-cd: .0012 600k N7' """
-        return self._get_labelLong(self.optVar, self.optValue, fix=True)
+        return self._get_labelLong(self.optType, self.optVar, self.optValue, fix=True)
     
 
     def labelLong_for (self, xyVars : tuple = None, fix=True ): 
@@ -1085,14 +1084,26 @@ class OpPoint_Definition:
             - fix==False will cut trailing '0'        
         """
 
+        optType = self.optType
+
         if self._xyVars_are_indirect (xyVars): 
             # recalc cl/cd to cd  - or vice versa 
             if self.optVar == var.GLIDE and self.specVar == var.CL:
                 optVar = var.CD 
-                optValue = self.specValue / self.optValue       # cd = cl / glide
+                if self.optValue_isFactor:
+                    optValue = 1 / self.optValue
+                else:
+                    optValue = self.specValue / self.optValue       # cd = cl / glide
+                if optType == OPT_MAX:                              # max glide will be min cd
+                    optType = OPT_MIN
             elif self.optVar == var.CD and self.specVar == var.CL:
                 optVar = var.GLIDE 
-                optValue = self.specValue / self.optValue       # glide = cl / cd
+                if self.optValue_isFactor:
+                    optValue = 1 / self.optValue
+                else:
+                    optValue = self.specValue / self.optValue       # glide = cl / cd
+                if optType == OPT_MIN:                              # min cd will be max glide
+                    optType = OPT_MAX
             else:
                 optVar   = None
                 optValue = 0.0
@@ -1100,7 +1111,7 @@ class OpPoint_Definition:
             optVar   = self.optVar
             optValue = self.optValue
 
-        return self._get_labelLong (optVar, optValue, fix=fix)
+        return self._get_labelLong (optType, optVar, optValue, fix=fix)
     
 
     def specValue_limits (self) -> tuple:
