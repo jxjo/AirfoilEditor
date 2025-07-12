@@ -21,10 +21,12 @@ class Airfoil_Example_Abstract (Airfoil):
     fileName    = 'Abstract.Dat'                 # for ease of use as class variable
 
 
-    def __init__(self, geometry  = GEO_SPLINE ):
-        super().__init__(geometry = geometry)
-        """Abstract superclass for example airfoils
-        """
+    def __init__(self, geometry  = GEO_SPLINE , workingDir : str|None = None):
+        """Abstract superclass for example airfoils """
+        super().__init__(geometry = geometry, workingDir=workingDir)
+
+        if workingDir and not os.path.isdir (workingDir):
+            os.mkdir (workingDir)
 
         self._pathFileName = None
         self.load ()
@@ -57,8 +59,8 @@ class Example (Airfoil_Example_Abstract):
 
     name        = 'Example'
     fileName    = 'Example.dat'
-    def __init__(self, geometry  = GEO_BASIC ):
-        super().__init__(geometry = geometry)
+    def __init__(self, geometry  = GEO_BASIC, **kwargs):
+        super().__init__(geometry = geometry, **kwargs)
 
     def _getCoordinates (self):
         """ returns the coordinates of example as a list of lines"""

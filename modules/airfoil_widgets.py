@@ -60,7 +60,7 @@ def create_airfoil_from_path (parent, pathFilename, example_if_none=False, messa
 
     if not airfoil_loaded:
 
-        airfoil = Example() if example_if_none else None
+        airfoil = Example(workingDir="example") if example_if_none else None
 
         if pathFilename: 
             fileName = os.path.basename (pathFilename)
@@ -137,7 +137,7 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
         next_airfoil = Airfoil.onFileType(next_file, workingDir = anAirfoil.pathName_abs, geometry=GEO_BASIC)
         next_airfoil.load()
     elif example_if_none:
-        next_airfoil = Example()
+        next_airfoil = Example(workingDir="example")
     else: 
         next_airfoil = None 
  

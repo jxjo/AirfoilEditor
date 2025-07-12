@@ -380,7 +380,7 @@ class Input_File:
                 logger.warning (f"Seed airfoil is missing in input file. Using Example.")
 
             if airfoil is None:
-                airfoil = Example()
+                airfoil = Example(workingDir=self.workingDir)
 
             airfoil.set_usedAs (usedAs.SEED)
             self._airfoil_seed = airfoil

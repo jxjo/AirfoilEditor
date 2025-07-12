@@ -170,7 +170,7 @@ class App_Main (QMainWindow):
         # either airfoil or Xoptfoil2 nnput file 
         if Input_File.is_xo2_input (initial_file, workingDir=os.getcwd()):
 
-            self.set_airfoil (Example(), silent=True)
+            self.set_airfoil (Example(workingDir="example"), silent=True)  # dummy when returning from optimize
             self.optimize_airfoil (initial_file)
         else:
 
