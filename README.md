@@ -1,170 +1,253 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-# v4.0 dev
-
-### Version 4 will integrate airfoil optimization based on [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
+### Version 4
 
 ---
 
+The **AirfoilEditor** serves as a fast airfoil viewer and an advanced geometry editor including Xoptfoil2-based optimization. The App provides three operating modes:
 
-The **AirfoilEditor** is on one hand a fast airfoil viewer and on the other hand a powerful editor to modify the geometry of an airfoil. Focusing on an airfoils geometric and aerodynamic characteristics the principle of this app is: Don't do too much but do it really well.
+#### View
+* Browse and view airfoils in subdirectories
+* Analyse curvature of airfoil surface
+* Show polars generated using XFOIL
 
+#### Modify
+* Repanel and normalize airfoils
+* Adjust thickness, camber, high points, and trailing edge gap
+* Blend two airfoils
+* Set flap
+* Generate airfoil replicas using Bezier curves.
 
-Main features:  
+#### Optimize
+* User Interface of [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
+* Graphical definition of polar based objectives
+* View results while optimizing
 
-* View an airfoil and browse through the airfoils of its subdirectory
-* Analyze the curvature of the airfoil surface
-* Repanel and normalize the airfoil
-* Modify the geometry parameters thickness, camber, its high points, trailing edge gap  
-* Create a Bezier curve based 'copy' of an airfoil 
-* Blend an airfoil with another airfoil 
-* :new:  v3: View polars of an airfoil based on xfoil polar generation
-
-The driver for this app was to overcome some of the artefacts using xfoils geometry routines (for example used in Xflr5) when creating geometric 'high quality' airfoils. 
-
-An attempt was made to create a self-explanatory app that invites to play and try out. Hopefully this objective has been achieved ... 
-
-
-![AE](images/AirfoilEditor_App.png "Screenshot of the AirfoilEditor ")
-
-
-## Geometry: Basic Concepts
-
-The **AirfoilEditor** implements different "strategies" to represent an airfoils geometry:
-
-- 'Linear interpolation' -  Based on the point coordinates of the airfoils '.dat' file, intermediate points are evaluated with a simple linear interpolation. This is used for fast preview and basic operations.
-- 'Cubic spline interpolation' - A cubic spline is built based on the airfoils point coordinates. The spline allows to evaluate intermediate points with high precision.
-- 'Bezier curve' - An airfoil is represented by two Bezier curves for upper and lower side of the airfoil. A nelder mead optimization allows to approximate the Bezier curves to an existing airfoil.
+The app was initially developed to address artefacts found in other tools like Xflr5 when using xfoil geometry routines. The aim has been an intuitive, user-friendly experience that encourages exploration.
+The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. Linux and MacOS users are required to compile the underlying programs for polar viewing and airfoil optimization - see 'Installation' for details.
 
 
-The spline interpolation is used to find the position of the 'real' leading edge, which may differ from the leading edge of the coordinates (which is the point with the smallest x-value). When 'normalizing' the airfoil, the 'real' leading edge is taken in an iteration to rotate, stretch and move the airfoil to become 0,0 - 1,0 normalized.
+![AE](images/AirfoilEditor_App_dark.png "AirfoilEditor App")
 
-For thickness and camber geometry operations the airfoil (spline) is splitted into two new splines representing thickness and camber distribution. For moving the highpoint of either thickness or camber a mapping spline for the airfoil coordinates is used quite similar to the approach implemented in xfoil. After these operations the airfoil is rebuild out of thickness and camber. 
+# Basic Concepts
 
-The same approach is applied to move the highpoint of the upper and lower side of the airfoil which makes it possible to optimize the upper and lower side independently of each other.
+## Geometry of an Airfoil
+
+The **AirfoilEditor** utilises various strategies to represent the geometry of an airfoil.
+
+* 'Linear interpolation' – Using the point coordinates from the airfoils '.dat' file, intermediate points are calculated through linear interpolation. Used for quick previews and simple tasks.
+
+* 'Cubic spline interpolation' – A cubic spline is created from the airfoil's point coordinates, enabling precise interpolation of intermediate points.
+
+* 'Bezier curve' – An airfoil is modeled using two Bezier curves, one for the upper surface and one for the lower surface. Nelder-Mead optimization is used to fit these Bezier curves to an existing airfoil profile.
+
+Spline interpolation is applied to determine the position of the actual leading edge, which can vary from the coordinate-based leading edge defined as the point with the smallest x-value. Airfoil normalization iteratively rotates, stretches, and shifts the airfoil so its leading edge based on the spline is at (0,0) and trailing edge at (1,0).
+
+For thickness and camber geometry operations, the airfoil is divided into two separate splines that represent the thickness and camber distributions. To shift the high point of thickness or camber, a mapping spline - similar to that in xfoil - is applied to the thickness or camber spline. The airfoil is then reconstructed from the adjusted thickness and camber spline.
+This method is also used to adjust the highpoints of both the upper and lower surfaces of the airfoil, allowing for separate modification of each side.
 
 
+![AE](images/thickness_camber.png "thickness and camber spline")
 
-![Modify](images/Modify.png "Screenshot of Modifying Airfoil")
-<sub>The 'Edit Mode' of the **AirfoilEditor** to change the geometry either by value or by moving the mouse helper points. Each change creates a new 'Design' variant which allows to browse through the changes made in this session. </sub>
-<br></br>
+## Curvature
 
-Repaneling is based on a modified cosine distribution of the airfoil points on the arc of the spline. The bunching of the coordinate points at leading and trailing edge can be adjusted. 
-
-An airfoil may be 'blended' with another airfoil to create a new airfoil that has the genes of both airfoils.
-
-### Curvature 
-
-On of the major views on an airfoil in the **AirfoilEditor** is the curvature of the airfoils surface. It allows a quick assessment of the surface quality and to detect artefacts like a 'spoiler' at the trailing edge which is quite common. 
-
-
-![Curvature](images/Curvature.png "Screenshot of Curvature")
-<sub>The additional 'Curvature View' on the airfoil indicating reversals of the curvature. </sub>
+On of the major views on an airfoil in the AirfoilEditor is the curvature of the airfoils surface. It allows a quick assessment of the surface quality and to detect artefacts like a 'spoiler' at the trailing edge which is quite common.
 
 > [!TIP]
 Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) for more information about an airfoils geometry.  
 
-
-### Bezier based airfoils 
-
-Beside `.dat` files the **AirfoilEditor** seamlessly displays `.bez` files defining a Bezier based airfoil. 
-
-![Bezier](images/Bezier.png "Screenshot of Bezier curve definition")
+![AE](images/curvature.png "curvature")
 
 
-A special feature is the definition of a (new) airfoil based on two Bezier curves for upper and lower side. The  control points of the Bezier curve can be moved by mouse.
+## Bezier based airfoils
 
-The 'Match' function performs a best match of the Bezier curve to an existing airfoil. For this a simplex optimization (Nelder Mead) is performed to 
-- minimize the norm2 deviation between the Bezier curve and the target airfoil
-- align the curvature of the Bezier curve at leading and trailing to the targets curvature. 
-- ensure the curvature at leading edge on upper and lower side is equal 
+Beside .dat files the AirfoilEditor seamlessly handles .bez files defining a Bezier based airfoil. 
+While a ‘normal’ airfoil is defined by coordinate points, a Bezier based airfoil is defined by two Bezier curves for upper and lower side. 
 
+A Bezier curve itself is defined by control points. One significant benefit of utilising a Bezier curve is its ability to provide a consistently smooth curvature along the airfoil surface.   
 
-![AE](images/Match_Bezier.png "Screenshot of Bezier curve definition")
+The AirfoilEditor supports a manual mode, where the control points can be moved with the mouse to create the desired airfoil and an automatic mode with a match function:
+The match function fits the Bezier curve to an existing airfoil as accurately as possible. For this a simplex optimization (Nelder Mead) is performed to
 
-<!---
-## Hicks-Henne based airfoils 
+* minimize the norm2 deviation between the Bezier curve and a target airfoil
+* align the curvature of the Bezier curve at leading and trailing to the curvature of the target.
+* ensure the curvature at leading edge on upper and lower side is equal
 
-Hicks-Henne “bump” functions are applied to a base airfoil and add a linear combination of single-signed sine functions to deform its upper and lower surfaces to create a new airfoil shape.
-They are used in the airfoil optimizer Xoptfoil2 as an alternative to Bezier curves to create new airfoil designs. 
-
-The Airfoil Editor allows to visualize the Hicks-Henne functions which were applied to an airfoil. For this a special file format '.hicks' is used to interchange with Xoptfoil2.
-
-![PC2](images/AirfoilEditor_Hicks-Henne.png "Screenshot of Hicks-Henne based airfoil")
-<sup>Visualization of the Hicks-Henne bump functions, which were applied to the upper and lower side of the airfoil</sup>
-
--->
-<br></br>
-
-## Airfoil Polars
-
-To generate the polars of an airfoil the **AirfoilEditor** uses the **Worker** tool of the [Xoptfoil2 project](https://jxjo.github.io/Xoptfoil2). On of the `Worker` actions is the multi-threaded creation of a polar set using Xfoil.
-
-Within the app a polar is generated 'lazy' - meaning at the moment when the polar should be displayed - and asynchronous in a backround task. Each polar is stored in a single file having the Xfoil polar format. This approach allows to step through airfoils or the designs of an airfoil and present the polars without further user interaction.
-
-For polar generation the `auto_range` feature of the `Worker` is applied which optimizes the alpha range of the polar to show the complete T1 polar from cl_min to cl_max of the airfoil. For T2 polars (constant lift) the range starts right above cl=0.0 to cl_max.
+![AE](images/match_bezier.png "match bezier")
 
 
-![Polars](images/Polars.png "Screenshot of Polar Generation")
-<sub>Polar view with polar definitions and settings for the polar diagrams. The polars were generated in the background. </sub>
+## Polars of an Airfoil
 
-### Airfoil Direct Design 
+To generate the polars of an airfoil the **AirfoilEditor** uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). On of the Worker actions is the multi-threaded creation of a polar set using Xfoil.
 
-The combination of the 'Edit Mode' and automated polar generation allows a playful approach to a 'Direct Design' of an airfoil based on its geometry: Each modification, e.g. moving the camber highpoint or the control point of a Bezier curve, will generate a new design with its individual new polars. Stepping through the design polars creates an intuitive understanding how geometeric modifications influence the aerodynamic characteristics of an airfoil. 
+For polar generation the auto_range feature of the Worker is applied which optimizes the alpha range of the polar to show the complete T1 polar from cl_min to cl_max of the airfoil. For T2 polars (constant lift) the range starts right above cl=0.0 to cl_max.
 
+### Polars on Demand
 
-![Polars](images/Polars_direct_design.png "Direct Design with polar gneration")
-<sub>Direct Design with automated polar generation. The current design is compared with the reference airfoil MH31
-. </sub>
+Within the app, a polar is generated on demand, specifically at the time it needs to be displayed, and this occurs asynchronously in a background task. Each polar is stored in an individual file using the Xfoil polar format. 
 
+This method enables the sequential review of airfoils or airfoil designs, displaying the polars without requiring additional user input.
 
+### Flapped Polars
 
-## Short Introduction 
+A polar can be ‘flapped’, meaning the airfoil has temporary flaps set before XFOIL computes the polar data. 
+A ‘flapped polar’ is convenient when different airfoils should be compared having set a certain flap angle as setting a flap and calculating the associated polar is done on the fly.
 
-Have a look at this little video showing the main functionality of the **AirfoilEditor** v2:
-
-[![Watch the video](https://img.youtube.com/vi/gkgPbVkOAcU/maxresdefault.jpg)](https://youtu.be/gkgPbVkOAcU)
-
+In difference, a flap can be configured in 'Modify Mode' for an individual airfoil and saved as a separate airfoil. This method is used when the modified flapped airfoil is needed for further processing for example in Xflr5. (see ‘Modification of an Airfoil’) 
 
 
-## Software Aspects
+![AE](images/polars.png "polars flapp")
 
-The **AirfoilEditor** is developed in  [Python](https://www.python.org/) using [PyQt6](https://pypi.org/project/PyQt6/) which wraps and extends the [Qt UI framework](https://www.qt.io/product/framework) and [PyQtGraph](https://www.pyqtgraph.org/) which wraps the QT Graphics framework. 
+# 1. View Mode
 
-The main building blocks of the App are
-* Model - containing all geometry and math helper routines of an airfoil. The model is independent of the UI. The different modules are kept in [modules/model](modules/model).
+Upon launch, AirfoilEditor opens in ‘View Mode’, which serves as the app’s default mode. 
 
-*  `Worker` tool including Xfoil from the [ Xoptfoil2](https://jxjo.github.io/Xoptfoil2) project to generate airfoil polars.
+The ‘View Mode’ provides an overview of the geometric properties and polars of an airfoil. Since all airfoil parameters are read-only, there is no risk of making unintended changes to the airfoil file.
 
-* UI-Framework - base classes and a little framework to ease the implementation of forms based on widgets and diagrams based on artists for the plot tasks. The base classes are in [modules/base](modules/base) 
+Using the mouse wheel on the airfoil selection combo box allows for quick browsing of the airfoils within a subdirectory to locate a specific airfoil efficiently.
 
-* Application - controller and view classes to handle presentation and user interaction - [modules/](modules/) 
+![AE](images/view_mode.png "View Mode of AirfoilEditor")
 
-The airfoil model and the base classes also form the core of other Apps like the [Planform Creator2](https://github.com/jxjo/PlanformCreator2) . 
+The inclusion of additional reference airfoils enables comparison between the current airfoil and other airfoils.
 
-##  Install
 
-A pre-build Windows App including `Worker.exe` for polar generation is available in the [releases section](https://github.com/jxjo/AirfoilEditor/releases)  
+# 2. Modify Mode
 
-or 
+To change the geometry of an airfoil, the 'Modify Mode' is entered by pressing the 'Modify' button.
 
-Download python sources from [releases](https://github.com/jxjo/AirfoilEditor/releases) or clone the repository and install 
+In the ‘Modify Mode’ a lot of airfoil parameters can be changed either by entering new values in the data fields or by moving helper points in the diagram. 
 
+![AE](images/modify_mode.png "Modify Mode of AirfoilEditor")
+
+## Airfoil Designs
+
+A key feature of the AirfoilEditor is that every modification creates a new ‘Design’ version of the airfoil.
+
+Such a ‘Design’ airfoil is saved in a subdirectory related to the original airfoil. This allows to leave the ‘Modify Mode’, re-enter later and find all the Designs of the last session. 
+At every time you may step through the created Designs and compare the changes and the effects of the modifications on the polar.   
+
+As the polar(s) of each Design is created automatically, it becomes very easy to see how airfoil modifications relate to polar changes. 
+
+> [!TIP]
+Adjust the camber highpoint position and observe its impact on polars at different Reynolds numbers. This approach helps you understand airfoil geometry interactively…
+
+## Setting Flap
+
+One of the possible modifications is to set a trailing edge flap – either permanently or just to assess to the influence of a flap setting on the polar of the airfoil.
+
+![AE](images/set_flap.png "Setting flap")
+
+Remark: As a flap may not be set on an already ‘flapped’ airfoil, the app remembers the initial unflapped design airfoil. This enables multiple sequential flap settings to be applied during a design session.
+
+## Bezier based Airfoils
+
+Bezier-based airfoils can also be adjusted in ‘Modify Mode’. As the geometry of such an airfoil is defined by two Bezier curves for the upper and lower side, the typical geometry parameters like ‘thickness’ cannot be changed directly. 
+
+Instead, the control points of the Bezier curves can be moved with mouse directly in the diagram.
+Each modification results in a new 'Design' with newly generated polars. This allows for observation of how adjustments to the Bezier curve impact the polar.
+
+The optional match function fits the Bezier curve to an existing airfoil as accurately as possible. 
+
+![AE](images/match_bezier.png)
+
+
+# 3. Optimization Mode
+
+In ‘Optimization Mode’, the **AirfoilEditor** serves as a wrapper for [Xoptfoil2](https://github.com/jxjo/Xoptfoil2).
+
+Xoptfoil2 is a particle swarm based airfoil optimizer which supports different ‘shaping methods’ to modify the airfoil during optimization: 
+
+*	Hicks-Henne shape functions
+*	Bezier curve defining the shape
+*	Geometry parameters like maximum thickness and its position
+
+The **AirfoilEditor** covers all steps needed for airfoil optimization with Xoptfoil2: 
+
+*	Define an optimization case with the objectives and boundary conditions
+*	Run, control and watch an optimization  
+*	Analyse the results 
+*	Improve the specifications and re-run
+
+Compared to manual editing the input file of Xoptfoil2, the user interface greatly streamlines the process of defining and entering operating points being objectives of the optimization.
+
+Multiple versions of an optimization case can be created, making it easier to finally select the best version  at the end of the optimization sessions.
+
+> [!IMPORTANT]
+> Before you start your own airfoil optimizations with the **AirfoilEditor**, you should fully understand the key concepts of Xoptfoil2 and the special terms like ‘seed airfoil’ or ‘operating point’. 
+> Please read carefully the chapters [Getting Started](https://jxjo.github.io/Xoptfoil2/docs/getting_started) and [Airfoil Optimization](https://jxjo.github.io/Xoptfoil2/docs/airfoil_optimization) of the Xoptfoil2  documentation. 
+>You will find the example of ‘Getting Started’ is ready to go in the AirfoilEditor making it easy to watch and modify your first optimization. 
+
+
+## Setting up an Optimization Case
+
+The main task when setting up a new optimization case is to define the ‘operating points’ on a (virtual) polar and to choose the type of objective for each of this operating points. 
+
+Within the polar diagram of the AirfoilEditor operating points can be added, deleted or moved with the mouse. A little dialog allows to enter additional specifications for the selected operating point.
+
+<img src="images/optimization_op_point_def.png" alt="Operating Point Definition" width="600">
+
+If a different polar (e.g. Reynolds Number) is defined for an operating point, this polar will be automatically added to the list of polars and displayed in the diagram.
+
+An individual weighting is visualized by the size of the symbol in the diagram.
+
+In the lower data panel of the AirfoilEditor nearly all of the numerous options of Xoptfoil2 can be modified according to the needs of the optimization. 
+
+The button ‘Input File’ opens a text editor with the current Xoptfoil2 input file which would be used for the optimization. The input file may be tweaked with this editor (or an external editor) to cover special situations.  
+
+Once the definition of the optimization case is finished, the optimization is ready to go.
+
+
+## Run an Optimization 
+
+When an optimization is started, the diagram area of the AirfoilEditor is automatically maximized to have full view of what is happening during the optimization. 
+
+As the Xoptfoil2 optimization is a background task, you may change the view settings, pan and zoom the diagram to your needs while the optimization is running.
+
+![Optimization Run](images/optimization_run.png)
+
+
+When the optimization is finished a new, final airfoil will be created. 
+
+You may have a look at the numerous Designs of the optimization process, analyse the properties of the final airfoil and if necessary, change the objectives of the optimization and re-run the optimization. 
+
+Doing such iterations it is very helpful to create a new version when changing the parameters of the optimization. This allows to roll back to a former version which might have been better.    
+   
+
+# Installation
+
+### Windows Easy Setup
+
+A pre-build Windows App including Worker.exe for polar generation and Xoptfoil2.exe for airfoil optimization is available in the releases section
+
+### Windows Advanced Setup
+
+If you already have installed the actual Python version on your PC, it is advantageous to run the AirfoilEditor directly as a Python script. This will startup the app much faster than using the .exe file 
+1.	Download python sources from releases or clone the repository
+2.	Install
 ```
-pip3 install pyqt6     (min Version 6.9.1)
+pip3 install pyqt6
 pip3 install numpy
 pip3 install pyqtgraph 
 pip3 install termcolor
 ```
+3.	Run ‘python AirfoilEditor’
 
-Linux users who want to use polar generation have to compile the Worker tool of the [ Xoptfoil2 project](https://jxjo.github.io/Xoptfoil2) and copy the program either into `/usr/local/bin` or into the sub folder `./assets/linux` of the AirfoilEditor. In the second case the execute permission has to be set with `chmod +x Worker`.  
+### Linux and MacOS
+
+1.	Download python sources from releases or clone the repository
+2.	Install
+```
+pip3 install pyqt6
+pip3 install numpy
+pip3 install pyqtgraph 
+pip3 install termcolor
+```
+3.	To use polar generationand airfoil optimization you  have to compile the Worker.exe and Xoptfoil.exe of the Xoptfoil2 project and copy the program either into /usr/local/bin or into the sub folder ./assets/linux of the AirfoilEditor. In the second case the execute permission has to be set with ‘chmod +x Worker’ and ‘chmod +x Xoptfoil2’.
+4.	Run ‘python AirfoilEditor’
+
+# Finally 
+
+I hope you enjoy working with the **AirfoilEditor**.
 
 > [!TIP]
- For Windows: Use the "Open with ..." Explorer command to connect the `AirfoilEditor.exe` to the file extension `.dat`. Later a double click on an airfoil dat-file will open the **AirfoilEditor** and you can browse through the files in the directory (if you are using the Python version, create a little batch job to open an airfoils dat-file)  
-
----
-
-Have fun :wink:
-
-[Jochen](mailto:jochen@jxjo.de)  
-
+For Windows: Use the "Open with ..." Explorer command to connect the AirfoilEditor.exe to the file extension .dat. Later a double click on an airfoil dat-file will open the AirfoilEditor and you can browse through the files in the directory (if you are using the Python version, create a little batch job to open an airfoils dat-file)
