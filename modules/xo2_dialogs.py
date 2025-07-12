@@ -1083,7 +1083,7 @@ class Xo2_Run_Dialog (Dialog):
                              style=style.COMMENT, fontSize=size.SMALL)
             r += 1
             Label  (l,r,c,   get="Time elapsed")
-            Label  (l,r,c+1, get=lambda: f" {self.results.time_running()} ", fontSize=size.HEADER)
+            Label  (l,r,c+1, get=lambda: f" {self.results.time_elapsed()} ", fontSize=size.HEADER)
             r += 1
             Label  (l,r,c,   get="Improvement")
             Label  (l,r,c+1, get=lambda: f" {self.results.improvement:.5%} ", fontSize=size.HEADER)

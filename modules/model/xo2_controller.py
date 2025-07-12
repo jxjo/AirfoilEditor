@@ -148,10 +148,9 @@ class Xo2_Controller:
     def time_running (self) -> str:
         """ returns hours, minutes, seconds how long self is (or was) running as string hh:mm:ss"""
 
-        if self.isRunning:
-            delta = datetime.now() - self.time_started
-        else: 
-            delta = timedelta (seconds=0)
+        if not self.isRunning: return ""
+
+        delta = datetime.now() - self.time_started
         hours, remainder = divmod(delta.total_seconds(), 3600)
         minutes, seconds = divmod(remainder, 60)
 

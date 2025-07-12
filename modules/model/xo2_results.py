@@ -178,14 +178,14 @@ class Xo2_Results:
         return self.hasProbablyResults and os.path.isfile (os.path.join (self.resultDir, self.TIME_REF_FILE)) 
 
 
-    def time_running (self) -> str:
-        """ returns hours, minutes, seconds how long self is (or was) running as string hh:mm:ss"""
+    def time_elapsed (self) -> str:
+        """ returns hours, minutes, seconds how long self was running as string hh:mm:ss"""
 
-        last_write_dt = self.date_time_last_write
-        result_dir_dt = self._get_dateTime_resultDir ()
+        last_write_dt  = self._get_dateTime_last_write() 
+        first_write_dt = self._get_dateTime_first_write()
 
-        if last_write_dt and result_dir_dt:
-            delta = last_write_dt - result_dir_dt
+        if last_write_dt and first_write_dt:
+            delta = last_write_dt - first_write_dt
             hours, remainder = divmod(delta.total_seconds(), 3600)
             minutes, seconds = divmod(remainder, 60)
         else:
@@ -199,7 +199,7 @@ class Xo2_Results:
     @property
     def date_time_last_write (self) -> datetime:
         """ youngest date of written results"""
-        return self._get_dateTime_ref_file()        
+        return self._get_dateTime_last_write()        
 
     @property
     def steps (self) -> list ['Optimization_History_Entry']:
@@ -254,19 +254,7 @@ class Xo2_Results:
         shutil.rmtree(self.resultDir, ignore_errors=True)
 
 
-    def _get_dateTime_resultDir (self):
-        """" dateTime of result dir if it exists - else None"""
-        dt = None  
-        if os.path.isdir(self.resultDir):
-            try: 
-                ts = os.path.getmtime(self.resultDir)       # file modification timestamp of a file
-                dt = datetime.fromtimestamp(ts)             # convert timestamp into DateTime object
-            except: 
-                pass
-        return dt
-
-
-    def _get_dateTime_ref_file (self) -> datetime:
+    def _get_dateTime_last_write (self) -> datetime:
         """" dateTime of reference file in result dir if it exists - else None"""
         ref_file = os.path.join (self.resultDir, self.TIME_REF_FILE)  
         if os.path.isfile (ref_file):    
@@ -277,7 +265,18 @@ class Xo2_Results:
         return dt
 
 
+    def _get_dateTime_first_write (self) -> datetime:
+        """" dateTime of file first written which is Xo2 seed airfoil (normalized)"""
 
+        files = os.listdir(self.resultDir)
+        if files:
+            path_files = [os.path.join(self.resultDir, f) for f in files]
+            oldest_file = min(path_files, key=os.path.getctime)
+            ts = os.path.getmtime (oldest_file)             # file modification timestamp of a file
+            dt = datetime.fromtimestamp(ts)                 # convert timestamp into DateTime object
+        else: 
+            dt = None
+        return dt  
 
 #-------------------------------------------------------------------------------
 # Optimization History step entry  
