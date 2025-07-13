@@ -268,7 +268,7 @@ class Xo2_Results:
     def _get_dateTime_first_write (self) -> datetime:
         """" dateTime of file first written which is Xo2 seed airfoil (normalized)"""
 
-        files = os.listdir(self.resultDir)
+        files = os.listdir(self.resultDir) if os.path.isfile (self.resultDir) else []
         if files:
             path_files = [os.path.join(self.resultDir, f) for f in files]
             oldest_file = min(path_files, key=os.path.getctime)

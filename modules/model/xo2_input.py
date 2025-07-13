@@ -436,7 +436,7 @@ class Input_File:
                         airfoil.set_usedAs (usedAs.REF)
 
                         polar_defs = self.opPoint_defs.polar_defs()
-                        airfoil.set_polarSet (Polar_Set (self._airfoil_seed, polar_def=polar_defs))
+                        airfoil.set_polarSet (Polar_Set (airfoil, polar_def=polar_defs))
 
                         self._airfoils_ref.append (airfoil)
                 except: 
