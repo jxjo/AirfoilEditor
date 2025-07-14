@@ -127,6 +127,11 @@ class Panel_Airfoils (Edit_Panel):
         # switch on reference airfoils if there is one 
         if self._show_reference_airfoils is None: 
             self._show_reference_airfoils = self._n_REF() > 0
+        # ensure consistency of show state  
+        elif not self._show_reference_airfoils :
+            for iair, airfoil in enumerate (self.airfoils):
+                if airfoil.usedAs == usedAs.REF:
+                    self.airfoils[iair].set_property ("show", False)
 
         l = QGridLayout()
         r,c = 0, 0 
