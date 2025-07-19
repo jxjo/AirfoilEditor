@@ -38,10 +38,10 @@ class Panel_Xo2_Abstract (Edit_Panel):
         - has semantics of App
         - connect / handle signals 
     """
-    from AirfoilEditor  import App_Main
+    from app import Main
 
     @property
-    def app (self) -> App_Main:
+    def app (self) -> Main:
         return self._app 
     
     @property

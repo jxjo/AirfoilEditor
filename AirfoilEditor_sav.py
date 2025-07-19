@@ -36,7 +36,7 @@ from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 # sys.path.insert (1,os.path.join(Path(__file__).parent , 'modules'))
 
 # let python find the other modules in modules relativ to path of self  
-sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
+# sys.path.append(os.path.join(Path(__file__).parent , 'modules'))
 
 from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line

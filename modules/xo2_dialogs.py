@@ -140,7 +140,7 @@ class Xo2_Select_Dialog (Dialog):
             lab.setOpenExternalLinks(True)
 
             r += 1
-            examples_dict = self._get_example_files (self.EXAMPLE_DIR)
+            examples_dict = self._get_example_files ()
             if examples_dict:
                 for example_file, example_path in examples_dict.items():
                     #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
@@ -235,14 +235,23 @@ class Xo2_Select_Dialog (Dialog):
         self.accept ()
 
 
-    def _get_example_files (self, example_dir : str ) -> dict: 
+    def _get_example_files (self) -> dict: 
         """ 
         Returns dict of example input files in example dir and below 
         All .inp, .xo2 are collected 
         """
 
+        # repo installation 
+        if os.path.isdir (self.EXAMPLE_DIR):
+            example_dir = self.EXAMPLE_DIR
+
+        # in case of package the example are in <dir of __file__>/examples_optimize/...
+        elif os.path.isdir (os.path.join (os.path.dirname(__file__), self.EXAMPLE_DIR)):
+            example_dir = os.path.join (os.path.dirname(__file__), self.EXAMPLE_DIR)
+        else:
+            return {}
+
         examples_dict = {}
-        if not os.path.isdir (example_dir): return examples_dict
 
         for sub_dir, _, _ in os.walk(example_dir):
             for input_file in Input_File.files_in_dir (sub_dir):

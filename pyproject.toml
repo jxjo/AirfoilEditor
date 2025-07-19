@@ -1,0 +1,94 @@
+# https://packaging.python.org/en/latest/
+
+# https://test.pypi.org/   <"dingens">26# 
+
+# PyPI recovery codes
+# used 6a85147871726486
+# b48efe69fe4f5ffc
+# fe8c974bd30845df
+# 1999922cb98ac168
+# 5a7c89f9775e5420
+# cf16b4115150a853
+# 42660d168a8914eb
+# 4453f1925c636504
+
+# api token name: jxjo
+# pypi-AgENdGVzdC5weXBpLm9yZwIkZjk3MjhkYWUtNzZiNS00YzBlLWJmMGUtZjg5MWNiZjUyYmFiAAIqWzMsImFkYjJmNDA2LTc4MTMtNGQxMS1iMDczLWM0MzkwNTA2OWNjMyJdAAAGIOlryVApT6_OQzdLGHINnLuQn03WJQk2iRSeDeEEexJ9
+
+# install twine
+# py -m pip install --upgrade twine
+
+# upload testpypi 
+# py -m twine upload --repository testpypi dist/*
+
+#--------------------------------------
+
+# pip install hatch 
+# py -m build
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "AirfoilEditor_test_jxjo"
+version = "4.0.0b1"
+authors = [
+  { name="Jochen Guenzel", email="jochen@jxjo.de" },
+]
+description = "Airfoil Editor to view, modify, optimze airfoils"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy~=2.2.0",
+  "termcolor>=2.3.0",
+  "pyqt6>=6.9.1",
+  "pyqtgraph>=0.13.7",
+  "f90nml>=1.4.4"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+
+[project.urls]
+Homepage = "https://github.com/jxjo/AirfoilEditor"
+Issues = "https://github.com/jxjo/AirfoilEditor/issues"
+
+# [project.gui-scripts]
+# airfoileditor = "airfoileditor.app:start"
+
+[project.scripts]
+airfoileditor = "airfoileditor.app:start"
+
+# -- hatch 
+
+[tool.hatch.build.targets.wheel]
+packages = ["ae_pkg"]
+only-include = [
+  "modules", 
+  "assets",
+  "examples_optimize"
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "path_test.py",
+  "doc",
+  "ae.py",
+  "AirfoilEditor.py"
+]
+include = [
+  "modules",
+  "examples_optimize",
+  "assets"
+]
+
+[tool.hatch.build.targets.wheel.sources]
+"modules" = "airfoileditor"
+"examples_optimize" = "airfoileditor/examples_optimize"
+"assets" = "airfoileditor/assets"
+
