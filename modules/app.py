@@ -156,13 +156,15 @@ class Main (QMainWindow):
 
         # if no initial airfoil file, try to get last openend airfoil file 
 
+        Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 
+
         if not initial_file: 
             initial_file = Settings().get('last_opened', default=None) 
 
         # either airfoil or Xoptfoil2 input file 
         if Input_File.is_xo2_input (initial_file, workingDir=os.getcwd()):
 
-            self.set_airfoil (Example(workingDir="example"), silent=True)  # dummy when returning from optimize
+            self.set_airfoil (Example(), silent=True)                     # dummy when returning from optimize
             self.optimize_airfoil (initial_file)
         else:
 

@@ -60,7 +60,7 @@ def create_airfoil_from_path (parent, pathFilename, example_if_none=False, messa
 
     if not airfoil_loaded:
 
-        airfoil = Example(workingDir="example") if example_if_none else None
+        airfoil = Example() if example_if_none else None
 
         if pathFilename: 
             fileName = os.path.basename (pathFilename)
@@ -137,7 +137,7 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
         next_airfoil = Airfoil.onFileType(next_file, workingDir = anAirfoil.pathName_abs, geometry=GEO_BASIC)
         next_airfoil.load()
     elif example_if_none:
-        next_airfoil = Example(workingDir="example")
+        next_airfoil = Example()
     else: 
         next_airfoil = None 
  
@@ -251,12 +251,12 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._no_files_here = None                              # reset cached vlaue 
         super().refresh(disable) 
 
-        if self._combo_widget:
+        if self._combo_widget is not None:
             self._combo_widget.refresh (disable) 
             self._set_comboBox_tooltip ()
-        if self._button_widget:
+        if self._button_widget is not None:
             self._button_widget.refresh (disable) 
-        if self._icon_widget:
+        if self._icon_widget is not None:
             self._icon_widget.refresh (disable) 
 
         l : QHBoxLayout = self.layout()

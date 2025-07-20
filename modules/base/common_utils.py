@@ -11,7 +11,6 @@ from pathlib                import Path
 from termcolor              import colored
 from platformdirs           import user_config_dir, user_data_dir
 
-
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -130,17 +129,6 @@ def toDict(aDict : dict, key, value):
 #------------------------------------------------------------------------------
 
 
-def get_data_dir (app_name, app_author = 'jxjo'):
-    """ returns directory for app data 
-    
-    Args:
-        app_name: name of app self will belong to 
-        app_author : typical for Windows - something like 'Microsoft' of 'jxjo'  
-    """
-
-    return user_data_dir (app_name, app_author, ensure_exists=True) 
-
-
 class Parameters ():
     """ Handles a parameter file with a json structure representing a dictionary of paramteres""" 
 
@@ -205,6 +193,17 @@ class Settings (Parameters):
 
         super().__init__(self.settingsFilePath)
 
+
+    @staticmethod
+    def user_data_dir (app_name, app_author = 'jxjo'):
+        """ returns directory for app data 
+        
+        Args:
+            app_name: name of app self will belong to 
+            app_author : typical for Windows - something like 'Microsoft' of 'jxjo'  
+        """
+
+        return user_data_dir (app_name, app_author, ensure_exists=True) 
 
     @classmethod
     def set_path (cls, app_name, app_author = 'jxjo', name_suffix=None, file_extension= '.json'):
