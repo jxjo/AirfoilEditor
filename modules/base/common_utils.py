@@ -7,8 +7,10 @@ Common Utility functions for convinience - no dependencies from other moduls
 
 import os
 import json
-from pathlib            import Path
-from termcolor          import colored
+from pathlib                import Path
+from termcolor              import colored
+from platformdirs           import user_config_dir, user_data_dir
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -127,6 +129,18 @@ def toDict(aDict : dict, key, value):
 # Settings and Paramter file 
 #------------------------------------------------------------------------------
 
+
+def get_data_dir (app_name, app_author = 'jxjo'):
+    """ returns directory for app data 
+    
+    Args:
+        app_name: name of app self will belong to 
+        app_author : typical for Windows - something like 'Microsoft' of 'jxjo'  
+    """
+
+    return user_data_dir (app_name, app_author, ensure_exists=True) 
+
+
 class Parameters ():
     """ Handles a parameter file with a json structure representing a dictionary of paramteres""" 
 
@@ -156,33 +170,25 @@ class Parameters ():
 
 
     def write_dataDict (self, aDict, dataName='Parameters'):
-        """ writes data dict to file
-        
-        :Returns: 
-            True : if succeded, False if failed"""
+        """ writes data dict to file - returns True if succeded"""
 
-        try:
-            paramFile = open(self._paramFilePath, 'w')
-        except:
-            logger.error (f"Failed to open file {self._paramFilePath}")
-            return False
+        ok = False
 
-        # save parameter dictionary to .json-file
-        try:
-            json.dump(aDict, paramFile, indent=2, separators=(',', ':'))
-            paramFile.close()
-            logger.info (f"{dataName} saved to {self._paramFilePath}" )
-            return True
+        with open(self._paramFilePath, 'w+') as file:
 
-        except ValueError as e:
-            logger.error (f"Invalid json expression '{e}'. Failed to save data to '{self._paramFilePath}'")
-            paramFile.close()
-            return False
+            # save parameter dictionary to .json-file
+            try:
+                json.dump(aDict, file, indent=2, separators=(',', ':'))
+                logger.info (f"{dataName} saved to {self._paramFilePath}" )
+                ok =  True
 
-        except TypeError as e:
-            logger.error (f"{e}. Failed to save data to '{self._paramFilePath}'")
-            paramFile.close()
-            return False
+            except ValueError as e:
+                logger.error (f"Invalid json expression '{e}'. Failed to save data to '{self._paramFilePath}'")
+
+            except TypeError as e:
+                logger.error (f"{e}. Failed to save data to '{self._paramFilePath}'")
+
+        return ok 
 
 
 class Settings (Parameters):
@@ -198,6 +204,27 @@ class Settings (Parameters):
         """
 
         super().__init__(self.settingsFilePath)
+
+
+    @classmethod
+    def set_path (cls, app_name, app_author = 'jxjo', name_suffix=None, file_extension= '.json'):
+        """ static set of the file the settings will belong to 
+        
+        Args:
+            app_name: name of app self will belong to 
+            app_author : typical for Windows - something like 'Microsoft' of 'jxjo'  
+            name_suffix: ... will be appended to appName - default '_settings'      
+            file_extension: ... of the settings file - default 'json'       
+        """
+
+        fileName = app_name + name_suffix + file_extension if name_suffix else app_name + file_extension
+
+        # get directory where self is located
+        settings_dir  = user_config_dir (app_name, app_author, ensure_exists=True)
+
+        cls.settingsFilePath = os.path.join(settings_dir, fileName)
+
+        logger.info (f"Reading settings from {cls.settingsFilePath}")
 
 
     @classmethod

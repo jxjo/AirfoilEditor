@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 #-------------------------------------------------------------------------------
 
 
-APP_NAME         = "Airfoil Editor"
+APP_NAME         = "AirfoilEditor"
 __version__      = "4.0.0b1"
 
 
@@ -139,7 +139,7 @@ class Main (QMainWindow):
 
         # Qt color scheme, initial window size from settings
 
-        Settings.belongTo (__file__, nameExtension=None, fileExtension= '.settings')
+        Settings.set_path (APP_NAME, file_extension= '.settings')
 
         scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)           # either unknown (from System), Dark, Light
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])            # set scheme of QT
@@ -159,7 +159,7 @@ class Main (QMainWindow):
         if not initial_file: 
             initial_file = Settings().get('last_opened', default=None) 
 
-        # either airfoil or Xoptfoil2 nnput file 
+        # either airfoil or Xoptfoil2 input file 
         if Input_File.is_xo2_input (initial_file, workingDir=os.getcwd()):
 
             self.set_airfoil (Example(workingDir="example"), silent=True)  # dummy when returning from optimize

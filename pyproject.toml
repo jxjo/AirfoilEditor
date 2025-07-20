@@ -42,14 +42,18 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "numpy~=2.2.0",
-  "termcolor>=2.3.0",
   "pyqt6>=6.9.1",
   "pyqtgraph>=0.13.7",
-  "f90nml>=1.4.4"
+  "f90nml>=1.4.4",
+  "termcolor>=2.3.0",
+  "platformdirs>=4.3.0"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Desktop Environment :: aerodynamics :: airfoil",
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
