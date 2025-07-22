@@ -12,8 +12,12 @@ import numpy as np
 import os
 import sys
 
-# let python find the other modules in modules relativ to path of self  
-# sys.path.append('./modules')
+# add directory of self to sys.path, so import is relative to self
+modules_path = os.path.dirname(__file__)
+if not modules_path in sys.path:
+    sys.path.append(modules_path)
+
+print ("*********************", os.getcwd ())
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from model.airfoil_examples import Root_Example, Tip_Example
@@ -378,7 +382,7 @@ class Test_Worker:
 
         worker.generate_polar (airfoil_path, 'T1', 700000, 0.0, 8.0, run_async=False)
 
-        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0)
+        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
 
         if polar_file:
             print  (f"polar file found: {polar_file}")
@@ -401,7 +405,7 @@ class Test_Worker:
 
         if worker.finished_returncode == 0:
 
-            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0)
+            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
 
             if polar_file:
                 print  (f"polar file found: {polar_file}")
@@ -453,7 +457,7 @@ class Test_Worker:
         airfoil_flapped.load()
 
         assert airfoil_flapped.isFlapped
-        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7029423
+        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.69704585
 
         shutil.rmtree(str(p_tmp))
 

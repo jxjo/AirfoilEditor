@@ -8,7 +8,7 @@ Extra functions (dialogs) to optimize airfoil
 """
 
 from copy                   import copy 
-from shutil                 import copyfile
+from shutil                 import copyfile, copytree, rmtree
 from datetime               import date
 
 import pyqtgraph as pg
@@ -40,7 +40,7 @@ from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Art
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 
@@ -241,15 +241,30 @@ class Xo2_Select_Dialog (Dialog):
         All .inp, .xo2 are collected 
         """
 
-        # repo installation 
-        if os.path.isdir (self.EXAMPLE_DIR):
-            example_dir = self.EXAMPLE_DIR
+        # examples already copied to user data dir? Are they actual? 
 
-        # in case of package the example are in <dir of __file__>/examples_optimize/...
+        example_dir = os.path.join (Example.workingDir_default, self.EXAMPLE_DIR)
+        
+        # AE repo installation, the examples are in <cwd>/examples_optimize/... 
+        if os.path.isdir (self.EXAMPLE_DIR):
+            src_example_dir = self.EXAMPLE_DIR
+        elif os.path.isdir (os.path.join ("..", self.EXAMPLE_DIR)):
+            src_example_dir = os.path.join ("..", self.EXAMPLE_DIR)
+        # AE package install, the examples are in <dir of __file__>/examples_optimize/...
         elif os.path.isdir (os.path.join (os.path.dirname(__file__), self.EXAMPLE_DIR)):
-            example_dir = os.path.join (os.path.dirname(__file__), self.EXAMPLE_DIR)
+            src_example_dir = os.path.join (os.path.dirname(__file__), self.EXAMPLE_DIR)
         else:
             return {}
+
+        if not os.path.isdir (example_dir) :              
+            copytree (src_example_dir, example_dir)
+            logger.info (f"{self.EXAMPLE_DIR} installed in {Example.workingDir_default}") 
+        elif os.path.getctime(src_example_dir) > os.path.getctime(example_dir):
+            rmtree (example_dir)
+            copytree (src_example_dir, example_dir)
+            logger.info (f"{self.EXAMPLE_DIR} updated in {Example.workingDir_default}") 
+
+        # collect all xo2 input files 
 
         examples_dict = {}
 
