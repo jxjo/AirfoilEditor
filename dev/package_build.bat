@@ -27,7 +27,8 @@ echo.
 pause
 
 hatch clean
-py -m build
+hatch build
+rem py -m build
 echo.
 
 :end

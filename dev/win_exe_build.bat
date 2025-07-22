@@ -1,6 +1,8 @@
 @echo off
 
 set CUR_DIR=%cd%
+set APP_NAME=airfoileditor
+
 
 if not exist pyproject.toml cd ..
 if not exist pyproject.toml goto end
@@ -45,20 +47,24 @@ pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --add-data="./assets/windows/worker.exe;./assets/windows" ^
     --add-data="./assets/windows/xoptfoil2.exe;./assets/windows" ^
     --add-data="./examples_optimize;./examples_optimize" ^
+ 	--exclude-module matplotlib ^
 	--runtime-tmpdir="mySuperTemp" ^
-	--exclude-module matplotlib ^
-    airfoileditor.py 
+    %APP_NAME%.py 
 
-rem rename target
+rem ---- rename target
+
+echo.
+echo ------ rename %APP_NAME% in .\dist
+echo.
 if exist dist\%WIN_EXE_DIR% rd /S /Q dist\%WIN_EXE_DIR%
-ren dist\airfoileditor %WIN_EXE_DIR%
+ren dist\%APP_NAME% %WIN_EXE_DIR%
 
 rem ---- zip directory 
 
 echo.
 echo ------ zip %WIN_EXE_DIR% in .\dist
 echo.
-
+pause
 cd dist
 if exist %WIN_EXE_DIR%.zip del %WIN_EXE_DIR%.zip
 powershell Compress-Archive %WIN_EXE_DIR%\* %WIN_EXE_DIR%.zip
