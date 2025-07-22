@@ -1,8 +1,10 @@
 # https://packaging.python.org/en/latest/
 
+# pypi test ---------------------------------------------------------------
+
 # https://test.pypi.org/   <"dingens">26# 
 
-# PyPI recovery codes
+# PyPI test recovery codes
 # used 6a85147871726486
 # b48efe69fe4f5ffc
 # fe8c974bd30845df
@@ -15,11 +17,34 @@
 # api token name: jxjo
 # pypi-AgENdGVzdC5weXBpLm9yZwIkZjk3MjhkYWUtNzZiNS00YzBlLWJmMGUtZjg5MWNiZjUyYmFiAAIqWzMsImFkYjJmNDA2LTc4MTMtNGQxMS1iMDczLWM0MzkwNTA2OWNjMyJdAAAGIOlryVApT6_OQzdLGHINnLuQn03WJQk2iRSeDeEEexJ9
 
+# py -m twine upload --repository testpypi dist/*
+
+# pypi ---------------------------------------------------------------
+
+# https://pypi.org/   <"dingens">26# 
+
+# PyPI recovery codes
+# e06b9b801bd4c97e
+# e79a5ff8cf446668
+# 17ca3b1d98a9cc35
+# c5191196f8a07262
+# e05e21f8a0afee85
+# 537e35151250ace9
+# e00f95a4c10709c5
+# 3ebe64d3e13a60cf
+
+# api token name: jxjo
+# pypi-AgEIcHlwaS5vcmcCJDk1ZWYyYjNkLTY1MTYtNDkwZS05NGI3LTZkNTliMmYzMmQ0YQACKlszLCIxN2MxNjU4Yi1iNzY4LTQ0YmMtODFlYy1mMmU5ODQ1MDk1NzgiXQAABiAzs6Fbyt1cj6ozcVM2pM819RcqJtOXmqCW3EpOxfBzEw
+
+#---- upload pypi 
 # install twine
 # py -m pip install --upgrade twine
+# py -m twine upload dist/*
 
-# upload testpypi 
-# py -m twine upload --repository testpypi dist/*
+
+#---- install text pypi 
+# py -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple AirfoilEditor-test-jxjo==4.0.0b2
+
 
 #--------------------------------------
 
@@ -32,13 +57,13 @@ build-backend = "hatchling.build"
 
 
 [project]
-name = "AirfoilEditor_test_jxjo"
-version = "4.0.0b1"
+name = "airfoileditor"
+dynamic = ["version"]               
 authors = [
   { name="Jochen Guenzel", email="jochen@jxjo.de" },
 ]
-description = "Airfoil Editor to view, modify, optimze airfoils"
-readme = "README.md"
+description = "View, Modify, Optimize Airfoils"
+readme = "doc/README_PyPi.md"
 requires-python = ">=3.12"
 dependencies = [
   "numpy~=2.2.0",
@@ -52,8 +77,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.12",
-    "Intended Audience :: End Users/Desktop",
-    "Topic :: Desktop Environment :: aerodynamics :: airfoil",
+    "Intended Audience :: End Users/Desktop"
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
@@ -62,13 +86,16 @@ license-files = ["LICEN[CS]E*"]
 Homepage = "https://github.com/jxjo/AirfoilEditor"
 Issues = "https://github.com/jxjo/AirfoilEditor/issues"
 
-# [project.gui-scripts]
-# airfoileditor = "airfoileditor.app:start"
-
-[project.scripts]
+[project.gui-scripts]
 airfoileditor = "airfoileditor.app:start"
 
+# [project.scripts]
+# airfoileditor = "airfoileditor.app:start"         # will run with console window on Windows
+
 # -- hatch 
+
+[tool.hatch.version]
+path = "modules/app.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ae_pkg"]
