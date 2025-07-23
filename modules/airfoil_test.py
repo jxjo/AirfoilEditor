@@ -378,7 +378,7 @@ class Test_Worker:
 
         # ------- sync test ---------------------------------------------
 
-        print (f"\n{Worker.name} running sync polar generation ...")
+        print (f"\n{Worker.NAME_EXE} running sync polar generation ...")
 
         worker.generate_polar (airfoil_path, 'T1', 700000, 0.0, 8.0, run_async=False)
 
@@ -393,7 +393,7 @@ class Test_Worker:
 
         # ------- async test ---------------------------------------------
 
-        print (f"\n{Worker.name} running async polar generation ...")
+        print (f"\n{Worker.NAME_EXE} running async polar generation ...")
 
         worker.generate_polar (airfoil_path, 'T1', 700000, 0.0, 8.0, run_async=True)
 
@@ -443,7 +443,7 @@ class Test_Worker:
 
         # ------- set flap ---------------------------------------------
 
-        print (f"\n{Worker.name} setting flap ...")
+        print (f"\n{Worker.NAME_EXE} setting flap ...")
 
         outname = destName+'_flapped'
         fileName_flapped = worker.set_flap (airfoil_path, x_flap=0.7, flap_angle=10, outname=outname)

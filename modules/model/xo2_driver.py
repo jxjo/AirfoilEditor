@@ -82,7 +82,10 @@ class X_Program:
         self will be executed in 'workingDir' which must be set 
             if it can't be extracted from airfoil path
     """
-    name        = 'my_program'
+
+    NAME        = 'My_Program'
+    NAME_EXE    = 'my_program'                             # stem of of exe file 
+
     version     = ''                                       # version of self - will be set in isReady
     exe_dir     = None                                     # where to find .exe 
     ready       = False                                    # is Worker ready to work 
@@ -139,7 +142,7 @@ class X_Program:
 
             if exe_dir is None:                                        # self not found anywhere
                 cls.ready_msg = ready_msg
-                logger.warning (ready_msg)
+                logger.error (ready_msg)
                 return 
             else:     
                 cls.exe_dir = exe_dir
@@ -156,7 +159,7 @@ class X_Program:
                 words = line.split()
 
                 # first word is program name 
-                if len (words) > 1 and words[0] == self.name:
+                if len (words) > 1 and words[0] == self.NAME:
 
                     # last word is version - compare single version numbers
                     cls.version = words[-1]
@@ -176,18 +179,18 @@ class X_Program:
                         version_ok = False 
             
             if not version_ok:
-                cls.ready_msg = f"Wrong version {self.version} (need {min_version})"
+                cls.ready_msg = f"wrong version {self.version} - need {min_version}"
             else: 
                 cls.ready = True
                 cls.ready_msg = f"Ready"
 
         else: 
-            cls.ready_msg = f"{self.name} couldn't be executed"      
+            cls.ready_msg = f"{self.NAME_EXE} couldn't be executed"      
 
         if self.ready: 
-            logging.info (f"{self.name} {self.version} {self.ready_msg}" )
+            logger.info (f"{self.NAME} {self.version} {self.ready_msg}" )
         else: 
-            logging.error (f"{self.ready_msg}" )
+            logger.error (f"{self.ready_msg}" )
 
         return self.ready
     
@@ -217,14 +220,14 @@ class X_Program:
                 self._pipe_out_lines.extend(new_lines)
 
                 if self._returncode:
-                    logger.error (f"==> {self.name} returncode: {self._returncode} - {'\n'.join (self._pipe_error_lines)}")
+                    logger.error (f"==> {self.NAME_EXE} returncode: {self._returncode} - {'\n'.join (self._pipe_error_lines)}")
 
                     # put minimum info in error_lines if it isn't standard error return code of Xoptfoil
                     if self._returncode > 1: 
                         self._pipe_error_lines = [f"Process error: {self._returncode}"]
 
                 else: 
-                    logger.debug (f"==> {self.name} finished {'\n'.join (self._pipe_out_lines)}")
+                    logger.debug (f"==> {self.NAME_EXE} finished {'\n'.join (self._pipe_out_lines)}")
                  
                 self._popen = None              # close down process instance 
 
@@ -318,7 +321,7 @@ class X_Program:
 
         # build list of args needed by subprocess.run 
 
-        exe = os.path.join (self.exe_dir, self.name) 
+        exe = os.path.join (self.exe_dir, self.NAME_EXE) 
 
         if isinstance (args, list):
             arg_list = [exe] + args
@@ -343,20 +346,20 @@ class X_Program:
                 else: 
                     flags  = 0                      # posix must be 0       
 
-            logger.debug (f"==> {self.name} run sync: '{args}' in: {workingDir}")
+            logger.debug (f"==> {self.NAME_EXE} run sync: '{args}' in: {workingDir}")
 
             process = run (arg_list, text=True, capture_output=capture_output, creationflags=flags)
 
             returncode  = process.returncode
 
             if returncode:
-                logger.error (f"==> {self.name} ended: '{process}'")
+                logger.error (f"==> {self.NAME_EXE} ended: '{process}'")
 
             # finished - nice output strings 
 
             if process.stderr:  
                 self._pipe_error_lines = process.stderr.split ("\n")
-                logger.error (f"==> {self.name} stderr: {"\n".join (self._pipe_error_lines)}")
+                logger.error (f"==> {self.NAME_EXE} stderr: {"\n".join (self._pipe_error_lines)}")
 
                 if self._pipe_error_lines[0] == "STOP 1":
                     # the error message will be in stdout
@@ -364,14 +367,14 @@ class X_Program:
 
             if capture_output and process.stdout: 
                 self._pipe_out_lines = process.stdout.split ("\n")
-                logger.debug (f"==> {self.name} stdout: {"\n".join (self._pipe_out_lines)}")
+                # logger.debug (f"==> {self.NAME_EXE} stdout: {"\n".join (self._pipe_out_lines)}")
 
         except FileNotFoundError as exc:
 
             returncode = 1
             self._pipe_error_lines = str(exc)
 
-            logger.error (f"==> exception {self.name}: {exc}")
+            logger.error (f"==> exception {self.NAME_EXE}: {exc}")
 
         finally: 
 
@@ -399,7 +402,7 @@ class X_Program:
 
         # build list of args needed by subprocess.run 
 
-        exe = os.path.join (self.exe_dir, self.name) 
+        exe = os.path.join (self.exe_dir, self.NAME_EXE) 
 
         if isinstance (args, list):
             arg_list = [exe] + args
@@ -436,7 +439,7 @@ class X_Program:
                     flags  = 0                              # posix must be 0 
                 startupinfo = self._get_popen_startupinfo (SW_MINIMIZE)  
 
-            logger.debug (f"==> {self.name} run async: '{args}' in: {workingDir}")
+            logger.debug (f"==> {self.NAME_EXE} run async: '{args}' in: {workingDir}")
 
             popen = Popen (arg_list, creationflags=flags, text=True, **startupinfo, 
                                 stdout=stdout, stderr=stderr)  
@@ -446,10 +449,10 @@ class X_Program:
             returncode  = popen.returncode if popen.returncode is not None else 0   # async returns None 
 
             if returncode:
-                logger.error (f"==> {self.name} ended: '{popen}'")
+                logger.error (f"==> {self.NAME_EXE} ended: '{popen}'")
 
                 self._pipe_error_lines = popen.stderr.readlines()
-                logger.error (f"==> {self.name} stderr: {"\n".join (self._pipe_error_lines)}")
+                logger.error (f"==> {self.NAME_EXE} stderr: {"\n".join (self._pipe_error_lines)}")
 
             # keep for later poll 
             self._popen = popen 
@@ -459,7 +462,7 @@ class X_Program:
             returncode = 1
             self._pipe_error_lines = str(exc)
 
-            logger.error (f"==> exception {self.name}: {exc}")
+            logger.error (f"==> exception {self.NAME_EXE}: {exc}")
 
         finally: 
 
@@ -499,16 +502,16 @@ class X_Program:
         assets_dir = os.path.normpath (assets_dir)  
         check_dir  = os.path.join (project_dir , assets_dir)
 
-        if shutil.which (self.name, path=check_dir) : 
+        if shutil.which (self.NAME_EXE, path=check_dir) : 
             exe_dir  = os.path.abspath(check_dir) 
-            ready_msg = f"{self.name} found in: {exe_dir}"
+            ready_msg = f"{self.NAME_EXE} found in: {exe_dir}"
         else: 
-            exe_path = shutil.which (self.name)  
+            exe_path = shutil.which (self.NAME_EXE)  
             if exe_path: 
                 exe_dir = os.path.dirname (exe_path)
-                ready_msg = f"{self.name} using OS search path to execute: {exe_dir}"
+                ready_msg = f"{self.NAME_EXE} using OS search path to execute: {exe_dir}"
             else: 
-                ready_msg = f"{self.name} not found either in '{check_dir}' nor via OS search path" 
+                ready_msg = f"{self.NAME_EXE} not found either in '{assets_dir}' nor via OS search path" 
         return exe_dir, ready_msg
 
 
@@ -540,12 +543,13 @@ class Xoptfoil2 (X_Program):
         The 'inputfile' must be in 'workingDir' 
     """
 
-    name        = 'Xoptfoil2'
+    NAME        = 'Xoptfoil2'
+    NAME_EXE    = 'xoptfoil2'                               # stem of of exe file 
 
-    RUN_CONTROL = 'run_control'                     # file name of control file 
-    STILL_ALIVE = 10                                # max. age in seconds of run_control
+    RUN_CONTROL = 'run_control'                             # file name of control file 
+    STILL_ALIVE = 10                                        # max. age in seconds of run_control
 
-    RESULT_DIR_POSTFIX = '_temp'                    # result directory of Xoptfoil2 postfix of 'outname'
+    RESULT_DIR_POSTFIX = '_temp'                            # result directory of Xoptfoil2 postfix of 'outname'
 
     @staticmethod
     def remove_resultDir (airfoil_pathFileName : str, only_if_older = False):
@@ -659,7 +663,9 @@ class Xoptfoil2 (X_Program):
 class Worker (X_Program):
     """ proxy to execute Worker commands"""
 
-    name    = 'Worker'
+    NAME        = 'Worker'
+    NAME_EXE    = 'worker'                             # stem of of exe file 
+
 
     # -- static methods --------------------------------------------
 
@@ -798,7 +804,7 @@ class Worker (X_Program):
     def check_inputFile (self, inputFile=None):
         """ uses Worker to check an Xoptfoil2"""
 
-        if not self.ready: return 1, self.name + " not ready"
+        if not self.ready: return 1, self.NAME + " not ready"
 
         error_text = ""
         args = ['-w', 'check-input', '-i', inputFile]
@@ -868,7 +874,7 @@ class Worker (X_Program):
                                     flap_angles=flap_angle, x_flap=x_flap, y_flap=y_flap, y_flap_spec=y_flap_spec,
                                     nPoints=nPoints) 
         if not self._tmp_inpFile:
-            raise RuntimeError (f"{self.name} polar generation failed: Couldn't create input file")
+            raise RuntimeError (f"{self.NAME} polar generation failed: Couldn't create input file")
 
         # build args for worker - force outname as Worker wrongly uses airfoil name!
 
@@ -931,7 +937,7 @@ class Worker (X_Program):
 
         self._tmp_inpFile = self._generate_flap_inputFile (workingDir, x_flap, y_flap, y_flap_spec, flap_angle)         
         if not self._tmp_inpFile:
-            raise RuntimeError (f"{self.name} setting flap failed: Couldn't create input file")
+            raise RuntimeError (f"{self.NAME} setting flap failed: Couldn't create input file")
 
         # build args for worker 
 

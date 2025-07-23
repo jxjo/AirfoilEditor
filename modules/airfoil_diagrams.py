@@ -1555,7 +1555,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
             if Xoptfoil2.ready:
                 r += 1
-                Label  (l,r,c, colSpan=6, get=f"Powered by {Xoptfoil2.name} {Xoptfoil2.version} using Xfoil", 
+                Label  (l,r,c, colSpan=6, get=f"Powered by {Xoptfoil2.NAME} {Xoptfoil2.version} using Xfoil", 
                         style=style.COMMENT, fontSize=size.SMALL)
 
             self._optimization_panel = Edit_Panel (title="Optimization", layout=l, switchable=False, height=(100,None),
@@ -1607,30 +1607,31 @@ class Diagram_Airfoil_Polar (Diagram):
             l = QGridLayout()
             r,c = 0, 0
 
-            Label (l,r,c, colSpan=5, 
-                   get=lambda: "Polar definitions" if not self.mode_optimize else  "Polar definitions of Case") 
-            r += 1
-
-            # helper panel for polar definitions 
-
-            p = Panel_Polar_Defs (self, lambda: self.polar_defs, mode_optimize_fn=lambda: self.mode_optimize, 
-                                  height=(None,None))
-
-            p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
-
-            l.addWidget (p, r, c, 1, 6)
-            r += 1
-
-            SpaceR (l,r, height=5, stretch=0) 
-            r += 1
-            CheckBox (l,r,c, text="Polar points", colSpan=4,
-                        get=lambda: self.show_polar_points, set=self.set_show_polar_points,
-                        toolTip="Show the polar data points")
-
-            # polar diagrams variables setting 
-
-            r += 1
             if Worker.ready:
+
+                Label (l,r,c, colSpan=5, 
+                    get=lambda: "Polar definitions" if not self.mode_optimize else  "Polar definitions of Case") 
+                r += 1
+
+                # helper panel for polar definitions 
+
+                p = Panel_Polar_Defs (self, lambda: self.polar_defs, mode_optimize_fn=lambda: self.mode_optimize, 
+                                    height=(None,None))
+
+                p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
+
+                l.addWidget (p, r, c, 1, 6)
+                r += 1
+
+                SpaceR (l,r, height=5, stretch=0) 
+                r += 1
+                CheckBox (l,r,c, text="Polar points", colSpan=4,
+                            get=lambda: self.show_polar_points, set=self.set_show_polar_points,
+                            toolTip="Show the polar data points")
+
+                # polar diagrams variables setting 
+
+                r += 1
                 SpaceR (l,r, height=5, stretch=0) 
                 r += 1
                 Label (l,r,c, colSpan=4, get="Diagram variables") 
@@ -1646,23 +1647,26 @@ class Diagram_Airfoil_Polar (Diagram):
                                     toolTip=f"Select the polar variable of the x axis for diagram {i+1}")
                     SpaceC      (l,c+5)
                     r += 1
-            else: 
-                SpaceR (l,r, height=10) 
-                r += 1
-                Label (l,r,c, colSpan=4, get="No polars available", style=style.ERROR, fontSize=size.HEADER_SMALL) 
-                r += 1
-                Label (l,r,c, colSpan=4, get=f"{Worker.name} not ready", style=style.ERROR) 
-                r += 1
-                SpaceR (l,r, height=5, stretch=0) 
-                r += 1
-                Label (l,r,c, colSpan=6, get=Worker.ready_msg, style=style.COMMENT, height=(None,100), wordWrap=True) 
 
-            if Worker.ready:
                 r += 1
-                Label  (l,r,c, colSpan=6, get=f"Powered by {Worker.name} {Worker.version} using Xfoil", 
+                Label  (l,r,c, colSpan=6, get=f"Powered by {Worker.NAME} {Worker.version} using Xfoil", 
                         style=style.COMMENT, fontSize=size.SMALL)
 
-            self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(250,None),
+            else: 
+                SpaceR (l,r, height=10, stretch=0) 
+                r += 1
+                Label (l,r,c, colSpan=4, get="No polars available", fontSize=size.HEADER_SMALL, style=style.COMMENT) 
+                r += 1
+                SpaceR (l,r, height=10, stretch=0) 
+                r += 1
+                Label (l,r,c, colSpan=4, get=f"{Worker.NAME} not ready", style=style.ERROR) 
+                r += 1
+                Label (l,r,c, colSpan=6, get=f"{Worker.ready_msg}", style=style.COMMENT, height=(None,100), wordWrap=True) 
+                r += 1
+                SpaceR (l,r, height=5) 
+
+
+            self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(150,None),
                                               switchable=True, switched_on=False, on_switched=self._on_polars_switched)
         return self._polar_panel 
 
