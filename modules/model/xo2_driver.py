@@ -500,10 +500,14 @@ class X_Program:
             assets_dir = EXE_DIR_UNIX  
 
         assets_dir = os.path.normpath (assets_dir)  
-        check_dir  = os.path.join (project_dir , assets_dir)
+        check_dir1 = os.path.join (project_dir , assets_dir)                            # .\modules\assets\...
+        check_dir2 = os.path.join (os.path.dirname (project_dir), assets_dir)           # .\assets\...
 
-        if shutil.which (self.NAME_EXE, path=check_dir) : 
-            exe_dir  = os.path.abspath(check_dir) 
+        if shutil.which (self.NAME_EXE, path=check_dir1) : 
+            exe_dir  = os.path.abspath(check_dir1) 
+            ready_msg = f"{self.NAME_EXE} found in: {exe_dir}"
+        elif shutil.which (self.NAME_EXE, path=check_dir2) : 
+            exe_dir  = os.path.abspath(check_dir2) 
             ready_msg = f"{self.NAME_EXE} found in: {exe_dir}"
         else: 
             exe_path = shutil.which (self.NAME_EXE)  

@@ -146,7 +146,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         r += 1
         Button (l,r,c, text="&Optimize...", width=90, 
                 set=self.app.optimize_select, 
-                toolTip="Switch to airfoil optimization based on Xoptfoil2",
+                toolTip=self._tooltip_optimize,
                 disable=lambda: not Xoptfoil2.ready)
         r += 1
         SpaceR (l,r, stretch=1)
@@ -200,6 +200,15 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
         link = "https://github.com/jxjo/AirfoilEditor"
         QDesktopServices.openUrl(QUrl(link))
+
+
+    def _tooltip_optimize (self) -> str:
+        """ dynamic tooltip to handle xo2 not ready"""
+
+        if Xoptfoil2.ready:
+            return f"Optimize an airfoil with {Xoptfoil2.NAME}"
+        else: 
+            return f"Optimization not possible <br><br><b>{Xoptfoil2.NAME} not ready</b><br><br>{Xoptfoil2.ready_msg}"
 
 
 
