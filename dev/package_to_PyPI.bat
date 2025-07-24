@@ -13,17 +13,18 @@ hatch project metadata version > tmpFile
 set /p PACKAGE_VERSION= < tmpFile 
 del tmpFile 
 
-rem ---- build package - wheel and sdist 
+rem ---- upload package - wheel and sdist 
 
 echo.
 echo ------ Upload %PACKAGE_NAME% %PACKAGE_VERSION% wheel and sdist to PyPI 
 echo.
-dir dist /s /a:-d |find "%PACKAGE_NAME%-%PACKAGE_VERSION%"
-echo.
-if not exist "dist\%PACKAGE_NAME%-%PACKAGE_VERSION%-py3-none-any.whl" goto end
 
+dir dist /a:-d |find "%PACKAGE_NAME%"
+echo.
 pause
-rem py -m twine upload dist/*
+echo.
+
+hatch publish --user __token__ 
 echo.
 
 :end

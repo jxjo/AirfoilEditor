@@ -17,6 +17,7 @@ rem ---- run Pytest  for *-test.py
 
 echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
 echo.
+
 Pytest modules\
 
 rem ---- build package - wheel and sdist 
@@ -28,9 +29,8 @@ pause
 
 hatch clean
 hatch build
-rem py -m build
-echo.
 
 :end
 cd %CUR_DIR%
+echo.
 pause

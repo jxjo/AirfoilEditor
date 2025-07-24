@@ -1,7 +1,9 @@
 @echo off
 
+setlocal
 set CUR_DIR=%cd%
 set APP_NAME=airfoileditor
+set DIST_DIR=dist
 
 
 if not exist pyproject.toml cd ..
@@ -26,7 +28,7 @@ rem Pytest modules\
 rem ---- run pyinstaller 
 
 echo.
-echo ------ Pyinstaller: Build ...win.exe on %PACKAGE_NAME% %PACKAGE_VERSION% in .\dist
+echo ------ Pyinstaller: Build ...win.exe on %PACKAGE_NAME% %PACKAGE_VERSION% in %DIST_DIR%
 echo.
 
 pause
@@ -40,6 +42,7 @@ rem also look in modules for imports!: 	--paths modules ^
 rem more infos during build:		 	--log-level=INFO
 rem suppress console  	--noconsole    ^
 pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
+    --distpath %DIST_DIR% ^
 	--icon=./modules/AE_ico.ico ^
 	--paths modules ^
     --add-data="./modules/base/icons;./icons" ^
@@ -54,23 +57,25 @@ pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
 rem ---- rename target
 
 echo.
-echo ------ rename %APP_NAME% in .\dist
+echo ------ rename %APP_NAME% in %DIST_DIR%
 echo.
-if exist dist\%WIN_EXE_DIR% rd /S /Q dist\%WIN_EXE_DIR%
-ren dist\%APP_NAME% %WIN_EXE_DIR%
+
+cd %DIST_DIR%
+
+if exist %WIN_EXE_DIR% rd /S /Q %WIN_EXE_DIR%
+ren %APP_NAME% %WIN_EXE_DIR%
 
 rem ---- zip directory 
 
 echo.
-echo ------ zip %WIN_EXE_DIR% in .\dist
+echo ------ zip %WIN_EXE_DIR% in %DIST_DIR%
 echo.
 pause
-cd dist
+
 if exist %WIN_EXE_DIR%.zip del %WIN_EXE_DIR%.zip
 powershell Compress-Archive %WIN_EXE_DIR%\* %WIN_EXE_DIR%.zip
-cd ..
 
-dir dist 
+dir
 
 
 :end
