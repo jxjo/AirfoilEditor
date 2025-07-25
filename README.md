@@ -217,33 +217,46 @@ Doing such iterations it is very helpful to create a new version when changing t
 
 ### Windows Easy Setup
 
-A pre-build Windows App including Worker.exe for polar generation and Xoptfoil2.exe for airfoil optimization is available in the releases section
+A ready-build Windows App including Worker for polar generation and Xoptfoil2 for airfoil optimization is available in the [releases section on GitHub](https://github.com/jxjo/AirfoilEditor/releases).
 
-### Windows Advanced Setup
+Download the .zip file and extract the file in your prefered directory. For the first trials it's convenient to extract the .zip file on your Windows Desktop.
 
-If you already have installed the actual Python version on your PC, it is advantageous to run the AirfoilEditor directly as a Python script. This will startup the app much faster than using the .exe file 
-1.	Download python sources from releases or clone the repository
-2.	Install
+A double click on 'airfoileditor.exe' will start the app.
+
+### Windows Setup using Python
+
+If you already have installed Python version >=3.12, it is advantageous to install the AirfoilEditor as a 'package'. 
+This will startup the app faster than using the standalone .exe file. 
+The package already includes Worker and Xoptfoil2. 
+
+Install the app:
 ```
-pip3 install pyqt6
-pip3 install numpy
-pip3 install pyqtgraph 
-pip3 install termcolor
+pip3 install airfoileditor 
 ```
-3.	Run ‘python AirfoilEditor’
+
+To upgrade to the actual version use `pip3 install airfoileditor -U`.
+
+Run the app by typing `airfoileditor` on the command line.
+
+If you just want to try out the app and want to ensure, that the installation doesn't influence other packages, you may prefer to install the package in an 'virtual environment'. For daily use a 'normal' installation is more convenient.
+
+
 
 ### Linux and MacOS
 
-1.	Download python sources from releases or clone the repository
-2.	Install
+The app is installed as a Python 'package'. Please ensure to have a Python version >=3.12.
+
 ```
-pip3 install pyqt6
-pip3 install numpy
-pip3 install pyqtgraph 
-pip3 install termcolor
+pip3 install airfoileditor 
 ```
-3.	To use polar generationand airfoil optimization you  have to compile the Worker.exe and Xoptfoil.exe of the Xoptfoil2 project and copy the program either into /usr/local/bin or into the sub folder ./assets/linux of the AirfoilEditor. In the second case the execute permission has to be set with ‘chmod +x Worker’ and ‘chmod +x Xoptfoil2’.
-4.	Run ‘python AirfoilEditor’
+
+To upgrade to the actual version use `pip3 install airfoileditor -U`.
+
+To use polar generation and airfoil optimization the two programs `worker.exe` and `xoptfoil2.exe` of the [Xoptfoil2](https://github.com/jxjo/Xoptfoil2) have to be compiled separately. Copy the compiled programs into /usr/local/bin so the app may find the programs via the OS search path.
+
+Run the app by typing `airfoileditor` on the command line.
+
+
 
 # Finally 
 
