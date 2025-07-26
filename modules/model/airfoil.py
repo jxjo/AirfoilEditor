@@ -24,7 +24,7 @@ from model.xo2_driver       import Worker
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 #-------------------------------------------------------------------------------

@@ -40,7 +40,7 @@ from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Art
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 
@@ -702,7 +702,7 @@ class Xo2_New_Dialog (Dialog):
 class Xo2_Run_Dialog (Dialog):
     """ Dialog to run/watch Xoptfoil2"""
 
-    _width  = (330, None)
+    _width  = (350, None)
     _height = (350, None)
 
     name = "Run"

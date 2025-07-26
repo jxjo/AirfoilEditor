@@ -38,7 +38,7 @@ from base.spline        import Bezier
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 COLOR_EDITABLE      = QColor('orange')                          # Movable Point 

@@ -252,10 +252,18 @@ pip3 install airfoileditor
 
 To upgrade to the actual version use `pip3 install airfoileditor -U`.
 
-To use polar generation and airfoil optimization the two programs `worker.exe` and `xoptfoil2.exe` of the [Xoptfoil2](https://github.com/jxjo/Xoptfoil2) have to be compiled separately. Copy the compiled programs into /usr/local/bin so the app may find the programs via the OS search path.
-
 Run the app by typing `airfoileditor` on the command line.
 
+#### Preparing Xoptfoil2 and Worker
+To use polar generation and airfoil optimization the two programs `worker` and `xoptfoil2` have to be compiled and made availble for the AirfoilEditor by copying the two programs into /usr/local/bin. 
+
+Please have a look into [Xoptfoil2 README Installation](https://github.com/jxjo/Xoptfoil2) for further information.
+
+As a little reward for the extra effort polar generation and airfoil optimization will run 2-3 times faster on Linux compared to the Windows version.
+
+#### Ubuntu
+
+If there is warning message like "Failed to create wl_display" when starting the app, set a QT environment variable with `export QT_QPA_PLATFORM=xcb`.
 
 
 # Finally 

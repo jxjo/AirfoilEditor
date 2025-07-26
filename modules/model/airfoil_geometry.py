@@ -63,7 +63,7 @@ from base.spline import HicksHenne
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 class GeometryException(Exception):

@@ -1460,7 +1460,7 @@ class Watchdog (QThread):
         # thread environment has been set up. 
         # Thread is started with .start()
 
-        logger.info (f"{self} --> starting soon")
+        logger.info (f"Starting Watchdog Thread")
         self.msleep (1000)                                  # initial wait before polling begins 
 
         while not self.isInterruptionRequested():
@@ -1505,15 +1505,11 @@ class Watchdog (QThread):
 #--------------------------------
 
 def start ():
-
-    dev_mode = os.path.isdir(os.path.dirname(os.path.realpath(__file__)) +"\\test_airfoils")
+    """ start the app """
 
     # init logging - can be overwritten within a module  
 
-    if dev_mode:   
-        init_logging (level= logging.DEBUG)             # INFO, DEBUG or WARNING
-    else:                       
-        init_logging (level= logging.WARNING)
+    init_logging (level= logging.INFO)             # INFO, DEBUG or WARNING
 
     # command line arguments? 
     
@@ -1540,30 +1536,3 @@ def start ():
 if __name__ == "__main__":
     
     sys.exit (start())
-    # dev_mode = os.path.isdir(os.path.dirname(os.path.realpath(__file__)) +"\\test_airfoils")
-
-    # # init logging - can be overwritten within a module  
-
-    # if dev_mode:   
-    #     init_logging (level= logging.DEBUG)             # INFO, DEBUG or WARNING
-    # else:                       
-    #     init_logging (level= logging.WARNING)
-
-    # # command line arguments? 
-    
-    # parser = argparse.ArgumentParser(prog=APP_NAME, description='View and modify an airfoil')
-    # parser.add_argument("airfoil", nargs='*', help="Airfoil .dat or .bez file to show")
-    # args = parser.parse_args()
-    # if args.airfoil: 
-    #     initial_file = args.airfoil[0]
-    # else: 
-    #     initial_file = None
-
-    # # init Qt Application and style  
-
-    # app = QApplication(sys.argv)
-    # app.setStyle('fusion')
-
-    # main = Main_Window (initial_file)
-    # main.show()
-    # app.exec()

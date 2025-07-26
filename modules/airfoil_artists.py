@@ -25,7 +25,7 @@ from PyQt6.QtCore               import pyqtSignal, QObject
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 # -------- helper functions ------------------------
@@ -1098,7 +1098,7 @@ class Polar_Artist (Artist):
             if polarSet:
                 polarSet.load_or_generate_polars ()
             else:
-                logger.warning (f"{airfoil} has no polarSet to plot")
+                logger.debug (f"{airfoil} has no polarSet to plot")
 
         # plot polars of airfoils
 

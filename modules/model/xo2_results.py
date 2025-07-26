@@ -32,7 +32,7 @@ from model.xo2_input        import GEO_OPT_VARS
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 #-------------------------------------------------------------------------------

@@ -9,7 +9,7 @@ Generic (compound) widgets based on original QWidgets
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 import os
 import types

@@ -13,7 +13,7 @@ from platformdirs           import user_config_dir, user_data_dir
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+# logger.setLevel(logging.INFO)
 
 
 

@@ -528,7 +528,7 @@ class Case_Optimize (Case_Abstract):
                             
             airfoil_dt     = datetime.fromtimestamp(os.path.getmtime(self.airfoil_final.pathFileName_abs))
 
-            if airfoil_dt > self.results.date_time_last_write:
+            if airfoil_dt >= self.results.date_time_last_write:
                 isFinished = True
 
         return isFinished

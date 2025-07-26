@@ -28,7 +28,7 @@ if os.name == 'nt':                                 # startupinfo only available
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 SW_NORMAL = 1 
@@ -188,9 +188,9 @@ class X_Program:
             cls.ready_msg = f"{self.NAME_EXE} couldn't be executed"      
 
         if self.ready: 
-            logger.info (f"{self.NAME} {self.version} {self.ready_msg}" )
+            logger.info (f"{self.NAME} {self.version} {self.ready_msg}  (loading from: {self.exe_dir})" )
         else: 
-            logger.error (f"{self.ready_msg}" )
+            logger.error (f"{self.ready_msg}  (loading from: {self.exe_dir})" )
 
         return self.ready
     
@@ -220,14 +220,14 @@ class X_Program:
                 self._pipe_out_lines.extend(new_lines)
 
                 if self._returncode:
-                    logger.error (f"==> {self.NAME_EXE} returncode: {self._returncode} - {'\n'.join (self._pipe_error_lines)}")
+                    logger.error (f"... {self.NAME_EXE} returncode: {self._returncode} - {'\n'.join (self._pipe_error_lines)}")
 
                     # put minimum info in error_lines if it isn't standard error return code of Xoptfoil
                     if self._returncode > 1: 
                         self._pipe_error_lines = [f"Process error: {self._returncode}"]
 
                 else: 
-                    logger.debug (f"==> {self.NAME_EXE} finished {'\n'.join (self._pipe_out_lines)}")
+                    logger.debug (f"... {self.NAME_EXE} finished {'\n'.join (self._pipe_out_lines)}")
                  
                 self._popen = None              # close down process instance 
 
@@ -237,7 +237,7 @@ class X_Program:
     def remove_tmp_file (self, iretry = 0):
         """ os remove of temporary input file"""
 
-        if self._tmp_inpFile:            # remove tmpfile of worker 
+        if self._tmp_inpFile and os.path.isfile (self._tmp_inpFile):       # remove tmpfile of worker 
             try: 
 
                 os.remove(self._tmp_inpFile) 
@@ -251,6 +251,8 @@ class X_Program:
                     self.remove_tmp_file (iretry=iretry)
                 else: 
                     logger.error (f"Could not delete tmp input file '{self._tmp_inpFile}' - {exc}")
+        else:
+            self._tmp_inpFile = None
 
 
     @property
@@ -346,20 +348,20 @@ class X_Program:
                 else: 
                     flags  = 0                      # posix must be 0       
 
-            logger.debug (f"==> {self.NAME_EXE} run sync: '{args}' in: {workingDir}")
+            logger.info (f"... {self.NAME_EXE} run sync: '{args}' in: {workingDir}")
 
             process = run (arg_list, text=True, capture_output=capture_output, creationflags=flags)
 
             returncode  = process.returncode
 
             if returncode:
-                logger.error (f"==> {self.NAME_EXE} ended: '{process}'")
+                logger.error (f"... {self.NAME_EXE} ended: '{process}'")
 
             # finished - nice output strings 
 
             if process.stderr:  
                 self._pipe_error_lines = process.stderr.split ("\n")
-                logger.error (f"==> {self.NAME_EXE} stderr: {"\n".join (self._pipe_error_lines)}")
+                logger.error (f"... {self.NAME_EXE} stderr: {"\n".join (self._pipe_error_lines)}")
 
                 if self._pipe_error_lines[0] == "STOP 1":
                     # the error message will be in stdout
@@ -367,14 +369,14 @@ class X_Program:
 
             if capture_output and process.stdout: 
                 self._pipe_out_lines = process.stdout.split ("\n")
-                # logger.debug (f"==> {self.NAME_EXE} stdout: {"\n".join (self._pipe_out_lines)}")
+                # logger.debug (f"... {self.NAME_EXE} stdout: {"\n".join (self._pipe_out_lines)}")
 
         except FileNotFoundError as exc:
 
             returncode = 1
             self._pipe_error_lines = str(exc)
 
-            logger.error (f"==> exception {self.NAME_EXE}: {exc}")
+            logger.error (f"... exception {self.NAME_EXE}: {exc}")
 
         finally: 
 
@@ -439,7 +441,7 @@ class X_Program:
                     flags  = 0                              # posix must be 0 
                 startupinfo = self._get_popen_startupinfo (SW_MINIMIZE)  
 
-            logger.debug (f"==> {self.NAME_EXE} run async: '{args}' in: {workingDir}")
+            logger.info (f"... {self.NAME_EXE} run async: '{args}' in: {workingDir}")
 
             popen = Popen (arg_list, creationflags=flags, text=True, **startupinfo, 
                                 stdout=stdout, stderr=stderr)  
@@ -449,10 +451,10 @@ class X_Program:
             returncode  = popen.returncode if popen.returncode is not None else 0   # async returns None 
 
             if returncode:
-                logger.error (f"==> {self.NAME_EXE} ended: '{popen}'")
+                logger.error (f"... {self.NAME_EXE} ended: '{popen}'")
 
                 self._pipe_error_lines = popen.stderr.readlines()
-                logger.error (f"==> {self.NAME_EXE} stderr: {"\n".join (self._pipe_error_lines)}")
+                logger.error (f"... {self.NAME_EXE} stderr: {"\n".join (self._pipe_error_lines)}")
 
             # keep for later poll 
             self._popen = popen 
@@ -462,7 +464,7 @@ class X_Program:
             returncode = 1
             self._pipe_error_lines = str(exc)
 
-            logger.error (f"==> exception {self.NAME_EXE}: {exc}")
+            logger.error (f"... exception {self.NAME_EXE}: {exc}")
 
         finally: 
 

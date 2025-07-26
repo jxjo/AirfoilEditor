@@ -27,7 +27,7 @@ from airfoil_dialogs        import Match_Bezier_Dialog, Matcher
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 class Panel_Airfoil_Abstract (Edit_Panel):

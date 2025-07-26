@@ -287,7 +287,7 @@ class Blend_Airfoil_Dialog (Dialog):
 class Repanel_Airfoil_Dialog (Dialog):
     """ Dialog to repanel an airfoil"""
 
-    _width  = 460
+    _width  = 480
     _height = 240
 
     name = "Repanel Airfoil"

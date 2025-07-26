@@ -7,6 +7,8 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 
 """
 
+import os
+
 from copy               import copy
 from typing             import override
 
@@ -23,7 +25,7 @@ from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, Sp
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 #------------------------------------------------------------------------------
@@ -582,6 +584,13 @@ class MessageBox (QMessageBox):
                 item = layout.itemAtPosition (0,0)
                 item.setAlignment (Qt.AlignmentFlag.AlignCenter )
 
+        if os.name == 'posix':
+            # strange posix - wayland bug 
+            #   With first call of MessageBox the box is positioned at 0,0 -> manually move to the center of parent 
+            point = parent.geometry().center()
+            x = point.x() - 200
+            y = point.y() - 100
+            self.move(x,y)
  
 
     @staticmethod
