@@ -1,3 +1,3 @@
-localXoptfoil2="../../linux/bin/Xoptfoil2"
+# xoptfoil2 must be in the search path
 
-$localXoptfoil2 -i F3B_bezier.xo2
+xoptfoil2 -i F3B_bezier.xo2
