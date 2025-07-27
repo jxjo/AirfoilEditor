@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "AirfoilEditor"
-__version__      = "4.0.0a2"                        # hatch "version dynamic" reads this version for build
+__version__      = "4.0.0b2"                            # hatch "version dynamic" reads this version for build
 
 
 class Main (QMainWindow):
