@@ -5,8 +5,8 @@ Generate F3F airfoil for fast conditions.
 Optimization Task: 
 
 Create a fast airfoil with minimum drag at low cl range 0.3 - 0.0.
-Try to achieve an accetable glide ratio at higher cl, 
-whereas flpas are mandatory.
+Try to achieve an acceptable glide ratio at higher cl, 
+whereas flaps are mandatory.
 Special care is to high cl values and a high cl-max. 
  
 Thickness of the airfoil is target to ensure a minimum height. 
@@ -21,14 +21,13 @@ This example is somehow an edge case on the number of design variables.
 The optimization will take some time. As the particle swarm is random based,
 it may occur, that a run doesn't find the best solution.
 
- 
-Run the example by: 
+Run the example: 
 
--> Double click 'make.bat' to start the optimizer 
+Windows: Double click 'make.bat' 
+Linux: 	 Type 'bash make.sh' (xopfoil2 must be in the search path)
 
 -> Look at the resulting Hicks-Henne functions with the Airfoil Editor
 
-Enjoy!
 
 
 

@@ -13,13 +13,12 @@ Thickness of the airfoil is target to ensure a minimum height of the wing sectio
 Bezier curves are used as shape functions. Only 5 control points are needed per side. 
 The bottom side has a curve reversal which will lead to a rear-loaded airfoil.
 
- 
-Run the example by: 
+Run the example: 
 
--> Double click 'make.bat' to start the optimizer 
+Windows: Double click 'make.bat' 
+Linux: 	 Type 'bash make.sh' (xopfoil2 must be in the search path)
+
 -> Look at the resulting Bezier curves with the Airfoil Editor
-
-Enjoy!
 
 
 
