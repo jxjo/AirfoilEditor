@@ -680,7 +680,6 @@ class OpPoint_Definition:
         self._optValue   = optValue             # an optional value 
         self._weighting  = weighting            # weighting during optimization 
         self._re         = re                   # an individual re number of self
-        self._re_type    = polarType.T1         # re type of self 
         self._ma         = None                 # an individual re number of self
         self._ncrit      = None                 # an individiual xfoil ncrit 
         self._flap_angle = None                 # an individiual flap angle        
@@ -926,12 +925,9 @@ class OpPoint_Definition:
     def set_re_asK (self, aVal): self.set_re (aVal * 1000)
 
     @property
-    def re_type (self):
-        """ either T1 or T2"""
-        return self._re_type
-    def set_re_type (self, aType):
-        if aType in polarType.values():
-            self._re_type = aType
+    def re_type (self) -> polarType:
+        """ either polarType.T1 or T2 from operating_conditions"""
+        return self._myList.re_type_default
 
     @property
     def ma (self): 
@@ -1387,13 +1383,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         flap_angles         = nml._get('flap_angle',     default=[None] * n)
         flap_optimizes      = nml._get('flap_optimizes', default=[None] * n)
 
-        # get default polar type 
-
-        if self._nml.re_default_as_resqrtcl: 
-            type_default = polarType.T2
-        else: 
-            type_default = polarType.T1
-
         # collect opPoint definitions
 
         for iop in range (n):
@@ -1410,7 +1399,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             op_def.set_ma           (machs[iop])
             op_def.set_ncrit        (ncrits[iop])
             op_def.set_weighting    (weightings[iop])
-            op_def.set_re_type      (type_default)
             op_def.set_flap_angle   (flap_angles[iop])
             op_def.set_flap_optimize(flap_optimizes[iop])
 
@@ -1627,6 +1615,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
     def set_polar_def_default (self, polar_def : Polar_Definition):
         self._nml.set_re_default (polar_def.re)
         self._nml.set_mach_default (polar_def.ma)
+        self._nml.set_re_default_as_resqrtcl (polar_def.type == polarType.T2)
         self._input_file.nml_xfoil_run_options.set_ncrit (polar_def.ncrit)
         
 
