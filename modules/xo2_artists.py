@@ -524,20 +524,35 @@ class Xo2_OpPoint_Artist (Artist):
     def _opPoint_label (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None, xyVars: tuple) -> str:
         """ label of opPoint depending on % deviation """
 
-        label = None 
-
         # sanity 
-        if opPoint_def is None: return label
+        if opPoint_def is None: return None
 
-        # recalc result distance for current x,y variables of the diagram (cl/cd becomes cd and vice versa)
+        optVar  = opPoint_def.optVar
+        optType = opPoint_def.optType
+        allow_improved = opPoint_def._myList.allow_improved_target
 
-        optVar, distance = opPoint_def.xyDistance_for_xyVars (xyVars, opPoint.distance)
+        # optVar must be in diagram to show distanc 
 
-        if optVar is None: return label                     # original optVar doesnt fit into diagram x,y
+        if not (optVar in xyVars): return None 
+
+        # set distance = 0 if 'allow_improved_target' and result (distance) is better
+
+        distance = opPoint.distance
+
+        if optType == OPT_TARGET:                            # targets - take deviation to target
+
+            if allow_improved   and optVar == var.CD and distance < 0.0:
+                distance = 0.0
+            elif allow_improved and optVar != var.CD and distance > 0.0:
+                distance = 0.0
+            else:
+                distance = abs(distance)
 
         # format value for label 
 
-        if  opPoint_def.optType == OPT_TARGET:              # targets - take deviation to target
+        label = None 
+
+        if  optType == OPT_TARGET:                              # targets - take deviation to target
 
             if optVar == var.CD and round_down (distance,5):
                 label = f"delta {optVar}: {distance:.5f}"

@@ -1199,59 +1199,6 @@ class OpPoint_Definition:
         return x, y
 
 
-
-    def xyDistance_for_xyVars (self, xyVars : tuple, distance : float):
-        """ 
-        Returns result distance of optVar to target (or improvement) in x or y
-            if xVar and yVar does not fit return None 
-            if indirect cd/cl optVars will be calculated to cd and vice versa
-        """
-
-        optVar   = self.optVar
-        optType  = self.optType
-        allow_improved = self._myList.allow_improved_target
-
-        # set distance = 0 if 'allow_improved_target' and result (distance) is better
-
-        if optType == OPT_TARGET:                            # targets - take deviation to target
-
-            if allow_improved   and optVar == var.CD and distance < 0.0:
-                distance = 0.0
-            elif allow_improved and optVar != var.CD and distance > 0.0:
-                distance = 0.0
-            else:
-                distance = abs(distance)
-
-        # recalc distance in cl/cd to cd  - or vice versa 
-
-        #todo
-
-        # if optVar not in xyVars:
-        #     if optVar == var.CD and var.GLIDE in xyVars:
-        #         optVar = var.GLIDE 
-        #         distance = self.specValue / distance  if distance != 0.0 else 0.0     # glide = cl / cd
-
-
-        if self._xyVars_are_indirect (xyVars): 
-            if self.optVar == var.GLIDE and self.specVar == var.CL:
-                optVar = var.CD 
-                distance = self.specValue / distance  if distance != 0.0 else 0.0     # cd = cl / glide
-            elif self.optVar == var.CD and self.specVar == var.CL:
-                optVar = var.GLIDE 
-                distance = self.specValue / distance  if distance != 0.0 else 0.0     # glide = cl / cd
-            else:
-                optVar = None
-
-        # optVar fit's into current x,y 
-
-        if optVar != xyVars[0] and optVar != xyVars[1]:
-            optVar   = None
-            distance = None 
-
-        return optVar, distance
-
-
-
     def _xyVars_are_indirect (self, xyVars : tuple):
         """ 
         true if xyVar is 'indirect' to self - e.g. (GLIDE,CL) is indirect to (CL,CD) 
