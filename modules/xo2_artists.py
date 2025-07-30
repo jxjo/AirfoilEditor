@@ -412,7 +412,7 @@ class Xo2_OpPoint_Artist (Artist):
 
             color  = self._opPoint_color  (opPoint, opPoint_def)
             symbol = self._opPoint_symbol (opPoint, prev_opPoint)
-            label  = self._opPoint_label  (opPoint, opPoint_def)
+            label  = self._opPoint_label  (opPoint, opPoint_def, self.xyVars)
             size   = _size_opPoint (opPoint.weighting)
 
             textColor = QColor (color).darker(130)
@@ -521,29 +521,23 @@ class Xo2_OpPoint_Artist (Artist):
         return symbol
 
         
-    def _opPoint_label (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None) -> str:
+    def _opPoint_label (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None, xyVars: tuple) -> str:
         """ label of opPoint depending on % deviation """
 
         label = None 
 
         # sanity 
-        if opPoint_def is None: 
-            return label
+        if opPoint_def is None: return label
 
-        distance  = opPoint.distance
+        # recalc result distance for current x,y variables of the diagram (cl/cd becomes cd and vice versa)
 
-        optType = opPoint_def.optType
-        optVar  = opPoint_def.optVar
-        allow_improved = opPoint_def._myList.allow_improved_target
+        optVar, distance = opPoint_def.xyDistance_for_xyVars (xyVars, opPoint.distance)
 
-        if optType == OPT_TARGET:                            # targets - take deviation to target
+        if optVar is None: return label                     # original optVar doesnt fit into diagram x,y
 
-            if allow_improved   and optVar == var.CD and distance < 0.0:
-                distance = 0.0
-            elif allow_improved and optVar != var.CD and distance > 0.0:
-                distance = 0.0
-            else:
-                distance = abs(distance)
+        # format value for label 
+
+        if  opPoint_def.optType == OPT_TARGET:              # targets - take deviation to target
 
             if optVar == var.CD and round_down (distance,5):
                 label = f"delta {optVar}: {distance:.5f}"
@@ -554,7 +548,7 @@ class Xo2_OpPoint_Artist (Artist):
 
         else:                                               # min/max - deviation is improvement 
 
-            if optType == OPT_MAX:                          # eg. OPT_MAX of 'glide' - more is better 
+            if  opPoint_def.optType == OPT_MAX:             # eg. OPT_MAX of 'glide' - more is better 
                 improv = distance
             else:                                           # eg OPT_MIN of 'cd' - less is better
                 improv = distance
