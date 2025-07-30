@@ -9,7 +9,6 @@ import os
 import json
 from pathlib                import Path
 from termcolor              import colored
-from platformdirs           import user_config_dir, user_data_dir
 
 import logging
 logger = logging.getLogger(__name__)
@@ -177,112 +176,6 @@ class Parameters ():
                 logger.error (f"{e}. Failed to save data to '{self._paramFilePath}'")
 
         return ok 
-
-
-class Settings (Parameters):
-    """ Handles a named setting file with a json structure representing a dictionary of paramteres""" 
-
-    settingsFilePath = None                     # the filePath of the settings
-
-    def __init__ (self):
-        """ 
-        object to handle i/o of settings parameters 
-        
-        Settings file is defined with class method 'belongsTo'
-        """
-
-        super().__init__(self.settingsFilePath)
-
-
-    @staticmethod
-    def user_data_dir (app_name, app_author = 'jxjo'):
-        """ returns directory for app data 
-        
-        Args:
-            app_name: name of app self will belong to 
-            app_author : typical for Windows - something like 'Microsoft' of 'jxjo'  
-        """
-
-        return user_data_dir (app_name, app_author, ensure_exists=True) 
-
-    @classmethod
-    def set_path (cls, app_name, app_author = 'jxjo', name_suffix=None, file_extension= '.json'):
-        """ static set of the file the settings will belong to 
-        
-        Args:
-            app_name: name of app self will belong to 
-            app_author : typical for Windows - something like 'Microsoft' of 'jxjo'  
-            name_suffix: ... will be appended to appName - default '_settings'      
-            file_extension: ... of the settings file - default 'json'       
-        """
-
-        fileName = app_name + name_suffix + file_extension if name_suffix else app_name + file_extension
-
-        # get directory where self is located
-        settings_dir  = user_config_dir (app_name, app_author, ensure_exists=True)
-
-        cls.settingsFilePath = os.path.join(settings_dir, fileName)
-
-        logger.info (f"Reading settings from {cls.settingsFilePath}")
-
-
-    @classmethod
-    def belongTo (cls, belongsToPath, nameExtension='_settings', fileExtension= '.json'):
-        """ static set of the file the settings will belong to 
-        
-        Args:
-            :belongsToPath: file path of the python module self will belong to 
-            :nameExtension: ... will be appended to appName - default '_settings'       \n
-            :fileExtension: ... of the settings file - default 'json'       \n
-        """
-
-        appName = os.path.splitext(os.path.basename(belongsToPath))[0]
-
-        if nameExtension:
-            paramFile = appName + nameExtension + fileExtension
-        else:
-            paramFile = appName  + fileExtension
-
-        # get directory where 'belongTo' is located
-        script_dir  = os.path.dirname(os.path.realpath(belongsToPath))
-
-        cls.settingsFilePath = os.path.join(script_dir, paramFile)
-
-        logger.info (f"Reading settings from {cls.settingsFilePath}")
-
-
-    @property
-    def filePath (self): return self._paramFilePath
-
-    def get(self, key, default='no default'):
-        """
-        returns the value of 'key' from settings
-
-        Args:
-            :key: the key to look for       \n
-            :default: the value if key is missing
-        """
-        dataDict = self.get_dataDict ()
-        return fromDict(dataDict, key, default=default)
-
-    def set(self, key, value):
-        """
-        sets 'key' with 'value' into settings
-
-        Args:
-            :key: the key to look for       
-            :value: the value to set 
-        """
-        dataDict = self.get_dataDict ()
-
-        toDict(dataDict, key, value)
-        self.write_dataDict (dataDict)
-
-
-    def write_dataDict (self, aDict, dataName='Settings'):
-        """ writes data dict to file """
- 
-        super().write_dataDict (aDict, dataName=dataName)
 
 
 #------------------------------------------------------------------------------
