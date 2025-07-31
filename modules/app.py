@@ -140,7 +140,7 @@ class Main (QMainWindow):
 
         # check for newer version on PyPi 
 
-        update = Update_Checker (APP_NAME, "airfoileditor",  "4.0.0b1")   #__version__
+        update = Update_Checker (APP_NAME, "airfoileditor",  __version__)   
         if update.is_newer_version_available():
             QTimer.singleShot (1000, lambda: update.show_user_info (self))        
 

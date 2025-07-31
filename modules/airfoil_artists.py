@@ -1102,9 +1102,9 @@ class Polar_Artist (Artist):
 
         # plot polars of airfoils
 
-        nPolar_plotted      = 0 
+        nPolar_plotted    = 0 
         nPolar_generating = 0                     # is there a polar in calculation 
-        error_msg           = []  
+        error_msg         = []  
 
         airfoil: Airfoil
         for airfoil in self.airfoils:
@@ -1120,20 +1120,20 @@ class Polar_Artist (Artist):
 
                 for iPolar, polar in enumerate(polars [::-1]): 
 
-                    if not polar.isLoaded: 
-                        nPolar_generating += 1
-                    elif polar.error_occurred:
+                    if polar.error_occurred:
                         # in error_msg could be e.g. '<' 
                         error_msg.append (f"'{airfoil.name_to_show} - {polar.name}': {html.escape(polar.error_reason)}")
+                    elif not polar.isLoaded: 
+                        nPolar_generating += 1
                     else: 
-
+                        nPolar_plotted    += 1
                         # generate increasing color hue value for the polars of an airfoil 
                         color = color_in_series (color_airfoil, iPolar, len(polars), delta_hue=0.1)
 
                         self._plot_polar (self.airfoils, airfoil, polar, color)
 
-                        nPolar_plotted += 1
-
+        logger.debug (f"{self} {nPolar_plotted} polars plotted, {nPolar_generating} generating ")
+        
         # show error messages 
 
         if error_msg:
