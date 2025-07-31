@@ -74,8 +74,8 @@ class Main (QMainWindow):
         App - Main Window 
     '''
 
-    WORKER_MIN_VERSION         = '1.0.6'
-    XOPTFOIL2_MIN_VERSION      = '1.0.6'
+    WORKER_MIN_VERSION         = '1.0.7'
+    XOPTFOIL2_MIN_VERSION      = '1.0.7'
 
     # Qt Signals 
 
