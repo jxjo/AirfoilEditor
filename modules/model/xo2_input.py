@@ -968,7 +968,7 @@ class OpPoint_Definition:
         if self.has_default_polar:
             return None
         else: 
-            return Polar_Definition ({"re": self.re, "mach": self.ma, "ncrit": self.ncrit})
+            return Polar_Definition ({"re": self.re, "mach": self.ma, "ncrit": self.ncrit, "type": self.re_type})
         
     @property
     def polar_def_or_default (self) -> Polar_Definition | None:
@@ -976,7 +976,7 @@ class OpPoint_Definition:
         if self.has_default_polar:
             return self._myList.polar_def_default
         else: 
-            return Polar_Definition ({"re": self.re, "mach": self.ma, "ncrit": self.ncrit})
+            return self.polar_def
 
 
     def set_polar_def (self, polar_def : Polar_Definition):

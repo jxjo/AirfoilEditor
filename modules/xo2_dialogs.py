@@ -1641,7 +1641,8 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         else:
             new_polar_def = self.opPoint_def.polar_def
         
-        diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, parentPos=(0.9, 0.5), dialogPos=(0, 0.5))
+        diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, polar_type_fixed=True, 
+                                        parentPos=(0.9, 0.5), dialogPos=(0, 0.5))
         diag.setWindowTitle (f"Individual Polar of Op Point {self.opPoint_def.iPoint}")
         diag.exec()
 

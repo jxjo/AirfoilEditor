@@ -1176,11 +1176,13 @@ class Polar_Definition_Dialog (Dialog):
     name = "Edit Polar Definition"
 
     def __init__ (self, parent : QWidget, polar_def : Polar_Definition, 
-                  small_mode = False, 
+                  small_mode = False,                                       # with flap etc 
+                  polar_type_fixed = False,                                 # change of polar type not allowed 
                   **kwargs): 
 
-        self._polar_def  = polar_def
-        self._small_mode = small_mode
+        self._polar_def         = polar_def
+        self._small_mode        = small_mode
+        self._polar_type_fixed  = polar_type_fixed
 
         if small_mode:
             self._height = 160
@@ -1227,7 +1229,8 @@ class Polar_Definition_Dialog (Dialog):
         r += 1
         Label  (l,r,c, get="Polar type")
         ComboBox (l,r,c+1,  width=60, options=polarType.values(),
-                        obj=self.polar_def, prop=Polar_Definition.type)
+                        obj=self.polar_def, prop=Polar_Definition.type,
+                        disable=self._polar_type_fixed)
         
         if not self._small_mode:
             r += 1
