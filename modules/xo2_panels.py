@@ -7,20 +7,22 @@ UI panels
 
 """
 
-import fnmatch   
 from shutil                 import copyfile
 
 from PyQt6.QtWidgets        import QDialog, QFileDialog
+from PyQt6.QtCore           import Qt
+
 
 from base.widgets           import * 
-from base.panels            import Edit_Panel, Toaster, MessageBox
+from base.panels            import Edit_Panel, MessageBox
 
 from airfoil_dialogs        import Airfoil_Info_Dialog, Polar_Definition_Dialog
 from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
 
 from xo2_dialogs            import *
+from model.xo2_driver       import Xoptfoil2
 
-from model.airfoil          import Airfoil
+
 from model.polar_set        import Polar_Definition
 from model.case             import Case_Optimize
 from model.xo2_input        import *
@@ -112,6 +114,14 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
     def workingDir (self) -> str:
         #todo 
         return self.app.workingDir
+
+    @override
+    def _add_to_header_layout(self, l_head: QHBoxLayout):
+        """ add Widgets to header layout"""
+
+        if Xoptfoil2.ready:
+            Label  (l_head, get=f"{Xoptfoil2.NAME} {Xoptfoil2.version}", 
+                    style=style.COMMENT, fontSize=size.SMALL, align=Qt.AlignmentFlag.AlignBottom)
 
 
     def _init_layout (self): 

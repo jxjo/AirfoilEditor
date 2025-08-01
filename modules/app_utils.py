@@ -4,7 +4,9 @@
 """  
 Helper classes, dialogs, functions for an App
 """
-import  os
+import os
+import requests
+
 from datetime               import date, datetime
 from platformdirs           import user_config_dir, user_data_dir
 
@@ -135,8 +137,6 @@ class Update_Checker:
         API request to PYPI to get lastest version as string.
             return "" if failed or not available  
         """
-
-        import requests
 
         try: 
             logger.debug (f"Getting latest version number from PyPI")

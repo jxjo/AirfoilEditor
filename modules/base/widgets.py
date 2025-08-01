@@ -667,14 +667,15 @@ class Widget:
 
         if isinstance (self._layout, QGridLayout): 
             if self._alignment is None: 
-                self._layout.addWidget(widget, self._row, col, 
-                                                self._rowSpan, self._colSpan)
+                self._layout.addWidget(widget, self._row, col, self._rowSpan, self._colSpan)
             else: 
-                self._layout.addWidget(widget, self._row, col, 
-                                                self._rowSpan, self._colSpan,
+                self._layout.addWidget(widget, self._row, col, self._rowSpan, self._colSpan,
                                                 alignment = self._alignment)
         elif isinstance (self._layout, (QFormLayout,QVBoxLayout, QHBoxLayout)):
-            self._layout.addWidget(widget)
+            if self._alignment is None: 
+                self._layout.addWidget(widget)
+            else: 
+                self._layout.addWidget(widget, alignment = self._alignment)
 
         # strange (bug?): if layout is on main window the stretching works as expected
         # on a sub layout the widget doesn't stretch if on widget in the column is fixed 

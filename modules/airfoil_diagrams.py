@@ -326,6 +326,7 @@ class Panel_Polar_Defs (Edit_Panel):
 
             #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
             w = CheckBox   (l,r,c  , width=20,  get=lambda p=polar_def: p.active, set=polar_def.set_active,
+                            disable=lambda: len(self.polar_defs) == 1, 
                             toolTip="Show/Hide this polar in diagram")  
             w.sig_changed.connect (self._on_polar_def_changed)
 
@@ -343,7 +344,6 @@ class Panel_Polar_Defs (Edit_Panel):
             ToolButton (l,r,c+1, icon=Icon.ADD,  
                             toolTip="Add a new polar definition",  
                             set=self.add_polar_def)
-            r += 1
 
         l.setColumnStretch (c+1,2)
         l.setColumnMinimumWidth (c+2,20)
@@ -1331,8 +1331,8 @@ class Diagram_Airfoil_Polar (Diagram):
         self._case_fn           = case_fn 
         self._diagram_settings  = diagram_settings
 
-        self._polar_panel       = None 
-        self._optimization_panel= None 
+        self._panel_polar       = None 
+        self._panel_optimization= None 
 
         self._show_polar_points = False                         # show polars data points 
 
@@ -1495,7 +1495,7 @@ class Diagram_Airfoil_Polar (Diagram):
         # optimization panel 
 
         if Worker.ready and Xoptfoil2.ready:
-            layout.addWidget (self.optimization_panel,stretch=0)
+            layout.addWidget (self.panel_optimization,stretch=0)
 
         # diagram items panel
 
@@ -1505,7 +1505,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         # polar panel
 
-        layout.addWidget (self.polar_panel)
+        layout.addWidget (self.panel_polar)
         
         # stretch add end 
 
@@ -1536,10 +1536,10 @@ class Diagram_Airfoil_Polar (Diagram):
 
 
     @property
-    def optimization_panel (self) -> Edit_Panel:
+    def panel_optimization (self) -> Edit_Panel:
         """ common options in mode_optimization """
 
-        if self._optimization_panel is None:
+        if self._panel_optimization is None:
 
             case : Case_Optimize = self.case
         
@@ -1553,15 +1553,10 @@ class Diagram_Airfoil_Polar (Diagram):
                             get=lambda: self.show_xo2_opPoint_result, set=self.set_show_xo2_opPoint_result,
                             disable=lambda: not case.results.designs_opPoints)               
 
-            if Xoptfoil2.ready:
-                r += 1
-                Label  (l,r,c, colSpan=6, get=f"Powered by {Xoptfoil2.NAME} {Xoptfoil2.version} using Xfoil", 
-                        style=style.COMMENT, fontSize=size.SMALL)
-
-            self._optimization_panel = Edit_Panel (title="Optimization", layout=l, switchable=False, height=(100,None),
+            self._panel_optimization = Edit_Panel (title="Optimization", layout=l, switchable=False, height=(100,None),
                                                    hide=lambda: not self.mode_optimize)
 
-        return self._optimization_panel 
+        return self._panel_optimization 
 
 
     @property 
@@ -1599,10 +1594,10 @@ class Diagram_Airfoil_Polar (Diagram):
 
 
     @property
-    def polar_panel (self) -> Edit_Panel:
+    def panel_polar (self) -> Edit_Panel:
         """ return polar extra panel to admin polar definitions and define polar diagrams"""
 
-        if self._polar_panel is None:
+        if self._panel_polar is None:
         
             l = QGridLayout()
             r,c = 0, 0
@@ -1621,18 +1616,9 @@ class Diagram_Airfoil_Polar (Diagram):
                 p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
 
                 l.addWidget (p, r, c, 1, 6)
-                r += 1
-
-                SpaceR (l,r, height=5, stretch=0) 
-                r += 1
-                CheckBox (l,r,c, text="Polar points", colSpan=4,
-                            get=lambda: self.show_polar_points, set=self.set_show_polar_points,
-                            toolTip="Show the polar data points")
 
                 # polar diagrams variables setting 
 
-                r += 1
-                SpaceR (l,r, height=5, stretch=0) 
                 r += 1
                 Label (l,r,c, colSpan=4, get="Diagram variables") 
                 r += 1
@@ -1649,8 +1635,11 @@ class Diagram_Airfoil_Polar (Diagram):
                     r += 1
 
                 r += 1
-                Label  (l,r,c, colSpan=6, get=f"Powered by {Worker.NAME} {Worker.version} using Xfoil", 
-                        style=style.COMMENT, fontSize=size.SMALL)
+                SpaceR (l,r, height=5, stretch=0) 
+                r += 1
+                CheckBox (l,r,c, text="Polar points", colSpan=4,
+                            get=lambda: self.show_polar_points, set=self.set_show_polar_points,
+                            toolTip="Show the polar data points")
 
             else: 
                 SpaceR (l,r, height=10, stretch=0) 
@@ -1666,9 +1655,18 @@ class Diagram_Airfoil_Polar (Diagram):
                 SpaceR (l,r, height=5) 
 
 
-            self._polar_panel = Edit_Panel (title="View Polars", layout=l, height=(150,None),
+            self._panel_polar = Edit_Panel (title="View Polars", layout=l, height=(150,None),
                                               switchable=True, switched_on=False, on_switched=self._on_polars_switched)
-        return self._polar_panel 
+            
+            # patch Worker version into head of panel 
+
+            if Worker.ready:
+                l_head = self._panel_polar._head.layout()
+                Label  (l_head, get=f"{Worker.NAME} {Worker.version}", style=style.COMMENT, fontSize=size.SMALL,
+                        align=Qt.AlignmentFlag.AlignBottom)
+
+
+        return self._panel_polar 
 
 
     # --- public slots ---------------------------------------------------
@@ -1797,7 +1795,7 @@ class Diagram_Airfoil_Polar (Diagram):
     def on_mode_optimize (self, aBool):
         """ slot when entering / leaving mode optimze """
         if aBool: 
-            self.polar_panel.set_switched_on (True)                         # switch on view polars 
+            self.panel_polar.set_switched_on (True)                         # switch on view polars 
             self.set_show_xo2_opPoint_def (True, refresh=False)             # show opPoint definitions
             self.set_show_xo2_opPoint_result (True,  refresh=False)         # show opPoint result
 
@@ -1880,7 +1878,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on xyVars changed in diagram")
 
-        self.polar_panel.refresh()
+        self.panel_polar.refresh()
 
 
     def _on_opPoint_def_changed (self):
@@ -1889,7 +1887,7 @@ class Diagram_Airfoil_Polar (Diagram):
         if self.mode_optimize:
             logger.debug (f"{str(self)} on opPoint_def changed in diagram - save input ")
 
-            self.polar_panel.refresh()
+            self.panel_polar.refresh()
 
             for artist in self._get_artist (Xo2_OpPoint_Defs_Artist):
                 artist.refresh ()
