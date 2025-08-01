@@ -130,14 +130,17 @@ class Input_File:
     def __init__(self, fileName: str, workingDir: str = '', is_new=False ):
         """
         """
-        self._workingDir = workingDir           # working dir of optimizer
+        self._workingDir = workingDir                                           # working dir of optimizer
         self._fileName   = fileName
 
-        self._hasErrors  = False                # errors in input file? 
-        self._error_text = None                 # text from error check by worker
+        self._hasErrors  = False                                                # errors in input file? 
+        self._error_text = None                                                 # text from error check by worker
 
         if not os.path.exists (self.pathFileName) and not is_new:
             raise ValueError (f"Input file '{self.pathFileName}' doesn't exist")
+        
+        elif os.path.isfile (self.pathFileName) and is_new:
+            os.remove(self.pathFileName)                                        # there could be an old 'corpse'
 
         # read all the namelist group from nml_file
          
@@ -145,7 +148,7 @@ class Input_File:
 
         # save namelist dict as string for later comapre 
 
-        self.opPoint_defs.set_nml()                             # dummy write to have same format
+        self.opPoint_defs.set_nml()                                             # dummy write to have same format
         self.nml_geometry_targets.geoTarget_defs.set_nml ()
 
         self._nml_file_str = str(self.nml_file)
@@ -186,7 +189,7 @@ class Input_File:
 
         # additional consistency 
 
-        if self.airfoil_seed and self.airfoil_seed.isBezierBased:
+        if self._airfoil_seed and self._airfoil_seed.isBezierBased:
             self.set_airfoil_seed (self.airfoil_seed)           # will asign control points of seed to shape functions
 
 
@@ -755,7 +758,7 @@ class OpPoint_Definition:
                     valstr = (f"seed*{optValue:.2f}")                       # glide val is factor     
                     fix = False                                             # always cut 0   
                 else:       
-                    valstr = (f"{optValue:4.2f}")[1:]                       # remove leading 0 
+                    valstr = (f"{optValue:.1f}")                            # remove leading 0 
             elif optVar == var.CM:
                 valstr = f"{optValue:5.3f}"
             else:
@@ -1742,6 +1745,8 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             Set current to new opPoint def 
         """
 
+        if not isinstance (aPoint, Polar_Point): return                 # aPoint can be None
+
         specValue = aPoint.get_value (specVar)
         optValue  = aPoint.get_value (optVar) * factor
 
@@ -1775,15 +1780,15 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         if not polar: return
 
         # target point at min_cd 
-        if nOp > 0:
+        if len(self) < nOp:
             self.create_from_polar_point (polar.min_cd, optVar=var.CD, factor=target_min_cd)
 
         # target point at max_glide 
-        if nOp > 1:
+        if len(self) < nOp:
             self.create_from_polar_point (polar.max_glide, optVar=var.GLIDE, factor=target_max_glide)
 
         # target point below min cd 
-        if nOp > 2:
+        if len(self) < nOp and polar.min_cd:
             cl_min_cl    = polar.min_cl.cl
             cl_min_cd    = polar.min_cd.cl
             if (cl_min_cd - cl_min_cl) > 0.35:
@@ -1794,14 +1799,14 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                     self.create_from_polar_point (new_point, optVar=var.CD, factor = target_low_cd)
 
         # target point below max_cl 
-        if nOp > 3:
+        if len(self) < nOp and polar.max_cl:
             cl_near_max = polar.max_cl.cl * 0.95
             idx   = np.abs(polar.cl - cl_near_max).argmin()
             new_point = polar.polar_points [idx]
             self.create_from_polar_point (new_point, optVar=var.GLIDE)
 
         # target point between min cd und max glide 
-        if nOp > 4:
+        if len(self) < nOp and polar.max_glide and polar.min_cd:
             cl_max_glide = polar.max_glide.cl
             cl_min_cd    = polar.min_cd.cl
             if (cl_max_glide - cl_min_cd) > 0.35:

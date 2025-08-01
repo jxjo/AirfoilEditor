@@ -824,8 +824,12 @@ class Polar (Polar_Definition):
         if np.any(self.cd):
             ip = np.argmin (self.cd)
             # sanity for somehow valid polar 
-            if ip > 2 and ip < (len(self.cd) - 1):
-                return self.polar_points [ip]
+            if self.type == polarType.T1:
+                if ip > 2 and ip < (len(self.cd) - 1):
+                    return self.polar_points [ip]
+            else:
+                if ip < (len(self.cd) - 1):
+                    return self.polar_points [ip]
 
 
     @property
