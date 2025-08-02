@@ -128,6 +128,9 @@ class Polar_Definition:
 
         self._active    = fromDict (dataDict, "active",   True)             # a polar definition can be in-active
 
+        self._is_mandatory = False                                          #  polar needed e.g. for xo2
+
+
 
     def __repr__(self) -> str:
         """ nice print string polarType and Re """
@@ -173,6 +176,15 @@ class Polar_Definition:
     
     def set_active (self, aBool : bool):
         self._active = aBool == True 
+
+
+    @property 
+    def is_mandatory (self) -> bool:
+        """ is self needed e.g. for Xoptfoil2"""
+        return self._is_mandatory
+    
+    def set_is_mandatory (self, aBool):
+        self._is_mandatory = aBool == True
 
 
     @property
@@ -329,6 +341,13 @@ class Polar_Definition:
             return self_dict == aDef_dict
         else:
             return False
+
+    def is_in (self, polar_defs : list['Polar_Definition']):
+        """ True if self is already equal in list of polar definitions"""
+        for polar_def in polar_defs:
+            if self.is_equal_to (polar_def, ignore_active=True): return True 
+        return False 
+
 
     @property
     def is_flapped (self) -> bool:

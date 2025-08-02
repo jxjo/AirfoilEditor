@@ -391,7 +391,7 @@ class Input_File:
         # ensure a default polar set 
 
         if self._airfoil_seed.polarSet is None: 
-            polar_defs = self.opPoint_defs.polar_defs()
+            polar_defs = self.opPoint_defs.polar_defs
             self._airfoil_seed.set_polarSet (Polar_Set (self._airfoil_seed, polar_def=polar_defs))
 
         return self._airfoil_seed
@@ -438,7 +438,7 @@ class Input_File:
                         airfoil.set_property ("show", True)
                         airfoil.set_usedAs (usedAs.REF)
 
-                        polar_defs = self.opPoint_defs.polar_defs()
+                        polar_defs = self.opPoint_defs.polar_defs
                         airfoil.set_polarSet (Polar_Set (airfoil, polar_def=polar_defs))
 
                         self._airfoils_ref.append (airfoil)
@@ -1365,6 +1365,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self._nml = nml 
         self._input_file    = input_file
         self._current_index = 0                             # index of current opPoint def 
+        self._polar_defs    = [] 
 
         # read self from namelist 
 
@@ -1518,6 +1519,46 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self.sort(key=attrgetter('specValue'))  
         self.sort(key=attrgetter('specVar'), reverse=True)  
 
+
+
+    def _create_polar_defs (self) -> list[Polar_Definition]: 
+        """ returns list of polar definitions defined in self (namelist)"""
+
+        polar_defs_dict = {}
+
+        # at least default polar 
+
+        polar_def = Polar_Definition ()
+        polar_def.set_ncrit (self.ncrit)
+        polar_def.set_autoRange (True)                          # auto range is default 
+        polar_def.set_re (self.re_default)
+        polar_def.set_type (self.re_type_default)
+        polar_def.set_ma (self.ma_default)
+        polar_def.set_is_mandatory (True)                       # user may not change it directly 
+
+        key = str([self.re_default,self.ma_default, self.ncrit, self.re_type_default])
+        polar_defs_dict[key] = polar_def
+
+        # explicit polars of operating points 
+         
+        for opPoint_def in self: 
+            # build unique key to detect dublicates
+            key = str([opPoint_def.re, opPoint_def.ma, opPoint_def.ncrit, opPoint_def.re_type])
+
+            if not (key in polar_defs_dict):
+
+                polar_def = Polar_Definition ()
+                polar_def.set_ncrit (opPoint_def.ncrit)
+                polar_def.set_autoRange (True)                          # auto range is default 
+                polar_def.set_re (opPoint_def.re)
+                polar_def.set_type (opPoint_def.re_type)
+                polar_def.set_ma (opPoint_def.ma)
+                polar_def.set_is_mandatory (True)                       # user may not change it directly 
+                polar_defs_dict[key] = polar_def
+
+        return list(polar_defs_dict.values())
+
+
     @property
     def current_index (self) -> int:
         """ index of current opPoint def """
@@ -1568,47 +1609,29 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
     def dynamic_weighting (self) -> bool:  
         return self._nml.dynamic_weighting
     
-
+    @property
     def polar_defs (self) -> list[Polar_Definition]: 
         """ the polar definitions defined within self"""
 
-        polar_defs_dict = {}
+        polar_defs_nml = self._create_polar_defs ()                     # get actual definitions from namelist 
 
-        # at least default polar 
+        # try to keep the current list to have .active flag preserved 
+        if len(polar_defs_nml) != len(self._polar_defs):                # compare to cached polar_defs
+            self._polar_defs = polar_defs_nml
+        else: 
+            for i, polar_def in enumerate(polar_defs_nml):
+                if not polar_def.is_equal_to (self._polar_defs[i], ignore_active=True):
+                    self._polar_defs = polar_defs_nml
+                    break
 
-        polar_def = Polar_Definition ()
-        polar_def.set_ncrit (self.ncrit)
-        polar_def.set_autoRange (True)                          # auto range is default 
-        polar_def.set_re (self.re_default)
-        polar_def.set_type (self.re_type_default)
-        polar_def.set_ma (self.ma_default)
+        return self._polar_defs
 
-        key = str([self.re_default,self.ma_default, self.ncrit, self.re_type_default])
-        polar_defs_dict[key] = polar_def
-
-        # explicit polars of operating points 
-         
-        for opPoint_def in self: 
-            # build unique key to detect dublicates
-            key = str([opPoint_def.re, opPoint_def.ma, opPoint_def.ncrit, opPoint_def.re_type])
-
-            if not (key in polar_defs_dict):
-
-                polar_def = Polar_Definition ()
-                polar_def.set_ncrit (opPoint_def.ncrit)
-                polar_def.set_autoRange (True)                  # auto range is default 
-                polar_def.set_re (opPoint_def.re)
-                polar_def.set_type (opPoint_def.re_type)
-                polar_def.set_ma (opPoint_def.ma)
-                polar_defs_dict[key] = polar_def
-
-        return list(polar_defs_dict.values())
 
     @property
     def polar_def_default(self) -> Polar_Definition: 
         """ default polar definition for opPoints"""
 
-        for polar_def in self.polar_defs():
+        for polar_def in self.polar_defs:
             if polar_def.re == self.re_default and polar_def.ma == self.ma_default \
                and polar_def.ncrit == self.ncrit:
                 return polar_def

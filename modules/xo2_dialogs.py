@@ -1478,7 +1478,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
     @property
     def polar_defs_without_default (self) -> list [Polar_Definition]:
         """ current polar definitions without default polar of opPoints"""
-        polar_defs = self.opPoint_defs.polar_defs()[:]
+        polar_defs = self.opPoint_defs.polar_defs[:]
         polar_def_default = self.opPoint_defs.polar_def_default
         for polar_def in polar_defs:
             if polar_def.re == polar_def_default.re and polar_def.ma == polar_def_default.ma and \

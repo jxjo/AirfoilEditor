@@ -202,7 +202,7 @@ class Panel_Airfoils (Edit_Panel):
                                 initialDir=self.airfoils[-1], addEmpty=True,
                                 toolTip=f"New reference airfoil {iRef+1}")
                 r +=1
-            SpaceR (l,r,stretch=0)
+            # SpaceR (l,r,stretch=0)
 
         l.setColumnMinimumWidth (c  ,18)
         l.setColumnMinimumWidth (c+2,ToolButton._width)
@@ -295,23 +295,12 @@ class Panel_Polar_Defs (Edit_Panel):
     sig_polar_def_changed = pyqtSignal()                # polar definition changed 
 
 
-    def __init__(self, *args, mode_optimize_fn=None, **kwargs):
-
-        self._mode_optimize_fn = mode_optimize_fn
+    def __init__(self, *args, **kwargs):
 
         # no margins 
         super().__init__(*args, main_margins=(0,0,0,0), panel_margins=(0,0,0,0), **kwargs)
 
     # ---------------------------------------------
-
-    @property
-    def mode_optimize (self) -> bool:
-        """ in mode optimize a different layout is active """
-        if callable (self._mode_optimize_fn):
-            return self._mode_optimize_fn()
-        else: 
-            return False
-
 
     @property
     def polar_defs (self) -> list[Polar_Definition]: 
@@ -332,15 +321,20 @@ class Panel_Polar_Defs (Edit_Panel):
 
             Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name)
 
-            ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self.edit_polar_def,   id=idef,
-                            toolTip="Change the settings of this polar definition",  
-                            hide=lambda: self.mode_optimize)            # if optimize, polar defs are created dynamically - no edit
-            ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_polar_def, id=idef,
-                            toolTip="Delete this polar definition",  
-                            hide=lambda: (len(self.polar_defs) <= 1) or self.mode_optimize)
+            # either tool buttons 
+            if not polar_def.is_mandatory: 
+                ToolButton (l,r,c+2, icon=Icon.EDIT,   set=self.edit_polar_def,   id=idef,
+                                toolTip="Change the settings of this polar definition")                              
+                ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_polar_def, id=idef,
+                                toolTip="Delete this polar definition",  
+                                hide=lambda p=polar_def: (len(self.polar_defs) <= 1))           # no delete 
+             # .. or info label 
+            else:
+                Label       (l,r,c+2, get=" Case", colSpan=3, style=style.COMMENT )
+
             r += 1
 
-        if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS and (not self.mode_optimize):
+        if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS: #  and (not self.mode_optimize):
             ToolButton (l,r,c+1, icon=Icon.ADD,  
                             toolTip="Add a new polar definition",  
                             set=self.add_polar_def)
@@ -351,11 +345,15 @@ class Panel_Polar_Defs (Edit_Panel):
         return l 
 
 
-    def edit_polar_def (self, id : int):
+    def edit_polar_def (self, id : int = None, polar_def : Polar_Definition = None):
         """ edit polar definition with index idef"""
 
         from airfoil_dialogs import Polar_Definition_Dialog
-        diag = Polar_Definition_Dialog (self, self.polar_defs[id], dx=260, dy=-150)
+
+        if isinstance (id, int):
+            polar_def = self.polar_defs[id]
+
+        diag = Polar_Definition_Dialog (self, polar_def, dx=260, dy=-150)
         diag.exec()
 
         # sort polar definitions ascending re number 
@@ -383,6 +381,7 @@ class Panel_Polar_Defs (Edit_Panel):
         # increase re number for the new polar definition
         if self.polar_defs:
             new_polar_def  = copy (self.polar_defs[-1])
+            new_polar_def.set_is_mandatory (False)                  # parent could have been madatory
             new_polar_def.set_re (new_polar_def.re + 100000)
             new_polar_def.set_active(True)
         else: 
@@ -392,7 +391,7 @@ class Panel_Polar_Defs (Edit_Panel):
 
         # open edit dialog for new def 
 
-        self.edit_polar_def (len(self.polar_defs)-1)
+        self.edit_polar_def (polar_def=new_polar_def)
 
 
     def _on_polar_def_changed (self):
@@ -1604,14 +1603,12 @@ class Diagram_Airfoil_Polar (Diagram):
 
             if Worker.ready:
 
-                Label (l,r,c, colSpan=5, 
-                    get=lambda: "Polar definitions" if not self.mode_optimize else  "Polar definitions of Case") 
+                Label (l,r,c, colSpan=5, get="Polar definitions") 
                 r += 1
 
                 # helper panel for polar definitions 
 
-                p = Panel_Polar_Defs (self, lambda: self.polar_defs, mode_optimize_fn=lambda: self.mode_optimize, 
-                                    height=(None,None))
+                p = Panel_Polar_Defs (self, lambda: self.polar_defs, height=(None,None))
 
                 p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
 

@@ -450,19 +450,27 @@ class Main (QMainWindow):
     def polar_definitions (self) -> list [Polar_Definition]:
         """ list of current polar definitions """
 
+        # take polar_defs defined by case optimize 
+
         if self.mode_optimize:
-            # check if polar defs changed in input file - if not keep current to retain active flag
-            case_polar_defs = self._case.input_file.opPoint_defs.polar_defs()
-            if len(self._polar_definitions) == len(case_polar_defs):
-                for i, polar_def in enumerate (self._polar_definitions):
-                    if not polar_def.is_equal_to (case_polar_defs[i], ignore_active=True):
-                        self._polar_definitions = case_polar_defs
-                        break
-            else: 
-                self._polar_definitions = case_polar_defs
-        else:
-            if not self._polar_definitions: 
-                self._polar_definitions = [Polar_Definition()]
+            polar_defs = self._case.input_file.opPoint_defs.polar_defs [:]
+        else: 
+            polar_defs = []
+
+        # append existing, without duplicates and old mandatory (from old case optimize)
+
+        polar_def : Polar_Definition
+        for polar_def in self._polar_definitions:
+            if not polar_def.is_in (polar_defs) and not (self.mode_optimize and polar_def.is_mandatory):
+                polar_def.set_is_mandatory (False)
+                polar_defs.append (polar_def) 
+
+        # ensure at least one polar 
+        
+        if not polar_defs: 
+            polar_defs = [Polar_Definition()]
+
+        self._polar_definitions = polar_defs    
 
         return self._polar_definitions
 
