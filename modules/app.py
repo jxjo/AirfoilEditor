@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "AirfoilEditor"
-__version__      = "4.0.0b5"                            # hatch "version dynamic" reads this version for build
+__version__      = "4.0.0b6"                            # hatch "version dynamic" reads this version for build
 
 
 class Main (QMainWindow):
@@ -466,7 +466,7 @@ class Main (QMainWindow):
                 polar_defs.append (polar_def) 
 
         # ensure at least one polar 
-        
+
         if not polar_defs: 
             polar_defs = [Polar_Definition()]
 
