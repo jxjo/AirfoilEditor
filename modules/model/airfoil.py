@@ -18,7 +18,7 @@ import numpy as np
 from base.math_util         import * 
 from base.common_utils      import * 
 from model.airfoil_geometry import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
-from model.airfoil_geometry import Line, Side_Airfoil_Bezier
+from model.airfoil_geometry import Line, Side_Airfoil_Bezier, GeometryException
 
 from model.xo2_driver       import Worker
 
@@ -321,30 +321,33 @@ class Airfoil:
         info = f"{used_as}{self.fileName}" 
 
         info = info + f"<br><br>in {self.pathName_abs}  " 
+        if self.geo and self.geo.max_thick:
+            t = f"<br>" + \
+                f"<table>" + \
+                    f"<tr>" + \
+                        f"<td>Thickness  </td>" + \
+                        f"<td>{self.geo.max_thick:.2%}  </td>" + \
+                        f"<td>at  </td>" + \
+                        f"<td>{self.geo.max_thick_x:.2%}  </td>" + \
+                    f"</tr>" + \
+                    f"<tr>" + \
+                        f"<td>Camber  </td>" + \
+                        f"<td>{self.geo.max_camb:.2%}  </td>" + \
+                        f"<td>at  </td>" + \
+                        f"<td>{self.geo.max_camb_x:.2%}  </td>" + \
+                    f"</tr>" + \
+                    f"<tr>" + \
+                    f"</tr>" + \
+                    f"<tr>" + \
+                        f"<td>Curvature LE  </td>" + \
+                        f"<td>{self.geo.curvature.max_around_le:.0f}  </td>" + \
+                        f"<td>TE    </td>" + \
+                        f"<td>{self.geo.curvature.max_te:.0f}  </td>" + \
+                    f"</tr>" + \
+                f"</table>"
+        else:
+            t = f"<br> Error when evaluating airfoil <br>"
 
-        t = f"<br>" + \
-            f"<table>" + \
-                f"<tr>" + \
-                    f"<td>Thickness  </td>" + \
-                    f"<td>{self.geo.max_thick:.2%}  </td>" + \
-                    f"<td>at  </td>" + \
-                    f"<td>{self.geo.max_thick_x:.2%}  </td>" + \
-                f"</tr>" + \
-                f"<tr>" + \
-                    f"<td>Camber  </td>" + \
-                    f"<td>{self.geo.max_camb:.2%}  </td>" + \
-                    f"<td>at  </td>" + \
-                    f"<td>{self.geo.max_camb_x:.2%}  </td>" + \
-                f"</tr>" + \
-                f"<tr>" + \
-                f"</tr>" + \
-                f"<tr>" + \
-                    f"<td>Curvature LE  </td>" + \
-                    f"<td>{self.geo.curvature.max_around_le:.0f}  </td>" + \
-                    f"<td>TE    </td>" + \
-                    f"<td>{self.geo.curvature.max_te:.0f}  </td>" + \
-                f"</tr>" + \
-            f"</table>"
         
         info = "<p style='white-space:pre'>" + info + t                     # no word wrap 
         return info 
@@ -619,7 +622,15 @@ class Airfoil:
 
             except ValueError as e:
                 logger.error (f"{self} {e}")
-                pass
+                raise 
+
+            # first geometry check
+            
+            try:
+                self.geo.thickness
+            except GeometryException as e:
+                logger.error (f"{self} {e}")
+                raise
 
 
     def _loadLines (self, file_lines : list[str]):
@@ -1069,6 +1080,14 @@ class Airfoil_Bezier(Airfoil):
         if os.path.isfile (self.pathFileName_abs):
 
             self.load_bezier(fromPath=self.pathFileName_abs)
+
+            # first geometry check
+            
+            try:
+                self.geo.thickness
+            except GeometryException as e:
+                logger.error (f"{self} {e}")
+                raise
         
             # get modfication datetime of file 
 
@@ -1302,6 +1321,14 @@ class Airfoil_Hicks_Henne(Airfoil):
         if os.path.isfile (self.pathFileName_abs):
 
             self.load_hh(fromPath=self.pathFileName_abs)
+
+            # first geometry check
+            
+            try:
+                self.geo.thickness
+            except GeometryException as e:
+                logger.error (f"{self} {e}")
+                raise
 
             # get modfication datetime of file 
 

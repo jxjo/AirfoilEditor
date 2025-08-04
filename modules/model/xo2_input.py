@@ -1542,7 +1542,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         # explicit polars of operating points 
          
         for opPoint_def in self: 
-            # build unique key to detect dublicates
+            # build unique key to detect duplicates
             key = str([opPoint_def.re, opPoint_def.ma, opPoint_def.ncrit, opPoint_def.re_type])
 
             if not (key in polar_defs_dict):

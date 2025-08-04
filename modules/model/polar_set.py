@@ -857,7 +857,7 @@ class Polar (Polar_Definition):
         if np.any(self.glide):
             ip = np.argmax (self.glide)
             # sanity for somehow valid polar 
-            if ip > 2 and ip < (len(self.glide) - 5):
+            if ip > 2 and ip < (len(self.glide) - 3):
                 return self.polar_points [ip]
 
 
@@ -877,7 +877,7 @@ class Polar (Polar_Definition):
         if np.any(self.cl):
             ip = np.argmin (self.cl)
             # sanity for somehow valid polar 
-            if ip < (len(self.cl) - 10):
+            if ip < (len(self.cl) - 5):
                 return self.polar_points [ip]
 
 

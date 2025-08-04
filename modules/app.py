@@ -1505,9 +1505,9 @@ class Watchdog (QThread):
                     task.finalize()
                 else:
                     # this ensures, that polars are returned in the order tasks were generated
-                    #   and not randomly by worker execution time 
-                    #   -> more consistent diagram updates
-                    break
+                    #   and not randomly by worker execution time -> more consistent diagram updates
+                    # break
+                    pass        # deactivated 
 
             # if new polars loaded signal 
 

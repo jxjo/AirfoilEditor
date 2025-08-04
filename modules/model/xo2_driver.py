@@ -205,6 +205,7 @@ class X_Program:
 
             if self._popen.returncode is None: 
 
+                logger.debug (f"... {self.NAME_EXE} running")
                 isRunning = True
 
             else: 

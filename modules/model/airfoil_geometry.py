@@ -2329,6 +2329,10 @@ class Geometry ():
         #  - there are mal formed airfoils with different TE on upper and lower
         #    scale both to 1.0  
 
+        # sanity 
+        if xn[0] == 0.0 or xn[-1] == 0.0: 
+            raise GeometryException (f"{self} - x,y corrupt (x[0]={xn[0]}) ")
+
         if xn[0] != 1.0 or xn[-1] != 1.0: 
             scale_upper = 1.0 / xn[0]
             scale_lower = 1.0 / xn[-1]
@@ -2496,7 +2500,7 @@ class Geometry ():
         # sanity 
         
         if not lower.isNormalized or not upper.isNormalized:
-            raise ValueError (f"{self} _create_camb_thick: Upper and Lower are not normalized")
+            raise GeometryException (f"{self} _create_camb_thick: Upper and Lower are not normalized")
 
         # thickness and camber can now easily calculated 
 
@@ -2536,7 +2540,6 @@ class Geometry ():
         if not np.array_equal (self.thickness.x, self.camber.x):
             raise ValueError ("Geo rebuild: x-values of thickness and camber are not equal")
         if not self.thickness.isNormalized or not self.camber.isNormalized:
-            self.thickness.isNormalized or not self.camber.isNormalized
             raise ValueError ("Geo rebuild: Thickness or Camber are not normalized")
 
         # easy sum of thickness and camber to get new airfoil 
