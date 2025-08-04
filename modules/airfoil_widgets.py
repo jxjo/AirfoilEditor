@@ -115,6 +115,7 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
     """
 
     airfoil_files = get_airfoil_fileNames_sameDir (anAirfoil)
+    next_airfoil  = None 
 
     # get index 
     try: 
@@ -135,11 +136,13 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
 
     if next_file: 
         next_airfoil = Airfoil.onFileType(next_file, workingDir = anAirfoil.pathName_abs, geometry=GEO_BASIC)
-        next_airfoil.load()
-    elif example_if_none:
+        try: 
+            next_airfoil.load()
+        except:
+            next_airfoil = None 
+
+    if next_airfoil is None and example_if_none:
         next_airfoil = Example()
-    else: 
-        next_airfoil = None 
  
     return next_airfoil
 
