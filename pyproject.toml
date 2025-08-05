@@ -25,9 +25,9 @@ dependencies = [
   "platformdirs>=4.3.0"
 ]
 classifiers = [
-    "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Intended Audience :: End Users/Desktop"
 ]
 license = "MIT"
@@ -39,10 +39,6 @@ Issues = "https://github.com/jxjo/AirfoilEditor/issues"
 
 [project.gui-scripts]
 airfoileditor = "airfoileditor.app:start"
-
-# [project.scripts]
-# airfoileditor = "airfoileditor.app:start"         # will run with console window on Windows
-
 
 [tool.hatch.version]
 path = "modules/app.py"
@@ -60,7 +56,7 @@ exclude = [
   "path_test.py",
   "doc",
   "ae.py",
-  "AirfoilEditor.py"
+  "airfoilEditor.py"
 ]
 include = [
   "modules",
@@ -72,5 +68,3 @@ include = [
 "modules" = "airfoileditor"
 "examples_optimize" = "airfoileditor/examples_optimize"
 "assets" = "airfoileditor/assets"
-
-# pypi-AgEIcHlwaS5vcmcCJDk1ZWYyYjNkLTY1MTYtNDkwZS05NGI3LTZkNTliMmYzMmQ0YQACKlszLCIxN2MxNjU4Yi1iNzY4LTQ0YmMtODFlYy1mMmU5ODQ1MDk1NzgiXQAABiAzs6Fbyt1cj6ozcVM2pM819RcqJtOXmqCW3EpOxfBzEw

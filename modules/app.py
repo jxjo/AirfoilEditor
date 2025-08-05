@@ -34,7 +34,6 @@ from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 modules_path = os.path.dirname(__file__)
 if not modules_path in sys.path:
     sys.path.append(modules_path)
-    # print ("\n".join(sys.path))
 
 from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
@@ -66,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "AirfoilEditor"
-__version__      = "4.0.0b6"                            # hatch "version dynamic" reads this version for build
+__version__      = "4.0.0"                              # hatch "version dynamic" reads this version for build
 
 
 class Main (QMainWindow):
