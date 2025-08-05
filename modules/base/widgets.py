@@ -9,23 +9,23 @@ Generic (compound) widgets based on original QWidgets
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 import os
 import types
 from typing             import override
 from enum               import Enum, StrEnum
 
-from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer
+from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QEvent
 
 from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
 from PyQt6.QtWidgets    import (
-                            QApplication, QWidget, QPushButton, 
+                            QApplication, QWidget, QPushButton, QMenu,
                             QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
                             QLabel, QToolButton, QCheckBox,
-                            QSpinBox, QComboBox, QSlider, 
+                            QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
                             QSizePolicy)
-from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon
+from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon, QAction
 
 
 
@@ -58,13 +58,15 @@ class style (Enum):
 
 
 class size (Enum):
-    HEADER         = (12, QFont.Weight.Medium) # (13, QFont.Weight.ExtraLight)
+    HEADER         = (13, QFont.Weight.Medium) # (13, QFont.Weight.ExtraLight)
     HEADER_SMALL   = (10, QFont.Weight.DemiBold)
     NORMAL         = ( 9, QFont.Weight.Normal) 
     SMALL          = ( 7, QFont.Weight.Normal) 
 
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
 ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
+ALIGN_TOP           = Qt.AlignmentFlag.AlignTop
+ALIGN_BOTTOM        = Qt.AlignmentFlag.AlignBottom
 
 
 
@@ -101,6 +103,7 @@ class Icon (QIcon):
     FIT        = "fit" 
     RESETVIEW  = "resetView" 
     AE         = "AE"               # Airfoil Editor
+    SHOW_INFO  = "info"
 
     # for messageBox 
     SUCCESS    = "success.png" 
@@ -237,14 +240,14 @@ class Widget:
 
     # Signals
 
-    sig_changed  = pyqtSignal(object)    # (Object class name, Method as string, new value)
+    sig_changed  = pyqtSignal(object)                   # (Object class name, Method as string, new value)
 
     # constants 
 
-    LIGHT_INDEX = 0                             # = Qt color index 
+    LIGHT_INDEX = 0                                     # = Qt color index 
     DARK_INDEX  = 1 
 
-    light_mode = True                           # common setting of light/dark mode 
+    light_mode = True                                   # common setting of light/dark mode 
                                        
     _width  = None
     _height = None 
@@ -252,20 +255,21 @@ class Widget:
 
     def __init__(self,
                  layout: QLayout, 
-                 *args,                     # optional: row:int, col:int, 
+                 *args,                                 # optional: row:int, col:int, 
                  rowSpan = 1, colSpan=1, 
-                 align = None,              # alignment within layout 
+                 align : Qt.AlignmentFlag = None,       # alignment within layout 
                  width :int = None,
                  height:int = None,
-                 obj = None,                # object | bound method  
-                 prop = None,               # Property 
+                 obj = None,                            # object | bound method  
+                 prop = None,                           # Property 
                  get = None, 
                  set = None, 
                  signal : bool | None = None, 
                  id = None,
                  disable = None, 
-                 hide = None,
-                 style = style.NORMAL,
+                 hide = None,                           
+                 style = style.NORMAL,                  # color style 
+                 styleRole = QPalette.ColorRole.Base,   # default apply style to background
                  fontSize = size.NORMAL,
                  toolTip = None,
                  orientation = None): 
@@ -304,9 +308,9 @@ class Widget:
 
         if isinstance (prop, property) and obj is not None: 
             self._obj    = obj
+            self._prop   = prop  
             self._getter = self._get_getter_of_property (obj, prop)  # function out of property                                    # property
             self._setter = self._get_setter_of_property (obj, prop)  # function out of property 
-            self._prop   = prop if self._getter else None
         else:
             self._obj    = None 
             self._prop   = None 
@@ -319,18 +323,17 @@ class Widget:
 
         # handle disable / hide  
 
+        self._disable_in_refresh = False                           # temp overwrite in refresh 
+        self._disabled_getter = None
         if isinstance(disable, bool):
             self._disabled   = disable                     
-            self._disabled_getter = bool(disable)
         elif callable (disable):
             self._disabled   = None                          
             self._disabled_getter = disable
         else: 
-            self._disabled   = False                        # default values 
-            self._disabled_getter = None
+            self._disabled   = False                                # default values 
 
-        if self._setter is None and self._disabled == False: 
-            self._disabled_getter = True
+        if self._setter is None and disable is None and self._prop is None:
             self._disabled = True  
 
         self._hidden   = False                          
@@ -341,22 +344,24 @@ class Widget:
         else: 
             self._hidden_getter = None
 
+        # tooltip
+
+        self._toolTip = toolTip
 
         # style of widget 
 
         self._style_getter = style 
         self._style = None 
-        self._palette_normal = None       # will be copy of palette - for style reset  
+        self._style_role = styleRole                        # apply to background or text 
         self._font = fontSize
 
-        self._toolTip = toolTip
+        self._palette_normal = self._initial_palette()      # will be copy of palette - for style reset  
 
         # emit signal 
 
         self._signal = signal if isinstance (signal, bool) else True  
 
         # connect to parent refresh signal 
-
 
 
 
@@ -413,13 +418,23 @@ class Widget:
 
     #---  public methods 
 
-    def refresh (self, disable : bool|None = None):
+    def refresh (self, disable : bool|None = False):
         """
-        Refesh self by re-reading the 'getter' path 
+        Refresh self by re-reading the 'getter' path 
             - disable: optional overwrite of widgets internal disable state  
         """
 
-        if self._while_setting:                           # avoid circular actions with refresh()
+        # do not refresh if self will be now hidden
+
+        self._hidden = self._get_value (self._hidden_getter, default=self._hidden)
+        self._set_Qwidget_hidden ()
+
+        if self._hidden:
+            return 
+        
+        # avoid circular actions with refresh
+
+        if self._while_setting:                          
             logger.debug (str(self) + " - refresh while set callback")
 
             #leave callback and refresh in a few ms 
@@ -427,6 +442,11 @@ class Widget:
             timer.singleShot(20, self.refresh)     # delayed emit 
         
         else: 
+
+            # optionally overwrite disabled in refresh 
+
+            if isinstance (disable, bool):
+                self._disable_in_refresh = disable 
 
             # In case of using 'property' for get/set:
             #   the object could have been changed (e.g. subclass like Geometry_Bezier)
@@ -436,38 +456,9 @@ class Widget:
 
             self._get_properties ()
 
-            # overwrite self disable state 
-            if disable == True: 
-                self._disabled = True 
-            else: 
-                # extra get_value with default False
-                self._disabled  = self._get_value (self._disabled_getter, default=False)
-
             # logger.debug (f"{self} - refresh (disable={disable} -> {self._disabled})")
 
             self._set_Qwidget (refresh=True)
-
-
-
-
-
-    def set_enabled (self, aBool : bool):
-        """ 
-        enable/disable self 
-            - disable: always
-            - enable:  depending on 'disable' and 'set'argument and 'set' 
-        """
-        # to overload by subclass
-        disable = not bool(aBool) 
-        if disable: 
-            self._disabled = True 
-            self._set_Qwidget_disabled () 
-        else: 
-            if self._disabled_getter == True: 
-                pass                        # disable is fixed 
-            else:
-                self._disabled = False
-                self._set_Qwidget_disabled () 
 
 
 
@@ -480,7 +471,7 @@ class Widget:
             - fixed values 
             - property (only for self._val)
         """
-        # should be overloaded for additional properties 
+        # should be overridden for additional properties 
 
         self._val       = self._get_value (self._getter, obj=self._obj, id= self._id)
 
@@ -497,20 +488,23 @@ class Widget:
         Optional 'id' is used as argument of bound method 'getter'
         'default' is taken, if 'getter' results in None 
         """
-        if isinstance (getter, property):               # getter is a property of obj 
-            o = obj() if callable (obj) else obj
-            if o is not None:
-                val = getter.__get__(o, type(o))
-            else: 
-                val = None 
+        try: 
+            if isinstance (getter, property):               # getter is a property of obj 
+                o = obj() if callable (obj) else obj
+                if o is not None:
+                    val = getter.__get__(o, type(o))
+                else: 
+                    val = None 
 
-        elif callable(getter):                          # getter is a bound method ?
-            if not id is None:                          # an object Id was set to identify object
-                val =  getter(id=self._id) 
-            else:            
-                val =  getter()                         # normal callback
-        else:                                           # ... no - getter is base type 
-            val =  getter 
+            elif callable(getter):                          # getter is a bound method ?
+                if not id is None:                          # an object Id was set to identify object
+                    val =  getter(id=self._id) 
+                else:            
+                    val =  getter()                         # normal callback
+            else:                                           # ... no - getter is base type 
+                val =  getter 
+        except AttributeError:                              # access path of getter could be currently None
+            val = None 
 
         if val is None and default is not None: 
             val = default
@@ -594,7 +588,7 @@ class Widget:
 
         have_called = self._set_value_callback ()
 
-        if have_called: 
+        if have_called and self._signal: 
             self._emit_change () 
 
         self._while_setting = False                
@@ -636,7 +630,7 @@ class Widget:
                     self._setter(id=self._id) 
             else:                                   # a method like: def myMth(self, newVal)
                 if self._id is None:                # an id was set to identify object?
-                    self._setter(self._val)            # normal callback
+                    self._setter(self._val)         # normal callback
                 else:            
                     self._setter(self._val, id=self._id) 
 
@@ -647,8 +641,6 @@ class Widget:
 
     def _emit_change (self):
         """ emit change signal""" 
-
-        if not self._signal: return 
 
         if isinstance(self._setter, types.FunctionType):
             qualname  = self._setter.__qualname__
@@ -675,40 +667,37 @@ class Widget:
 
         if isinstance (self._layout, QGridLayout): 
             if self._alignment is None: 
-                self._layout.addWidget(widget, self._row, col, 
-                                                self._rowSpan, self._colSpan)
+                self._layout.addWidget(widget, self._row, col, self._rowSpan, self._colSpan)
             else: 
-                self._layout.addWidget(widget, self._row, col, 
-                                                self._rowSpan, self._colSpan,
+                self._layout.addWidget(widget, self._row, col, self._rowSpan, self._colSpan,
                                                 alignment = self._alignment)
         elif isinstance (self._layout, (QFormLayout,QVBoxLayout, QHBoxLayout)):
-            self._layout.addWidget(widget)
+            if self._alignment is None: 
+                self._layout.addWidget(widget)
+            else: 
+                self._layout.addWidget(widget, alignment = self._alignment)
 
         # strange (bug?): if layout is on main window the stretching works as expected
-        # on a sub layoutthe widget doesn't stretch if on widget in the column is fixed 
+        # on a sub layout the widget doesn't stretch if on widget in the column is fixed 
         widget.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
 
     #---  from / to QWidget - inside the widget 
 
+    def _should_be_disabled (self) -> bool:
+        """ True if self currently should be disabled but maybe not set into QWidget"""
+        return self._disabled or self._disable_in_refresh
+    
+
     def _set_Qwidget (self, refresh=False): 
         """ set value and properties of self Qwidget"""
-        # must be overloaded 
+        # must be overridden 
 
         # minimum for all 
+        self._set_Qwidget_hidden ()
         self._set_Qwidget_disabled ()
         self._set_Qwidget_style ()              # NORMAL, WARNING, etc 
-
-        widget : QWidget = self
-        if self._hidden_getter:
-            # if widget.isHidden() != self._hidden:
-
-                # do not setVisible(True) during app startup as it would result 
-                # in a small dummy window shown...
-                if self._hidden or refresh:
-                    widget.setVisible(not self._hidden)
-                    if not self._hidden: 
-                        logger.debug (f"{self} - setVisible (currently={widget.isVisible()} ")
+        self._set_QWidget_toolTip ()
 
 
     def _set_Qwidget_static (self, widget = None): 
@@ -729,28 +718,49 @@ class Widget:
         Widget._set_width  (widget, self._width)
         Widget._set_height (widget, self._height)
 
-        # toolTip 
+
+    def _set_QWidget_toolTip (self):
+        """ set a toolTip into self QWidget"""
+
         if self._toolTip is not None:
-            widget.setToolTip (self._toolTip)
+            toolTip = self._toolTip() if callable (self._toolTip) else self._toolTip
+            widget : QWidget = self
+            widget.setToolTip (toolTip)
 
 
     def _set_Qwidget_disabled (self):
         """ set self Qwidget according to self._disabled"""
+        # can be overridden to suppress enable/disable 
 
-        # can be overlaoded to suppress enable/disable 
         widget : QWidget = self
-        if widget.isEnabled() != (not self._disabled) :
-            widget.setDisabled(self._disabled)
+        if widget.isEnabled() != (not self._should_be_disabled()) :
+            widget.setDisabled(self._should_be_disabled())
+
+
+    def _set_Qwidget_hidden (self):
+        """ set self Qwidget according to self._hidden"""
+
+        # can be overridden to suppress hiden 
+
+        widget : QWidget = self
+
+        if widget.parentWidget() is None:
+            # if self still doesn't have a parent, do not setVisible(True) as this would lead to a ghost window
+            #   but set not visible in any case 
+            if self._hidden:
+                widget.setVisible(False)
+                
+        elif widget.isHidden() != self._hidden :            # use hidden as self could be not visible because of parent
+                widget.setVisible(not self._hidden)
 
 
     def _set_Qwidget_style (self): 
         """ set (color) style of QWidget based on self._style"""
 
         # default color_role is change the text color according to style
-        # can be olverlaoded by subclass  
 
         # QPalette.ColorRole.Text, .ColorRole.WindowText, .ColorRole.Base, .ColorRole.Window
-        self._set_Qwidget_style_color (self._style, QPalette.ColorRole.Base)  
+        self._set_Qwidget_style_color (self._style, self._style_role)  
 
 
     def _set_Qwidget_style_color (self, aStyle : style, color_role : QPalette.ColorRole= None):
@@ -758,40 +768,72 @@ class Widget:
         low level set of colored part of widget accordings to style and color_role
             color_role = .Text, .Base (background color), .Window
         """
-        # ! ColorRole.Base and ColorRole.Window not implemented up to now
-        # if not color_role in [QPalette.ColorRole.Text, QPalette.ColorRole.WindowText]:
-        #     raise ValueError (f"{self}: color_role '{color_role}' not implemented")
+
+        # # qt so new backgrund colour will be applied  - but: no more transparent inheritence!
+        autoFill = False                                        
 
         if aStyle in [style.WARNING, style.ERROR, style.COMMENT, style.GOOD, style.HINT]:
 
-            palette : QPalette = self.palette()
-            if self._palette_normal is None:                     # store normal palette for later reset 
-                self._palette_normal =  QPalette(palette)        # create copy (otherwise is just a pointer) 
-            if self.light_mode:
-                index = self.LIGHT_INDEX
-            else: 
-                index = self.DARK_INDEX
-            color = QColor (aStyle.value[index])
+            index = self.LIGHT_INDEX if self.light_mode else self.DARK_INDEX
+
+            color          = QColor (aStyle.value[index])
+            color_disabled = QColor (color)
 
             # if it's background color apply alpha
-            if color_role == QPalette.ColorRole.Base:
-                color.setAlphaF (0.15)
- 
-            # palette.setColor(self.backgroundRole(), color)
-            palette.setColor(color_role, color)
+            if color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]:
+                if aStyle == style.GOOD or aStyle == style.HINT:
+                    color.setAlphaF (0.3) 
+                    color_disabled.setAlphaF (0.15)
+                else:
+                    color.setAlphaF (0.15)
+                    color_disabled.setAlphaF (0.1)
+                autoFill = True                                         # apply background 
+            elif color_role in [QPalette.ColorRole.WindowText, QPalette.ColorRole.Text]:
+                pass
+            else: 
+                raise ValueError (f"ColorRole {color_role} not supported")
 
-            self._update_palette (palette)                      # Qt strange : on init 'setPalette' is needed
-                                                                # later compounds like SpinBox need different treatment
-        elif aStyle == style.NORMAL and self._palette_normal is not None:
-            self._update_palette (self._palette_normal)
+            if self._palette_normal is None: 
+                palette =  self._initial_palette ()
+                self._palette_normal = palette if palette else self.palette()
+
+            palette =  QPalette (self._palette_normal)          # copy normal palette 
+            palette.setColor(QPalette.ColorGroup.Active,   color_role, color)
+            palette.setColor(QPalette.ColorGroup.Inactive, color_role, color)
+            palette.setColor(QPalette.ColorGroup.Disabled, color_role, color_disabled)
+
+            self._update_palette (palette, autoFill=autoFill)                     
+
+        elif aStyle == style.NORMAL :
+
+            self._reset_palette ()
 
 
-    def _update_palette (self, palette: QPalette):
-        """ set new QPalette for self"""
+    def _initial_palette (self) -> QPalette:
+        """ returns initial normal palette of self"""
 
+        return None 
+
+
+    def _update_palette (self, palette: QPalette, qwidget : QWidget = None, autoFill=False):
+        """ set new QPalette for self or qwidget if set """
+
+        if self._palette_normal is None: return 
+    
         # to overwrite if self is compound like QSpinbox ()  
-        self.setPalette (palette) 
-          
+        if qwidget is None: 
+            qwidget : QWidget = self
+
+        if qwidget.palette() != palette:
+            qwidget.setAutoFillBackground(autoFill)             # important to be applied
+            qwidget.setPalette (palette) 
+
+
+    def _reset_palette (self):
+        """ reset self (or of qwidget) palette to palette normal """
+
+        self._update_palette (self._palette_normal)
+
 
     def _getFrom_Qwidget (self):
         """returns the current value of QWidget  
@@ -822,18 +864,38 @@ class Field_With_Label (Widget):
 
         In this case, only QGridLayout is supported    
     """
+
+    _height = 26 
+
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        lab = self._label._val if self._label else ""
+        text = f" '{str(self._val)}'" if self._val is not None else ''
+        return f"<{type(self).__name__} {lab}{text} {id(self)}>"
+    
+
+
     def __init__(self, *args, 
-                 lab : str | None = None, 
+                 lab : str | None = None,                   # label of field 
+                 disable : bool | None = None,
+                 lab_disable : bool = False,                # label will be disabled with field
+                 toolTip : str|None = None,
                  **kwargs):
-        super().__init__(*args, **kwargs)
 
         self._label = None 
+
+        super().__init__(*args, disable=disable, toolTip=toolTip, **kwargs)
+
 
         if lab is not None: 
             if not isinstance (self._layout, QGridLayout):
                 raise ValueError (f"{self} Only QGridLayout supported for Field with a Label")
             else: 
-                self._label = Label(self._layout, self._row, self._col, get=lab)
+                self._label = Label(self._layout, self._row, self._col, get=lab, 
+                                    disable=disable, lab_disable=lab_disable, align=self._alignment,
+                                    colSpan=1,              # label is always only 1 column
+                                    rowSpan=self._rowSpan,  # rowSpan same as parent field
+                                    toolTip=None)           # no tooltip on label 
             
 
     def _layout_add (self, widget=None):
@@ -849,21 +911,32 @@ class Field_With_Label (Widget):
         # on a sub layoutthe widget doesn't stretch if on widget in the column is fixed 
         super()._layout_add (col=col, widget=widget)
 
-        if self._label and self._alignment is not None:
-            self._layout.setAlignment (self._label, self._alignment)
+        # if self._label and self._alignment is not None:
+        #     self._layout.setAlignment (self._label, self._alignment)
 
         self.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
 
-    def _set_Qwidget (self, **kwargs): 
+    @override
+    def _set_Qwidget (self, refresh=False): 
         """ set value and properties of self Qwidget"""
-        super()._set_Qwidget ( **kwargs)
+        super()._set_Qwidget (refresh=refresh)
 
-        # overloaded to also hide self label 
-        if self._label and self._hidden_getter:
-            self._label.setVisible(not self._hidden)
+        # overridden to also hide / disable self label 
+        if self._label:
+            self._label._set_Qwidget (refresh=refresh)
 
 
+    @override
+    def _set_Qwidget_hidden (self):
+        """ set self Qwidget according to self._hidden"""
+
+        super()._set_Qwidget_hidden ()
+
+        # overridden to also hide / disable self label 
+        if self._label:
+            self._label._hidden = self._hidden
+            self._label._set_Qwidget_hidden ()
 
 
     def _on_finished(self):
@@ -883,31 +956,45 @@ class Label (Widget, QLabel):
 
     _height = 26 
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, 
+                 styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Window
+                 disable = None,                             
+                 lab_disable : bool = False,                 # label can be disabled (color)
+                 wordWrap = False,                           # activate word wrap
+                 **kwargs):
 
+        # special disable handling for Label as typically it is not disabled 
+        self._label_disable = lab_disable
+
+        # labels are typically not disabled 
+        disable = False if disable is None else disable 
+
+        super().__init__(*args, styleRole=styleRole, disable=disable,**kwargs)
+
+        self._get_properties ()
+
+        self._layout_add ()                                 # put into layout - so it gets parent early
 
         self._set_Qwidget_static ()
-        self._get_properties ()
+        if wordWrap:
+            self.setWordWrap (wordWrap)
+
         self._set_Qwidget ()
 
-        # put into grid / layout 
-        self._layout_add ()
+
+       # self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
 
 
-    def _set_Qwidget_style (self): 
-        """ set (color) style of QWidget based on self._style"""
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
 
-        # overloaded QLabel uses QPalette.ColorRole.WindowText
-
-        if self._style == style.NORMAL and not self.light_mode:
-
-            # dark mode: make labels a little darker (not white)      
-            palette = QPalette (self.palette())
-            palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
-            self.setPalette (palette)
-
-        self._set_Qwidget_style_color (self._style, QPalette.ColorRole.WindowText)  
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make labels a little darker (not white)   
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.WindowText).darker (150)
+            palette.setColor(QPalette.ColorRole.WindowText,color)
+        return palette
 
 
     def _set_Qwidget (self, **kwargs):
@@ -917,10 +1004,14 @@ class Label (Widget, QLabel):
         self.setText (self._val)
 
 
+    @override
     def _set_Qwidget_disabled (self):
         """ set self Qwidget according to self._disabled"""
-        # do not disable Label (color ...) 
-        pass
+        if self._label_disable:
+            super()._set_Qwidget_disabled()
+        else: 
+            # do not disable Label (color ...) 
+            pass
 
 
  
@@ -928,15 +1019,19 @@ class Field (Field_With_Label, QLineEdit):
     """
     String entry field  
     """
+
+    _height = 24 
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._set_Qwidget_static ()
         self._get_properties ()
-        self._set_Qwidget ()
 
         # put into grid / layout 
         self._layout_add ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # connect signals 
         self.editingFinished.connect(self._on_finished)
@@ -958,6 +1053,24 @@ class Field (Field_With_Label, QLineEdit):
             self.setText (str(val))
 
 
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+
+        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base)
+        color.setAlphaF (0.3)
+        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, color)
+
+        if self.light_mode:
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+
+        return palette
+
+
     def _on_finished(self):
 
       self._set_value (self.text())
@@ -969,8 +1082,6 @@ class FieldI (Field_With_Label, QSpinBox):
     Integer entry field with spin buttons
     """
     
-    _height = 26 
-
     def __init__(self, *args, 
                  step = None,
                  lim = None, 
@@ -986,16 +1097,15 @@ class FieldI (Field_With_Label, QSpinBox):
         self._lim_getter = lim
         self._specialText = specialText
 
-        self._set_Qwidget_static ()
         self._get_properties ()
-        self._set_Qwidget ()
 
-        # put into grid / layout 
-        self._layout_add ()
+        self._layout_add ()                                 # put into layout - so it gets parent early
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # connect signals 
         self.editingFinished.connect (self._on_finished)
-        # self.valueChanged.connect    (self._on_finished)
 
 
     def _get_properties (self): 
@@ -1021,7 +1131,7 @@ class FieldI (Field_With_Label, QSpinBox):
 
         # overloaded to show/hide spin buttons  
         # parent could be disabled - so also remove spin buttons 
-        if self._spin and not self._disabled and self.isEnabled():
+        if self._spin and not self._should_be_disabled() and self.isEnabled():
             self.setButtonSymbols(QSpinBox.ButtonSymbols.PlusMinus)
         else: 
             self.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
@@ -1041,13 +1151,27 @@ class FieldI (Field_With_Label, QSpinBox):
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
 
-    def _update_palette (self, palette: QPalette):
+        palette =  self.palette()
+
+        if self.light_mode:
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+
+        return palette
+
+
+    @override
+    def _update_palette (self, palette: QPalette, autoFill=False):
         """ set new QPalette for self"""
-        # Qt bug?
-        # overwritten as Palette has to be set for LineEdit of self  
-        self.lineEdit().setPalette (palette) 
- 
+        # for QSpinbox LineEdit is the relevant qwidget 
+        # super()._update_palette (palette)
+        super()._update_palette (palette, qwidget=self.lineEdit(), autoFill=autoFill) 
+
 
     def stepBy (self, step):
         # Qt overloaded: Detect when a Spin Button is pressed with new value 
@@ -1088,11 +1212,12 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self._specialText = specialText
 
         self._get_properties ()
+
+        self._layout_add ()                                 # put into layout - so it gets parent early
+
         self._set_Qwidget_static ()
         self.ensurePolished()
         self._set_Qwidget ()
-
-        self._layout_add ()
 
         # a (new) style isn't apllied when done during __init__ - so do it later 
         if self._palette_normal is not None:            # indicates that a palette was set
@@ -1103,8 +1228,8 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self.editingFinished.connect(self._on_finished)
 
 
+    @override
     def _get_properties (self): 
-        # overloaded
         super()._get_properties () 
         self._lim = self._get_value (self._lim_getter)
 
@@ -1131,7 +1256,7 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
 
         # overloaded to show/hide spin buttons  
         # parent could be disabled - so also remove spin buttons 
-        if self._spin and not self._disabled and self.isEnabled():
+        if self._spin and not self._should_be_disabled() and self.isEnabled():
             self.setButtonSymbols(QSpinBox.ButtonSymbols.PlusMinus)
         else: 
             self.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
@@ -1152,12 +1277,27 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
 
-    def _update_palette (self, palette: QPalette):
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+
+        if self.light_mode:
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, color)
+
+        return palette
+
+
+    @override
+    def _update_palette (self, palette: QPalette, autoFill=False):
         """ set new QPalette for self"""
 
-        # Qt bug?
-        # overwritten as Palette has to be set for LineEdit of self  
-        self.lineEdit().setPalette (palette) 
+        # for QDoubleSpinbox LineEdit is the relevant qwidget 
+        # super()._update_palette (palette)
+        super()._update_palette (palette, qwidget=self.lineEdit(), autoFill=autoFill) 
 
 
     def stepBy (self, step):
@@ -1222,14 +1362,14 @@ class Slider (Widget, QSlider):
             self._slider_min = 0                    # will be translated fore and back 
             self._slider_max = 100             
 
+        self._layout_add ()                                 # put into layout - so it gets parent early
 
         self._set_Qwidget_static ()
         self._set_Qwidget ()
 
-        self._layout_add ()
-
         # connect signals 
-        self.valueChanged.connect(self._on_finished)
+        # self.valueChanged.connect(self._on_changed)  - would be also set, if value is set into slider
+        self.sliderMoved.connect(self._on_changed)
 
 
     @override
@@ -1257,16 +1397,16 @@ class Slider (Widget, QSlider):
         self.setValue (self._slider_val)
 
 
-    def _on_finished(self):
-      """ slot - finished slider movement"""
-      self._slider_val = self.value()
+    def _on_changed(self, slider_val):
+        """ slot - finished slider movement"""
 
-      newVal = self._from_slider_to_val ()
-      newVal = round(newVal, self._dec)            # Qt sometimes has float artefacts 
-      self._set_value (newVal)
+        self._slider_val = slider_val
+        newVal = self._from_slider_to_val ()
+        newVal = round(newVal, self._dec)                   # Qt sometimes has float artefacts 
+        self._set_value (newVal)
 
 
-    def _from_val_to_slider (self):
+    def _from_val_to_slider (self) -> int:
         """ get the slider value from _val"""
 
         if not isinstance (self._lim, tuple): 
@@ -1283,7 +1423,7 @@ class Slider (Widget, QSlider):
         max_slider = self._slider_max
 
         slider_val = min_slider + rel_val * (max_slider - min_slider)
-        return int (slider_val)
+        return int (round(slider_val,0))
 
 
     def _from_slider_to_val (self):
@@ -1306,45 +1446,57 @@ class Button (Widget, QPushButton):
         - when clicked, 'set' is called without argument 
     """
     def __init__(self, *args,
-                 signal = False,            # default is not to signal change 
+                 signal = False,                                # default is not to signal change 
                  text = None, 
                  button_style = button_style.SECONDARY,
+                 styleRole = QPalette.ColorRole.Button,         # button has different color role 
                  **kwargs):
-        super().__init__(*args, signal=signal,**kwargs)
+        super().__init__(*args, signal=signal, styleRole=styleRole, **kwargs)
 
         self._text = text 
         self._button_style = None 
         self._button_style_getter = button_style
 
         self._get_properties ()
+        self._layout_add ()                                 # put into layout - so it gets parent early
         self._set_Qwidget_static ()
         self._set_Qwidget ()
 
-        # put into grid / layout 
-        self._layout_add ()
-
         # connect signals 
-        self.pressed.connect(self._on_pressed)
+        self.pressed.connect(lambda: self._set_value(None))
 
 
     def __repr__(self) -> str:
-        # overwritten to get a nice print string 
         text = f" '{str(self._text)}'" if self._text is not None else ''
         return f"<{type(self).__name__}{text}>"
-    
 
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make labels a little darker (not white)   
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
+            palette.setColor(QPalette.ColorRole.ButtonText,color)
+        return palette
+
+
+    @override
     def _get_properties (self): 
-        # overloaded
+        " get all the properties like disable"
         super()._get_properties () 
         self._button_style = self._get_value (self._button_style_getter)
 
 
+    @override
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
         self.setText (self._text)
 
 
+    @override
     def _set_Qwidget (self, **kwargs): 
         """ set properties of self Qwidget like data"""
         super()._set_Qwidget (**kwargs)        
@@ -1354,10 +1506,6 @@ class Button (Widget, QPushButton):
             self.setDefault(False)
 
 
-    def _on_pressed(self):
-      self._set_value (None)
-
-
 
 class ToolButton (Widget, QToolButton):
     """
@@ -1365,8 +1513,8 @@ class ToolButton (Widget, QToolButton):
         - when clicked, 'set' is called without argument 
     """
 
-    _width  = 24
-    _height = 24 
+    _width  = 22
+    _height = 22 
 
     def __init__(self, *args, 
                  icon : str =None, 
@@ -1377,12 +1525,12 @@ class ToolButton (Widget, QToolButton):
         self._icon_name = icon                           # icon name 
 
         self._get_properties ()
+        self._layout_add ()                                 # put into layout - so it gets parent early
         self._set_Qwidget_static ()
         self._set_Qwidget ()
 
-        self._layout_add ()
+        self.clicked.connect(lambda: self._set_value(None))
 
-        self.clicked.connect(self._on_pressed)
 
     @override
     def __repr__(self) -> str:
@@ -1392,21 +1540,11 @@ class ToolButton (Widget, QToolButton):
 
 
     @override
-    def _set_Qwidget (self, **kwargs):
-        """ set value and properties of self Qwidget"""
-
-        super()._set_Qwidget (**kwargs)
-
-        if self.isEnabled() != (not self._disabled) :
-            self.setDisabled(self._disabled)
-
-
-    @override
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
 
-        self.setAutoRaise (True)
+        self.setAutoRaise (True)            # button frame only on focus
 
         if self._icon_name is not None: 
 
@@ -1418,9 +1556,106 @@ class ToolButton (Widget, QToolButton):
                 pass
 
 
-    def _on_pressed(self):
-        """ slot: user pressed button"""
-        self._set_value (None)
+class MenuButton (Button, QPushButton):
+    """
+    Push-Button with an action menu. 
+    
+    A QMenu (having actions) has to be provided instead of a 'set' method.
+
+    """
+    def __init__(self, *args,
+                 menu : QMenu = None,                                # default is not to signal change 
+                 **kwargs):
+        
+        self._menu = menu
+
+        super().__init__(*args, **kwargs)
+
+        if isinstance(menu, QMenu):
+            self.setMenu (menu)
+            self._disabled = None                                    # missing setter would disable
+            self._set_Qwidget_disabled ()
+        else: 
+            self._disabled = True 
+
+
+    @override
+    def refresh(self, disable = False):
+        """ overridden to also refresh MenuAction"""
+        super().refresh(disable)
+    
+        for menuAction in self._menu.actions():
+            if isinstance (menuAction, MenuAction):
+                menuAction.refresh()
+
+
+class MenuAction (QAction):
+    """
+    Menu item - QAction subclass to make it compatible with WIdget  
+    """
+    def __init__(self, 
+                 text,                                              # menu text
+                 parent,                                            # strange: QAction (still) needs a dummy parent
+                 set = None,                                        # slot to be triggered 
+                 disable = None,
+                 toolTip = None,
+                 **kwargs):
+        super().__init__(text, parent, **kwargs)
+
+        # conect self triggered to 'set' 
+         
+        if callable (set):
+            self.triggered.connect(set)
+        else:
+            raise ValueError(f"{self} set method isn't callable")
+
+        # init disable 
+
+        self._disabled_getter = None
+        if isinstance(disable, bool):
+            self._disabled   = disable                     
+        elif callable (disable):
+            self._disabled   = None                          
+            self._disabled_getter = disable
+        else: 
+            self._disabled   = False                                # default values 
+
+        self._disabled  = self._get_value (self._disabled_getter, default=self._disabled)
+        self.setDisabled (self._disabled)
+
+        # tooltip 
+
+        if toolTip: 
+            self.setToolTip (toolTip)
+
+
+
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__} {self.text()}>"
+
+
+    def refresh (self):
+        """ Refresh self disable state """
+
+        self._disabled  = self._get_value (self._disabled_getter, default=self._disabled)
+        self.setDisabled (self._disabled)
+
+
+    def _get_value(self, getter, default=None):
+        """ Read the value. 'getter' shall be bound method. 'default' is taken, if 'getter' results in None  """
+
+        try: 
+            if callable(getter):                            # getter is a bound method ?
+                val =  getter()                             # normal callback
+            else:                                           # ... no - getter is base type 
+                val =  getter 
+        except AttributeError:                              # access path of getter could be currently None
+            val = None 
+
+        if val is None and default is not None: 
+            val = default
+
+        return val 
 
 
 
@@ -1435,18 +1670,20 @@ class CheckBox (Widget, QCheckBox):
 
     def __init__(self, *args, 
                  text=None,
+                 styleRole = QPalette.ColorRole.WindowText,
                  **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, styleRole=styleRole, **kwargs)
 
         self._text = None 
         self._text_getter = text 
 
         self._get_properties ()
-        self._set_Qwidget_static ()
-        self._set_Qwidget ()
 
         # put into grid / layout 
         self._layout_add ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
 
         # connect signals 
         self.checkStateChanged.connect(self._on_checked)
@@ -1471,20 +1708,22 @@ class CheckBox (Widget, QCheckBox):
         super()._set_Qwidget_static ()
 
 
-    @override 
-    def _set_Qwidget_style (self): 
-        """ set (color) style of QWidget based on self._style"""
+    @override
+    def _initial_palette(self):
+        """ returns initial normal palette of self"""
 
-        # overloaded QCheckBox uses QPalette.ColorRole.WindowText for label 
+        palette =  self.palette()
 
-        if self._style == style.NORMAL and not self.light_mode:
+        if not self.light_mode:
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.WindowText).darker (140)
+            palette.setColor(QPalette.ColorRole.WindowText,color)
 
-            # dark mode: make labels a little darker (not white)      
-            palette = QPalette (self.palette())
-            palette.setColor(QPalette.ColorRole.WindowText, QColor("#C0C0C0"))
-            self.setPalette (palette)
+            color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+            color = color.darker (180)
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, color)
 
-        self._set_Qwidget_style_color (self._style, QPalette.ColorRole.WindowText)  
+        return palette
 
 
     def _on_checked(self):
@@ -1510,14 +1749,27 @@ class ComboBox (Field_With_Label, QComboBox):
         self._options = None
 
         self._get_properties ()
-        self._set_Qwidget_static ()
-        self._set_Qwidget ()
 
         # put into grid / layout 
         self._layout_add ()
 
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
+
         # connect signals 
         self.activated.connect(self._on_selected)
+
+
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make text a little darker (not white)   
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
+            palette.setColor(QPalette.ColorRole.ButtonText,color)
+        return palette
 
 
     def _get_properties (self): 
@@ -1599,6 +1851,18 @@ class ComboSpinBox (Field_With_Label, QComboBox):
 
 
     @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make text a little darker (not white)   
+            palette =  self.palette()
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
+            palette.setColor(QPalette.ColorRole.ButtonText,color)
+        return palette
+
+
+    @override
     def refresh (self, disable : bool|None = None): 
         """ refresh self """
         #overloaded to refresh also (state) of spin buttons
@@ -1660,7 +1924,117 @@ class ComboSpinBox (Field_With_Label, QComboBox):
 
 
     def _on_selected (self):
+      """ slot - comboxbox value choosen """
+      self._refresh_buttons ()
       self._set_value (self.currentText())
+
+
+class ListBox (Field_With_Label, QListWidget):
+    """
+    Listbox  
+        - values list via 'options' (method or list)
+        - when clicked, 'set' is called argument with selected text as argument 
+        - when double clicked, in addition 'dblClick' is called 
+    """
+        
+    _height      = 72 
+    _item_height = 23
+
+    def __init__(self, *args, 
+                 options = [],
+                 doubleClick = None,  
+                 autoHeight = False,                    # height dependend on n items, height must be tuple
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._options_getter = options
+        self._options : list = None
+        self._doubleClick_setter = doubleClick if callable (doubleClick) else None
+        self._autoHeight = autoHeight
+
+        self._get_properties ()
+
+        # put into grid / layout 
+        self._layout_add ()
+
+        self._set_Qwidget_static ()
+        self._set_Qwidget ()
+
+        # connect signals 
+        self.itemClicked.connect(self._on_selected)
+        self.itemDoubleClicked.connect (self._on_doubleClick)
+
+
+    @override
+    def _get_properties (self): 
+
+        super()._get_properties ()
+
+        self._options = self._get_value (self._options_getter)
+        self._val = str(self._val) if self._val is not None else None
+
+
+    @override
+    def _set_Qwidget (self, **kwargs):
+        """ set value and properties of self Qwidget"""
+
+        super()._set_Qwidget (**kwargs)
+
+        # set items of listbox 
+
+        self.clear()                                
+        for item_text in self._options:
+            item = QListWidgetItem (item_text, self)
+            item.setSizeHint (QSize (0, self._item_height))
+
+            # adapt foreground color of list items 
+            if not self.light_mode:
+                color = QColor("#BBBBBB")                       # hack - item.foreground().color() doesn't work
+                item.setForeground (color)
+
+        # set current item if not disabled 
+        if not (self._disabled or self._disable_in_refresh):
+            try: 
+                irow = self._options.index (self._val)
+            except: 
+                irow = 0 
+            self.setCurrentRow (irow)
+
+        # set height of listbox dynamically (if height is tuple) 
+        if self._autoHeight:
+            self._set_height (self._height)
+
+
+
+    def _set_height (self, height ):
+        """ set a dynamic height of Listbox depending on number of items - height must be tuple"""
+        if height is None or not isinstance (height, tuple): 
+            return 
+
+        min_height = height[0]
+        max_height = height[1]
+
+        nitems = len(self._options) if len(self._options) else 1
+        calc_height = nitems * self._item_height + 4 
+
+        min_height = min_height if min_height else calc_height
+        max_height = max_height if max_height else calc_height
+        if min_height > max_height:
+            min_height, max_height = max_height, min_height
+
+        self.setMinimumHeight(min_height)
+        self.setMaximumHeight(max_height)        
+
+
+    def _on_selected (self, aItem : QListWidgetItem):
+        """ slot clicked"""
+        self._set_value (aItem.text())
+
+
+    def _on_doubleClick (self, aItem : QListWidgetItem):
+        """ slot signal double clicked"""
+        if self._doubleClick_setter:
+            QTimer.singleShot (10, self._doubleClick_setter)  
 
 
 
@@ -1703,12 +2077,12 @@ class Test_Widgets (QMainWindow):
         CheckBox (l,r,3,fontSize=size.HEADER, text="Header", width=(90, 120), disable=lambda: self.disabled, )
         r += 1
         Label  (l,r,0,get="Label",width=(90,None))
-        Label  (l,r,1,get=lambda: f"Disabled: {str(self.disabled)}")
-        Label  (l,r,2,get=self.str_val, style=style.GOOD)
-        Label  (l,r,3,get=self.str_val, style=self.style )
+        Label  (l,r,1,get=lambda: f"Disabled: {str(self.disabled)}", disable=lambda:self.disabled, lab_disable=True)
+        Label  (l,r,2,get=lambda: f"Good {self.str_val()}", style=style.GOOD, styleRole = QPalette.ColorRole.Window)
+        Label  (l,r,3,get=lambda: f"Disabled: {str(self.disabled)}", style=self.style )
         r += 1
         Label  (l,r,0,get="Field")
-        Field  (l,r,1,get="initial", set=self.set_str, width=(80, 120), style=style.ERROR)
+        Field  (l,r,1,get="initial", set=self.set_str, width=(80, 120), disable=True) # style=style.ERROR
         Field  (l,r,2,get=self.str_val, set=self.set_str, disable=lambda: self.disabled)
         Field  (l,r,3,get="Error", set=self.set_str, width=80, style=self.style, disable=lambda: self.disabled)
         r += 1
@@ -1720,7 +2094,7 @@ class Test_Widgets (QMainWindow):
         FieldI (l,r,3,get=self.int_val, set=self.set_int, lim=(1,100), step=1, disable=lambda: self.disabled, style=self.style, width=(80, 100))
         r += 1
         Label  (l,r,0,get="FieldF")
-        FieldF (l,r,1,get=-0.1234, set=self.set_float, width=80, lim=(-1,1), unit="m", step=0.1, dec=2, specialText="Automatic")
+        FieldF (l,r,1,get=-0.1234, set=self.set_float, width=80, lim=(-1,1), unit="m", step=0.1, dec=2, specialText="Automatic", disable=lambda: self.disabled)
         FieldF (l,r,2,get=self.float_val, set=self.set_float, lim=(1,100), dec=4, step=1.0, disable=lambda: self.disabled, style=style.GOOD)
         FieldF (l,r,3,get=self.float_val, set=self.set_float, lim=(1,100), width=80, dec=4, step=1.0, disable=True, style=self.style)
         r += 1
@@ -1768,6 +2142,7 @@ class Test_Widgets (QMainWindow):
 
         container = QWidget()
         container.setLayout (l) 
+        # set_background (container, color="yellow",  alpha=0.5)
         self.setCentralWidget(container)
 
     def str_val (self):

@@ -7,12 +7,12 @@ Common Utility functions for convinience - no dependencies from other moduls
 
 import os
 import json
-from pathlib            import Path
-from termcolor          import colored
+from pathlib                import Path
+from termcolor              import colored
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+# logger.setLevel(logging.INFO)
 
 
 
@@ -127,6 +127,7 @@ def toDict(aDict : dict, key, value):
 # Settings and Paramter file 
 #------------------------------------------------------------------------------
 
+
 class Parameters ():
     """ Handles a parameter file with a json structure representing a dictionary of paramteres""" 
 
@@ -156,107 +157,25 @@ class Parameters ():
 
 
     def write_dataDict (self, aDict, dataName='Parameters'):
-        """ writes data dict to file
-        
-        :Returns: 
-            True : if succeded, False if failed"""
+        """ writes data dict to file - returns True if succeded"""
 
-        try:
-            paramFile = open(self._paramFilePath, 'w')
-        except:
-            logger.error (f"Failed to open file {self._paramFilePath}")
-            return False
+        ok = False
 
-        # save parameter dictionary to .json-file
-        try:
-            json.dump(aDict, paramFile, indent=2, separators=(',', ':'))
-            paramFile.close()
-            logger.info (f"{dataName} saved to {self._paramFilePath}" )
-            return True
+        with open(self._paramFilePath, 'w+') as file:
 
-        except ValueError as e:
-            logger.error (f"Invalid json expression '{e}'. Failed to save data to '{self._paramFilePath}'")
-            paramFile.close()
-            return False
+            # save parameter dictionary to .json-file
+            try:
+                json.dump(aDict, file, indent=2, separators=(',', ':'))
+                logger.info (f"{dataName} saved to {self._paramFilePath}" )
+                ok =  True
 
-        except TypeError as e:
-            logger.error (f"{e}. Failed to save data to '{self._paramFilePath}'")
-            paramFile.close()
-            return False
+            except ValueError as e:
+                logger.error (f"Invalid json expression '{e}'. Failed to save data to '{self._paramFilePath}'")
 
+            except TypeError as e:
+                logger.error (f"{e}. Failed to save data to '{self._paramFilePath}'")
 
-class Settings (Parameters):
-    """ Handles a named setting file with a json structure representing a dictionary of paramteres""" 
-
-    settingsFilePath = None                     # the filePath of the settings
-
-    def __init__ (self):
-        """ 
-        object to handle i/o of settings parameters 
-        
-        Settings file is defined with class method 'belongsTo'
-        """
-
-        super().__init__(self.settingsFilePath)
-
-
-    @classmethod
-    def belongTo (cls, belongsToPath, nameExtension='_settings', fileExtension= '.json'):
-        """ static set of the file the settings will belong to 
-        
-        Args:
-            :belongsToPath: file path of the python module self will belong to 
-            :nameExtension: ... will be appended to appName - default '_settings'       \n
-            :fileExtension: ... of the settings file - default 'json'       \n
-        """
-
-        appName = os.path.splitext(os.path.basename(belongsToPath))[0]
-
-        if nameExtension:
-            paramFile = appName + nameExtension + fileExtension
-        else:
-            paramFile = appName  + fileExtension
-
-        # get directory where 'belongTo' is located
-        script_dir  = os.path.dirname(os.path.realpath(belongsToPath))
-
-        cls.settingsFilePath = os.path.join(script_dir, paramFile)
-
-        logger.info (f"Reading settings from {cls.settingsFilePath}")
-
-
-    @property
-    def filePath (self): return self._paramFilePath
-
-    def get(self, key, default='no default'):
-        """
-        returns the value of 'key' from settings
-
-        Args:
-            :key: the key to look for       \n
-            :default: the value if key is missing
-        """
-        dataDict = self.get_dataDict ()
-        return fromDict(dataDict, key, default=default)
-
-    def set(self, key, value):
-        """
-        sets 'key' with 'value' into settings
-
-        Args:
-            :key: the key to look for       \n
-            :value: the value to set 
-        """
-        dataDict = self.get_dataDict ()
-
-        toDict(dataDict, key, value)
-        self.write_dataDict (dataDict)
-
-
-    def write_dataDict (self, aDict, dataName='Settings'):
-        """ writes data dict to file """
- 
-        super().write_dataDict (aDict, dataName=dataName)
+        return ok 
 
 
 #------------------------------------------------------------------------------

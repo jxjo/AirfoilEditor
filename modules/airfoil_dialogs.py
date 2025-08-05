@@ -1,4 +1,4 @@
-#!/usr/bin/env pythonbutton_color
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """  
@@ -18,25 +18,27 @@ from PyQt6.QtCore           import QThread, Qt
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 from PyQt6.QtWidgets        import QFileDialog, QWidget
 
-
-from base.math_util         import nelder_mead, find_closest_index, derivative1
+from base.math_util         import nelder_mead, derivative1
 from base.widgets           import * 
-from base.panels            import Dialog 
-from base.spline            import Bezier 
+from base.panels            import Dialog
 
-from model.airfoil          import Airfoil
+from model.airfoil          import Airfoil, Flap_Setter, Flap_Definition
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
-from model.airfoil_geometry import Geometry_Splined, Panelling_Spline
+from model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline, Curvature_Abstract
 from model.polar_set        import Polar_Definition, polarType, var
 
+from model.xo2_driver       import Worker
 from airfoil_widgets        import Airfoil_Select_Open_Widget
-
 
 
 
 class Airfoil_Save_Dialog (Dialog):
     """ 
-    Button - either Text or Icon to open Airfoil with file select 
+    Common airfoil save dialog - optionally
+        - set new filename
+        - set new airfoil name
+        - select directory
+        - remove temp files 
 
     When user successfully selected an airfoil file, 'set' is called with 
     the new <Airfoil> as argument 
@@ -45,11 +47,15 @@ class Airfoil_Save_Dialog (Dialog):
     _width  = (520, None)
     _height = 300
 
-    name = "Save Airfoil Design as..."
+    name = "Save Airfoil as..."
 
-    def __init__ (self,*args, **kwargs):
+    def __init__ (self,*args, remove_designs=False, rename_mode=False, **kwargs):
 
-        self._remove_designs = False
+        self._rename_mode    = rename_mode
+        self._remove_designs = remove_designs
+
+        if rename_mode:
+            self.name = "Rename Airfoil"
 
         super().__init__ (*args, **kwargs)
 
@@ -82,7 +88,8 @@ class Airfoil_Save_Dialog (Dialog):
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use filename as airfoil name")
         r += 1
-        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=20)
+        Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=20,
+                       hide= lambda: not self._messageText())
         r += 1
         Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None),
                 signal=True)
@@ -90,17 +97,20 @@ class Airfoil_Save_Dialog (Dialog):
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use airfoil name as filename")
         r += 1
+        SpaceR (l, r, height=10, stretch=0) 
+        r += 1
         Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName_abs, width=(150,None),
                        disable=True)
         ToolButton (l,r,2, icon=Icon.OPEN, set=self._open_dir, signal=True,
+                    hide = self._rename_mode,
                     toolTip = 'Select directory of airfoil') 
         r += 1
-        SpaceR (l, r, height=20, stretch=0) 
+        SpaceR (l, r, height=10, stretch=2) 
         r += 1
-        CheckBox (l,r,0, text="Remove all designs and design directory on finish", colSpan=4,
+        CheckBox (l,r,0, text="Remove all designs and design directory", colSpan=4,
                         get=lambda: self.remove_designs, set=self.set_remove_designs)
         r += 1
-        SpaceR (l, r, height=5, stretch=1) 
+        SpaceR (l, r, height=10, stretch=1) 
 
         l.setColumnStretch (1,5)
         l.setColumnMinimumWidth (0,80)
@@ -134,11 +144,7 @@ class Airfoil_Save_Dialog (Dialog):
     def _messageText (self): 
         """ info / wanrning text"""
         if not self._names_are_equal():
-             text = "You may want to sync airfoil Name and Filename"
-        else: 
-             text = ""
-        return text 
-
+             return "You may want to sync airfoil Name and Filename"
 
 
     def _open_dir (self):
@@ -170,7 +176,7 @@ class Airfoil_Save_Dialog (Dialog):
 
 # ----- Blend two airfoils   -----------
 
-class Blend_Airfoil (Dialog):
+class Blend_Airfoil_Dialog (Dialog):
     """ Dialog to two airfoils into a new one"""
 
     _width  = 560
@@ -184,12 +190,12 @@ class Blend_Airfoil (Dialog):
 
     def __init__ (self, parent : QWidget, 
                   airfoil  : Airfoil, 
-                  airfoil1 : Airfoil,
+                  airfoil_org : Airfoil,                # airfoil which will be blended...
                   **kwargs): 
 
-        self._airfoil  = airfoil 
-        self._airfoil1 = airfoil1
-        self._airfoil2 = None
+        self._airfoil     = airfoil 
+        self._airfoil_org = airfoil_org
+        self._airfoil2    = None
         self._airfoil2_copy = None
         
         self._blendBy  = 0.5                            # initial blend value 
@@ -212,7 +218,7 @@ class Blend_Airfoil (Dialog):
         Label  (l,r,3, get="Blended")
         Label  (l,r,6, get="Airfoil 2")
         r += 1 
-        Field  (l,r,1, get=self._airfoil1.name, width = 130)
+        Field  (l,r,1, get=self._airfoil_org.fileName, width = 130)
         SpaceC (l,2, width=10, stretch=0)
         Slider (l,r,3, width=110, lim=(0,1), get=lambda: self.blendBy,
                        set=self._set_blendBy, disable=lambda: self._airfoil2 is None)
@@ -220,7 +226,8 @@ class Blend_Airfoil (Dialog):
                        set=self._set_blendBy, disable=lambda: self.airfoil2 is None)
         SpaceC (l,5, width=10, stretch=0)
         Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
-                                    get=lambda: self.airfoil2, set=self._set_airfoil2)
+                                    get=lambda: self.airfoil2, set=self._set_airfoil2,
+                                    initialDir=self._airfoil_org)
 
         SpaceC (l,7, width=5)
         r += 1
@@ -240,7 +247,7 @@ class Blend_Airfoil (Dialog):
 
         # Blend with new blend value - use copy as airfoil2 could be normalized
         if self._airfoil2_copy is not None: 
-            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2_copy.geo, 
+            self._airfoil.geo._blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, ensure_fast=True)
             self.sig_blend_changed.emit()
 
@@ -261,7 +268,7 @@ class Blend_Airfoil (Dialog):
         self._airfoil2_copy = aAirfoil.asCopy()
 
         if aAirfoil is not None: 
-            self._airfoil.geo._blend(self._airfoil1.geo, self._airfoil2_copy.geo, 
+            self._airfoil.geo._blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, ensure_fast=True)
             self.sig_blend_changed.emit()
 
@@ -277,14 +284,10 @@ class Blend_Airfoil (Dialog):
         return buttonBox 
 
 
-
-# ----- repanel dialog helper window  -----------
-
-
-class Repanel_Airfoil (Dialog):
+class Repanel_Airfoil_Dialog (Dialog):
     """ Dialog to repanel an airfoil"""
 
-    _width  = 460
+    _width  = 480
     _height = 240
 
     name = "Repanel Airfoil"
@@ -391,9 +394,100 @@ class Repanel_Airfoil (Dialog):
         return buttonBox 
 
 
+
+class Flap_Airfoil_Dialog (Dialog):
+    """ Dialog to set flap of airfoil"""
+
+    _width  = 320
+    _height = 200
+
+    name = "Set Flap"
+
+    sig_new_flap_settings    = pyqtSignal ()
+
+
+    def __init__ (self, parent : QWidget, 
+                  airfoil : Airfoil, **kwargs): 
+
+        self._airfoil = airfoil
+        self._has_been_flapped = False
+
+        super().__init__ (parent, **kwargs)
+
+
+    @property
+    def flap_setter (self) -> Flap_Setter:
+        return self._airfoil.flap_setter
+
+    @property
+    def has_been_flapped (self) -> bool:
+        """ True if flap was set in this dialog """
+        return self._has_been_flapped and self.flap_setter.flap_angle != 0.0  
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
+                        obj=self.flap_setter, prop=Flap_Setter.x_flap)
+        Slider  (l,r,c+3, colSpan=2, width=120,  
+                        lim=(0.0, 1), dec=2,  
+                        obj=self.flap_setter, prop=Flap_Setter.x_flap)
+        r += 1
+        FieldF  (l,r,c, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
+                        obj=self.flap_setter, prop=Flap_Setter.y_flap)
+        Label   (l,r,c+3, get="of thickness", style=style.COMMENT)
+        r += 1
+        SpaceR  (l, r, stretch=1, height=10) 
+        r += 1
+        FieldF  (l,r,c, lab="Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
+                        obj=self.flap_setter, prop=Flap_Setter.flap_angle)
+        Slider  (l,r,c+3, colSpan=2, width=120,  
+                        lim=(-20,20), dec=2,  
+                        obj=self.flap_setter, prop=Flap_Setter.flap_angle)
+        r += 1
+        SpaceR  (l, r, stretch=3) 
+        r += 1
+        Label   (l,r,c, colSpan=5, get=f"Powered by {Worker.NAME} {Worker.version} using Xfoil", 
+                 style=style.COMMENT, fontSize=size.SMALL)
+
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,50)
+        l.setColumnStretch (5,2)   
+
+        return l
+
+
+    @override
+    def _on_widget_changed (self):
+        """ slot a input field changed - repanel and refresh"""
+
+        self.refresh()
+        self.flap_setter.set_flap()
+
+        self._has_been_flapped = True                   # for change detection 
+        self.sig_new_flap_settings.emit()               # inform parent -> diagram update
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
+
+
 # ----- Match a Bezier curve to a Side of an airfoil  -----------
 
-class Match_Bezier (Dialog):
+class Match_Bezier_Dialog (Dialog):
     """ Main handler represented as little tool window"""
 
     _width  = 350
@@ -619,11 +713,11 @@ class Match_Bezier (Dialog):
         r += 1
         Label  (l,r,0, get=f"{self._side_bezier.name} side", width=80)
         FieldF (l,r,1, width=60, dec=3, unit='%', get=lambda: self._norm2, 
-                       style=lambda: Match_Bezier.style_deviation (self._norm2 ))
+                       style=lambda: Match_Bezier_Dialog.style_deviation (self._norm2 ))
         FieldF (l,r,3, width=50, dec=0, get=lambda: self._curv_le,
-                       style=lambda: Match_Bezier.style_curv_le(self._target_curv_le, self._curv_le))
+                       style=lambda: Match_Bezier_Dialog.style_curv_le(self._target_curv_le, self._curv_le))
         FieldF (l,r,4, width=50, dec=1, get=lambda: self._curv_te,
-                       style=lambda: Match_Bezier.style_curv_te(self._max_curv_te, self._curv_te))
+                       style=lambda: Match_Bezier_Dialog.style_curv_te(self._max_curv_te, self._curv_te))
         r += 1
         SpaceR (l, r) 
 
@@ -700,7 +794,6 @@ class Match_Bezier (Dialog):
         
         # normal close 
         super().reject()
-
 
     
 # -----------------------------------------------------------------------------
@@ -1074,19 +1167,26 @@ class Matcher (QThread):
 
 
 
-class Edit_Polar_Definition (Dialog):
+class Polar_Definition_Dialog (Dialog):
     """ Dialog to edit a single polar definition"""
 
-    _width  = 470
-    _height = 240
+    _width  = 460
+    _height = (300, None)
 
     name = "Edit Polar Definition"
 
-    def __init__ (self, parent : QWidget, polar_def : Polar_Definition, **kwargs): 
+    def __init__ (self, parent : QWidget, polar_def : Polar_Definition, 
+                  small_mode = False,                                       # with flap etc 
+                  polar_type_fixed = False,                                 # change of polar type not allowed 
+                  **kwargs): 
 
-        self._polar_def = polar_def
+        self._polar_def         = polar_def
+        self._small_mode        = small_mode
+        self._polar_type_fixed  = polar_type_fixed
 
-        self.has_been_chnaged = False
+        if small_mode:
+            self._height = 160
+            self._width  = 430
 
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
@@ -1096,52 +1196,76 @@ class Edit_Polar_Definition (Dialog):
     def polar_def (self) -> Polar_Definition:
         return self._polar_def
 
+    @property
+    def flap_def (self) -> Flap_Definition:
+        return self.polar_def.flap_def if self.polar_def else None
+
+
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
         r,c = 0,0 
-        SpaceR (l, r, stretch=0, height=20) 
+        SpaceR (l, r, stretch=1) 
         r += 1 
         FieldF (l,r,c, lab="Re number", width=60, step=10, lim=(1, 5000), unit="k", dec=0,
                         obj=self.polar_def, prop=Polar_Definition.re_asK)
         l.setColumnMinimumWidth (c,80)
         c += 2
-        SpaceC  (l,c)
+        SpaceC  (l,c, width=10)
         c += 1
         FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=1,
                         obj=self.polar_def, prop=Polar_Definition.ma)
-        l.setColumnMinimumWidth (c,40)
+        l.setColumnMinimumWidth (c,45)
         c += 2
-        SpaceC  (l,c)
+        SpaceC  (l,c, width=10)
         c += 1
         FieldF (l,r,c, lab="Ncrit", width=60, step=1, lim=(1, 20), dec=1,
                         obj=self.polar_def, prop=Polar_Definition.ncrit)
-        l.setColumnMinimumWidth (c,40)
+        l.setColumnMinimumWidth (c,45)
         c += 2
-        SpaceC  (l,c, stretch=5)
+        SpaceC  (l,c, width=10, stretch=5)
 
         c = 0 
         r += 1
         Label  (l,r,c, get="Polar type")
         ComboBox (l,r,c+1,  width=60, options=polarType.values(),
-                        obj=self.polar_def, prop=Polar_Definition.type)
-        r += 1
-        SpaceR (l, r, stretch=0, height=20) 
-        r += 1 
-        CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
-                        get=self.polar_def.autoRange)
-        r += 1
-        FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
-                        obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                        hide = lambda: self.polar_def.specVar != var.ALPHA)
-        FieldF (l,r,c, lab=f"Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
-                        obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                        hide = lambda: self.polar_def.specVar != var.CL)
-        Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
-                        get="The smaller the value, the more time is needed")
+                        obj=self.polar_def, prop=Polar_Definition.type,
+                        disable=self._polar_type_fixed)
+        
+        if not self._small_mode:
+            r += 1
+            SpaceR (l, r, height=5, stretch=3) 
+            r += 1 
+            CheckBox (l,r,c, text=f"Set flap just for this polar", colSpan=7,
+                            obj=self.polar_def, prop=Polar_Definition.is_flapped)
+            r += 1
+            FieldF  (l,r,c, lab="Flap Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
+                            obj=lambda: self.flap_def, prop=Flap_Definition.flap_angle,
+                            hide=lambda: not self.polar_def.is_flapped)
+            FieldF  (l,r,c+3, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
+                            obj=lambda: self.flap_def, prop=Flap_Definition.x_flap,
+                            hide=lambda: not self.polar_def.is_flapped)
+            FieldF  (l,r,c+6, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
+                            obj=lambda: self.flap_def, prop=Flap_Definition.y_flap,
+                            hide=lambda: not self.polar_def.is_flapped)
+            # Label   (l,r,c+10, get="of thickness", style=style.COMMENT)
 
+            r += 1
+            SpaceR (l, r, height=5, stretch=3) 
+            r += 1 
+            CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
+                            get=self.polar_def.autoRange)
+            r += 1
+            FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
+                            obj=self.polar_def, prop=Polar_Definition.valRange_step,
+                            hide = lambda: self.polar_def.specVar != var.ALPHA)
+            FieldF (l,r,c, lab=f"Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
+                            obj=self.polar_def, prop=Polar_Definition.valRange_step,
+                            hide = lambda: self.polar_def.specVar != var.CL)
+            Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
+                            get="The smaller the value, the more time is needed")
         r += 1
-        SpaceR (l, r, height=5) 
+        SpaceR (l, r, height=5, stretch=3) 
 
         return l
 
@@ -1149,10 +1273,7 @@ class Edit_Polar_Definition (Dialog):
     @override
     def _on_widget_changed (self):
         """ slot a input field changed - repanel and refresh"""
-
         self.refresh()
-
-        self.has_been_chnaged = True              # for change detection 
 
 
     @override
@@ -1163,5 +1284,94 @@ class Edit_Polar_Definition (Dialog):
         buttonBox = QDialogButtonBox(buttons)
         buttonBox.rejected.connect(self.close)
 
+        return buttonBox 
+
+
+    @override
+    def reject(self): 
+        """ close or x-Button pressed"""
+
+        # ensure no flap def with flap angle == 0.0 
+        if self.flap_def and self.flap_def.flap_angle == 0.0:
+            self.polar_def.set_is_flapped (False) 
+
+        # normal close 
+        super().reject()
+
+
+class Airfoil_Info_Dialog (Dialog):
+    """ small info dialog for airfoil properties"""
+
+    _width  = 400
+    _height = (100, None)
+
+    name = "Description"
+
+    def __init__ (self, *args, title : str= None, **kwargs): 
+
+        self._close_btn  : QPushButton = None 
+
+        super().__init__ ( *args, **kwargs)
+
+        self.setWindowTitle (f"{self.airfoil.fileName}")
+
+        self._close_btn.clicked.connect  (self.close)
+
+        self.refresh (disable=True)
+
+
+    @property
+    def airfoil (self) -> Airfoil:
+        return self.dataObject
+
+    @property
+    def geo (self) -> Geometry:
+        return self.airfoil.geo
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+
+        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_thick, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_camb, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.01,
+                obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="LE curvature", width=75, dec=0,
+                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_around_le, disable=True)
+
+        r,c = 0, 2 
+        SpaceC (l,c, stretch=0)
+        c += 1 
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_thick_x, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_camb_x, disable=True)
+        r += 1
+        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.02,
+                obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
+        r += 1
+
+        l.setRowStretch (r,1)    
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (3,60)
+        l.setColumnStretch (5,2)
+
+        return l
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttonBox = QDialogButtonBox (QDialogButtonBox.StandardButton.Close) #  | QDialogButtonBox.StandardButton.Cancel)
+        self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
         return buttonBox 
 

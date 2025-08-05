@@ -1,4 +1,4 @@
-#!/usr/bin/env pythonupper
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """  
@@ -8,17 +8,20 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 """
 import html 
 
+from typing                     import Callable
+
 from base.math_util             import derivative1
 from base.artist                import *
 from base.common_utils          import *
-from base.spline                import Bezier
+from base.spline                import Bezier, HicksHenne
 
-from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry
-from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Geometry_Bezier
+from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flap_Setter
+from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
 from model.polar_set            import * 
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
 from PyQt6.QtCore               import pyqtSignal, QObject
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -37,16 +40,16 @@ def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
         color = 'deeppink'
     elif airfoil_type == usedAs.NORMAL:
         color = 'springgreen'  
-        alpha = 1.0
     elif airfoil_type == usedAs.FINAL:
-        color = 'springgreen'
+        # color = QColor('turquoise').lighter (120)
+        color = 'springgreen'  
     elif airfoil_type == usedAs.SEED:
         color = 'dodgerblue'
     elif airfoil_type == usedAs.SEED_DESIGN:
         color = 'cornflowerblue'
     elif airfoil_type == usedAs.REF:                         
         color = _color_airfoil_ref (airfoils, airfoil)
-        alpha = 0.9
+        # alpha = 0.9
     elif airfoil_type == usedAs.TARGET:
         color = 'cornflowerblue'
     elif airfoil_type == usedAs.SECOND:
@@ -71,7 +74,7 @@ def _color_airfoil_ref (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
 
     # get color depending on iRef 
     color = color_in_series ('lightskyblue', iRef, nRef, delta_hue=0.4)
-    color.setAlphaF (0.9)
+    # color.setAlphaF (0.9)
 
     return color 
 
@@ -503,7 +506,7 @@ class Airfoil_Artist (Artist):
                 # no legend if it is only one airfoil 
 
                 if len(self.airfoils) == 1:
-                    label = None                            # suppress legend 
+                    label = None                                    # suppress legend 
                 else: 
                     label = _label_airfoil (self.airfoils, airfoil)
 
@@ -517,7 +520,9 @@ class Airfoil_Artist (Artist):
                 antialias = False
                 zValue = 1
 
-                if airfoils_with_design:
+                if airfoil.usedAs == usedAs.FINAL:
+                    zValue = 5                                      # final top most 
+                elif airfoils_with_design:
                     if airfoil.usedAsDesign:
                         width = 2
                         antialias = True
@@ -544,6 +549,10 @@ class Airfoil_Artist (Artist):
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush, 
                                           fillLevel=0.0, fillBrush=brush, antialias = antialias,
                                           zValue=zValue)
+                    
+                    # plot note if reflexed or rearloaded
+                    self._plot_reflexed_rearloaded (airfoil, color)
+
                 else: 
                     self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
                                           symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
@@ -559,8 +568,82 @@ class Airfoil_Artist (Artist):
                     else: 
                         brushcolor = "yellow"
                         text="LE spline"
-                    self._plot_point (airfoil.geo.le_real, color=color, brushColor=brushcolor,
+                    self._plot_point (airfoil.geo.le_real, color=color, brush=brushcolor,
                                       text=text,anchor=(0.5,1) )
+
+
+    def _plot_reflexed_rearloaded (self, airfoil : Airfoil, color : QColor): 
+        """ plot note if reflexed or rearloaded"""
+
+        textColor = color.darker (140)                  #Artist.COLOR_LEGEND
+
+        if airfoil.isReflexed: 
+            x = 0.8
+            y = airfoil.geo.upper.yFn (x) 
+            self._plot_point ((x,y), size=0, text="Reflexed", anchor=(0.5,2.0), textColor=textColor) 
+
+        elif airfoil.isRearLoaded: 
+            x = 0.8
+            y = airfoil.geo.lower.yFn (x) 
+            self._plot_point ((x,y), size=0, text="Rearloaded", anchor=(0.5,-1.0), textColor=textColor)
+
+
+
+class Flap_Artist (Artist):
+    """Plot the flapped airfoil based on Flapper data  """
+
+    def __init__ (self, *args, **kwargs):
+        super().__init__ (*args, **kwargs)
+
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+    @property
+    def design_airfoil (self) -> Airfoil:
+        for airfoil in self.airfoils:
+            if airfoil.usedAsDesign:
+                return airfoil 
+    
+    @property
+    def flap_setter (self) -> Flap_Setter:
+        return self.design_airfoil.flap_setter if self.design_airfoil else None 
+
+
+    def _plot (self): 
+    
+        if self.flap_setter is None: return 
+
+        flapped_airfoil = self.flap_setter.airfoil_flapped
+        color = _color_airfoil ([], self.design_airfoil)
+
+        if flapped_airfoil is not None:
+
+            # plot flapped airfoil 
+
+            pen   = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+            label = f"{self.design_airfoil.name_to_show} flapped"
+
+            self._plot_dataItem  (flapped_airfoil.x, flapped_airfoil.y, name=label, pen = pen, 
+                                    antialias = False, zValue=5)
+
+            # plot flap angle 
+
+            x = (1.0 + flapped_airfoil.x[0]) / 2
+            y = flapped_airfoil.y[0] / 2
+
+            self._plot_point ((x,y), size=0,text=f"{self.flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
+
+        # plot hinge point at the initial, unflapped airfoil
+
+        x = self.flap_setter.x_flap
+        airfoil_base = self.flap_setter.airfoil_base
+
+        y_base = airfoil_base.geo.lower.yFn(x)
+        thick  = airfoil_base.geo.thickness.yFn(x)
+        y = y_base + self.flap_setter.y_flap * thick 
+
+        self._plot_point ((x,y), color=color, size=10,text=f"Hinge {self.flap_setter.x_flap:.1%}" )
 
 
 
@@ -568,6 +651,7 @@ class Bezier_Artist (Artist):
     """Plot and edit airfoils Bezier control points """
 
     sig_bezier_changed     = pyqtSignal()           # bezier curve changed 
+
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -587,7 +671,7 @@ class Bezier_Artist (Artist):
             if airfoil.isBezierBased and airfoil.isLoaded:
 
                 color = _color_airfoil (self.airfoils, airfoil)
-                movable = airfoil.usedAsDesign
+                movable = airfoil.usedAsDesign and self.show_mouse_helper
 
                 side : Side_Airfoil_Bezier
                 for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
@@ -601,50 +685,6 @@ class Bezier_Artist (Artist):
                     if movable:
                         sc : pg.GraphicsScene = p.scene()
                         sc.sigMouseClicked.connect (p.scene_clicked)
-
-
-    # def draw_hicksHenne (self, airfoil: Airfoil_Bezier):
-    #     """ draw hicks henne functions of airfoil """
-
-    #     linewidth   = 1
-    #     linestyle   = ':'
-
-    #     side : Side_Airfoil_HicksHenne
-
-    #     for side in [airfoil.geo.upper, airfoil.geo.lower]:
-    #     # side = airfoil.geo.upper
-
-    #         if side.name == UPPER:
-    #             delta_y =  0.1
-    #         else:
-    #             delta_y = -0.1
-
-    #         hh : HicksHenne
-    #         for ih, hh in enumerate(side.hhs):
-
-    #             # plot hh function 
-    #             x = side.x 
-    #             y = hh.eval (x) 
-    #             p = self.ax.plot (x,y * 10 + delta_y, linestyle, linewidth=linewidth , alpha=1) 
-    #             self._add(p)
-
-    #             # plot maximum marker 
-    #             x = hh.location
-    #             y = hh.strength  * 10 + delta_y
-    #             color =self._get_color (p) 
-    #             p = self.ax.plot (x, y, color=color, **ms_point)
-    #             self._add(p)
-
-    #             p = self.ax.annotate(f'{ih+1}  w{hh.width:.2f}', (x, y), fontsize='small',
-    #                 xytext=(3, 3), textcoords='offset points', color = color)
-    #             self._add(p)
-
-    #         # print info text 
-
-    #         if self.show_title:    
-    #             p = _plot_side_title (self.ax, side)
-    #             self._add(p)
-
 
 
 
@@ -712,6 +752,58 @@ class Bezier_Deviation_Artist (Artist):
             if len(x_dbl):
                 self._plot_dataItem  (x_dbl, y_dbl, pen=pg.mkPen(color, width=3), name=label, 
                                         antialias=False, zValue=1, connect='pairs')    
+
+
+
+
+class Hicks_Henne_Artist (Artist):
+    """Plot and edit airfoils Hicks Henne functions of airfoils  """
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+    def _plot (self): 
+    
+        y_factor = 20 
+
+        for airfoil in self.airfoils:
+            if airfoil.isHicksHenneBased and airfoil.isLoaded:
+
+                color_airfoil = _color_airfoil (self.airfoils, airfoil)
+
+                side : Side_Airfoil_HicksHenne
+                for side in [airfoil.geo.upper, airfoil.geo.lower]:     # paint upper on top 
+
+                    hh : HicksHenne
+                    for ih, hh in enumerate(side.hhs):
+
+                        color = color_in_series (color_airfoil,ih, len(side.hhs), delta_hue=0.2)    
+                        style = Qt.PenStyle.DashDotDotLine if side.isUpper else Qt.PenStyle.DashLine
+                        pen   = pg.mkPen(color, width=0.7, style=style)
+
+                        if ih == 0:
+                            label = f"Hicks Henne upper x {y_factor}" if side.isUpper else f"Hicks Henne lower x {y_factor}"
+                        else: 
+                            label = None 
+
+                        # plot hh function 
+                        x = side.x 
+                        y = hh.eval (x) * y_factor # + delta_y
+
+                        self._plot_dataItem  (x, y,pen = pen, antialias = False, zValue=4, name=label)
+
+                        # plot maximum marker 
+
+                        x = hh.location
+                        y = hh.strength  * y_factor   
+
+                        text = f"HH{ih+1}"
+                        anchor = (-0.05,1.05) if side.isUpper else (-0.05,-0.05)
+
+                        self._plot_point ((x, y), symbol = '+', color=color, text=text, textColor=color, anchor=anchor,
+                                          zValue=4)
+
+ 
 
 
 
@@ -948,14 +1040,13 @@ class Airfoil_Line_Artist (Artist, QObject):
             # plot le circle 
 
             radius = airfoil.geo.le_radius
-            circle_item = self._plot_point (radius, 0, color=color, size=2*radius, pxMode=False, 
-                                            style=Qt.PenStyle.DotLine, brushAlpha=0.3, brushColor='black')
+            
+            circle_item = self._plot_circle (radius, 0, color=color, size=2*radius, 
+                                            style=Qt.PenStyle.DotLine)
             pl = Movable_LE_Point (airfoil.geo, circle_item, 
                                     movable=airfoil.usedAsDesign, color=color,
                                     on_changed=self.sig_geometry_changed.emit )
             self._add(pl) 
-
-
 
 
 
@@ -1004,40 +1095,45 @@ class Polar_Artist (Artist):
 
         for airfoil in self.airfoils: 
             polarSet = airfoil.polarSet
-            polarSet.load_or_generate_polars ()
+            if polarSet:
+                polarSet.load_or_generate_polars ()
+            else:
+                logger.debug (f"{airfoil} has no polarSet to plot")
 
         # plot polars of airfoils
 
-        nPolar_plotted      = 0 
+        nPolar_plotted    = 0 
         nPolar_generating = 0                     # is there a polar in calculation 
-        error_msg           = []  
+        error_msg         = []  
 
         airfoil: Airfoil
         for airfoil in self.airfoils:
+
+            if airfoil.polarSet:
  
-            color_airfoil = _color_airfoil (self.airfoils, airfoil)
+                color_airfoil = _color_airfoil (self.airfoils, airfoil)
 
-            # first filter only visible polars to get number of polars and plot 
+                # first filter only visible polars to get number of polars and plot 
 
-            polarSet : Polar_Set = airfoil.polarSet
-            polars_to_plot = polarSet.polars
+                polarSet : Polar_Set = airfoil.polarSet
+                polars = polarSet.polars
 
-            polar : Polar 
-            for iPolar, polar in enumerate(reversed(polars_to_plot)): 
+                for iPolar, polar in enumerate(polars [::-1]): 
 
-                # generate increasing color hue value for the polars of an airfoil 
-                color = color_in_series (color_airfoil, iPolar, len(polars_to_plot), delta_hue=0.1)
+                    if polar.error_occurred:
+                        # in error_msg could be e.g. '<' 
+                        error_msg.append (f"'{airfoil.name_to_show} - {polar.name}': {html.escape(polar.error_reason)}")
+                    elif not polar.isLoaded: 
+                        nPolar_generating += 1
+                    else: 
+                        nPolar_plotted    += 1
+                        # generate increasing color hue value for the polars of an airfoil 
+                        color = color_in_series (color_airfoil, iPolar, len(polars), delta_hue=0.1)
 
-                self._plot_polar (self.airfoils, airfoil, polar, color)
+                        self._plot_polar (self.airfoils, airfoil, polar, color)
 
-                if not polar.isLoaded: 
-                    nPolar_generating += 1
-                elif polar.error_occurred:
-                    # in error_msg could be e.g. '<' 
-                    error_msg.append (f"'{airfoil.name_to_show} - {polar.name}': {html.escape(polar.error_reason)}")
-                else: 
-                    nPolar_plotted += 1
-
+        logger.debug (f"{self} {nPolar_plotted} polars plotted, {nPolar_generating} generating ")
+        
         # show error messages 
 
         if error_msg:
@@ -1067,7 +1163,7 @@ class Polar_Artist (Artist):
 
         # build nice label 
 
-        label = f"{_label_airfoil (airfoils, airfoil)} {polar.re_asK}k" 
+        label = f"{_label_airfoil (airfoils, airfoil)} - {polar.name}" 
 
         if not polar.isLoaded:
             label = label + ' generating'                       # async polar generation  
@@ -1078,6 +1174,9 @@ class Polar_Artist (Artist):
 
         if self._show_points:
             linewidth=0.5
+        elif airfoil.usedAs == usedAs.FINAL:  
+            linewidth=1.5
+            antialias = True
         elif airfoil.usedAs == usedAs.DESIGN:  
             linewidth=1.5
             antialias = True
@@ -1089,7 +1188,9 @@ class Polar_Artist (Artist):
 
         # NORMAl and DESIGN polar above other polars 
 
-        if airfoil.usedAs == usedAs.DESIGN:
+        if airfoil.usedAs == usedAs.FINAL:
+            zValue = 5
+        elif airfoil.usedAs == usedAs.DESIGN:
             zValue = 3
         elif airfoil.usedAs == usedAs.NORMAL:
             zValue = 2

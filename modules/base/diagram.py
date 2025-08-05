@@ -21,11 +21,11 @@ from pyqtgraph          import icons
 
 from base.common_utils  import *
 from base.panels        import Edit_Panel, Container_Panel
-from base.widgets       import ToolButton, Icon
+from base.widgets       import ToolButton, Icon, Widget
 from base.artist        import Artist
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 
@@ -39,18 +39,32 @@ class Diagram (QWidget):
 
     """
 
-    width  = (800, None)                # (min,max) 
-    height = (400, None)                # (min,max)
+    _width  = (200, None)                # (min,max) 
+    _height = (100, None)                # (min,max)
 
     name   = "My Diagram"               # will be shown in Tabs 
 
 
-    def __init__(self, parent, getter = None, **kwargs):
+    def __init__(self, parent, 
+                 getter = None, 
+                 width=None, 
+                 height=None, 
+                 **kwargs):
         super().__init__(parent, **kwargs)
 
         self._getter = getter
         self._myApp  = parent
         self._section_panel = None 
+
+        # set width and height 
+
+        if width is not None: 
+            self._width = width
+        if height is not None: 
+            self._height = height
+
+        Widget._set_width  (self, self._width)
+        Widget._set_height (self, self._height)
 
         # create graphics widget 
 
@@ -108,6 +122,37 @@ class Diagram (QWidget):
         return obj if isinstance (obj, list) else [obj]
 
 
+    def _get_items (self, item_classes : Type['Diagram_Item'] | list[type['Diagram_Item']]) -> list['Diagram_Item']:
+        """get Diagram Items of self having class name(s)
+
+        Args:
+            items: class or list of class of Diagram Items to retrieve
+        Returns:
+            List of Item with this classes
+        """
+        look_for = [item_classes] if not isinstance (item_classes,list) else item_classes
+        result = []
+        for item in self.diagram_items:
+            if item.__class__ in look_for:
+                result.append(item)
+        return result 
+
+
+    def _get_first_item (self, item_class : Type['Diagram_Item']) -> list['Diagram_Item']:
+        """get Diagram Items of self having class name(s)"""
+        items = self._get_items (item_class)
+        if items:
+            return items [0]
+        else: 
+            return None
+        
+
+    def _show_section_and_item (self, item_class : Type['Diagram_Item'], show = True) -> list['Diagram_Item']:
+        """show view_panel section and the diagram item """
+        for item in self._get_items (item_class):
+            item.section_panel.set_switched_on (show)
+
+
     def _get_artist (self, artists : Type[Artist] | list[type[Artist]]) -> list[Artist]:
         """get artists of all my items having class name(s)
 
@@ -122,11 +167,11 @@ class Diagram (QWidget):
         return result 
 
 
-    def _show_artist (self, artist_class : Type[Artist], show : bool = True):
+    def _show_artist (self, artist_class : Type[Artist], show = True, refresh = True):
         """show on/off of artist having artist_class name """
 
         for item in self.diagram_items:
-            item._show_artist (artist_class, show)
+            item._show_artist (artist_class, show, refresh=refresh)
 
 
     @property
@@ -166,6 +211,9 @@ class Diagram (QWidget):
 
             logger.debug (f"{str(self)} refresh")
 
+            if self._viewPanel:
+                self._viewPanel.refresh()                                       # first view panel as diagram settings could change
+
             item : Diagram_Item
             for item in self.diagram_items:
                 if item.isVisible(): 
@@ -173,8 +221,6 @@ class Diagram (QWidget):
                 if also_viewRange:                                              # also setup view range if not visible
                     item.setup_viewRange()  
 
-            if self._viewPanel:
-                self._viewPanel.refresh()
 
     @override
     def showEvent (self, ev):
@@ -281,8 +327,8 @@ class Diagram_Item (pg.PlotItem):
     title       = "The Title"                           # title of diagram item
     subtitle    = "my subtitle"                         # optional subtitle 
 
-    min_width   = 600                                   # min size needed - see below 
-    min_height  = 200 
+    min_width   = 500                                   # min size needed - see below 
+    min_height  = 150 
 
     # Signals 
 
@@ -389,12 +435,12 @@ class Diagram_Item (pg.PlotItem):
         return result 
 
 
-    def _show_artist (self, artist_class : Type[Artist], show : bool = True):
+    def _show_artist (self, artist_class : Type[Artist], show : bool = True, refresh=True):
         """show on/off of artist having artist_class name """
 
         # logger.debug (f"{self} show artists: {show} - is visible: {self.isVisible()}")
         for artist in self._get_artist (artist_class):
-            artist.set_show (show)            
+            artist.set_show (show, refresh=refresh)            
 
 
     def _on_help_message (self, aArtist :Artist | None, aMessage: str | None):
@@ -596,7 +642,7 @@ class Diagram_Item (pg.PlotItem):
 
         refresh_done = False
 
-        if self.section_panel is not None: 
+        if self._section_panel is not None: 
             # refresh artists only if self section is switched on 
             if self.section_panel.switched_on:
                 self.refresh_artists()          # first artist and then panel 
@@ -651,6 +697,7 @@ class Diagram_Item (pg.PlotItem):
     def plot_title (self, 
                     title : str|None = None,
                     title_size : int = None,
+                    title_color : str|QColor = None,
                     subtitle : str|None = None, 
                     align :str ='left', 
                     offset : tuple = (50,5)):
@@ -659,6 +706,7 @@ class Diagram_Item (pg.PlotItem):
         Args:
             title: optional - default is class.title
             title_size: optional - title font size in pt 
+            title_color: optional - title color as String or QColor
             subtitle: optional - default is class.subtitle
             align: aligned to the left or right of th item .
             offset: from the upper left (right) corner in pixel  
@@ -689,7 +737,12 @@ class Diagram_Item (pg.PlotItem):
             parentPos = (0.98,0)
             itemPos   = (1,0)
 
-        p1 = pg.LabelItem(title, color=QColor(Artist.COLOR_HEADER), size=f"{title_size}pt")    
+        if title_color is None: 
+            color = Artist.COLOR_HEADER
+        else:
+            color = title_color
+
+        p1 = pg.LabelItem(title, color=color, size=f"{title_size}pt")    
 
         p1.setParentItem(self)                            # add to self (Diagram Item) for absolute position 
         p1.anchor(itemPos=itemPos, parentPos=parentPos, offset=offset)

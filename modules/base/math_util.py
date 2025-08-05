@@ -11,7 +11,7 @@ from bisect import bisect_left
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 #------------ time to run -----------------------------------
@@ -244,6 +244,7 @@ class JPoint:
 
 #------------ linear interpolation -----------------------------------
 
+
 def interpolate(x1:float, x2:float, y1:float, y2:float, x:float) -> float:
 
     if (x1 -x) == 0.0: return y1
@@ -253,6 +254,27 @@ def interpolate(x1:float, x2:float, y1:float, y2:float, x:float) -> float:
     except:
         raise ValueError (f"Division by zero in interpolation , x1: {x1}, x2: {x2}")
     return y
+
+
+
+#------------ rounding -----------------------------------
+
+
+def round_up (number : float, decimals : int =0) -> float:
+    """ round number up with to deciamls"""
+
+    multiplier = 10 ** decimals
+    multiplied = round(number * multiplier, 1)        # avoid Python float artefacts 
+    return math.ceil(multiplied) / multiplier
+
+
+
+def round_down (number : float, decimals : int =0) -> float:
+    """ round number down with to deciamls"""
+
+    multiplier = 10 ** decimals
+    multiplied = round(number * multiplier, 1)        # avoid Python float artefacts 
+    return math.floor(multiplied) / multiplier
 
 
 

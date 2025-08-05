@@ -15,19 +15,28 @@ from model.airfoil          import Airfoil, GEO_SPLINE, GEO_BASIC
 
 class Airfoil_Example_Abstract (Airfoil): 
 
-    isExample = True
-
-    name        = 'Abstract'
-    fileName    = 'Abstract.Dat'                 # for ease of use as class variable
+    isExample           = True
+    workingDir_default  = None
 
 
-    def __init__(self, geometry  = GEO_SPLINE ):
-        super().__init__(geometry = geometry)
-        """Abstract superclass for example airfoils
-        """
+    def __init__(self, geometry  = GEO_SPLINE , name='Abstract', pathFileName='Abstract.dat', workingDir : str|None = None):
+        """Abstract superclass for example airfoils """
 
-        self._pathFileName = None
-        self.load ()
+        if not workingDir and self.workingDir_default:
+            workingDir = self.workingDir_default
+
+        super().__init__(geometry = geometry, name=name,  workingDir=workingDir)
+
+        if workingDir and not os.path.isdir (workingDir):
+            os.mkdir (workingDir)
+
+        self.set_pathFileName (pathFileName, noCheck=True)              # set later as file does not exist (yet)
+        self.set_isModified (True)                                      # will be saved on demand 
+
+        self.load ()                                                    # get coordinates 
+
+        logger.info (f"{self} created in '{self.workingDir}'")
+
 
     @property
     def isExisting (self):
@@ -55,10 +64,9 @@ class Airfoil_Example_Abstract (Airfoil):
 class Example (Airfoil_Example_Abstract):
     """ An example airfoil - JX-GP-100_bezier.dat with reduced points"""
 
-    name        = 'Example'
-    fileName    = 'Example.dat'
-    def __init__(self, geometry  = GEO_BASIC ):
-        super().__init__(geometry = geometry)
+    def __init__(self, geometry = GEO_BASIC, name='Example', pathFileName='Example.dat', **kwargs):
+        super().__init__(geometry = geometry, name=name, pathFileName=pathFileName, **kwargs)
+
 
     def _getCoordinates (self):
         """ returns the coordinates of example as a list of lines"""
@@ -197,8 +205,8 @@ class Example (Airfoil_Example_Abstract):
 class Root_Example (Airfoil_Example_Abstract):
     """ An example airfoil for root - JX-GT-15v2"""
 
-    name        = 'Root_Example'
-    fileName    = 'Root_Example.dat'                 # for ease of use as class variable
+    def __init__(self, geometry = GEO_BASIC, name='Root_Example', pathFileName='Root_Example.dat', **kwargs):
+        super().__init__(geometry = geometry, name=name, pathFileName=pathFileName, **kwargs)
 
     def _getCoordinates (self):
         """ returns the coordinates of example as a list of lines"""
@@ -417,8 +425,8 @@ class Root_Example (Airfoil_Example_Abstract):
 class Tip_Example (Airfoil_Example_Abstract):
     """ An example airfoil for tip - JX-GT-05v2"""
 
-    name        = 'Tip_Example'
-    fileName    = 'Tip_Example.dat'                 # for ease of use as class variable
+    def __init__(self, geometry = GEO_BASIC, name='Tip_Example', pathFileName='Tip_Example.dat', **kwargs):
+        super().__init__(geometry = geometry, name=name, pathFileName=pathFileName, **kwargs)
 
     def _getCoordinates (self):
         """ returns the coordinates of example as a list of lines"""

@@ -703,6 +703,10 @@ class Bezier:
             self._y_on_x_cache = {}
             self._x_on_y_cache = {}
 
+    @property
+    def has_u (self) -> bool: 
+        """ True if curve paramter u is set (in cache) """
+        return self._u is not None 
 
 
     def eval (self, u, der=0):

@@ -1,0 +1,65 @@
+&info
+  description(1) = 'Fast F3F airfoil for good conditions. Using Hicks-Henne'
+  description(2) = 'functions "controlled" by 8 operating points'
+/
+
+&optimization_options
+  airfoil_file = 'Seed_no_rearload.dat'
+  cpu_threads = -1
+  show_details = .true.
+/
+
+&hicks_henne_options
+  nfunctions_top = 4
+  nfunctions_bot = 4
+/
+
+&operating_conditions
+  noppoint = 8
+  re_default = 600000
+
+  op_point(1) = -0.05
+  optimization_type(1) = 'target-drag'
+  target_value(1) = 0.0072049
+  weighting(1) = -0.5
+
+  op_point(2) = 0.0501
+  optimization_type(2) = 'target-drag'
+  target_value(2) = 0.0054364
+
+  op_point(3) = 0.1501
+  optimization_type(3) = 'target-drag'
+  target_value(3) = 0.0047312
+
+  op_point(4) = 0.2994
+  optimization_type(4) = 'target-drag'
+  target_value(4) = 0.0050616
+
+  op_point(5) = 0.5
+  optimization_type(5) = 'target-glide'
+  target_value(5) = 75.7
+
+  op_point(6) = 0.6502
+  optimization_type(6) = 'target-glide'
+  target_value(6) = 77.1275
+
+  op_point(7) = 0.9007
+  optimization_type(7) = 'target-glide'
+  target_value(7) = 72.7244
+
+  op_mode(8) = 'spec-al'
+  op_point(8) = 11.5018
+  optimization_type(8) = 'target-lift'
+  target_value(8) = 1.2517
+/
+
+&geometry_targets
+  ngeo_targets = 1
+  target_type(1) = 'Thickness'
+  target_value(1) = 0.075
+/
+
+&xfoil_run_options
+  ncrit = 7
+/
+

@@ -32,6 +32,7 @@
 import os
 import sys
 import html 
+from copy                   import copy 
 from typing                 import Tuple, override
 from enum                   import StrEnum
 from pathlib                import Path
@@ -44,7 +45,8 @@ from base.common_utils      import *
 from base.math_util         import * 
 from base.spline            import Spline1D, Spline2D
 
-from model.airfoil          import Airfoil, GEO_BASIC, GEO_SPLINE, usedAs
+from model.airfoil          import Airfoil, Airfoil_Bezier
+from model.airfoil          import Flap_Definition
 from model.xo2_driver       import Worker, file_in_use   
 
 
@@ -103,21 +105,31 @@ class Polar_Definition:
 
     """
 
-    VAL_RANGE_ALPHA = [-4.0, 13.0, 0.25]
+    MAX_POLAR_DEFS  = 5                             # limit to check in App
+
+    VAL_RANGE_ALPHA = [-4.0, 13.0, 0.5]
     VAL_RANGE_CL    = [-0.2,  1.2, 0.05]
 
-    def __init__(self, dataDict=None):
+    def __init__(self, dataDict : dict = None):
         
         self._ncrit     = fromDict (dataDict, "ncrit",    7.0)
         self._autoRange = fromDict (dataDict, "autoRange",True)
         self._valRange  = fromDict (dataDict, "valRange", self.VAL_RANGE_ALPHA)
+        self._specVar   = None 
         self.set_specVar (fromDict (dataDict, "specVar",  var.ALPHA))       # it is a enum
+        self._type      = None 
         self.set_type    (fromDict (dataDict, "type",     polarType.T1))    # it is a enum
        
         self._re        = fromDict (dataDict, "re",       400000)             
         self._ma        = fromDict (dataDict, "mach",     0.0)
 
+        flap_dict       = fromDict (dataDict, "flap",     None)
+        self._flap_def  = Flap_Definition (dataDict=flap_dict) if flap_dict else None
+
         self._active    = fromDict (dataDict, "active",   True)             # a polar definition can be in-active
+
+        self._is_mandatory = False                                          #  polar needed e.g. for xo2
+
 
 
     def __repr__(self) -> str:
@@ -138,8 +150,24 @@ class Polar_Definition:
         toDict (d, "autoRange",      self.autoRange) 
         toDict (d, "valRange",       self.valRange) 
         toDict (d, "active",         self.active) 
+
+        if self._flap_def:
+            toDict (d, "flap", self._flap_def._as_dict ())
         return d
 
+
+    def _get_label (self, polarType, re, ma, ncrit, flap_def : Flap_Definition =None): 
+        """ return a label of these polar variables"""
+        ncirt_str = f" N{ncrit:.2f}".rstrip('0').rstrip('.') 
+        ma_str    = f" M{ma:.2f}".rstrip('0').rstrip('.') if ma else ""
+        if flap_def:
+            flap_str  = f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
+            flap_str += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
+        else:
+            flap_str = ""
+
+        return f"{polarType} Re{int(re/1000)}k{ma_str}{ncirt_str}{flap_str}"
+    
 
     @property
     def active (self) -> bool:
@@ -148,6 +176,15 @@ class Polar_Definition:
     
     def set_active (self, aBool : bool):
         self._active = aBool == True 
+
+
+    @property 
+    def is_mandatory (self) -> bool:
+        """ is self needed e.g. for Xoptfoil2"""
+        return self._is_mandatory
+    
+    def set_is_mandatory (self, aBool):
+        self._is_mandatory = aBool == True
 
 
     @property
@@ -283,13 +320,53 @@ class Polar_Definition:
     @property
     def name (self): 
         """ returns polar name as a label  """
-        return Polar.get_label(self.type, self.re, self.ma, self.ncrit)
+        return self._get_label (self.type, self.re, self.ma, self.ncrit, self.flap_def)
 
     @property
     def name_long (self):
         """ returns polar extended name self represents """
         return f"{self.name}  {self.specVar}: {self.valRange_string}"    
 
+
+    def is_equal_to (self, aDef: 'Polar_Definition', ignore_active=False):
+        """ True if aPolarDef is equals self"""
+
+        if isinstance (aDef, Polar_Definition):
+            self_dict = self._as_dict()
+            aDef_dict = aDef._as_dict()
+            if ignore_active:
+                self_dict.pop('active', None)
+                aDef_dict.pop('active', None)
+                
+            return self_dict == aDef_dict
+        else:
+            return False
+
+    def is_in (self, polar_defs : list['Polar_Definition']):
+        """ True if self is already equal in list of polar definitions"""
+        for polar_def in polar_defs:
+            if self.is_equal_to (polar_def, ignore_active=True): return True 
+        return False 
+
+
+    @property
+    def is_flapped (self) -> bool:
+        """ True if self has a flap definition"""
+        return isinstance (self._flap_def, Flap_Definition)
+    
+    def set_is_flapped (self, aBool : bool):
+        if aBool: 
+            self.set_flap_def (Flap_Definition())
+        else: 
+            self.set_flap_def (None)
+    
+    @property
+    def flap_def (self) -> Flap_Definition:
+        """ an optional flap definition of self"""
+        return self._flap_def 
+    
+    def set_flap_def (self, aDef : Flap_Definition | None):
+        self._flap_def = aDef
 
 
 #------------------------------------------------------------------------------
@@ -361,33 +438,34 @@ class Polar_Set:
     def airfoil (self) -> Airfoil: return self._airfoil
 
     @property
-    def airfoil_abs_pathFileName (self):
+    def airfoil_pathFileName_abs (self) -> str:
         """ returns absolute path of airfoil"""
         abs_path = None
         if self.airfoil:
-            pathFileName = self.airfoil.pathFileName  
-            if os.path.isabs (pathFileName):
-                abs_path = pathFileName
-            else:
-                abs_path = os.path.join (self._airfoil.workingDir, pathFileName)
+            abs_path = self.airfoil.pathFileName_abs
 
-        # in case of Bezier we'll write only the .bez file 
-        if self.airfoil.isBezierBased:
-            abs_path = os.path.splitext(abs_path)[0] + ".bez"
+            # in case of Bezier we'll write only the .bez file 
+            if self.airfoil.isBezierBased:
+                abs_path = os.path.splitext(abs_path)[0] + Airfoil_Bezier.Extension
+
+            # in case of hicks henne .dat is used 
+            elif self.airfoil.isHicksHenneBased:
+                abs_path = os.path.splitext(abs_path)[0] + Airfoil.Extension
 
         return abs_path
+
 
     def airfoil_ensure_being_saved (self):
         """ check and ensure that airfoil is saved to file (Worker needs it)"""
 
-        if os.path.isfile (self.airfoil_abs_pathFileName) and not self.airfoil.isModified:
+        if os.path.isfile (self.airfoil_pathFileName_abs) and not self.airfoil.isModified:
             pass 
         else: 
             if self.airfoil.isBezierBased:                      # for Bezier write only .bez - no dat
                 self.airfoil.save(onlyShapeFile=True)
             else: 
                 self.airfoil.save()
-            logging.debug (f'Airfoil {self.airfoil} saved for polar generation') 
+            logger.debug (f'Airfoil {self.airfoil_pathFileName_abs} saved for polar generation') 
 
 
     @property
@@ -427,6 +505,18 @@ class Polar_Set:
             polar.polar_set_detach ()
             Polar_Task.terminate_task_of_polar (polar) 
         
+
+
+    def is_equal_to (self, polar_set: 'Polar_Set'):
+        """ True if polar_set has the same polars (defs) """
+
+        if len(self.polars) == len(polar_set.polars):
+            for i, polar in enumerate (self.polars):
+                if not polar.is_equal_to (polar_set.polars[i]):
+                    return False
+        else:
+            return False 
+        return True 
 
 
     #---------------------------------------------------------------
@@ -540,6 +630,70 @@ class Polar_Set:
 
 #------------------------------------------------------------------------------
 
+
+class Polar_Point:
+    """ 
+    A single point of a polar of an airfoil   
+
+    airfoil 
+        --> Polar_Set 
+            --> Polar   (1..n) 
+                --> Polar_Point  (1..n) 
+    """
+    def __init__(self):
+        """
+        Main constructor for new opPoint 
+
+        """
+        self.spec   = var.ALPHA                         # self based on ALPHA or CL
+        self.alpha : float = None
+        self.cl    : float = None
+        self.cd    : float = None
+        self.cm    : float = None 
+        self.xtrt  : float = None                       # transition top side
+        self.xtrb  : float = None                       # transition bot side
+
+    @property
+    def glide (self) -> float: 
+        if self.cd and self.cl:                  
+            return round_down(self.cl/self.cd,2)  
+        else: 
+            return 0.0 
+
+    @property
+    def sink (self) -> float: 
+        if self.cd > 0.0 and self.cl >= 0.0:                  
+            return round_down(self.cl**1.5 / self.cd,2)
+        else: 
+            return 0.0 
+
+    def get_value (self, op_var : var ) -> float:
+        """ get the value of the opPoint variable with id"""
+
+        if op_var == var.CD:
+            val = self.cd
+        elif op_var == var.CL:
+            val = self.cl
+        elif op_var == var.ALPHA:
+            val = self.alpha
+        elif op_var == var.CM:
+            val = self.cm
+        elif op_var == var.XTRT:
+            val = self.xtrt
+        elif op_var == var.XTRB:
+            val = self.xtrb
+        elif op_var == var.GLIDE:
+            val = self.glide
+        elif op_var == var.SINK:
+            val = self.sink
+        else:
+            raise ValueError ("Op point variable id '%s' not known" %op_var)
+        return val 
+
+
+#------------------------------------------------------------------------------
+
+
 class Polar (Polar_Definition):
     """ 
     A single polar of an airfoil created by Worker
@@ -550,18 +704,6 @@ class Polar (Polar_Definition):
         |--- Polar_Set 
                 |--- Polar    <-- Polar_Definition
     """
-
-    @classmethod
-    def get_label (cls, polarType, re, ma, ncrit): 
-        """ return a label of these polar variables"""
-        if ma:
-            maString = f" M {ma:.2f}".rstrip('0').rstrip('.') 
-        else: 
-            maString = ""
-        ncritString = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
-        return f"{polarType} Re {int(re/1000)}k{maString}{ncritString}"
-
-
 
     def __init__(self, mypolarSet: Polar_Set, 
                        polar_def : Polar_Definition = None, 
@@ -575,21 +717,22 @@ class Polar (Polar_Definition):
             re_scale: will scale (down) polar reynolds and mach number of self
 
         """
+        super().__init__()
         self._polar_set = mypolarSet
         self._re_scale  = re_scale
 
-        self._error_reason = None               # if error occurred during polar generation 
+        self._error_reason = None                       # if error occurred during polar generation 
 
-        self._opPoints = []                     # the single opPoins of self
+        self._polar_points = []                         # the single polar points of self
         self._alpha = None
-        self._cl = None
-        self._cd = None
-        self._cm = None 
-        self._cd = None 
-        self._xtrt = None
-        self._xtrb = None
+        self._cl    = None
+        self._cd    = None
+        self._cm    = None 
+        self._cd    = None 
+        self._xtrt  = None
+        self._xtrb  = None
         self._glide = None
-        self._sink = None
+        self._sink  = None
 
         if polar_def: 
             self.set_active     (polar_def.active)
@@ -608,6 +751,9 @@ class Polar (Polar_Definition):
                 self.set_re (re_scaled)
                 self.set_ma (ma_scaled)
 
+            # sanity - no polar with flap angle == 0.0 
+            if polar_def.flap_def and polar_def.flap_def.flap_angle != 0.0:
+                self.set_flap_def   (copy (polar_def.flap_def))
 
     def __repr__(self) -> str:
         """ nice print string wie polarType and Re """
@@ -627,14 +773,14 @@ class Polar (Polar_Definition):
         return self._re_scale
 
     @property
-    def opPoints (self) -> list:
-        """ returns the sorted list of opPoints of self """
-        return self._opPoints
+    def polar_points (self) -> list [Polar_Point]:
+        """ returns the sorted list of Polar_Points of self """
+        return self._polar_points
         
     @property
     def isLoaded (self) -> bool: 
         """ is polar data loaded from file (for async polar generation)"""
-        return len(self._opPoints) > 0 or self.error_occurred
+        return len(self._polar_points) > 0 or self.error_occurred
     
     @property 
     def error_occurred (self) -> bool:
@@ -690,19 +836,50 @@ class Polar (Polar_Definition):
         if not np.any(self._xtrb): self._xtrb = self._get_values_forVar (var.XTRB)
         return self._xtrb
 
-    @property
-    def cl_max (self) -> float:
-        if np.any(self.cl):
-            return np.max(self.cl)
-        else: 
-            return None
 
     @property
-    def cd_min (self) -> float:
+    def min_cd (self) -> Polar_Point:
+        """ returns a Polar_Point at min cd - or None if not valid"""
         if np.any(self.cd):
-            return np.min(self.cd)
-        else: 
-            return None
+            ip = np.argmin (self.cd)
+            # sanity for somehow valid polar 
+            if self.type == polarType.T1:
+                if ip > 2 and ip < (len(self.cd) - 1):
+                    return self.polar_points [ip]
+            else:
+                if ip < (len(self.cd) - 1):
+                    return self.polar_points [ip]
+
+
+    @property
+    def max_glide (self) -> Polar_Point:
+        """ returns a Polar_Point at max glide - or None if not valid"""
+        if np.any(self.glide):
+            ip = np.argmax (self.glide)
+            # sanity for somehow valid polar 
+            if ip > 2 and ip < (len(self.glide) - 3):
+                return self.polar_points [ip]
+
+
+    @property
+    def max_cl (self) -> Polar_Point:
+        """ returns a Polar_Point at max cl - or None if not valid"""
+        if np.any(self.cl):
+            ip = np.argmax (self.cl)
+            # sanity for somehow valid polar 
+            if ip > (len(self.cl) - 5):
+                return self.polar_points [ip]
+
+
+    @property
+    def min_cl (self) -> Polar_Point:
+        """ returns a Polar_Point at max cl - or None if not valid"""
+        if np.any(self.cl):
+            ip = np.argmin (self.cl)
+            # sanity for somehow valid polar 
+            if ip < (len(self.cl) - 5):
+                return self.polar_points [ip]
+
 
     @property
     def alpha_cl0_inviscid (self) -> float:
@@ -721,14 +898,6 @@ class Polar (Polar_Definition):
     def alpha_cl0 (self) -> float:
         if np.any(self.cl) and np.any(self.alpha):
             return self.get_interpolated (var.CL, 0.0, var.ALPHA)
-        else: 
-            return None
-
-
-    @property
-    def glide_max (self) -> float:
-        if np.any(self.glide):
-            return np.max(self.glide)
         else: 
             return None
 
@@ -784,41 +953,44 @@ class Polar (Polar_Definition):
     def _get_values_forVar (self, var) -> np.ndarray:
         """ copy values of var from op points to array"""
 
-        nPoints = len(self.opPoints)
+        nPoints = len(self.polar_points)
         if nPoints == 0: return np.array([]) 
 
         values = np.zeros (nPoints)
-        op : OpPoint
-        for i, op in enumerate(self.opPoints):
+        for i, op in enumerate(self.polar_points):
             values[i] = op.get_value (var)
         return values 
 
 
-    def get_interpolated (self, xVar : var, xVal : float, yVar : var) -> float:
-        """ interpolates yVar in polar (xVar, yVar)"""
+    def get_interpolated (self, xVar : var, xVal : float, yVar : var,
+                          allow_outside_range = False) -> float:
+        """
+        Interpolates yVar in polar (xVar, yVar) - returns None if not successful
+           allow_outside_range = True will return the y value at the boundaries 
+        """
 
         if not self.isLoaded: return None
 
         xVals = self._ofVar (xVar)
-        yVals  = self._ofVar (yVar)
+        yVals = self._ofVar (yVar)
 
-        # find the index in self.x which is right before x
-        jl = bisection (xVals, xVal)
+        # find the index in xVals which is right before x
+        i = bisection (xVals, xVal)
         
-        # now interpolate the y-value on lower side 
-        if jl < (len(xVals) - 1):
-            x1 = xVals[jl]
-            x2 = xVals[jl+1]
-            y1 = yVals[jl]
-            y2 = yVals[jl+1]
+        # now interpolate the y-value  
+        if i < (len(xVals) - 1) and i >= 0:
+            x1 = xVals[i]
+            x2 = xVals[i+1]
+            y1 = yVals[i]
+            y2 = yVals[i+1]
             y = interpolate (x1, x2, y1, y2, xVal)
-        else: 
-            y = yVals[-1]
+            y = round (y,5) if yVar == var.CD else round(y,3)
 
-        if yVar == var.CD:
-            y = round (y,5)
-        else:
-            y = round(y,2) 
+        elif allow_outside_range:
+            y = yVals[0] if i < 0 else yVals[-1]                    # see return values of bisection
+
+        else: 
+            y = None
 
         return y
 
@@ -836,16 +1008,27 @@ class Polar (Polar_Definition):
         if self.isLoaded: return 
 
         try: 
-            # polar file existing?  - if yes, load polar 
+            # polar file existing?  - if yes, load polar
+            if self.is_flapped:
+                flap_angle  = self.flap_def.flap_angle 
+                x_flap      = self.flap_def.x_flap
+                y_flap      = self.flap_def.y_flap
+                y_flap_spec = self.flap_def.y_flap_spec
+            else:
+                flap_angle  = None 
+                x_flap      = None
+                y_flap      = None
+                y_flap_spec = None
 
-            airfoil_pathFileName = self.polar_set.airfoil_abs_pathFileName
+            airfoil_pathFileName = self.polar_set.airfoil_pathFileName_abs
             polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
-                                                self.type, self.re, self.ma, self.ncrit)
+                                                self.type, self.re, self.ma, self.ncrit,
+                                                flap_angle, x_flap, y_flap, y_flap_spec)
 
             if polar_pathFileName and not file_in_use (polar_pathFileName): 
 
                 self._import_from_file(polar_pathFileName)
-                logging.debug (f'{self} loaded for {self.polar_set.airfoil}') 
+                logger.debug (f'{self} loaded for {self.polar_set.airfoil}') 
 
         except (RuntimeError) as exc:  
 
@@ -873,7 +1056,7 @@ class Polar (Polar_Definition):
             # scan for airfoil-name
             if  line.find(airfoilNameTag) >= 0:
                 splitline = line.split(airfoilNameTag)
-                self.airfoilname = splitline[1].strip()
+                airfoilname = splitline[1].strip()
             # scan for Re-Number and ncrit
             if  line.find(reTag) >= 0:
                 splitline = line.split(reTag)
@@ -907,7 +1090,7 @@ class Polar (Polar_Definition):
                     for element in splittedLine:
                         if element != '':
                             dataPoints.append(element)
-                    op = OpPoint ()
+                    op = Polar_Point ()
                     op.alpha = float(dataPoints[0])
                     op.cl = float(dataPoints[1])
                     op.cd = float(dataPoints[2])
@@ -921,7 +1104,7 @@ class Polar (Polar_Definition):
 
         if len(opPoints) > 0: 
 
-            self._opPoints = opPoints
+            self._polar_points = opPoints
 
         else: 
             logger.error (f"{self} - import from {polarPathFileName} failed")
@@ -932,7 +1115,7 @@ class Polar (Polar_Definition):
 #------------------------------------------------------------------------------
 
 
-class Polar_Task (Polar_Definition):
+class Polar_Task:
     """ 
     Single Task for Worker to generate polars based on paramters
     May generate many polars having same ncrit and type    
@@ -953,10 +1136,17 @@ class Polar_Task (Polar_Definition):
         self._autoRange = None
         self._specVar   = None
         self._valRange  = None
-        self._type      = None
-       
+        self._type      = None 
         self._re        = []             
         self._ma        = []
+
+        self._flap_def    = None
+        self._x_flap      = None
+        self._y_flap      = None
+        self._y_flap_spec = None
+        self._flap_angle  = []
+
+        self._flap_def  = None
 
         self._nPoints   = None                          # speed up polar generation with limited coordinate points
 
@@ -964,7 +1154,7 @@ class Polar_Task (Polar_Definition):
         self._myWorker  = None                          # Worker instance which does the job
         self._finalized = False                         # worker has done the job  
 
-        self._airfoil_pathFileName = None               # airfoil file 
+        self._airfoil_pathFileName_abs = None               # airfoil file 
 
         if polar:
             self.add_polar (polar) 
@@ -974,7 +1164,7 @@ class Polar_Task (Polar_Definition):
 
     def __repr__(self) -> str:
         """ nice representation of self """
-        return f"<{type(self).__name__} of {self._type} Re {self._re} Ma {self._ma} Ncrit {self._ncrit}>"
+        return f"<{type(self).__name__} of {self._type} Re {self._re} Ma {self._ma} Ncrit {self._ncrit} Flap {self._flap_angle}>"
 
     #---------------------------------------------------------------
 
@@ -992,15 +1182,15 @@ class Polar_Task (Polar_Definition):
         n_running   = 0 
         n_finalized = 0 
 
-        for task in cls.instances [:]:
+        for task in cls.instances [:]:                              # copy as we modify list 
             if task.isRunning():
                 n_running += 1
             elif task._finalized:                                   # task finalized - remove from list 
-                task._finalized += 1
+                n_finalized += 1
                 cls.instances.remove (task)
 
         if len (cls.instances):
-            logger.debug (f"-- {cls.__name__} {len (cls.instances)} instances, {n_running} running,  {n_finalized} finalized")
+            logger.debug (f"-- {cls.__name__} {len (cls.instances)} instances, {n_running} running, {n_finalized} finalized")
 
         return cls.instances
 
@@ -1041,6 +1231,11 @@ class Polar_Task (Polar_Definition):
 
     #---------------------------------------------------------------
 
+    @property
+    def n_polars (self) -> int:
+        """ number of polars of self should generate"""
+        return len(self._polars)
+
 
     def add_polar (self, polar : Polar) -> bool:
         """
@@ -1054,26 +1249,35 @@ class Polar_Task (Polar_Definition):
         taken_over = True 
         
         if not self._re: 
-            self._ncrit     = polar.ncrit
-            self._autoRange = polar.autoRange
-            self._specVar   = polar.specVar
-            self._valRange  = polar.valRange
-            self._type      = polar.type
+            self._ncrit      = polar.ncrit
+            self._autoRange  = polar.autoRange
+            self._specVar    = polar.specVar
+            self._valRange   = polar.valRange
+            self._type       = polar.type
         
-            self._re        = [polar.re]             
-            self._ma        = [polar.ma]
+            self._re         = [polar.re]             
+            self._ma         = [polar.ma]
+
+            self._flap_def   = polar.flap_def
+            self._x_flap     = polar.flap_def.x_flap      if polar.flap_def else None
+            self._y_flap     = polar.flap_def.y_flap      if polar.flap_def else None
+            self._y_flap_spec= polar.flap_def.y_flap_spec if polar.flap_def else None
+            self._flap_angle = [polar.flap_def.flap_angle] if polar.flap_def else []
 
             self._polars     = [polar]
-            self._airfoil_pathFileName = polar.polar_set.airfoil_abs_pathFileName
+            self._airfoil_pathFileName_abs = polar.polar_set.airfoil_pathFileName_abs
 
         # collect all polars with same type, ncrit, specVar, valRange 
         # to allow Worker multi-threading 
         elif  self._type==polar.type and self._ncrit == polar.ncrit and \
               self._autoRange == polar.autoRange and \
-              self._specVar == polar.specVar and self._valRange == polar.valRange:
+              self._specVar == polar.specVar and self._valRange == polar.valRange and \
+              Flap_Definition.have_same_hinge (self._flap_def, polar.flap_def):
             
             self._re.append (polar.re)
             self._ma.append (polar.ma)
+            if polar.is_flapped:
+                self._flap_angle.append (polar.flap_def.flap_angle)
 
             self._polars.append (polar)
 
@@ -1089,10 +1293,13 @@ class Polar_Task (Polar_Definition):
         self._myWorker = Worker ()
 
         try:
-            self._myWorker.generate_polar (self._airfoil_pathFileName, 
+            self._myWorker.generate_polar (self._airfoil_pathFileName_abs, 
                         self._type, self._re, self._ma, self._ncrit, 
                         autoRange=self._autoRange, spec=self._specVar, 
-                        valRange=self._valRange, run_async=True, nPoints=self._nPoints)
+                        valRange=self._valRange, run_async=True,
+                        flap_angle=self._flap_angle, x_flap=self._x_flap, y_flap=self._y_flap, 
+                        y_flap_spec=self._y_flap_spec, 
+                        nPoints=self._nPoints)
             logger.debug (f"{self} started")
 
 
@@ -1168,68 +1375,6 @@ class Polar_Task (Polar_Definition):
 # ------------------------------------------
 
 
-class OpPoint:
-    """ 
-    A single (operating) point of a polar of an airfoil   
-
-    airfoil 
-        --> Polar_Set 
-            --> Polar   (1..n) 
-                --> OpPoint  (1..n) 
-    """
-    def __init__(self):
-        """
-        Main constructor for new opPoint 
-
-        """
-        self.spec   = var.ALPHA                 # self based on ALPHA or CL
-        self.valid  = True                      # has it converged during xfoil calculation
-        self.alpha  = None
-        self.cl     = None
-        self.cd     = None
-        self.cm     = None 
-        self.xtrt   = None                      # transition top side
-        self.xtrb   = None                      # transition bot side
-
-    @property
-    def glide (self) -> float: 
-        if self.cd and self.cl:                 # cd != 0.0  
-            return round(self.cl/self.cd,2)  
-        else: 
-            return 0.0 
-
-    @property
-    def sink (self) -> float: 
-        if self.cd > 0.0 and self.cl >= 0.0:                 # cd != 0.0  
-            return round(self.cl**1.5 / self.cd,2)
-        else: 
-            return 0.0 
-
-    def get_value (self, op_var : var ) -> float:
-        """ get the value of the opPoint variable with id"""
-
-        if op_var == var.CD:
-            val = self.cd
-        elif op_var == var.CL:
-            val = self.cl
-        elif op_var == var.ALPHA:
-            val = self.alpha
-        elif op_var == var.CM:
-            val = self.cm
-        elif op_var == var.XTRT:
-            val = self.xtrt
-        elif op_var == var.XTRB:
-            val = self.xtrb
-        elif op_var == var.GLIDE:
-            val = self.glide
-        elif op_var == var.SINK:
-            val = self.sink
-        else:
-            raise ValueError ("Op point variable id '%s' not known" %op_var)
-        return val 
-
-
-
 
 class Polar_Splined (Polar_Definition):
     """ 
@@ -1239,18 +1384,6 @@ class Polar_Splined (Polar_Definition):
         --> Polar_Set 
             --> Polar   
     """
-
-    @classmethod
-    def get_label (cls, polarType, re, ma, ncrit): 
-        """ return a label of these polar variables"""
-        if ma:
-            maString = f" Ma {ma:.2f}".rstrip('0').rstrip('.') 
-        else: 
-            maString = ""
-        ncritString = f" Ncrit {ncrit:.2f}".rstrip('0').rstrip('.') 
-        return f"{polarType} Re {int(re/1000)}k{maString}{ncritString}"
-
-
 
     def __init__(self, mypolarSet: Polar_Set, polar_def : Polar_Definition = None):
         """
@@ -1264,7 +1397,7 @@ class Polar_Splined (Polar_Definition):
 
         self._polar_set = mypolarSet
 
-        self._opPoints = []                     # the single opPoins of self
+        self._polar_points = []                     # the single opPoins of self
         self._alpha = []
         self._cl = []
         self._cd = []
@@ -1290,11 +1423,6 @@ class Polar_Splined (Polar_Definition):
         self._xVar                  = None   # xVar like CL 
         self._y                     = None   # spline knots - y coordinates  
         self._yVar                  = None   # yVar like CD 
-
-
-    def __repr__(self) -> str:
-        # overwrite to get a nice print string wie polarType and Re
-        return f"'{Polar_Splined.get_label ('Splined', self.re, self.ma, self.ncrit)}'"
 
     #--------------------------------------------------------
 
@@ -1328,7 +1456,7 @@ class Polar_Splined (Polar_Definition):
         self._x  = []  
         self._y  = []
 
-        logging.debug (f"spline x: {self._xVar}   y: {self._yVar}")
+        logger.debug (f"spline x: {self._xVar}   y: {self._yVar}")
 
         for op in opPoints_def:  
             x,y = op.xyValues_for_xyVars ((self._xVar, self._yVar)) 
@@ -1352,14 +1480,14 @@ class Polar_Splined (Polar_Definition):
             else: 
                 boundary = "natural"
             self._spline = Spline1D (self._x, self._y, boundary=boundary)
-            logging.debug (f"{self} New {boundary} spline with {len (self._x)} knots")
+            logger.debug (f"{self} New {boundary} spline with {len (self._x)} knots")
         return self._spline
 
 
     @property
     def opPoints (self) -> list:
         """ returns the sorted list of opPoints of self """
-        return self._opPoints
+        return self._polar_points
     
     
     @property
@@ -1430,7 +1558,7 @@ class Polar_Splined (Polar_Definition):
         if nPoints == 0: return [] 
 
         values  = [0] * nPoints
-        op : OpPoint
+        op : Polar_Point
         for i, op in enumerate(self.opPoints):
             values[i] = op.get_value (var)
         return values 

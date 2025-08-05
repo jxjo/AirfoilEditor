@@ -18,11 +18,13 @@ import numpy as np
 from base.math_util         import * 
 from base.common_utils      import * 
 from model.airfoil_geometry import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
-from model.airfoil_geometry import Line, Side_Airfoil_Bezier
+from model.airfoil_geometry import Line, Side_Airfoil_Bezier, GeometryException
+
+from model.xo2_driver       import Worker
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.WARNING)
 
 
 #-------------------------------------------------------------------------------
@@ -110,6 +112,7 @@ class Airfoil:
         self._propertyDict   = {}                           # multi purpose extra properties for an Airfoil
         self._file_datetime  = None                         # modification datetime of file 
 
+        self._flap_setter    = None                         # proxy controller to flap self using Worker
 
         # pathFileName must exist if no coordinates were given 
 
@@ -221,17 +224,18 @@ class Airfoil:
 
         self.set_name (f"{self._name_org}_mods:{str(modifications)}")
 
-        # set new filename - take original filename if possible (without ...mod...)
-        if self._fileName_org is None: 
-            self._fileName_org = self.fileName
+        # if not DESIGN set new filename - take original filename if possible (without ...mod...)
+        if not self.usedAsDesign:
+            if self._fileName_org is None: 
+                self._fileName_org = self.fileName
 
-        fileName_stem = os.path.splitext(self._fileName_org)[0]
-        fileName_ext  = os.path.splitext(self._fileName_org)[1]
-        mod_string    = "_mod" if modifications else ""
-        self.set_fileName (fileName_stem + mod_string + fileName_ext)
+            fileName_stem = os.path.splitext(self._fileName_org)[0]
+            fileName_ext  = os.path.splitext(self._fileName_org)[1]
+            mod_string    = "_mod" if modifications else ""
+            self.set_fileName (fileName_stem + mod_string + fileName_ext)
 
         self.set_isModified (True)
-        logging.debug (f"{self} - geometry changed: {modifications} ")
+        logger.debug (f"{self} - geometry changed: {modifications} ")
 
 
     # ----------  Properties ---------------
@@ -286,19 +290,10 @@ class Airfoil:
 
     @property
     def name_to_show (self) -> str: 
-        """ name of airfoil - for DESIGN use a modified name"""
+        """ public name of airfoil - use fileName.stem - limited to 47 chars"""
 
-        if self.name.find("_mods:") != -1 or self.usedAsDesign:
-            # for DESIGN airfoil build name string 
-            if self.usedAsDesign:
-                name = self._name_org
-            else:
-                name = self.name 
-            name = name  if len(name) <= 18 else f"{name[:18]}..."
-            return f"{name} - {os.path.splitext(self.fileName)[0]}"
-        else:
-            name = self._name
-            return name if len(name) <= 47 else f"{name[:47]}..."
+        name = self.fileName_stem
+        return name if len(name) <= 47 else f"{name[:47]}..."
 
 
     def set_name (self, newName, reset_original=False):
@@ -317,6 +312,46 @@ class Airfoil:
         """ name of airfoil shortend at the beginning to 23 chars"""
         if len(self.name) <= 23:    return self.name
         else:                       return "..." + self.name[-20:]
+
+    @property
+    def info_as_html (self) -> str:
+        """ comprehensive info about self as formatted html string"""
+
+        used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
+        info = f"{used_as}{self.fileName}" 
+
+        info = info + f"<br><br>in {self.pathName_abs}  " 
+        if self.geo and self.geo.max_thick:
+            t = f"<br>" + \
+                f"<table>" + \
+                    f"<tr>" + \
+                        f"<td>Thickness  </td>" + \
+                        f"<td>{self.geo.max_thick:.2%}  </td>" + \
+                        f"<td>at  </td>" + \
+                        f"<td>{self.geo.max_thick_x:.2%}  </td>" + \
+                    f"</tr>" + \
+                    f"<tr>" + \
+                        f"<td>Camber  </td>" + \
+                        f"<td>{self.geo.max_camb:.2%}  </td>" + \
+                        f"<td>at  </td>" + \
+                        f"<td>{self.geo.max_camb_x:.2%}  </td>" + \
+                    f"</tr>" + \
+                    f"<tr>" + \
+                    f"</tr>" + \
+                    f"<tr>" + \
+                        f"<td>Curvature LE  </td>" + \
+                        f"<td>{self.geo.curvature.max_around_le:.0f}  </td>" + \
+                        f"<td>TE    </td>" + \
+                        f"<td>{self.geo.curvature.max_te:.0f}  </td>" + \
+                    f"</tr>" + \
+                f"</table>"
+        else:
+            t = f"<br> Error when evaluating airfoil <br>"
+
+        
+        info = "<p style='white-space:pre'>" + info + t                     # no word wrap 
+        return info 
+
 
 
     @property
@@ -378,8 +413,26 @@ class Airfoil:
     def isSymmetrical(self) -> bool:
         """ true if max camber is 0.0 - so it's a symmetric airfoil"""
         return self.geo.isSymmetrical
-    
-        
+
+
+    @property
+    def isFlapped (self) -> bool:
+        """ true if self is probably flapped"""
+        return self.geo.isFlapped
+
+
+    @property
+    def isReflexed (self) -> bool:
+        """ True if there is just one reversal on upper side"""
+        return self.geo.curvature.isReflexed
+
+
+    @property
+    def isRearLoaded (self) -> bool:
+        """ True if there is just one reversal on lower side"""
+        return self.geo.curvature.isRearLoaded
+
+
     @property
     def isUpToDate (self) -> bool:
         """ true if the loaded airfoil is up to date with its file - none if no answer"""
@@ -465,9 +518,13 @@ class Airfoil:
         """ path including working dir and filename of airfoil like '/root/examples/JX-GT-15.dat' """
 
         if self.workingDir:
-            return os.path.join(self.workingDir, self.pathFileName)
+            pathFileName_abs =  os.path.join(self.workingDir, self.pathFileName)
         else: 
-            return self._pathFileName
+            pathFileName_abs =  self._pathFileName
+        
+        if not os.path.isabs (pathFileName_abs):
+            pathFileName_abs = os.path.abspath(pathFileName_abs)       # will insert cwd 
+        return pathFileName_abs
 
 
     def set_pathName (self, aDir : str, noCheck=False):
@@ -475,7 +532,8 @@ class Airfoil:
         Set fullpaths of airfoils directory  
             ! This will not move or copy the airfoil physically
         """
-        if noCheck or (os.path.isdir(aDir)) or aDir == '':
+        aDir_abs = os.path.join (self.workingDir, aDir)
+        if noCheck or (os.path.isdir(aDir_abs)) or aDir == '':
             self._pathFileName = os.path.join (aDir, self.fileName)
         else:
             raise ValueError ("Directory \'%s\' does not exist. Couldn\'t be set" % aDir)
@@ -525,14 +583,11 @@ class Airfoil:
         """
         absolute directory pathname of airfoil like '\\root\\myAirfoils\\'
         """
-        if not self.pathFileName is None: 
-            if os.path.isabs (self.pathFileName):
-                # current path is already abs 
-                return os.path.dirname(self.pathFileName)
-            else: 
-                return os.path.dirname(os.path.abspath(self.pathFileName_abs))
+        if not self.pathFileName_abs is None: 
+            return os.path.dirname(self.pathFileName_abs)
         else:
             # fallback - current python working dir
+            logger.warning (f"{self} has not pathFileName")
             return os.path.dirname(os.getcwd())
 
 
@@ -565,12 +620,21 @@ class Airfoil:
                 ts = os.path.getmtime(sourcePathFile)                       # file modification timestamp of a file
                 self._file_datetime = datetime.fromtimestamp(ts)            # convert timestamp into DateTime object
 
-            except ValueError:
-                pass
+            except ValueError as e:
+                logger.error (f"{self} {e}")
+                raise 
+
+            # first geometry check
+            
+            try:
+                self.geo.thickness
+            except GeometryException as e:
+                logger.error (f"{self} {e}")
+                raise
 
 
-    def _loadLines (self, file_lines):
-
+    def _loadLines (self, file_lines : list[str]):
+        """ extract name, x, y from file_lines"""
         # returns the name and x,y (np array) of the airfoil file 
 
         name = ''
@@ -588,7 +652,7 @@ class Airfoil:
                     xval = float(splitline[0].strip())
                     yval = float(splitline[1].strip())
                     if xval == xvalPrev and yval == yvalPrev:   # avoid duplicate, dirty coordinates
-                        logging.warning ("Airfoil '%s' has duplicate coordinates - skipped." % self._name)
+                        logger.warning ("Airfoil '%s' has duplicate coordinates - skipped." % self._name)
                     else: 
                         x.append (xval)
                         y.append (yval) 
@@ -599,13 +663,41 @@ class Airfoil:
         
         if not name or not x or not y:
             raise ValueError ("Invalid .dat file")
+        
+        x, y = self._ensure_counter_clockwise (np.asarray (x), np.asarray (y))
 
-        return name, np.asarray (x), np.asarray (y)
+        # test orientation 
+        # x2, y2 = self._ensure_counter_clockwise (np.flip(np.copy (x)), np.flip(np.copy (y)))
+
+        return name, x, y
+
+
+    def _ensure_counter_clockwise (self, x : np.ndarray, y : np.ndarray):
+        """ ensure x,y coordinates are counter clockwise ordered"""
+
+        # sanity 
+
+        if len(x) != len(y) or len(x) == 0:
+            raise ValueError ("Invalid coordinates")
+
+        # using shoelace formula to get signed area 
+        #   A = 0.5 * sum (xi * yi+1 - xi+1 * yi )
+
+        x_plus = np.append (x[1:], x[0])                            # shift index plus 1
+        y_plus = np.append (y[1:], y[0])
+
+        a = np.sum (x*y_plus) - np.sum(x_plus*y)
+
+        if a < 0:                                                   # clockwise is negative 
+            x, y = np.flip(x), np.flip(y)  
+            logger.warning (f"{self} coordinates flipped to become counter clockwise")
+
+        return x, y
 
 
     def save (self, onlyShapeFile=False):
         """
-        Basic save of self to its pathFileName
+        Basic save of self to its pathFileName_abs
             for Hicks-Henne and Bezier 'onlyShapeFile' will write no .dat file 
         """
         if self.isLoaded: 
@@ -615,22 +707,31 @@ class Airfoil:
             logger.debug (f"{self} save to {self.fileName}")
 
 
-    def saveAs (self, dir = None, destName = None):
+    def saveAs (self, dir : str = None, destName : str = None, isWorkingDir = False):
         """
         save self to dir and destName and set new values to self
         if both dir and name are not set, it's just a save to current directory
+
+        If workingDir is set, the saved airfoil will be relative to workingDir
 
         Returns: 
             newPathFileName from dir and destName 
         """     
         if destName: 
-            self.set_name (destName)  
+            self.set_name (destName)
+            fileName = destName +  Airfoil.Extension
+        else: 
+            fileName = self.fileName  
 
         # create dir if not exist - build new airfoil filename
         if dir: 
             if not os.path.isdir (dir):
                 os.mkdir(dir)
-            self.set_pathFileName (os.path.join (dir, self.name) + Airfoil.Extension, noCheck=True)
+            if isWorkingDir:
+                self.set_pathFileName (self.fileName)
+                self.set_workingDir   (dir)
+            else:
+                self.set_pathFileName (os.path.join (dir, fileName), noCheck=True)
 
         self.save()
         self.set_isModified (False)
@@ -698,13 +799,18 @@ class Airfoil:
         returns a copy of self 
 
         Args:
-            pathFileName: optional - string of existinng airfoil path and name 
+            pathFileName: optional - string of existing (relative) airfoil path and name 
             name: optional         - name of airfoil - no checks performed 
             nameExt: -optional     - will be appended to self.name (if name is not provided)
             geometry: optional     - the geometry staretegy either GEO_BASIC, GEO_SPLNE...
         """
         if pathFileName is None and name is None: 
             pathFileName = self.pathFileName
+
+        if os.path.isabs (pathFileName):
+            workingDir = None
+        else: 
+            workingDir = self.workingDir 
 
         if name is None:
             name = self.name + nameExt if nameExt else self.name
@@ -713,6 +819,7 @@ class Airfoil:
 
         airfoil =  Airfoil (x = np.copy (self.x), y = np.copy (self.y), 
                             name = name, pathFileName = pathFileName, 
+                            workingDir = workingDir,
                             geometry = geometry )
         return airfoil 
 
@@ -742,14 +849,9 @@ class Airfoil:
         """ writes .dat file of to self.pathFileName"""
 
         # ensure extension .dat (in case of Bezier) 
-        pathFileName =  os.path.splitext(self.pathFileName)[0] + Airfoil.Extension
+        pathFileName_abs =  os.path.splitext(self.pathFileName_abs)[0] + Airfoil.Extension
 
-        if not os.path.isabs (pathFileName) and self.workingDir:
-            abs_pathFileName = os.path.join(self.workingDir, self.pathFileName)
-        else:
-            abs_pathFileName = pathFileName 
-
-        with open(abs_pathFileName, 'w+') as file:
+        with open(pathFileName_abs, 'w+') as file:
             file.write("%s\n" % self.name)
             for i in range (len(self.x)):
                 file.write("%.7f %.7f\n" %(self.x[i], self.y[i]))
@@ -808,7 +910,30 @@ class Airfoil:
         self.set_isBlendAirfoil (True)
 
 
+    @property
+    def flap_setter (self) -> 'Flap_Setter':
+        """ proxy controller to flap self using Worker"""
 
+        if self._flap_setter is None and not self.isFlapped: 
+            self._flap_setter = Flap_Setter (self)
+        return self._flap_setter 
+
+
+    def do_flap (self):
+        """ flap self based on current 'flapper' data"""
+
+        if self._flap_setter is None: return 
+
+        # run worker - read flapped airfoil 
+        self.flap_setter.set_flap ()
+
+        if self.flap_setter.airfoil_flapped:
+
+            # flapping was successful - update geometry - will update self
+            x,y        = self.flap_setter.airfoil_flapped.x, self.flap_setter.airfoil_flapped.y
+            flap_angle = self.flap_setter.flap_angle
+
+            self.geo.set_flapped_data (x,y, flap_angle)
 
 
 #------------------------------------------------------
@@ -878,9 +1003,10 @@ class Airfoil_Bezier(Airfoil):
 
         # new pathFileName
         fileName_stem = anAirfoil.fileName_stem
-        fileName_ext  = anAirfoil.fileName_ext
-        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + '_bezier' + fileName_ext)
+        # fileName_ext  = anAirfoil.fileName_ext
+        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + '_bezier' + Airfoil_Bezier.Extension)
         airfoil_new.set_pathFileName (pathFileName, noCheck=True)
+        airfoil_new.set_workingDir   (anAirfoil.workingDir)
 
         airfoil_new.set_isLoaded (True)
 
@@ -889,9 +1015,9 @@ class Airfoil_Bezier(Airfoil):
 
     @property
     def pathFileName_shape (self) -> str: 
-        """ pathfileName of the Bezier definition file """
-        if self.pathFileName:  
-            return os.path.splitext(self.pathFileName)[0] + Airfoil_Bezier.Extension
+        """ abs pathfileName of the Bezier definition file """
+        if self.pathFileName_abs:  
+            return os.path.splitext(self.pathFileName_abs)[0] + Airfoil_Bezier.Extension
         else: 
             return None 
 
@@ -908,6 +1034,13 @@ class Airfoil_Bezier(Airfoil):
         if self._geo is None: 
             self._geo = self._geometry_class (onChange = self._handle_geo_changed)
         return self._geo
+
+    @override
+    @property
+    def flap_setter (self) -> 'Flap_Setter':
+        """ proxy controller to flap self using Worker"""
+        # do not flap Bezier
+        return None 
 
 
     def set_xy (self, x, y):
@@ -947,6 +1080,14 @@ class Airfoil_Bezier(Airfoil):
         if os.path.isfile (self.pathFileName_abs):
 
             self.load_bezier(fromPath=self.pathFileName_abs)
+
+            # first geometry check
+            
+            try:
+                self.geo.thickness
+            except GeometryException as e:
+                logger.error (f"{self} {e}")
+                raise
         
             # get modfication datetime of file 
 
@@ -1005,13 +1146,13 @@ class Airfoil_Bezier(Airfoil):
                             px.append (float(splitline[0].strip()))
                             py.append (float(splitline[1].strip()))
         except ValueError as e:
-            logging.error ("While reading Bezier file '%s': %s " %(fromPath,e )) 
+            logger.error ("While reading Bezier file '%s': %s " %(fromPath,e )) 
             return  
          
         self._name = new_name
         self._isLoaded = True 
 
-        logging.debug (f"Bezier definition for {self.name} loaded")
+        logger.debug (f"Bezier definition for {self.name} loaded")
 
         return   
 
@@ -1072,6 +1213,11 @@ class Airfoil_Bezier(Airfoil):
         if pathFileName is None and name is None: 
             pathFileName = self.pathFileName
 
+        if os.path.isabs (pathFileName):
+            workingDir = None
+        else: 
+            workingDir = self.workingDir 
+
         if name is None:
             name = self.name + nameExt if nameExt else self.name
 
@@ -1079,6 +1225,7 @@ class Airfoil_Bezier(Airfoil):
             raise ValueError (f"Airfoil_Bezier does not support new geometry {geometry}")
 
         airfoil =  Airfoil_Bezier (name = name, pathFileName = pathFileName,
+                                   workingDir=workingDir, 
                                    cp_upper = self.geo.upper.controlPoints,
                                    cp_lower = self.geo.lower.controlPoints)
         airfoil.set_isLoaded (True)
@@ -1115,9 +1262,9 @@ class Airfoil_Hicks_Henne(Airfoil):
 
     @property
     def pathFileName_shape (self) -> str: 
-        """ pathfileName of the hh definition file """
-        if self.pathFileName:  
-            return os.path.splitext(self.pathFileName)[0] + Airfoil_Hicks_Henne.Extension
+        """ abs pathfileName of the hh definition file """
+        if self.pathFileName_abs:  
+            return os.path.splitext(self.pathFileName_abs)[0] + Airfoil_Hicks_Henne.Extension
         else: 
             return None 
 
@@ -1135,6 +1282,13 @@ class Airfoil_Hicks_Henne(Airfoil):
         if self._geo is None: 
             self._geo = self._geometry_class (onChange = self._handle_geo_changed)
         return self._geo
+
+    @override
+    @property
+    def flap_setter (self) -> 'Flap_Setter':
+        """ proxy controller to flap self using Worker"""
+        # do not flap Hicks-Henne
+        return None 
 
 
     def set_xy (self, x, y):
@@ -1168,6 +1322,14 @@ class Airfoil_Hicks_Henne(Airfoil):
 
             self.load_hh(fromPath=self.pathFileName_abs)
 
+            # first geometry check
+            
+            try:
+                self.geo.thickness
+            except GeometryException as e:
+                logger.error (f"{self} {e}")
+                raise
+
             # get modfication datetime of file 
 
             ts = os.path.getmtime(self.pathFileName_abs)                       # file modification timestamp of a file
@@ -1200,9 +1362,9 @@ class Airfoil_Hicks_Henne(Airfoil):
                 self._geo.lower.set_hhs (bot_hhs)
 
                 self._isLoaded = True 
-                logging.debug (f"Hicks Henne definition for {self.name} loaded")
+                logger.debug (f"Hicks Henne definition for {self.name} loaded")
             else: 
-                logging.error (f"Hicks Henne seed airfoil {seed_name} couldn't be loaded ")
+                logger.error (f"Hicks Henne seed airfoil {seed_name} couldn't be loaded ")
         else: 
             raise ValueError (f"Hicks Henne seed airfoil data missing for {name}")
 
@@ -1285,9 +1447,179 @@ class Airfoil_Hicks_Henne(Airfoil):
                         width    = float(splitline[2].strip())
                         hhs.append (HicksHenne (strength, location, width ))
         except ValueError as e:
-            logging.error ("While reading Hicks Henne file '%s': %s " %(fromPath,e ))   
+            logger.error ("While reading Hicks Henne file '%s': %s " %(fromPath,e ))   
          
         return name, seed_name, x, y, top_hhs, bot_hhs   
+
+
+
+#--------------------------------------------------------------------------
+
+
+class Flap_Definition:
+    """ 
+
+    Defines the geometry of a flap 
+
+    With set_flap a flapped version of the original airfoil is returned   
+
+    """
+
+    @staticmethod
+    def have_same_hinge (flap_def1 : 'Flap_Definition', flap_def2 : 'Flap_Definition') -> bool:
+        """
+        Compare 2 flap definitions if they have the same hinge definition
+        Return True if they are the same or both have no flap_def1
+        """
+        if flap_def1 and flap_def2:
+            return  flap_def1.x_flap == flap_def2.x_flap and \
+                    flap_def2.y_flap == flap_def2.y_flap and \
+                    flap_def1.y_flap_spec == flap_def2.y_flap_spec
+        elif flap_def1 is None and flap_def2 is None:
+            return True
+        else: 
+            return False
+        
+
+    def __init__(self, dataDict : dict = None):
+        """
+        """
+
+        self._x_flap        = fromDict (dataDict, "x_flap", 0.75)
+        self._y_flap        = fromDict (dataDict, "y_flap", 0.0) 
+        self._y_flap_spec   = fromDict (dataDict, "y_flap_spec", 'y/t')
+        self._flap_angle    = fromDict (dataDict, "flap_angle", 0.0) 
+
+
+    def _as_dict (self):
+        """ returns a data dict with the parameters of self """
+
+        d = {}
+        toDict (d, "x_flap",        self.x_flap)                  
+        toDict (d, "y_flap",        self.y_flap) 
+        toDict (d, "y_flap_spec",   self.y_flap_spec) 
+        toDict (d, "flap_angle",    self.flap_angle) 
+        return d
+
+    @property
+    def name_suffix (self) -> str:
+        """ 
+        fileName suffix for being flapped like 
+            '_f5.1' for defaults or 
+            '_f-1.4_xf0.72_yf0.5_yspecYC' for non default values
+        """
+
+        return Worker.flapped_suffix (self.flap_angle, self.x_flap, self.y_flap, self.y_flap_spec)
+
+
+    @property
+    def x_flap (self) -> float: 
+        return self._x_flap
+
+    def set_x_flap (self, aVal : float):
+        self._x_flap = clip (aVal, 0.02, 0.98)
+
+    @property
+    def y_flap (self) -> float: 
+        return self._y_flap
+
+    def set_y_flap (self, aVal : float):
+        self._y_flap = clip (aVal, 0.0, 1.0)
+
+    @property
+    def y_flap_spec (self) -> str: 
+        return self._y_flap_spec
+
+    def set_y_flap_spec (self, aVal : str):
+        self._y_flap_spec = aVal if aVal in ['y/c', 'y/t'] else self._y_flap_spec
+
+    @property
+    def flap_angle (self) -> float: 
+        return self._flap_angle
+
+    def set_flap_angle (self, aVal : float):
+        self._flap_angle = clip (aVal, -20.0, 20.0)
+
+
+
+class Flap_Setter (Flap_Definition):
+    """ 
+
+    Proxy to flap an airfoil using Worker 
+
+    With set_flap a flapped version of the original airfoil is returned   
+
+    """
+
+    def __init__(self, airfoil_base : Airfoil):
+        """
+        constructor for new Flapper to handle flapping of an airfoil
+
+        Args:
+            airfoil_base:   an unflapped airfoil to flap 
+        """
+
+        super().__init__()
+        
+        if airfoil_base.isBezierBased or airfoil_base.isHicksHenneBased:
+            raise ValueError ("Only .dat files can be flapped")
+        
+        if airfoil_base.isFlapped:
+            raise ValueError ("A flapped airfoil cannot be flapped")
+        
+        self._worker_workingDir  = airfoil_base.pathName_abs        # working dir of Worker!
+        self._base_copy          = airfoil_base.asCopy ()           # copy as parent will change!
+
+        self._airfoil_flapped    = None                             # flapped version of airfoil_org 
+
+
+    @property
+    def airfoil_base (self) -> Airfoil:
+        """ the initial, unflapped airfoil"""
+        return self._base_copy
+
+    @property
+    def airfoil_flapped (self) -> Airfoil:
+        """ airfoil org being flapped - None if not """
+        return self._airfoil_flapped
+
+
+    def set_flap (self, flap_angle=None, outname : str=None) -> Airfoil:
+        """ 
+        flap the base airfoil using worker - an optional flap angle can be submitted
+        If successful, airfoil_flapped is available 
+        """
+
+        self._airfoil_flapped = None                        # reset flapped airfoil 
+
+        if not Worker.ready:
+            raise RuntimeError ("Worker is not ready to flap airfoil") 
+
+        # don't do anything for flap angle = 0 
+
+        if flap_angle is not None: 
+            self.set_flap_angle (flap_angle)
+        if self.flap_angle == 0.0: return
+
+        # run Worker 
+
+        worker = Worker(self._worker_workingDir)
+
+        flapped_fileName = worker.set_flap (self.airfoil_base.fileName, 
+                                        x_flap = self.x_flap, y_flap = self.y_flap, y_flap_spec = self.y_flap_spec,
+                                        flap_angle = self.flap_angle,
+                                        outname = outname )
+        if flapped_fileName: 
+
+            # load new airfoil 
+            self._airfoil_flapped = Airfoil (pathFileName=flapped_fileName, workingDir=self._worker_workingDir)
+            self._airfoil_flapped.load()
+
+            # ... and delete immediatly its file to have a clean directory  
+            try: 
+                os.remove(self._airfoil_flapped.pathFileName_abs) 
+            except OSError as exc: 
+                logger.error (f"{self._airfoil_flapped.pathFileName_abs} couldn't be removed")
 
 
 
@@ -1296,4 +1628,24 @@ class Airfoil_Hicks_Henne(Airfoil):
 
 if __name__ == "__main__":
 
+    # # test flap set 
+
+    # from airfoil_examples import Example
+
+    # Worker().isReady (Path.cwd(), min_version='1.0.5')
+
+    # airfoil = Example(geometry = GEO_SPLINE) 
+    # # airfoil.geo.repanel (nPanels=300)
+    # airfoil.save() 
+
+    # flapper = Flap_Setter (airfoil)
+    # for angle in np.arange (-10,10, 1.0):
+    #     flapper.set_flap (angle) 
+    # for y in np.arange (0,1, 0.1):
+    #     flapper.set_y_flap (y)
+    #     flapper.set_flap (15, outname=f"{airfoil.fileName}_y{y:.1f}") 
+    # for x in np.arange (0,1, 0.1):
+    #     flapper.set_x_flap (x)
+    #     flapper.set_flap (15, outname=f"{airfoil.fileName}_x{x:.1f}") 
+    
     pass  

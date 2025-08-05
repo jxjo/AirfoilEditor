@@ -12,8 +12,12 @@ import numpy as np
 import os
 import sys
 
-# let python find the other modules in modules relativ to path of self  
-sys.path.append('./modules')
+# add directory of self to sys.path, so import is relative to self
+modules_path = os.path.dirname(__file__)
+if not modules_path in sys.path:
+    sys.path.append(modules_path)
+
+print ("*********************", os.getcwd ())
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from model.airfoil_examples import Root_Example, Tip_Example
@@ -358,6 +362,9 @@ class Test_Worker:
         import shutil
         import time
 
+        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
+        assert Worker.ready
+
         worker = Worker()
         airfoil = Root_Example(geometry = GEO_SPLINE)
         p_tmp = Path.cwd() / 'tmp'
@@ -371,11 +378,11 @@ class Test_Worker:
 
         # ------- sync test ---------------------------------------------
 
-        print (f"\n{Worker.name} running sync polar generation ...")
+        print (f"\n{Worker.NAME_EXE} running sync polar generation ...")
 
         worker.generate_polar (airfoil_path, 'T1', 700000, 0.0, 8.0, run_async=False)
 
-        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0)
+        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
 
         if polar_file:
             print  (f"polar file found: {polar_file}")
@@ -386,7 +393,7 @@ class Test_Worker:
 
         # ------- async test ---------------------------------------------
 
-        print (f"\n{Worker.name} running async polar generation ...")
+        print (f"\n{Worker.NAME_EXE} running async polar generation ...")
 
         worker.generate_polar (airfoil_path, 'T1', 700000, 0.0, 8.0, run_async=True)
 
@@ -397,9 +404,8 @@ class Test_Worker:
             print (f"{worker} waiting: {secs}s")
 
         if worker.finished_returncode == 0:
-            print ("\n".join (worker._pipe_out_lines))
 
-            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0)
+            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
 
             if polar_file:
                 print  (f"polar file found: {polar_file}")
@@ -412,6 +418,48 @@ class Test_Worker:
 
         shutil.rmtree(str(p_tmp))
 
+
+
+
+    def test_worker_set_flap (self):
+
+        from pathlib import Path
+        import shutil
+        import time
+
+        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
+        assert Worker.ready
+
+        worker = Worker()
+        airfoil = Root_Example(geometry = GEO_SPLINE)
+        p_tmp = Path.cwd() / 'tmp'
+
+        # saveAs 
+
+        airfoil = Root_Example(geometry = GEO_SPLINE)
+
+        destName = 'haha'
+        airfoil_path = airfoil.saveAs (dir=str(p_tmp), destName=destName)
+
+        # ------- set flap ---------------------------------------------
+
+        print (f"\n{Worker.NAME_EXE} setting flap ...")
+
+        outname = destName+'_flapped'
+        fileName_flapped = worker.set_flap (airfoil_path, x_flap=0.7, flap_angle=10, outname=outname)
+
+        assert fileName_flapped
+
+        # ------- load flapped airfoil ---------------------------------------------
+
+        fileName = outname + '.dat'
+        airfoil_flapped = Airfoil (pathFileName=fileName, workingDir=str(p_tmp))
+        airfoil_flapped.load()
+
+        assert airfoil_flapped.isFlapped
+        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.69704585
+
+        shutil.rmtree(str(p_tmp))
 
 
 # Main program for testing 
@@ -429,4 +477,5 @@ if __name__ == "__main__":
     test = Test_Worker()
     test.test_worker_ready()
     test.test_worker_generate_polar()
+    test.test_worker_set_flap ()
 
