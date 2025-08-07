@@ -2,7 +2,7 @@
 
 setlocal
 set CUR_DIR=%cd%
-set APP_NAME=airfoileditor
+set APP_NAME=AirfoilEditor
 set DIST_DIR=dist
 
 
@@ -52,10 +52,11 @@ pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --add-data="./examples_optimize;./examples_optimize" ^
  	--exclude-module matplotlib ^
 	--runtime-tmpdir="mySuperTemp" ^
-    %APP_NAME%.py 
+	-n %APP_NAME% ^
+    %PACKAGE_NAME%.py 
 
 rem ---- rename target
-
+ 
 echo.
 echo ------ rename %APP_NAME% in %DIST_DIR%
 echo.

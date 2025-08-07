@@ -10,7 +10,7 @@ example/
 run_control
 *_temp
 doc/RCN
-dev/*.exe
+# dev/*.exe
 
 # VSCodeCounter 
 .VSCodeCounter
