@@ -143,7 +143,7 @@ class Main (QMainWindow):
         if update.is_newer_version_available():
             QTimer.singleShot (1000, lambda: update.show_user_info (self))        
 
-        # --- init model ---------------
+        # --- init model, load initial airfoil or input file ---------------
 
         self._load_settings ()
 
@@ -153,6 +153,9 @@ class Main (QMainWindow):
 
         if not initial_file: 
             initial_file = Settings().get('last_opened', default=None) 
+            logger.info (f"Starting on 'last opened' airfoil file: {initial_file}")
+        else:
+            logger.info (f"Starting on initial file: {initial_file}")
 
         # either airfoil or Xoptfoil2 input file 
         if Input_File.is_xo2_input (initial_file, workingDir=os.getcwd()):
@@ -270,12 +273,12 @@ class Main (QMainWindow):
                                              Panel_Bezier, Panel_Flap) 
 
             l = QHBoxLayout()
-            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, height=190))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil))
+            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, height=190, lazy_layout=not self.mode_view))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
             l.addStretch (1)
 
             self._panel_view = Container_Panel (layout = l, hide=lambda: not self.mode_view)
@@ -293,13 +296,13 @@ class Main (QMainWindow):
                                              Panel_Flap, Panel_Bezier, Panel_Bezier_Match) 
 
             l = QHBoxLayout()
-            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, height=190, lazy_layout=True))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, height=190, lazy_layout=not self.mode_modify))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
+            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
             l.addStretch (1)
 
             self._panel_modify    = Container_Panel (layout = l, hide=lambda: not self.mode_modify)
@@ -317,13 +320,13 @@ class Main (QMainWindow):
                                                 Panel_Xo2_Geometry_Targets, Panel_Xo2_Operating_Conditions, Panel_Xo2_Operating_Points)
 
             l = QHBoxLayout()        
-            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, height=190, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, height=190, lazy_layout=not self.mode_optimize))
+            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy_layout=not self.mode_optimize))
+            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy_layout=not self.mode_optimize))
+            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy_layout=not self.mode_optimize))
+            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy_layout=not self.mode_optimize))
+            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy_layout=not self.mode_optimize))
+            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy_layout=not self.mode_optimize))
             l.addStretch (1)
 
             self._panel_optimize = Container_Panel (layout = l, hide=lambda: not self.mode_optimize or self._xo2_run_dialog)
@@ -707,9 +710,9 @@ class Main (QMainWindow):
 
         logger.debug (f"{self} refresh main panels")
 
-        self.panel_view.refresh()
-        self.panel_modify.refresh()
-        self.panel_optimize.refresh()
+        if self._panel_view:        self.panel_view.refresh()               # refresh view mode panels - if UI is visible   
+        if self._panel_modify:      self.panel_modify.refresh()
+        if self._panel_optimize:    self.panel_optimize.refresh()
 
 
     def refresh_polar_sets (self, silent=False):

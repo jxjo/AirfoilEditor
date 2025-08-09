@@ -89,14 +89,14 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     @property
     def mode_bezier (self) -> bool:
         """ True if self is in mode_modify and geo is Bezier """
-        return self.airfoil.isBezierBased
+        return self.airfoil.isBezierBased if self.airfoil else False
 
 
     @override
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: only enabled in edit mode of App """
-        return not self.mode_modify or self.airfoil.isFlapped
+        return not self.mode_modify or (self.airfoil.isFlapped if self.airfoil else False)
     
 
 
@@ -471,7 +471,8 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
-        return (self.mode_modify or self.airfoil.geo.isProbablyFlapped) and not self.mode_bezier
+        isProbablyFlapped = self.airfoil.geo.isProbablyFlapped if self.airfoil else False
+        return (self.mode_modify or isProbablyFlapped) and not self.mode_bezier
 
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):

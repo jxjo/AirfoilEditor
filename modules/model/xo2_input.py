@@ -130,6 +130,10 @@ class Input_File:
     def __init__(self, fileName: str, workingDir: str = '', is_new=False ):
         """
         """
+        if not workingDir and fileName:                                         # ensure fileName is just basename
+            workingDir = os.path.dirname(fileName)
+            fileName   = os.path.basename(fileName)
+
         self._workingDir = workingDir                                           # working dir of optimizer
         self._fileName   = fileName
 
@@ -1569,7 +1573,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
     @property
     def current_opPoint_def (self) -> OpPoint_Definition: 
         """current opPoint definition"""
-        return self[self.current_index]
+        return self[self.current_index] if self else None
 
     def set_current_opPoint_def (self, opPoint_def : OpPoint_Definition): 
         """current opPoint definition"""
@@ -2034,6 +2038,8 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
 
         target_types    = self._nml._get('target_type',         default=[None]  * ngeo) 
         target_values   = self._nml._get('target_value',        default=[None]  * ngeo)
+        if target_values == [None] * ngeo:
+            target_values   = self._nml._get('target_geo',      default=[None]  * ngeo)  # compatibility to older versions
         weightings      = self._nml._get('weighting',           default=[1.0]   * ngeo)
         presets         = self._nml._get('preset_to_target',    default=[False] * ngeo)
 

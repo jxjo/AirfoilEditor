@@ -105,10 +105,10 @@ class Polar_Definition:
 
     """
 
-    MAX_POLAR_DEFS  = 5                             # limit to check in App
+    MAX_POLAR_DEFS  = 5                         # limit to check in App
 
-    VAL_RANGE_ALPHA = [-4.0, 13.0, 0.5]
-    VAL_RANGE_CL    = [-0.2,  1.2, 0.05]
+    VAL_RANGE_ALPHA = [-4.0, 13.0, 0.3]         # default value range for alpha polar
+    VAL_RANGE_CL    = [-0.2, 1.2, 0.05]
 
     def __init__(self, dataDict : dict = None):
         
