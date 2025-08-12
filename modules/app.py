@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "AirfoilEditor"
-__version__      = "4.0.0"                              # hatch "version dynamic" reads this version for build
+__version__      = "4.0.1"                              # hatch "version dynamic" reads this version for build
 
 
 class Main (QMainWindow):
@@ -1256,7 +1256,7 @@ class Main (QMainWindow):
         toDict (settings,'bezier_te_bunch', Panelling_Bezier().te_bunch)
 
         # save airfoils
-        airfoil : Airfoil = self.airfoil_org if self.airfoil.usedAsDesign else self.airfoil
+        airfoil : Airfoil = self.airfoil_org if (self.airfoil and self.airfoil.usedAsDesign) else self.airfoil
 
         if airfoil: 
             if airfoil.isExample:
@@ -1361,7 +1361,7 @@ class Main (QMainWindow):
         """ main window is closed """
 
         # remove lost worker input files 
-        if Worker.ready:
+        if Worker.ready and self.airfoil:
             Worker().clean_workingDir (self.airfoil.pathName)
 
         # terminate polar watchdog thread 
@@ -1374,7 +1374,8 @@ class Main (QMainWindow):
         self._save_settings ()
 
         # inform parent (PlanformCreator) 
-        self.sig_closing.emit (self.airfoil.pathFileName)
+        if self.airfoil: 
+            self.sig_closing.emit (self.airfoil.pathFileName)
 
         event.accept()
 

@@ -1060,6 +1060,7 @@ class Polar_Artist (Artist):
         super().__init__ (axes, modelFn, **kwargs)
 
         self._show_points = False                       # show point marker 
+        self._show_bubbles = False                      # show bubble info
         self._xyVars = xyVars                           # definition of x,y axis
 
 
@@ -1068,6 +1069,14 @@ class Polar_Artist (Artist):
     def set_show_points (self, aBool): 
         self._show_points = aBool 
         self.refresh()
+
+
+    @property
+    def show_bubbles (self): return self._show_bubbles
+    def set_show_bubbles (self, aBool): 
+        self._show_bubbles = aBool 
+        self.refresh()
+
 
     @property
     def xyVars(self): return self._xyVars
@@ -1131,6 +1140,11 @@ class Polar_Artist (Artist):
                         color = color_in_series (color_airfoil, iPolar, len(polars), delta_hue=0.1)
 
                         self._plot_polar (self.airfoils, airfoil, polar, color)
+
+                        # plot bubble info if available
+                        if self.show_bubbles:
+                            self._plot_bubble_info (polar, color)
+                            
 
         logger.debug (f"{self} {nPolar_plotted} polars plotted, {nPolar_generating} generating ")
         
@@ -1208,3 +1222,56 @@ class Polar_Artist (Artist):
         self._plot_dataItem  (x, y, name=label, pen = pen, 
                                 symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                 antialias = antialias, zValue=zValue)
+
+
+    def _plot_bubble_info (self, polar: Polar, color : QColor):
+        """ plot bubble info of polar """
+
+        is_xtr_plot = var.XTRB in self.xyVars or var.XTRT in self.xyVars
+
+        # bubble symbol style and color
+        color_symbol =  QColor (color) 
+        color_symbol.setAlphaF (0.7) 
+        brush_color_symbol =  QColor ('black') 
+        brush_color_symbol.setAlphaF (0.6) 
+        brush_symbol = pg.mkBrush(brush_color_symbol)
+
+        # bubble line in xtr style and color        
+        color_line   =  QColor (color) 
+        color_line.setAlphaF (0.4) 
+        pen_line     = pg.mkPen(color_line, width=3)  
+        
+        x,y = polar.ofVars (self.xyVars)
+
+        if polar.has_bubble_top:
+            name = 'bubble upper side'
+            for i, bubble in enumerate(polar.bubble_top):
+                if bubble:
+                    if is_xtr_plot:
+                        if var.XTRT in self.xyVars:
+                            self._plot_bubble_in_xtr (bubble, x[i], y[i], name, pen_line)
+                    else:
+                        self._plot_point ((x[i], y[i]), name=name, color=color_symbol, symbol='t1', size=9, brush=brush_symbol)
+
+        if polar.has_bubble_bot:
+            # plot bubble on lower side
+            name = 'bubble lower side'
+            for i, bubble in enumerate(polar.bubble_bot):
+                if bubble:
+                    if is_xtr_plot:
+                        if var.XTRB in self.xyVars:
+                            self._plot_bubble_in_xtr (bubble, x[i], y[i], name, pen_line)
+                    else:
+                        self._plot_point ((x[i], y[i]), name=name, color=color_symbol, symbol='t', size=9, brush=brush_symbol)
+
+
+    def _plot_bubble_in_xtr (self, bubble :tuple, x, y, name, pen_line):
+        """ plot bubble in xtr diagram as a line """
+
+        if self.xyVars[0] == var.XTRT or self.xyVars[0] == var.XTRB:        # horizontal xtr plot
+            x = list(bubble)
+            y = [y,y]
+        else:                                                               # vertical xtr plot
+            x = [x,x]
+            y = list(bubble)  
+        self._plot_dataItem  (x, y, name=name, pen = pen_line, zValue=5)

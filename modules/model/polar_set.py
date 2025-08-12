@@ -68,9 +68,24 @@ class StrEnum_Extended (StrEnum):
 
 
 class var (StrEnum_Extended):
+
+    @override
+    @classmethod
+    def values (cls):
+        """ returns a list of all enum values"""
+
+        # exclude cdf (friction drag) from list of values
+        val_list = super().values()
+        val_list.remove("cdf")
+
+        return val_list
+
+
     """ polar variables """
     CL      = "cl"               
     CD      = "cd"               
+    CDP     = "cdp"                                     # pressure drag
+    CDF     = "cdf"                                     # friction drag
     ALPHA   = "alpha"               
     GLIDE   = "cl/cd" 
     SINK    = "sink"                                    # "cl^1.5/cd"              
@@ -649,9 +664,20 @@ class Polar_Point:
         self.alpha : float = None
         self.cl    : float = None
         self.cd    : float = None
+        self.cdp   : float = None
         self.cm    : float = None 
         self.xtrt  : float = None                       # transition top side
         self.xtrb  : float = None                       # transition bot side
+
+        self.bubble_top : tuple = None                  # bubble top side (x_start, x_end)
+        self.bubble_bot : tuple = None                  # bubble bot side (x_start, x_end)
+
+    @property
+    def cdf (self) -> float: 
+        if self.cd and self.cdp:                  
+            return self.cd - self.cdp                   # friction drag = cd - cdp 
+        else: 
+            return 0.0 
 
     @property
     def glide (self) -> float: 
@@ -672,6 +698,10 @@ class Polar_Point:
 
         if op_var == var.CD:
             val = self.cd
+        elif op_var == var.CDP:
+            val = self.cdp
+        elif op_var == var.CDF:
+            val = self.cdf
         elif op_var == var.CL:
             val = self.cl
         elif op_var == var.ALPHA:
@@ -727,12 +757,17 @@ class Polar (Polar_Definition):
         self._alpha = None
         self._cl    = None
         self._cd    = None
+        self._cdp   = None
+        self._cdf   = None
         self._cm    = None 
         self._cd    = None 
         self._xtrt  = None
         self._xtrb  = None
         self._glide = None
         self._sink  = None
+
+        self._bubble_top = None                        # bubble top side values
+        self._bubble_bot = None                        # bubble bot side values
 
         if polar_def: 
             self.set_active     (polar_def.active)
@@ -812,6 +847,16 @@ class Polar (Polar_Definition):
         return self._cd
     
     @property
+    def cdp (self) -> np.ndarray:
+        if not np.any(self._cdp): self._cdp = self._get_values_forVar (var.CDP)
+        return self._cdp
+        
+    @property
+    def cdf (self) -> np.ndarray:
+        if not np.any(self._cdf): self._cdf  = self._get_values_forVar (var.CDF)
+        return self._cdf
+        
+    @property
     def glide (self) -> np.ndarray:
         if not np.any(self._glide): self._glide = self._get_values_forVar (var.GLIDE)
         return self._glide
@@ -835,6 +880,28 @@ class Polar (Polar_Definition):
     def xtrb (self) -> np.ndarray:
         if not np.any(self._xtrb): self._xtrb = self._get_values_forVar (var.XTRB)
         return self._xtrb
+
+    @property
+    def bubble_top (self) -> list:
+        """ returns the bubble top side values of self """
+        if self._bubble_top is None: self._bubble_top = [p.bubble_top for p in self.polar_points]
+        return self._bubble_top
+
+    @property
+    def bubble_bot (self) -> list:    
+        """ returns the bubble bot side values of self """
+        if self._bubble_bot is None: self._bubble_bot = [p.bubble_bot for p in self.polar_points]
+        return self._bubble_bot
+
+    @property
+    def has_bubble_top (self) -> bool:
+        """ True if bubble top side is defined in any polar point """
+        return any (p.bubble_top for p in self.polar_points)        
+    
+    @property
+    def has_bubble_bot (self) -> bool:  
+        """ True if bubble bot side is defined in any polar point """
+        return any (p.bubble_bot for p in self.polar_points)
 
 
     @property
@@ -933,6 +1000,10 @@ class Polar (Polar_Definition):
             vals = self.cl
         elif polar_var == var.CD:
             vals = self.cd
+        elif polar_var == var.CDP:
+            vals = self.cdp
+        elif polar_var == var.CDF:
+            vals = self.cdf
         elif polar_var == var.ALPHA:
             vals = self.alpha
         elif polar_var == var.GLIDE:
@@ -1092,12 +1163,21 @@ class Polar (Polar_Definition):
                             dataPoints.append(element)
                     op = Polar_Point ()
                     op.alpha = float(dataPoints[0])
-                    op.cl = float(dataPoints[1])
-                    op.cd = float(dataPoints[2])
-                    # cdp = float(dataPoints[3])
-                    op.cm = float(dataPoints[4])
-                    op.xtrt = float(dataPoints[5])
-                    op.xtrb = float(dataPoints[6])
+                    op.cl    = float(dataPoints[1])
+                    op.cd    = float(dataPoints[2])
+                    op.cdp   = float(dataPoints[3])
+                    op.cm    = float(dataPoints[4])
+                    op.xtrt  = float(dataPoints[5])
+                    op.xtrb  = float(dataPoints[6])
+
+                    # optional bubble start-end on top and bot 
+                    if len(dataPoints) == 11:
+
+                        bubble_def = (float(dataPoints[7]), float(dataPoints[8]))
+                        op.bubble_top = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
+
+                        bubble_def = (float(dataPoints[9]), float(dataPoints[10]))
+                        op.bubble_bot = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
 
                     opPoints.append(op)
         fpolar.close()

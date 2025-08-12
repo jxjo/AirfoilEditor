@@ -940,8 +940,8 @@ class Artist(QObject):
 
         # symbol pen colors and brushes 
 
-        pen = pg.mkPen (color, width=1, style=style)
-        brush_color = brush if brush is not None else QColor(color) 
+        pen   = pg.mkPen (color, width=1, style=style)
+        brush = brush if brush is not None else QColor(color) 
 
         # text (label) options 
 
@@ -950,7 +950,7 @@ class Artist(QObject):
 
         # create TargetItem  
 
-        p = pg.TargetItem (pos=xy, pen= pen, brush = brush_color, 
+        p = pg.TargetItem (pos=xy, pen= pen, brush = brush, 
                             symbol=symbol, size=size, movable=False,
                             label = text, labelOpts = labelOpts, **kwargs)
 
@@ -1020,12 +1020,10 @@ class Artist(QObject):
 
         if self._pi.legend is not None and self.show_legend and name:
 
-            # avoid dublicates in legend
+            # avoid dublicates in legend - index 1 is name (0 is symbol) 
 
-            for legend_item in self._pi.legend.items:
-                label_item = legend_item [1]                        # index 1 is name (0 is symbol) 
-                if label_item.text == name:
-                    return 
+            if any (legend_item [1].text == name for legend_item in self._pi.legend.items):
+                return                                              # already in legend
 
             if isinstance (plot_item, pg.PlotDataItem) or isinstance (plot_item, pg.ScatterPlotItem)  : 
  

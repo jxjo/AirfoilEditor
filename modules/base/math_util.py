@@ -336,55 +336,59 @@ def panel_angles (x,y):
 
 
 def derivative1 (x, y):
-        """
-        evaluate first derivative of polyline (x,y)
-        using Backward, center, forward adapted difference approximation
-        """
+    """
+    evaluate first derivative of polyline (x,y)
+    using Backward, center, forward adapted difference approximation
+    """
 
-        #     npt = size(x)        
-        #     do i = 1, npt
-        #       if (i == 1) then                                                 ! forward
-        #         derivative1(i) = (y(i+1) - y(i))/ (x(i+1) - x(i)) 
-        #       else if (i ==npt) then                                           ! backward
-        #         derivative1(i) = (y(i) - y(i-1))/ (x(i) - x(i-1))
-        #       else                                                             ! center
-        #         h       = x(i+1) - x(i)
-        #         h_minus = x(i) - x(i-1)
-        #         hr      = h / h_minus 
-        #         derivative1(i) = (y(i+1) - hr*hr*y(i-1) -(1-hr*hr)*y(i))/ (h * (1.d0 +hr)) 
-        #       end if 
-        #     end do
+    if not isinstance (x, np.ndarray):
+        x = np.asarray(x)
+    if not isinstance (y, np.ndarray):
+        y = np.asarray(y)
 
-        npt = len(x)
-        der1 = np.zeros (npt)
-        for i in range(len(x)):
+    dydx = np.gradient(y, x)
 
-            if i == 0: 
-                h = x[i+1] - x[i]
-                if h != 0.0:
-                    der1[i] = (y[i+1] - y[i]) / h
-                else: 
-                    der1[i] = None
+    return dydx
 
-            elif i == npt-1:
-                h_minus = x[i] - x[i-1]
-                if h_minus != 0.0:
-                    der1[i] = (y[i] - y[i-1]) / h_minus
-                else: 
-                    der1[i] = None
 
-            else: 
-                h = x[i+1] - x[i]
-                h_minus = x[i] - x[i-1]
-                if h != 0.0 and h_minus != 0.0:
-                    hr = h / h_minus
-                    der1[i] = (y[i+1] - hr**2 * y[i-1] -(1 - hr**2) * y[i]) / (h * (1+hr))
-                else: 
-                    der1[i] = None
+def curvature(x, y):
+    """
+    evaluate curvature of polyline (x,y)
+    """
+    if not isinstance (x, np.ndarray):
+        x = np.asarray(x)
+    if not isinstance (y, np.ndarray):
+        y = np.asarray(y)
 
-        return der1
-                     
+    dx = np.gradient(x)
+    dy = np.gradient(y)
+    ddx = np.gradient(dx)
+    ddy = np.gradient(dy)
+    curvature = (dx * ddy - dy * ddx) / (dx * dx + dy * dy) ** 1.5
 
+    return curvature
+
+
+def median_smooth(arr, kernel_size=3):
+    """
+    Smooth a 1D array using a median filter with the given kernel size.
+    """
+    arr = np.asarray(arr)
+    pad_width = kernel_size // 2
+    arr_padded = np.pad(arr, pad_width, mode='edge')
+    smoothed = np.empty_like(arr)
+    for i in range(len(arr)):
+        smoothed[i] = np.median(arr_padded[i:i+kernel_size])
+    return smoothed
+
+
+def smooth_polyline_median(x, y, kernel_size=3):
+    """
+    Smooth polyline (x, y) using a median filter (NumPy only).
+    """
+    x_smooth = median_smooth(x, kernel_size)
+    y_smooth = median_smooth(y, kernel_size)
+    return x_smooth, y_smooth
 
 
 #------------ find closest   -----------------------------------

@@ -598,7 +598,7 @@ class Curvature_of_xy (Curvature_Abstract):
     def __init__ (self,  x : np.ndarray, y: np.ndarray):
         super().__init__()
 
-        self._spline = Spline2D (x, y)
+        # self._spline = Spline2D (x, y)
         self._x      = x
         self._y      = y
         self._iLe = int(np.argmin (self._x))
@@ -624,7 +624,8 @@ class Curvature_of_xy (Curvature_Abstract):
     @property
     def curvature (self): 
         " return the curvature at knots 0..npoints"     
-        return self._spline.curvature (self._spline.u)  
+        return curvature (self._x, self._y)   # use the curvature util function
+        # return self._spline.curvature (self._spline.u)  
 
 
 

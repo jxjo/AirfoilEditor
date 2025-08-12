@@ -1334,6 +1334,7 @@ class Diagram_Airfoil_Polar (Diagram):
         self._panel_optimization= None 
 
         self._show_polar_points = False                         # show polars data points 
+        self._show_bubbles = False                              # show bubbles in polars 
 
         super().__init__(*args, **kwargs)
 
@@ -1572,6 +1573,18 @@ class Diagram_Airfoil_Polar (Diagram):
 
 
     @property 
+    def show_bubbles (self) -> bool:
+        """ show bubbles in polar diagrams """
+        return self._show_bubbles
+
+    def set_show_bubbles (self, aBool : bool):
+        self._show_bubbles = aBool
+
+        artist : Polar_Artist
+        for artist in self._get_artist (Polar_Artist):
+            artist.set_show_bubbles (aBool) 
+
+    @property 
     def show_xo2_opPoint_def (self) -> bool:
         """ show opPoint definitions"""
         artists = self._get_artist (Xo2_OpPoint_Defs_Artist)
@@ -1637,6 +1650,14 @@ class Diagram_Airfoil_Polar (Diagram):
                 CheckBox (l,r,c, text="Polar points", colSpan=4,
                             get=lambda: self.show_polar_points, set=self.set_show_polar_points,
                             toolTip="Show the polar data points")
+                r += 1
+                CheckBox (l,r,c, text="Bubbles - see xtr diagram", colSpan=6,
+                            get=lambda: self.show_bubbles, set=self.set_show_bubbles,
+                            disable=not Worker.can_detect_bubbles(),
+                            toolTip=("Show bubbles in the polar diagram - see xtr transition diagram for details.<br>" + \
+                                    "<br>Laminar separation bubbles are identified by a range of negative shear stress " + \
+                                    "along the airfoil surface.") if Worker.can_detect_bubbles()\
+                                        else f"Worker version {Worker.version} cannot detect bubbles")
 
             else: 
                 SpaceR (l,r, height=10, stretch=0) 

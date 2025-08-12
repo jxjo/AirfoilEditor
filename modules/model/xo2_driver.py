@@ -11,9 +11,10 @@ the path to program location location must be set
 
 
 import os
-from tempfile       import NamedTemporaryFile
-from glob           import glob
-from pathlib        import Path
+from tempfile               import NamedTemporaryFile
+from glob                   import glob
+from pathlib                import Path
+from packaging.version      import Version                                  # has to be installed
 
 import time 
 import shutil
@@ -21,7 +22,7 @@ import logging
 import datetime 
 import fnmatch
 
-from subprocess     import Popen, run, PIPE
+from subprocess             import Popen, run, PIPE
 if os.name == 'nt':                                 # startupinfo only available in windows environment  
     from subprocess import STARTUPINFO, CREATE_NEW_CONSOLE, STARTF_USESHOWWINDOW, CREATE_NO_WINDOW
 
@@ -163,20 +164,7 @@ class X_Program:
 
                     # last word is version - compare single version numbers
                     cls.version = words[-1]
-                    version_ok = True
-                    min_nums = min_version.split(".") 
-
-                    if len (min_nums[0]) > 0 :
-                        cur_nums = self.version.split(".")
-                        for i in range(len(min_nums)): 
-                            try: 
-                                cur_num = int(cur_nums[i])
-                            except: 
-                                cur_num = 0 
-                            if cur_num < int(min_nums[i]):
-                                version_ok = False
-                    else: 
-                        version_ok = False 
+                    version_ok = Version (cls.version) >= Version(min_version) if min_version else True
             
             if not version_ok:
                 cls.ready_msg = f"wrong version {self.version} - need {min_version}"
@@ -676,6 +664,15 @@ class Worker (X_Program):
 
     # -- static methods --------------------------------------------
 
+    @classmethod
+    def can_detect_bubbles (cls) -> bool:
+        """ 
+        returns True if Worker version can detect bubbles in polars
+        """
+         
+        return Version(cls.version) >= Version('1.0.9') if cls.version else False
+
+
     @staticmethod
     def polarDir (airfoil_pathFileName : str) -> str:
         """ returns polar directory of airfoil having airfoil_pathFileName"""
@@ -843,7 +840,9 @@ class Worker (X_Program):
                         ncrit : float,
                         autoRange = True, spec = 'alpha', valRange= [-3, 12, 0.25], 
                         flap_angle : float | list = 0.0, x_flap=0.75, y_flap=0, y_flap_spec='y/t',
-                        nPoints=None, run_async = True) -> int:
+                        nPoints : int = None, 
+                        detect_bubble = True,
+                        run_async = True) -> int:
         """ 
         Generate polar for airfoilPathFileName in directory of airfoil.
         Returncode = 0 if successfully started (async) or finish (sync)
@@ -879,7 +878,7 @@ class Worker (X_Program):
         self._tmp_inpFile = self._generate_polar_inputFile (workingDir, 
                                     re, ma, polarTypeNo, ncrit, autoRange, spec_al, valRange,
                                     flap_angles=flap_angle, x_flap=x_flap, y_flap=y_flap, y_flap_spec=y_flap_spec,
-                                    nPoints=nPoints) 
+                                    nPoints=nPoints, detect_bubble=detect_bubble) 
         if not self._tmp_inpFile:
             raise RuntimeError (f"{self.NAME} polar generation failed: Couldn't create input file")
 
@@ -1025,7 +1024,7 @@ class Worker (X_Program):
                                   reNumbers : list[float], maNumbers : list[float],
                                   polarType : int, ncrit : float,  
                                   autoRange : bool, spec_al: bool, valRange: list[float], 
-                                  nPoints = None,
+                                  nPoints : int = None, detect_bubble = False, 
                                   flap_angles : list[float] = None, x_flap=None, y_flap=None, y_flap_spec=None,
                                    ) -> str:
         """ Generate a temporary polar input file for worker like this 
@@ -1074,7 +1073,9 @@ class Worker (X_Program):
             tmp.write ("/\n")
 
             tmp.write ("&xfoil_run_options\n")
-            tmp.write ("  ncrit = %.1f\n" % ncrit)  
+            tmp.write ("  ncrit = %.1f\n" % ncrit) 
+            if detect_bubble and Worker.can_detect_bubbles():
+                tmp.write ("  detect_bubble = .true.\n") 
             tmp.write ("/\n")
 
             if flap_angles:
