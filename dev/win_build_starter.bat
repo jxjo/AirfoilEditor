@@ -16,7 +16,8 @@ windres %STARTER_NAME%.rc -O coff %STARTER_NAME%.res
 
 rem - compile exe 
 
-gfortran win_starter.f90 %STARTER_NAME%.res -cpp -static -mwindows -DPACKAGE_NAME=\"%PACKAGE_NAME%\" -o %STARTER_NAME% 
+rem gfortran win_starter.f90 %STARTER_NAME%.res -cpp -static -mwindows -DPACKAGE_NAME=\"%PACKAGE_NAME%\" -o %STARTER_NAME% 
+gfortran win_starter.f90 %STARTER_NAME%.res -cpp -static -DPACKAGE_NAME=\"%PACKAGE_NAME%\" -o %STARTER_NAME% 
 
 del %STARTER_NAME%.res
 del %STARTER_NAME%.rc
