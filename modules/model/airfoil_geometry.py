@@ -391,10 +391,12 @@ class Curvature_Abstract:
 
     def __init__ (self):
 
-        self._upper    = None                   # upper side curvature as Side_Airfoil
-        self._lower    = None                   # lower side curvature as Side_Airfoil
-        self._iLe      = None                   # index of le in curvature array
-        self._flap_kink_x = None                # x position of a curvature flap kink  
+        self._curvature     = None
+
+        self._upper         = None                  # upper side curvature as Side_Airfoil
+        self._lower         = None                  # lower side curvature as Side_Airfoil
+        self._iLe           = None                  # index of le in curvature array
+        self._flap_kink_x   = None                  # x position of a curvature flap kink  
 
         logger.debug (f"{self} new ")
 
@@ -405,14 +407,15 @@ class Curvature_Abstract:
 
 
     @property
-    def upper (self) -> 'Line': 
-        # to be overlaoded
-        pass
+    def upper (self): 
+        " return Side_Airfoil with curvature on the upper side"
+        return self._upper 
 
     @property
-    def lower (self) -> 'Line': 
-        # to be overloaded
-        pass
+    def lower (self): 
+        " return Side_Airfoil with curvature on the lower side"
+        return self._lower 
+    
 
     def side(self, sidetype) -> 'Line': 
         """return Side_Airfoil with curvature for 'side_name' - where x 0..1"""
@@ -424,9 +427,13 @@ class Curvature_Abstract:
             return None
 
     @property
-    def curvature (self) -> np.ndarray: 
-        # to be overloaded
-        pass
+    def curvature (self): 
+        " return the curvature at knots 0..npoints"   
+
+        if self._curvature is None: 
+            raise GeometryException ("Curvature of xy not initialized")
+        return self._curvature
+    
 
     @property
     def iLe (self) -> int: 
@@ -598,34 +605,14 @@ class Curvature_of_xy (Curvature_Abstract):
     def __init__ (self,  x : np.ndarray, y: np.ndarray):
         super().__init__()
 
-        # self._spline = Spline2D (x, y)
-        self._x      = x
-        self._y      = y
-        self._iLe = int(np.argmin (self._x))
+        spline = Spline2D (x, y)
+        self._curvature = spline.curvature (spline.u) 
 
-    @property
-    def upper (self): 
-        " return Side_Airfoil with curvature on the upper side"
-        if self._upper is None: 
-            self._upper = Line (np.flip(self._x[: self.iLe+1]),
-                                np.flip(self.curvature [: self.iLe+1]), 
-                                linetype=Line.Type.UPPER )
-        return self._upper 
+        iLe = int(np.argmin (x))
 
-    @property
-    def lower (self): 
-        " return Side_Airfoil with curvature on the lower side"
-        if self._lower is None: 
-            self._lower = Line (self._x[self.iLe: ],
-                                self.curvature [self.iLe: ],
-                                linetype=Line.Type.LOWER )
-        return self._lower 
-
-    @property
-    def curvature (self): 
-        " return the curvature at knots 0..npoints"     
-        return curvature (self._x, self._y)   # use the curvature util function
-        # return self._spline.curvature (self._spline.u)  
+        self._iLe = iLe
+        self._upper = Line (np.flip(x[: iLe+1]), np.flip(self.curvature [: iLe+1]), linetype=Line.Type.UPPER )
+        self._lower = Line (x[iLe: ], self.curvature [iLe: ],                       linetype=Line.Type.LOWER )
 
 
 
@@ -637,32 +624,15 @@ class Curvature_of_Spline (Curvature_Abstract):
     def __init__ (self, spline: Spline2D):
         super().__init__()
 
-        self._spline = spline 
-        self._x      = spline.x
-        self._iLe    = int(np.argmin (self._x))
+        self._curvature = spline.curvature (spline.u)
 
-    @property
-    def upper (self): 
-        " return Side_Airfoil with curvature on the upper side"
-        if self._upper is None: 
-            self._upper = Line (np.flip(self._x[: self.iLe+1]),
-                                        np.flip(self.curvature [: self.iLe+1]), 
-                                        linetype=Line.Type.UPPER )
-        return self._upper 
+        x   = spline.x
+        iLe = int(np.argmin (x))
 
-    @property
-    def lower (self): 
-        " return Side_Airfoil with curvature on the lower side"
-        if self._lower is None: 
-            self._lower = Line (self._x[self.iLe: ],
-                                        self.curvature [self.iLe: ],
-                                        linetype=Line.Type.LOWER )
-        return self._lower 
+        self._iLe = iLe
+        self._upper = Line (np.flip(x[: iLe+1]), np.flip(self.curvature [: iLe+1]), linetype=Line.Type.UPPER )
+        self._lower = Line (x[iLe: ], self.curvature [iLe: ],                       linetype=Line.Type.LOWER )
 
-    @property
-    def curvature (self): 
-        " return the curvature at knots 0..npoints"     
-        return self._spline.curvature (self._spline.u)  
 
 
 
@@ -677,30 +647,12 @@ class Curvature_of_Bezier (Curvature_Abstract):
         self._upper_side = upper
         self._lower_side = lower
 
+        self._curvature = np.concatenate ((np.flip(upper.curvature.y), lower.curvature.y[1:]))  
+        self._upper     = Line (upper.x, - upper.curvature.y, linetype=Line.Type.UPPER)
+        self._lower     = Line (lower.x,   lower.curvature.y, linetype=Line.Type.LOWER)
+
         self._iLe    = len (upper.x) - 1
 
-    @property
-    def upper (self): 
-        " return Side_Airfoil with curvature on the upper side"
-        if self._upper is None: 
-            self._upper = Line (self._upper_side.x, 
-                                        - self._upper_side.curvature.y, 
-                                        linetype=Line.Type.UPPER)
-        return self._upper 
-
-    @property
-    def lower (self): 
-        " return Side_Airfoil with curvature on the lower side"
-        if self._lower is None: 
-            self._lower = Line (self._lower_side.x, 
-                                        self._lower_side.curvature.y,
-                                        linetype=Line.Type.LOWER)
-        return self._lower 
-
-    @property
-    def curvature (self): 
-        " return the curvature at knots 0..npoints"     
-        return np.concatenate ((np.flip(self.upper.y), self.lower.y[1:]))
 
 
 

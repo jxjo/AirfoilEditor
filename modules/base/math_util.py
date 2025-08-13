@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 #------------ time to run -----------------------------------
 
 
-    # from timeit import default_timer as timer
-    # start = timer()
-    # ...
-    # print("Time ", timer() - start)  
+# from timeit import default_timer as timer
+# start = timer()
+# # ...
+# print(f"Time {timer() - start:.4f} s")  
 
 
 
@@ -354,16 +354,19 @@ def derivative1 (x, y):
 def curvature(x, y):
     """
     evaluate curvature of polyline (x,y)
+
+    ! at boundaries this method leads to numerical swing of curvature !
+     
     """
     if not isinstance (x, np.ndarray):
         x = np.asarray(x)
     if not isinstance (y, np.ndarray):
         y = np.asarray(y)
 
-    dx = np.gradient(x)
-    dy = np.gradient(y)
-    ddx = np.gradient(dx)
-    ddy = np.gradient(dy)
+    dx = np.gradient(x, edge_order=2)
+    dy = np.gradient(y, edge_order=2)
+    ddx = np.gradient(dx, edge_order=2)
+    ddy = np.gradient(dy, edge_order=2)
     curvature = (dx * ddy - dy * ddx) / (dx * dx + dy * dy) ** 1.5
 
     return curvature
