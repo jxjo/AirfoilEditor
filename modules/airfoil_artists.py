@@ -866,7 +866,7 @@ class Curvature_Artist (Artist):
                 else: 
                     pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
 
-                label = f"{side.name} - {airfoil.name_to_show}"
+                label = f"{side.name} - {_label_airfoil (self.airfoils, airfoil)}"
                 self._plot_dataItem (x, y, name=label, pen=pen)
 
                 # plot derivative1 of curvature ('spikes') 

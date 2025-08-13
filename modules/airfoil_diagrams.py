@@ -794,6 +794,9 @@ class Diagram_Item_Curvature (Diagram_Item):
     def refresh_artists (self):
         self.curvature_artist.refresh() 
 
+        # disable derivative of curvature if not one airfoil is shown or Design airfoil is shown 
+        self.section_panel.refresh()
+
 
     @property
     def section_panel (self) -> Edit_Panel:
@@ -815,6 +818,8 @@ class Diagram_Item_Curvature (Diagram_Item):
             CheckBox (l,r,c, text="Derivative of curvature", 
                     get=lambda: self.curvature_artist.show_derivative,
                     set=self.curvature_artist.set_show_derivative,
+                    disable=lambda: len(self.airfoils()) != 1 and \
+                                    not any (airfoil.usedAsDesign for airfoil in self.airfoils()),
                     toolTip="Show the derivative of curvature which amplifies curvature artefacts.<br>"+
                             "Only active if one airfoil is displayed or Design airfoil is shown.")
             r += 1
