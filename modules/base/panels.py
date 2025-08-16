@@ -788,7 +788,7 @@ class Toaster (QFrame):
                     corner=Qt.Corner.BottomLeftCorner, 
                     margin=QMargins(10, 10, 10, 10), 
                     toast_style = style.HINT,
-                    duration=2000, parentWindow=False):
+                    duration=1500, parentWindow=False):
         """
         show a toaster for a while
 

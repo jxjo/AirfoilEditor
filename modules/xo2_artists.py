@@ -35,7 +35,7 @@ def _size_opPoint (weighting : float, normal_size = 13) -> float:
     """ returns plot size of an opPoint (def) depending on weighting"""
 
     # weighting can be negative (meaning fixed weighting - no dynamic)
-    return abs(weighting) ** 0.7 * normal_size 
+    return abs(weighting) ** 0.8 * normal_size 
 
 
 
@@ -409,6 +409,10 @@ class Xo2_OpPoint_Artist (Artist):
 
             # sanity - opPoint def could be deleted in the meantime 
             opPoint_def = opPoint_defs[iop] if len(opPoint_defs) == len (opPoints) else None
+
+            if opPoint_def is None or x is None or y is None:
+                logger.warning(f"OpPoint {iop} has no definition or coordinates - skipping")
+                continue
 
             color  = self._opPoint_color  (opPoint, opPoint_def)
             symbol = self._opPoint_symbol (opPoint, prev_opPoint)

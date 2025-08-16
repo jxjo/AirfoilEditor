@@ -384,6 +384,8 @@ class OpPoint_Result (Polar_Point):
         New operating point result  from optimization 
         """
 
+        super().__init__()
+        
         self.idesign        = None             # belongs to Design i 
         self.iopPoint       = None             # is opPoint i 
 

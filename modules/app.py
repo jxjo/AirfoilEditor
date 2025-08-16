@@ -1353,7 +1353,7 @@ class Main (QMainWindow):
             case.input_file.save_nml()
 
             if toast:
-                self._toast_message (f"Options saved to Input file")
+                self._toast_message (f"Parameters saved to Input file", toast_style=style.GOOD)
 
 
     @override
