@@ -95,7 +95,7 @@ class Panel_Airfoils (Edit_Panel):
         self.refresh()
 
     def reset_show_reference_airfoils (self):
-        """ set swow switch to initial state""" 
+        """ set show switch to initial state""" 
         # will be set in init_layout
         self._show_reference_airfoils = None
 
@@ -112,6 +112,13 @@ class Panel_Airfoils (Edit_Panel):
             if airfoil.usedAs == usedAs.REF: n += 1
         return n
 
+    def _n_REF_to_show (self) -> int:
+        """ number of reference airfoils which should be shown"""
+        n = 0 
+        for airfoil in self.airfoils:
+            if airfoil.usedAs == usedAs.REF and airfoil.get_property ("show", True): n += 1
+        return n
+
 
     def _DESIGN_in_list (self) -> bool:
         """ true if NORMAL airfoil can be switched on/off"""
@@ -126,7 +133,7 @@ class Panel_Airfoils (Edit_Panel):
 
         # switch on reference airfoils if there is one 
         if self._show_reference_airfoils is None: 
-            self._show_reference_airfoils = self._n_REF() > 0
+            self._show_reference_airfoils = self._n_REF_to_show() > 0
         # ensure consistency of show state  
         elif not self._show_reference_airfoils :
             for iair, airfoil in enumerate (self.airfoils):

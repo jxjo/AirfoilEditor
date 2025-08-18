@@ -439,7 +439,7 @@ class Input_File:
                     airfoil = Airfoil.onFileType (pathFileName, workingDir=self.workingDir, geometry=GEO_BASIC)
                     airfoil.load ()
                     if airfoil.isLoaded:
-                        airfoil.set_property ("show", True)
+                        airfoil.set_property ("show", False)
                         airfoil.set_usedAs (usedAs.REF)
 
                         polar_defs = self.opPoint_defs.polar_defs
@@ -644,10 +644,8 @@ OPT_TARGET          = "target"
 OPT_MIN             = "min"
 OPT_MAX             = "max"
 
-XTR                 = "xtr"
-
 OPT_TYPES   = [OPT_TARGET, OPT_MIN, OPT_MAX]
-OPT_VARS    = [var.CD, var.CL, var.GLIDE, var.CM, XTR]
+OPT_VARS    = [var.CD, var.CL, var.GLIDE, var.CM, var.XTR]
 OPT_ALLOWED = [(OPT_TARGET,var.CD), 
                (OPT_TARGET,var.GLIDE),
                (OPT_TARGET,var.CL),
@@ -655,7 +653,8 @@ OPT_ALLOWED = [(OPT_TARGET,var.CD),
                (OPT_MIN,   var.CD),
                (OPT_MIN,   var.SINK),
                (OPT_MAX,   var.GLIDE),
-               (OPT_MAX,   var.CL)]
+               (OPT_MAX,   var.CL),
+               (OPT_MAX,   var.XTR)]
 SPEC_TYPES  = [var.CL, var.ALPHA]
 
 
@@ -699,7 +698,7 @@ class OpPoint_Definition:
 
     def __repr__(self) -> str:
         """ nice print string polarType and Re """
-        return f"<{type(self).__name__} {self.labelLong_for()}>"
+        return f"<{type(self).__name__} {self.labelLong}>"
 
 
     def _get_labelLong (self, optType: str, optVar:var, optValue:float, fix=False): 
@@ -777,6 +776,54 @@ class OpPoint_Definition:
             return f"{optType}-{optVar}"
 
 
+    def polar_point (self) -> Polar_Point:
+        """ 
+        Returns an interpolated Polar_Point in opPoint_defs polar of seed airfoil.
+        If it is a target point, the target value is set in the polar point.
+            None if polar doesn't exist 
+        """
+
+        polar = self._myList.get_seed_polar (self)
+        if polar is None: 
+            logger.error (f"{self} - no polar found")
+            return None
+        
+        # get interpolated polar point in this polar - allow vals lt, gt than seed
+
+        polar_point =  polar.get_interpolated_point (self.specVar, self.specValue, allow_outside_range=True)
+
+        if polar_point is None: 
+            logger.error (f"{self} - no polar point found in seed polar")
+            return None
+
+        # if target set optValue in polar point 
+
+        if self.optType == OPT_TARGET:
+            if self.optValue_isFactor:                              # target (opt)value is factor to seed airfoil value 
+                seedValue = polar_point.get_value (self.optVar)
+                if seedValue : 
+                    optValue = self.optValue * seedValue
+                else:                                       
+                    optValue = None 
+            else:                                                   # target (opt)value is absolute value                        
+                optValue = self.optValue
+
+            if optValue is not None: 
+
+                if self.optVar == var.GLIDE:                        # recalc cl/cd to cd  - or vice versa 
+                    optVar = var.CD 
+                    optValue = polar_point.cl / optValue            # cd = cl / glide
+                else:
+                    optVar = self.optVar
+
+                polar_point.set_value (optVar, optValue)   
+
+            else: 
+                logger.error (f"{self} - no target value set")
+
+        return polar_point
+    
+
     @property
     def specVar (self): return self._specVar
     def set_specVar (self, aVal): 
@@ -828,9 +875,10 @@ class OpPoint_Definition:
         optVar  = opt[1] 
         # set optVar and type with an initial value 
         if opt in OPT_ALLOWED and (optType != self._optType or optVar != self._optVar): 
-            self._optType = opt[0] 
-            self._optVar  = opt[1] 
-            self._optValue = self._myList.get_optValue_seed_polar(self)
+            self._optType = optType
+            self._optVar  = optVar 
+            self._optValue = self.polar_point().get_value (optVar) if self.polar_point() else None
+
 
     def opt_allowed_asString (self) -> list [str]: 
         """ return allowed optType,optVar combinations depending on specVar"""
@@ -868,7 +916,8 @@ class OpPoint_Definition:
             else: 
                 return self._optValue
         else: 
-            return self._myList.get_optValue_seed_polar(self)
+            return self.polar_point().get_value(self.optVar)
+        
         
     def set_optValue (self, aVal):  
         if self.optType == OPT_TARGET and aVal is not None:
@@ -906,7 +955,7 @@ class OpPoint_Definition:
                 self.set_optValue (-1.0) 
             else: 
                 # reset - take inital value from seed airfoil polar
-                seedValue = self._myList.get_optValue_seed_polar(self)
+                seedValue = self.polar_point().get_value(self.optVar)
                 if seedValue: 
                     self._optValue = seedValue 
 
@@ -1157,55 +1206,6 @@ class OpPoint_Definition:
         return self.optType == OPT_TARGET
 
 
-    def xyValues_for_xyVars (self, xyVars : tuple):
-        """ 
-        Returns x,y values for either optVar or specVar in x or y
-            if xVar and yVar does not fit return None 
-            if indirect cd/cl optVars will be calculated to cd and vice versa"""
-
-        y = None
-        x = None
-        optVar   = self.optVar
-
-        # target (opt)value could be a factor to seed airfoil value 
-        if self.isTarget_type and self.optValue_isFactor:
-            seedValue = self._myList.get_optValue_seed_polar(self)
-            if seedValue : 
-                optValue = self.optValue * seedValue
-            else:                                       
-                return None, None 
-        # if not target e.g. min-cd get value from seed polar
-        elif not self.isTarget_type:
-            optValue = self._myList.get_optValue_seed_polar(self)
-            if optValue is None: 
-                return None, None 
-
-        # normal target - opValue is target value     
-        else: 
-            optValue = self.optValue        
-
-        if self._xyVars_are_indirect (xyVars): 
-            # recalc cl/cd to cd  - or vice versa 
-            if self.optVar == var.GLIDE and self.specVar == var.CL:
-                optVar = var.CD 
-                optValue = self.specValue / optValue       # cd = cl / glide
-            elif self.optVar == var.CD and self.specVar == var.CL:
-                optVar = var.GLIDE 
-                optValue = self.specValue / optValue       # glide = cl / cd
-            else:
-                optVar = None
-
-        if optVar is not None: 
-            if xyVars[0] == optVar and xyVars[1] == self.specVar:
-                x = optValue 
-                y = self.specValue
-            elif xyVars[1] == optVar and xyVars[0] == self.specVar:
-                y = optValue 
-                x = self.specValue
-
-        return x, y
-
-
     def _xyVars_are_indirect (self, xyVars : tuple):
         """ 
         true if xyVar is 'indirect' to self - e.g. (GLIDE,CL) is indirect to (CL,CD) 
@@ -1238,18 +1238,18 @@ class OpPoint_Definition:
         xVar, yVar     = xyVars[0], xyVars[1]
         xValue, yValue = xyValues [0], xyValues [1]
 
-        if (xVar == self.specVar and yVar == self.optVar):
+        if xVar == self.specVar:
             specVar = xVar
-            optVar  = yVar 
-            if xyValues is not None:
-                specValue = xValue
-                optValue  = yValue
-        elif (yVar == self.specVar and xVar == self.optVar):        # flip x and y
+            specValue = xValue
+            if yVar == self.optVar:
+                optVar = yVar
+                optValue = yValue
+        elif yVar == self.specVar:
             specVar = yVar
-            optVar  = xVar
-            if xyValues is not None:
-                specValue = yValue
-                optValue  = xValue
+            specValue = yValue
+            if xVar == self.optVar:
+                optVar = xVar
+                optValue = xValue 
 
         return specVar, optVar, specValue, optValue
         
@@ -1289,18 +1289,20 @@ class OpPoint_Definition:
 
         if specVar is None or specValue is None: return         # xy doesn't fit 
 
-        # target (opt)value could be a factor to seed airfoil value 
-        if self.isTarget_type and self.optValue_isFactor:
-            seedValue = self._myList.get_optValue_seed_polar(self)
-            if seedValue : 
-                optValue = optValue / seedValue
-            else: 
-                optValue = None 
+        self.set_specValue_limited (specValue)                  # check neighbour values 
 
-        # do not set if seed couldn't be calculated
-        if optValue is not None: 
-            self.set_optValue  (optValue) 
-            self.set_specValue_limited (specValue)      # check neighbour values 
+        # target (opt)value could be a factor to seed airfoil value 
+        if self.isTarget_type: 
+            if self.optValue_isFactor:
+                seedValue = self.polar_point().get_value(self.optVar)
+                if seedValue : 
+                    optValue = optValue / seedValue if optValue else None
+                else: 
+                    optValue = None 
+
+            # do not set if seed couldn't be calculated
+            if optValue is not None: 
+                self.set_optValue  (optValue) 
 
         return 
 
@@ -1338,7 +1340,14 @@ class OpPoint_Definition:
                     newVar  = var.GLIDE
                 if optVar== var.GLIDE and var.CD in xyVars and var.CL in xyVars: 
                     newVar  = var.CD
-            
+
+        elif optVar == var.XTR and var.XTRT in xyVars:                  # special case xo2 max-xtr
+            newVar   = var.XTRT
+            newType  = optType   
+        elif optVar == var.XTR and var.XTRB in xyVars: 
+            newVar   = var.XTRB
+            newType  = optType   
+
         elif optVar in xyVars:
             newVar   = optVar
             newType  = optType
@@ -1350,6 +1359,7 @@ class OpPoint_Definition:
         """ set self as the current opPOint def """
         if self._myList:
             self._myList.set_current_opPoint_def (self)
+
 
 
 class OpPoint_Definitions (list [OpPoint_Definition]):
@@ -1435,7 +1445,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 op_def.set_optVar  (var.GLIDE)
             elif opt == 'max-xtr':
                 op_def.set_optType (OPT_MAX)
-                op_def.set_optVar  (var.XTRT)
+                op_def.set_optVar  (var.XTR)
             else:
                 raise ValueError ("Type '%s' of Operating point %d not known. Using default" %(opt, iop))
 
@@ -1492,7 +1502,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 opt = 'target-lift'
             elif opPoint_def.optType == OPT_TARGET and opPoint_def.optVar == var.GLIDE:
                 opt = 'target-glide'
-            elif opPoint_def.optType == OPT_MAX and opPoint_def.optVar == var.XTRT:
+            elif opPoint_def.optType == OPT_MAX and opPoint_def.optVar == var.XTR:
                 opt = 'max-xtr'
             else:
                 logger.debug ("Unknown optType, optVar combination - using default optimization type")
@@ -1884,29 +1894,31 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self._sort ()
 
 
-    def get_optValue_seed_polar (self, opPoint : OpPoint_Definition):
+    def get_seed_polar (self, opPoint_def : OpPoint_Definition) -> Polar:
         """ 
-        Interpolates optVvalue in polar (specVar,optvar) of seed airfoil
-        Returns None if polar doesn't exist """
+        Returns the associated seed polar of opPoint_def 
+            None if polar doesn't exist 
+        """
 
         airfoil_seed = self._input_file.airfoil_seed
 
         if airfoil_seed is None or airfoil_seed.polarSet is None: 
             return None 
 
-        # find polar in seed airfoils polars which fits to opPoint
+        # find polar in seed airfoils polars which fits to opPoint_def
         polarSet : Polar_Set = airfoil_seed.polarSet
         polarSet.load_or_generate_polars ()                         # ensure loaded (if possible) 
 
         for polar in polarSet.polars:
-            if opPoint.re == polar.re and opPoint.ma == polar.ma and \
-               opPoint.ncrit == polar.ncrit and opPoint.re_type == polar.type:
+            if opPoint_def.re    == polar.re    and opPoint_def.ma      == polar.ma and \
+               opPoint_def.ncrit == polar.ncrit and opPoint_def.re_type == polar.type:
                 
-                # get interpolated value in this polar - allow vals lt, gt than seed 
-                return polar.get_interpolated (opPoint.specVar, opPoint.specValue, opPoint.optVar, 
-                                               allow_outside_range=True) 
+                return polar
                 
         return None
+
+
+
 
 
 #-------------------------------------------------------------------------------

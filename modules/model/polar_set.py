@@ -77,21 +77,23 @@ class var (StrEnum_Extended):
         # exclude cdf (friction drag) from list of values
         val_list = super().values()
         val_list.remove("cdf")
+        val_list.remove("xtr")
 
         return val_list
 
 
     """ polar variables """
+    ALPHA   = "alpha"               
     CL      = "cl"               
     CD      = "cd"               
     CDP     = "cdp"                                     # pressure drag
     CDF     = "cdf"                                     # friction drag
-    ALPHA   = "alpha"               
+    CM      = "cm"               
     GLIDE   = "cl/cd" 
     SINK    = "sink"                                    # "cl^1.5/cd"              
-    CM      = "cm"               
     XTRT    = "xtrt"               
     XTRB    = "xtrb"    
+    XTR     = "xtr"                                     # mean value of xtrt and xtrb (used by xo2)       
 
 
 class polarType (StrEnum_Extended):
@@ -104,6 +106,49 @@ SPEC_ALLOWED = [var.ALPHA, var.CL]
 
 RE_SCALE_ROUND_TO  = 5000                               # round when polar is scaled down 
 MA_SCALE_ROUND_DEC = 2
+
+AIR_RHO     = 1.225             # density air 
+AIR_NY      = 0.0000182         # kinematic viscosity
+
+
+#------------------------------------------------------------------------------
+
+
+def re_from_v (v : float, chord : float, round_to = 1000) -> float:
+    """ 
+    calc Re number from v (velocity)
+    
+    Args:   
+        v: velocity in m/s
+        chord: chord length in m
+        round_to: if int, will round the Re number to this value
+    """
+
+    re = round (v * chord * AIR_RHO / AIR_NY,0)
+
+    if isinstance (round_to, int) and round_to:
+        re = round (re / round_to, 0)
+        re = re * round_to
+
+    return re
+
+
+def v_from_re (re : float, chord : float, round_dec = 1) -> float:
+    """ 
+    calc v (velocity) from Renumber
+
+    Args:   
+        re: Reynolds number
+        chord: chord length in m
+        round_dec: if int, will round the velocity to this decimal places
+    """
+
+    v = re * AIR_NY / (chord * AIR_RHO)
+
+    if isinstance (round_dec, int):
+        v = round (v, round_dec)
+
+    return v
 
 
 #------------------------------------------------------------------------------
@@ -693,7 +738,12 @@ class Polar_Point:
         else: 
             return 0.0 
 
-    def get_value (self, op_var : var ) -> float:
+    @property
+    def xtr (self) -> float: 
+        return (self.xtrt + self.xtrb) / 2 
+
+
+    def get_value (self, op_var : var) -> float:
         """ get the value of the opPoint variable with id"""
 
         if op_var == var.CD:
@@ -716,9 +766,33 @@ class Polar_Point:
             val = self.glide
         elif op_var == var.SINK:
             val = self.sink
+        elif op_var == var.XTR:
+            val = self.xtr
         else:
-            raise ValueError ("Op point variable id '%s' not known" %op_var)
+            raise ValueError (f"Op point variable '{op_var}' not known")
         return val 
+
+
+    def set_value (self, op_var : var, val : float) -> float:
+        """ set the value of the opPoint variable with var id"""
+
+        if op_var == var.CD:
+            self.cd = val
+        elif op_var == var.CDP:
+            self.cdp = val
+        elif op_var == var.CL:
+            self.cl = val
+        elif op_var == var.ALPHA:
+            self.alpha = val
+        elif op_var == var.CM:
+            self.cm = val
+        elif op_var == var.XTRT:
+            self.xtrt  = val
+        elif op_var == var.XTRB:
+            self.xtrb = val
+        else:
+            raise ValueError (f"Op point variable '{op_var}' not supported")
+
 
 
 #------------------------------------------------------------------------------
@@ -882,6 +956,11 @@ class Polar (Polar_Definition):
         return self._xtrb
 
     @property
+    def xtr (self) -> np.ndarray:
+        """ returns the average transition values of self """
+        return (self.xtrb + self.xtrt) / 2.0
+
+    @property
     def bubble_top (self) -> list:
         """ returns the bubble top side values of self """
         if self._bubble_top is None: self._bubble_top = [p.bubble_top for p in self.polar_points]
@@ -1016,6 +1095,8 @@ class Polar (Polar_Definition):
             vals = self.xtrt
         elif polar_var == var.XTRB:
             vals = self.xtrb
+        elif polar_var == var.XTR:
+            vals = self.xtr
         else:
             raise ValueError ("Unkown polar variable: %s" % polar_var)
         return vals
@@ -1065,7 +1146,33 @@ class Polar (Polar_Definition):
 
         return y
 
-    
+
+
+
+    def get_interpolated_point (self, xVar : var, xVal : float, allow_outside_range = False) -> Polar_Point:
+        """
+        Returns an interpolated Polar_Point for xVar at xVal.
+            If not successful, None is returned.
+        allow_outside_range = True will return the point at the boundaries"""
+
+        if not self.isLoaded: return None
+
+        point = Polar_Point()
+        point.set_value (xVar, xVal)                            # set xVar value in point
+
+        for yVar in [var.CL, var.CD, var.CDP, var.ALPHA, var.CM, var.XTRT, var.XTRB]:
+
+            yVal = self.get_interpolated (xVar, xVal, yVar, allow_outside_range=allow_outside_range)
+
+            if yVal is None:
+                return None                                     # no interpolation possible     
+            
+            point.set_value (yVar, yVal)
+
+        return point
+
+
+
     #--------------------------------------------------------
    
 

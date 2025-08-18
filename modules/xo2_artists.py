@@ -42,12 +42,12 @@ def _size_opPoint (weighting : float, normal_size = 13) -> float:
 # -------- Movable Points  ------------------------
 
 
-class Movable_Xo2_OpPoint_Def (Movable_Point):
+class Movable_OpPoint_Def (Movable_Point):
     """ 
     Movable opPoint definition
     """
 
-    name = "OpPoint Def"
+    name = "OpPoint Definition"
 
     COLOR = QColor ("darkturquoise")
 
@@ -104,14 +104,31 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
         brush = QColor ("black")
         brush.setAlphaF (0.3) 
 
-        size = _size_opPoint (opPoint_def.weighting)
+        size    = _size_opPoint (opPoint_def.weighting)
+        xy      = self.xy_in_xyVars()                                   # get x,y coordinates in xyVars
+        movable = movable and self.is_movable_in_xyVars()               # can be moved in xyVars?
 
-        super().__init__(self._point_xy(), movable=movable, label_anchor = (0, 0.5),
+        super().__init__(xy, movable=movable, label_anchor = (0, 0.5),
                             color=QColor(self.COLOR), brush=brush,
                             symbol=self._symbol(), size=size, show_label_static = True, **kwargs)
 
         self.sigShiftClick.connect  (self._delete_opPoint_def)
 
+
+    def is_movable_in_xyVars (self) -> bool:
+        """ returns True if self can be moved in xyVars"""
+
+        opPoint_def = self._opPoint_def
+
+        if opPoint_def.specVar in self._xyVars and opPoint_def.optVar in self._xyVars:
+            return True 
+        elif opPoint_def._xyVars_are_indirect (self._xyVars):
+            return True
+        if opPoint_def.specVar in self._xyVars and opPoint_def.optType in [OPT_MIN, OPT_MAX]:
+            return True 
+        else:
+            return False
+    
 
     def _symbol (self) -> QPainterPath | str:
         """ returns the symbol for self depending on optType"""
@@ -132,8 +149,8 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
                 s = self.SYMBOL_OPT_DOWN
             else:
                 s = self.SYMBOL_OPT_LEFT
-        else: 
-            s = 'star'
+        else:                                           # either optVar nor specVar are in diagram
+            s = 's'
         
         return s
 
@@ -146,8 +163,20 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
             QTimer() .singleShot(10, lambda: self._callback_delete (self._opPoint_def))   
 
 
-    def _point_xy (self) -> tuple:  
-        return self._opPoint_def.xyValues_for_xyVars (self._xyVars)     
+    def xy_in_xyVars (self) -> tuple: 
+        """ returns the x,y coordinates of self in xyVars"""
+
+        polar_point = self._opPoint_def.polar_point ()
+        if polar_point is None:
+            return None, None
+        
+        x= polar_point.get_value(self._xyVars[0])
+        y= polar_point.get_value(self._xyVars[1])     
+        if x is None or y is None:
+            return None, None       
+        
+        return x,y 
+
 
 
     @override
@@ -186,7 +215,7 @@ class Movable_Xo2_OpPoint_Def (Movable_Point):
         """ slot -point is moved"""
         self._opPoint_def.set_xyValues_for_xyVars (self._xyVars, (self.x,self.y))
 
-        self.setPos (self._point_xy())                      # ... if we run against limits 
+        self.setPos (self.xy_in_xyVars())                      # ... if we run against limits 
 
         # also refresh pos of highlight item 
         if isinstance (self._highlight_item, pg.TargetItem):
@@ -256,38 +285,31 @@ class Xo2_OpPoint_Defs_Artist (Artist):
         return self.data_list
 
     @property
-    def opPoint_def_are_editable (self) -> bool:
-        """ True if optimier is ready - definitions can be changed"""
+    def optimizer_isRunning (self) -> bool:
+        """ True if optimizer is ready - definitions can be changed"""
         return not self._isRunning_fn() if callable (self._isRunning_fn) else True
 
 
     def _plot (self): 
 
-        legend_name = "Op Point Definition" 
-
         for opPoint_def in self.opPoint_defs:
 
-            x, y = opPoint_def.xyValues_for_xyVars (self.xyVars)
+            pt = Movable_OpPoint_Def  (self._pi, opPoint_def, self.xyVars, 
+                                            movable=self.optimizer_isRunning and self.show_mouse_helper,
+                                            on_changed =self.sig_opPoint_def_changed.emit,
+                                            on_delete  =self._on_delete,
+                                            on_dblClick=self.sig_opPoint_def_dblClick.emit,
+                                            on_selected=self.sig_opPoint_def_selected.emit)
 
-            # does it fit into this x,y polar view
+            if pt.xy_in_xyVars() != (None, None):                   # sanity - if not None, it is in the view
 
-            if x is not None and y is not None: 
-
-                pt = Movable_Xo2_OpPoint_Def  (self._pi, opPoint_def, self.xyVars, 
-                                                movable=self.opPoint_def_are_editable and self.show_mouse_helper,
-                                                on_changed =self.sig_opPoint_def_changed.emit,
-                                                on_delete  =self._on_delete,
-                                                on_dblClick=self.sig_opPoint_def_dblClick.emit,
-                                                on_selected=self.sig_opPoint_def_selected.emit)
-                self._add (pt, name = legend_name) 
-
-                legend_name = None                                  # legend only once 
+                self._add (pt, name = pt.name_for_legend) 
 
                 # highlight current opPoint def for edit with a big circle 
 
-                if opPoint_def == self.opPoint_defs.current_opPoint_def and self.opPoint_def_are_editable:
+                if opPoint_def == self.opPoint_defs.current_opPoint_def and self.optimizer_isRunning:
 
-                    brush = QColor (Movable_Xo2_OpPoint_Def.COLOR)
+                    brush = QColor (Movable_OpPoint_Def.COLOR)
                     brush.setAlphaF (0.3)
                     highlight_item = self._plot_point (0.02,0.2, color="black", size=60, brush=brush)
 
@@ -407,12 +429,20 @@ class Xo2_OpPoint_Artist (Artist):
             x = opPoint.get_value (self.xyVars[0])
             y = opPoint.get_value (self.xyVars[1])
 
-            # sanity - opPoint def could be deleted in the meantime 
-            opPoint_def = opPoint_defs[iop] if len(opPoint_defs) == len (opPoints) else None
-
-            if opPoint_def is None or x is None or y is None:
-                logger.warning(f"OpPoint {iop} has no definition or coordinates - skipping")
+            if x is None or y is None:
+                logger.warning(f"OpPoint {iop} has no coordinates - skipping")
                 continue
+
+            # get opPoint definition for this opPoint - if not available, use None
+            # sanity - opPoint def could be deleted in the meantime 
+            if iop < len(opPoint_defs):
+                opPoint_def = opPoint_defs[iop]
+                if opPoint_def.specValue != opPoint.get_value(opPoint_def.specVar):
+                    # logger.warning(f"OpPoint {iop} has no definition with same specValue - skipping")
+                    opPoint_def = None
+            else:
+                opPoint_def = None
+
 
             color  = self._opPoint_color  (opPoint, opPoint_def)
             symbol = self._opPoint_symbol (opPoint, prev_opPoint)

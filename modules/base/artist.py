@@ -26,7 +26,7 @@ from PyQt6.QtWidgets    import QGraphicsGridLayout
 
 from pyqtgraph.graphicsItems.ScatterPlotItem    import Symbols
 from pyqtgraph.graphicsItems.GraphicsObject     import GraphicsObject
-from pyqtgraph.GraphicsScene.mouseEvents        import MouseClickEvent
+from pyqtgraph.GraphicsScene.mouseEvents        import MouseClickEvent, MouseDragEvent
 
 
 from PyQt6.QtCore       import Qt, QTimer, QObject
@@ -198,6 +198,8 @@ class Movable_Point (pg.TargetItem):
             hoverBrush = QColor(color)
             hoverPen   = pg.mkPen (color, width=1) 
 
+        self._symbol_size = size 
+        
         # init TargetItem  
 
         super().__init__(pos=self._jpoint.xy, pen= pen, brush = brush_color, 
@@ -219,6 +221,13 @@ class Movable_Point (pg.TargetItem):
         # default callback setup 
         self.sigPositionChanged.connect (self._moving)
         self.sigPositionChangeFinished.connect (self._finished)
+
+
+    @property
+    def name_for_legend (self) -> str:
+        """ returns name of self """
+        return self.name if not self.movable else f"{self.name} movable"
+
 
     @property
     def xy (self) -> tuple[float]: 
@@ -274,6 +283,8 @@ class Movable_Point (pg.TargetItem):
     def _label_opts (self, moving=False, hover=False) -> dict:
         """ returns the label options as dict """
 
+        offset_x = int (self._symbol_size / 2)  + 2
+
         if moving or hover:
             # brush to get black background 
             brushColor = QColor('black')
@@ -283,11 +294,11 @@ class Movable_Point (pg.TargetItem):
             labelOpts = {'color': QColor(Artist.COLOR_NORMAL),
                          'fill': brush,
                          'anchor': self._label_anchor,
-                         'offset': (5, 0)}
+                         'offset': (offset_x, 0)}
         else: 
             labelOpts = {'color': QColor(Artist.COLOR_LEGEND),
                          'anchor': self._label_anchor,
-                         'offset': (5, 0)}
+                         'offset': (offset_x, 0)}
         return labelOpts
 
 
@@ -349,20 +360,37 @@ class Movable_Point (pg.TargetItem):
 
 
     @override
-    def mouseDragEvent(self, ev):
+    def mouseDragEvent(self, ev: MouseDragEvent):
 
         super().mouseDragEvent (ev) 
 
         if ev.isStart() and self.moving:
             self.setLabel (self.label_moving, self._label_opts(moving=True))
             self.setMovingBrush ()
-            self.setPath (Symbols[self._symbol_moving])
+            self.setPath (self._symbol_moving)
             self.setZValue (self._zValue_active)             # above all
 
         if ev.isFinish() and not self.moving:
             self.setLabel (self.label_static, self._label_opts(moving=False))
-            self.setPath (Symbols[self._symbol_movable])
+            self.setPath (self._symbol_movable)
             self.setZValue (self._zValue_passive)     
+
+
+    @override
+    def setPath (self, path_or_string):
+        """ set the symbol path of self - overridden to set the symbol by string """
+
+        if isinstance (path_or_string, str):
+            # path_or_string is a symbol name
+            if path_or_string in Symbols:
+                path = Symbols[path_or_string]
+            else:
+                raise ValueError(f"Unknown symbol {path_or_string} for Movable_Point")
+        else:
+            # path_or_string is a Path or QPainterPath
+            path = path_or_string
+
+        super().setPath(path)
 
 
     @override
