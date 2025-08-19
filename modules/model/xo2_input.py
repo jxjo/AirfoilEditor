@@ -667,7 +667,7 @@ class OpPoint_Definition:
                     specVar = var.ALPHA, 
                     specValue = 0.0, 
                     optVar  = var.CD, 
-                    optType = OPT_TARGET, 
+                    optType = None, 
                     optValue = 0.0, 
                     re = None, 
                     weighting = None):
@@ -678,12 +678,35 @@ class OpPoint_Definition:
 
         self._myList     = myList 
 
+        # sanity check of specVar and optVar
+        if not (specVar in SPEC_TYPES and optVar in OPT_VARS):
+            raise ValueError (f"specVar {specVar} and optVar {optVar} are not supported for opPoint definition")
+
+        if optType is not None and optType not in OPT_TYPES:
+            raise ValueError (f"optType {optType} is not supported for opPoint definition")
+
+        # if provided - check optType if there is a posiible combination like TARGET-CD or MIN-CD
+
+        if optType is not None:
+      
+            if not any ((opt[1] != specVar and opt[0] == optType and opt[1] == optVar) for opt in OPT_ALLOWED ):
+                raise ValueError (f"optType {optType} and optVar {optVar} are not allowed for opPoint definition")
+
+        # if not provided get best optType - normally 'target'
+
+        else: 
+            opt_possible = [opt for opt in OPT_ALLOWED if (opt[1] != specVar and opt[1] == optVar)]
+            if not opt_possible:
+                raise ValueError (f"optType {optType} and optVar {optVar} are not allowed for opPoint definition")   
+            optType = opt_possible[0][0]        # take first allowed type
+
         # init values as arguments 
+
         self._specVar    = specVar              # polar var self is based 
         self._specValue  = specValue            # the value of this variable
         self._optVar     = optVar               # polar var which should be optimized
         self._optType    = optType              # type of optimization 
-        self._optValue   = optValue             # an optional value 
+        self._optValue   = optValue if optType == OPT_TARGET else None   # an optional value 
         self._weighting  = weighting            # weighting during optimization 
         self._re         = re                   # an individual re number of self
         self._ma         = None                 # an individual re number of self
@@ -1751,7 +1774,11 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
 
         if not (xVar in var.values() and yVar in var.values()):
             raise ValueError (f"'{xyVars}' are not supported for opPoint definition")
-        
+
+        # special case xtrb and xtrt - change to xtr
+        xVar = var.XTR if xVar in (var.XTRB, var.XTRT) else xVar
+        yVar = var.XTR if yVar in (var.XTRB, var.XTRT) else yVar
+
         # try to find what is 'spec' and what is 'opt'
         if xVar in SPEC_TYPES: 
             specVar = xVar
@@ -1766,12 +1793,18 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 optVar = xVar 
                 optValue = x
 
-        if specVar and optVar:
-            new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
-                                                        optVar = optVar, optValue = optValue)
-            self.add (new_opPoint_def)
+        if specVar in SPEC_TYPES and optVar in OPT_VARS:
+            try: 
+                new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
+                                                            optVar = optVar, optValue = optValue)
+                self.add (new_opPoint_def)
 
-            self.set_current_opPoint_def (new_opPoint_def)
+                self.set_current_opPoint_def (new_opPoint_def)
+                return new_opPoint_def
+            
+            except ValueError as e:
+                logger.warning (f"OpPoint Definition cannot be created: {e}")
+                return None
 
 
     def create_from_polar_point (self, aPoint : Polar_Point, 

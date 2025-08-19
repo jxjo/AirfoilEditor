@@ -371,9 +371,14 @@ class Xo2_OpPoint_Defs_Artist (Artist):
             pos : pg.Point = viewbox.mapSceneToView(ev.scenePos())
 
             # create new opPoint_def in the list of opPoint_defs 
-            self.opPoint_defs.create_in_xyVars (self.xyVars, pos.x(), pos.y())
+            new_opPoint_def = self.opPoint_defs.create_in_xyVars (self.xyVars, pos.x(), pos.y())
 
-            self.sig_opPoint_def_changed.emit()
+            if new_opPoint_def is not None:
+                self.sig_opPoint_def_changed.emit()
+
+            else: 
+                self._plot_text ('New OpPoint Definition cannot be created in this diagram', color=COLOR_ERROR, itemPos=(0.5,0.5))
+                QTimer().singleShot (1000, self.refresh)            # remove after 1 second
 
 
     def _on_delete (self, opPoint_def : OpPoint_Definition):
@@ -430,7 +435,7 @@ class Xo2_OpPoint_Artist (Artist):
             y = opPoint.get_value (self.xyVars[1])
 
             if x is None or y is None:
-                logger.warning(f"OpPoint {iop} has no coordinates - skipping")
+                logger.warning(f"OpPoint {iop} has no coordinates for this diagram - skipping")
                 continue
 
             # get opPoint definition for this opPoint - if not available, use None
