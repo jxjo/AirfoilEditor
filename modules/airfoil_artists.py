@@ -1125,7 +1125,7 @@ class Polar_Artist (Artist):
                 # first filter only visible polars to get number of polars and plot 
 
                 polarSet : Polar_Set = airfoil.polarSet
-                polars = polarSet.polars
+                polars =  [p for p in polarSet.polars if p.active] 
 
                 for iPolar, polar in enumerate(polars [::-1]): 
 

@@ -313,17 +313,15 @@ class Airfoil:
         if len(self.name) <= 23:    return self.name
         else:                       return "..." + self.name[-20:]
 
+
     @property
-    def info_as_html (self) -> str:
+    def info_short_as_html (self) -> str:
         """ comprehensive info about self as formatted html string"""
 
-        used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
-        info = f"{used_as}{self.fileName}" 
+        info = "<p style='white-space:pre'>"                     # no word wrap 
 
-        info = info + f"<br><br>in {self.pathName_abs}  " 
         if self.geo and self.geo.max_thick:
-            t = f"<br>" + \
-                f"<table>" + \
+            info += f"<table>" + \
                     f"<tr>" + \
                         f"<td>Thickness  </td>" + \
                         f"<td>{self.geo.max_thick:.2%}  </td>" + \
@@ -346,12 +344,23 @@ class Airfoil:
                     f"</tr>" + \
                 f"</table>"
         else:
-            t = f"<br> Error when evaluating airfoil <br>"
-
-        
-        info = "<p style='white-space:pre'>" + info + t                     # no word wrap 
+            info += f"<br> Error when evaluating airfoil <br>"
         return info 
 
+
+    @property
+    def info_as_html (self) -> str:
+        """ comprlonger  info about self as formatted html string"""
+
+        info = "<p style='white-space:pre'>"                     # no word wrap 
+
+        used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
+        info += f"{used_as}{self.fileName}" 
+        info += f"<br><br>in {self.pathName_abs}<br>" 
+
+        info += self.info_short_as_html
+
+        return info 
 
 
     @property

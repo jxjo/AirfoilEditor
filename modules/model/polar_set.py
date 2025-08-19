@@ -572,7 +572,7 @@ class Polar_Set:
 
         if len(self.polars) == len(polar_set.polars):
             for i, polar in enumerate (self.polars):
-                if not polar.is_equal_to (polar_set.polars[i]):
+                if not polar.is_equal_to (polar_set.polars[i], ignore_active=False):
                     return False
         else:
             return False 
@@ -616,7 +616,7 @@ class Polar_Set:
                     self.polars.remove(polar)
 
             # append new polar if it is active 
-            if not only_active or (only_active and polar_def.active):
+            if not only_active or (only_active and polar_def.active) or polar_def.is_mandatory:
                 self.polars.append (Polar(self, polar_def, re_scale=self._re_scale))
 
 

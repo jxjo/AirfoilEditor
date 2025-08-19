@@ -449,6 +449,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         self._stretch_y         = False                 # show y stretched 
         self._stretch_y_factor  = 3                     # factor to stretch 
+        self._geo_info_item     = None                  # item to show geometry info on plot
 
         super().__init__(*args, **kwargs)
 
@@ -586,6 +587,37 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
 
     @override
+    def resizeEvent(self, ev):
+        """ handle resize event of self - ensure geometry info item is removed"""
+
+        # ensure geometry info item is removed on resize
+        if self._geo_info_item is not None and self.viewBox.boundingRect().height() < 300:
+            self.scene().removeItem (self._geo_info_item)       # was added directly to the scene via setParentItem
+            self._geo_info_item = None                              # reset item
+
+        super().resizeEvent (ev)
+
+
+    def _plot_geo_info (self, airfoil : Airfoil):
+        """ plot geometry info of airfoil on self"""
+
+        if self._geo_info_item is not None:
+            self.scene().removeItem (self._geo_info_item)       # was added directly to the scene via setParentItem
+
+        self._geo_info_item = None                              # reset item
+
+        if not isinstance (airfoil, Airfoil) or not airfoil.geo or not airfoil.geo.max_thick: return
+
+        if self.viewBox.boundingRect().height() < 300: return   # no height, no info
+
+        p = pg.LabelItem(airfoil.info_short_as_html, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt")    
+        p.setParentItem(self)                                   # add to self (Diagram Item) for absolute position 
+        p.anchor(itemPos=(0,1), parentPos=(0.0,0.95), offset=(50,-30))
+        p.setZValue(5)
+        self._geo_info_item = p 
+
+
+    @override
     def plot_title(self, **kwargs):
 
         # the first airfoil get's in the title 
@@ -605,6 +637,8 @@ class Diagram_Item_Airfoil (Diagram_Item):
                 subtitle = airfoil.name if airfoil.name != airfoil.name_to_show else ''
 
             super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
+
+            self._plot_geo_info (airfoil)                       # plot geometry info of airfoil on self
 
 
     @override
@@ -1780,9 +1814,11 @@ class Diagram_Airfoil_Polar (Diagram):
 
     def on_polar_set_changed (self):
         """ slot to handle changed polar set signal """
-
         logger.debug (f"{str(self)} on polar set changed")
-        self.refresh(also_viewRange=False)
+
+        self.panel_polar.refresh()                     # refresh polar panel
+        for artist in self._get_artist (Polar_Artist):
+            artist.refresh ()
 
 
     def on_airfoils_ref_changed (self):
