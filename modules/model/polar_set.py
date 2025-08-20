@@ -88,8 +88,8 @@ class var (StrEnum_Extended):
     CD      = "cd"               
     CDP     = "cdp"                                     # pressure drag
     CDF     = "cdf"                                     # friction drag
-    CM      = "cm"               
     GLIDE   = "cl/cd" 
+    CM      = "cm"               
     SINK    = "sink"                                    # "cl^1.5/cd"              
     XTRT    = "xtrt"               
     XTRB    = "xtrb"    

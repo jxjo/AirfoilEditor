@@ -26,7 +26,7 @@ from xo2_artists            import *
 
 
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 #-------------------------------------------------------------------------------
@@ -541,7 +541,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
 
     @property 
-    def design_geoTargets (self) -> OpPoint_Result:
+    def design_geoTargets (self) -> list[GeoTarget_Result]:
         """ geoTarget result belonging to current design airfoil"""
 
         if self.iDesign is None: return 
@@ -590,55 +590,98 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def resizeEvent(self, ev):
         """ handle resize event of self - ensure geometry info item is removed"""
 
-        # ensure geometry info item is removed on resize
-        if self._geo_info_item is not None and self.viewBox.boundingRect().height() < 300:
-            self.scene().removeItem (self._geo_info_item)       # was added directly to the scene via setParentItem
-            self._geo_info_item = None                              # reset item
+        # will remove geo info if not enough height - or show it again if enough height        
+        self._plot_geo_info (refresh_airfoil=False)             
 
         super().resizeEvent (ev)
 
 
-    def _plot_geo_info (self, airfoil : Airfoil):
+    def _geo_info_as_html (self, airfoil : Airfoil) -> str:
+        """
+        geometry info of airfoil as html string - colored for xo2 geometry targets
+        """
+
+        thickness_color = None
+        camber_color    = None
+
+        if airfoil.usedAsDesign and self.design_geoTargets:
+
+            for geoTarget in self.design_geoTargets:
+                deviation = abs (round (geoTarget.deviation,1))
+                if deviation < 0.1:
+                    result_color = COLOR_GOOD
+                elif deviation >= 10:
+                    result_color = COLOR_ERROR
+                elif deviation >= 2.0:
+                    result_color = COLOR_WARNING
+                elif deviation >= 0.1:
+                    result_color = COLOR_OK
+                else:
+                    result_color = COLOR_OK   
+                result_color = result_color.name(QColor.NameFormat.HexArgb) if isinstance (result_color, QColor) else result_color
+                if geoTarget.optVar == "Thickness":
+                    thickness_color = result_color
+                elif geoTarget.optVar == "Camber":
+                    camber_color = result_color
+                    
+        return airfoil.info_short_as_html (thickness_color=thickness_color, camber_color=camber_color)
+
+
+    def _plot_geo_info (self, refresh_airfoil = False):
         """ plot geometry info of airfoil on self"""
 
-        if self._geo_info_item is not None:
-            self.scene().removeItem (self._geo_info_item)       # was added directly to the scene via setParentItem
+        airfoil = self.airfoils()[0] if self.airfoils() else None
 
-        self._geo_info_item = None                              # reset item
+        # check enough height in diagram item to show info
+        enough_height = self.viewBox.boundingRect().height() >= 300
 
-        if not isinstance (airfoil, Airfoil) or not airfoil.geo or not airfoil.geo.max_thick: return
+        if not enough_height or airfoil is None:
+            if self._geo_info_item is not None:
+                self.scene().removeItem (self._geo_info_item)               #
+            self._geo_info_item = None                              
+            return
 
-        if self.viewBox.boundingRect().height() < 300: return   # no height, no info
+        # show again after resize or refresh with new airfoil 
 
-        p = pg.LabelItem(airfoil.info_short_as_html, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt")    
-        p.setParentItem(self)                                   # add to self (Diagram Item) for absolute position 
-        p.anchor(itemPos=(0,1), parentPos=(0.0,0.95), offset=(50,-30))
-        p.setZValue(5)
-        self._geo_info_item = p 
+        show_again = enough_height and self._geo_info_item is None
+
+        if refresh_airfoil and self._geo_info_item is not None:
+            self.scene().removeItem (self._geo_info_item)
+
+        if refresh_airfoil or show_again:
+
+            p = pg.LabelItem(self._geo_info_as_html (airfoil), color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt")    
+            p.setParentItem(self)                                   # add to self (Diagram Item) for absolute position 
+            p.anchor(itemPos=(0,1), parentPos=(0.0,0.95), offset=(50,-30))
+            p.setZValue(5)
+            self._geo_info_item = p 
 
 
     @override
     def plot_title(self, **kwargs):
+        """ plot title of self - if airfoils are available"""
+
+        if not self.airfoils(): return 
 
         # the first airfoil get's in the title 
-        if self.airfoils():
-            airfoil = self.airfoils()[0]
 
-            mods = None 
-            if airfoil.usedAsDesign:
-                mods = ', '.join(airfoil.geo.modifications_as_list) 
-                
-            if mods:
-                subtitle = "Mods: " + mods
-            elif not mods and airfoil.isBezierBased:
-                subtitle = 'Based on 2 Bezier curves'
-            else: 
-                # show name if it differs from name to show 
-                subtitle = airfoil.name if airfoil.name != airfoil.name_to_show else ''
+        airfoil = self.airfoils()[0]
 
-            super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
+        mods = ', '.join(airfoil.geo.modifications_as_list) if airfoil.usedAsDesign else None
+            
+        if mods:
+            subtitle = "Mods: " + mods
+        elif airfoil.isBezierBased:
+            subtitle = 'Based on 2 Bezier curves'
+        else: 
+            # show name if it differs from name to show 
+            subtitle = airfoil.name if airfoil.name != airfoil.name_to_show else ''
 
-            self._plot_geo_info (airfoil)                       # plot geometry info of airfoil on self
+        super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
+
+         # plot geometry info of airfoil on self
+
+        self._plot_geo_info (refresh_airfoil=True)                      
 
 
     @override
@@ -662,11 +705,6 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         a  = Xo2_Transition_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True,
                                     opPoints_result_fn=lambda: self.design_opPoints)
-        self._add_artist (a)
-
-        a  = Xo2_GeoTarget_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True,
-                                    geoTarget_results_fn=lambda: self.design_geoTargets,
-                                    geoTarget_defs_fn=lambda: self.geoTarget_defs)
         self._add_artist (a)
 
 
@@ -1648,7 +1686,6 @@ class Diagram_Airfoil_Polar (Diagram):
     def set_show_xo2_opPoint_result (self, aBool : bool, refresh=True):
         self._show_artist (Xo2_OpPoint_Artist, aBool, refresh=refresh)
         self._show_artist (Xo2_Transition_Artist, aBool, refresh=refresh)
-        self._show_artist (Xo2_GeoTarget_Artist, aBool, refresh=refresh)
 
 
     @property

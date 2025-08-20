@@ -314,27 +314,27 @@ class Airfoil:
         else:                       return "..." + self.name[-20:]
 
 
-    @property
-    def info_short_as_html (self) -> str:
+    def info_short_as_html (self, thickness_color = None, camber_color = None) -> str:
         """ comprehensive info about self as formatted html string"""
 
         info = "<p style='white-space:pre'>"                     # no word wrap 
+
+        thickness_color = thickness_color if thickness_color else ''
+        camber_color    = camber_color    if camber_color    else ''
 
         if self.geo and self.geo.max_thick:
             info += f"<table>" + \
                     f"<tr>" + \
                         f"<td>Thickness  </td>" + \
-                        f"<td>{self.geo.max_thick:.2%}  </td>" + \
+                        f"<td style='color: {thickness_color}'>{self.geo.max_thick:.2%}  </td>" + \
                         f"<td>at  </td>" + \
                         f"<td>{self.geo.max_thick_x:.2%}  </td>" + \
                     f"</tr>" + \
                     f"<tr>" + \
                         f"<td>Camber  </td>" + \
-                        f"<td>{self.geo.max_camb:.2%}  </td>" + \
+                        f"<td style='color: {camber_color}'>{self.geo.max_camb:.2%}  </td>" + \
                         f"<td>at  </td>" + \
                         f"<td>{self.geo.max_camb_x:.2%}  </td>" + \
-                    f"</tr>" + \
-                    f"<tr>" + \
                     f"</tr>" + \
                     f"<tr>" + \
                         f"<td>Curvature LE  </td>" + \
@@ -358,7 +358,7 @@ class Airfoil:
         info += f"{used_as}{self.fileName}" 
         info += f"<br><br>in {self.pathName_abs}<br>" 
 
-        info += self.info_short_as_html
+        info += self.info_short_as_html()
 
         return info 
 
