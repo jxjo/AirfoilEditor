@@ -512,7 +512,7 @@ class Main (QMainWindow):
         self.sig_airfoils_ref_changed.emit()
 
         if self.mode_optimize:                                      # reference airfoils are in input file
-            self._on_xo2_input_changed ()
+            self._on_xo2_input_changed (silent=True)                # silent - we already signaled
 
 
     @property
@@ -1139,7 +1139,7 @@ class Main (QMainWindow):
         self.refresh () 
 
 
-    def _on_xo2_input_changed (self):
+    def _on_xo2_input_changed (self, silent=False):
         """ slot handle change of xo2 input data"""
 
         logger.debug (f"{self} on_xo2_input_changed")
@@ -1152,12 +1152,13 @@ class Main (QMainWindow):
         # polar definitions could have changed - update polarSets of airfoils 
         self.refresh_polar_sets (silent=True)
 
-        # also refresh opPoint definition dialog if open 
-        if self._xo2_opPoint_def_dialog:
-            self._xo2_opPoint_def_dialog.refresh()
+        if not silent: 
+            # also refresh opPoint definition dialog if open 
+            if self._xo2_opPoint_def_dialog:
+                self._xo2_opPoint_def_dialog.refresh()
 
-        self.refresh()
-        self.sig_xo2_input_changed.emit()                                   # inform diagram 
+            self.refresh()
+            self.sig_xo2_input_changed.emit()                                   # inform diagram 
 
 
     def _on_xo2_opPoint_def_changed (self):
