@@ -1907,10 +1907,6 @@ class Diagram_Airfoil_Polar (Diagram):
         self.section_panel.reset_show_reference_airfoils ()                 # show reference airfoils if there are
         self.section_panel.set_show_design_airfoils (not aBool)             # don't show design airfoil initially - would be too much
 
-        item : Diagram_Item_Airfoil
-        for item in self._get_items (Diagram_Item_Airfoil):
-            item.bezier_artist.set_show_mouse_helper (not aBool)            # switch Bezier movable points 
-
         self.refresh(also_viewRange=False)
 
 

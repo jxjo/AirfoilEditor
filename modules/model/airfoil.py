@@ -374,9 +374,9 @@ class Airfoil:
     @property
     def isEdited (self) -> bool: 
         """ True if airfoil is being edited, modified, ..."""
-        return self._isModified
+        return self._isEdited
     def set_isEdited (self, aBool): 
-        self.set_isModified (aBool) 
+        self._isEdited = bool(aBool)  
 
 
     @property
@@ -848,6 +848,7 @@ class Airfoil:
         airfoil = self.asCopy (pathFileName=pathFileName, name=name, geometry=geometry)
 
         airfoil.set_usedAs (self.usedAs)
+        airfoil.set_isEdited (self.isEdited)
         airfoil.geo._modification_dict = copy (self.geo._modification_dict)
         airfoil._name_org = self._name_org
         

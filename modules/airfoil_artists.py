@@ -671,7 +671,7 @@ class Bezier_Artist (Artist):
             if airfoil.isBezierBased and airfoil.isLoaded:
 
                 color = _color_airfoil (self.airfoils, airfoil)
-                movable = airfoil.usedAsDesign and self.show_mouse_helper
+                movable = airfoil.isEdited and self.show_mouse_helper
 
                 side : Side_Airfoil_Bezier
                 for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
@@ -1023,7 +1023,7 @@ class Airfoil_Line_Artist (Artist, QObject):
                 # plot its highpoint 
 
                 ph = Movable_Highpoint (airfoil.geo, line, p, 
-                                            movable=airfoil.usedAsDesign, color=color,
+                                            movable=airfoil.isEdited, color=color,
                                             on_changed=self.sig_geometry_changed.emit )
                 self._add (ph) 
 

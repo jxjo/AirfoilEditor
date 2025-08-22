@@ -189,6 +189,7 @@ class Case_Direct_Design (Case_Abstract):
             self.add_design (airfoil)
 
         airfoil_copy = airfoil.asCopy_design () 
+        airfoil_copy.set_isEdited (True)
 
         return airfoil_copy
     
@@ -217,6 +218,7 @@ class Case_Direct_Design (Case_Abstract):
         # prepare the current  airfoil 
 
         airfoil.set_fileName (fileName)                     # give a new filename to current
+        airfoil.set_isEdited (True)                         # airfoil can be edited
         airfoil.set_isModified (False)                      # avoid being saved for polar generation, there is already a Design
 
 
@@ -292,6 +294,7 @@ class Case_Direct_Design (Case_Abstract):
         """ returns a final airfoil from airfoil_design based on original airfoil  """
 
         airfoil = airfoil_design.asCopy ()
+        airfoil.set_isEdited (False)
 
         # create name extension - does name have already ..._mod?
      
@@ -368,6 +371,7 @@ class Case_Direct_Design (Case_Abstract):
                 airfoil = Airfoil.onFileType(fileName, workingDir=working_dir, geometry=GEO_SPLINE)
                 airfoil.load()
                 airfoil.useAsDesign()
+                airfoil.set_isEdited (True)                         # airfoil can be edited
                 airfoil_loaded = airfoil.isLoaded
             except:
                 airfoil_loaded = False

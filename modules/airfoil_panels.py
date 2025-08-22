@@ -96,7 +96,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: only enabled in edit mode of App """
-        return not self.mode_modify or (self.airfoil.isFlapped if self.airfoil else False)
+        return not self.airfoil.isEdited or (self.airfoil.isFlapped if self.airfoil else False)
     
 
 
@@ -317,7 +317,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         # blend with airfoil - currently Bezier is not supported
         Button (l_head, text="&Blend", width=80,
                 set=self.app.do_blend_with, 
-                hide=lambda: not self.mode_modify or self.airfoil.isBezierBased,
+                hide=lambda: not self.airfoil.isEdited or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
 
 
@@ -390,7 +390,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=80,
-                set=self.app.do_repanel, hide=lambda: not self.mode_modify,
+                set=self.app.do_repanel, hide=lambda: not self.airfoil.isEdited,
                 disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
                 toolTip="Repanel airfoil with a new number of panels" ) 
 
@@ -478,7 +478,6 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
-        # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="Set F&lap", width=80,
                 set=self.app.do_flap, hide=lambda: not self.mode_modify,
                 disable=self._set_flap_disabled,
