@@ -55,6 +55,7 @@ class Diagram (QWidget):
         self._getter = getter
         self._myApp  = parent
         self._section_panel = None 
+        self._diagram_items_grid_dict = {}
 
         # set width and height 
 
@@ -75,29 +76,24 @@ class Diagram (QWidget):
 
         self._graph_widget.ci.scene().contextMenu = []
 
-
-        # create all plot items and setup layout with them  
+        # create all plot diagram items and setup layout with them  
 
         self.create_diagram_items () 
 
         #  add a message view box at bottom   
 
-        self._message_vb = pg.ViewBox()
-        nrows = self.graph_layout.rowCount()
-        self.graph_layout.addItem (self._message_vb, nrows, 0)
-        self._message_vb.hide()
+        self._message_vb = None
+        self._add_message_box ()
     
-
         # create optional view panel add the left side 
 
         self._viewPanel   = None
         self.create_view_panel ()
 
-        # build layout with view panel and graphics
+        # build main layout with view panel to the left and graphics layout to the right
 
         l_main = QHBoxLayout()
         l_main.setContentsMargins (QMargins(0, 0, 0, 0))
-        # l_main.setSpacing (0)
 
         if self._viewPanel is not None: 
             l_main.addWidget (self._viewPanel)
@@ -120,6 +116,79 @@ class Diagram (QWidget):
         else: 
             obj = self._getter     
         return obj if isinstance (obj, list) else [obj]
+
+
+    def _add_item (self, anItem: 'Diagram_Item', row, col, rowspan=1, colspan=1, rowStretch=0, columnStretch=0):
+        """ adds a diagram item to self list of diagram items  """
+
+        # save all grid paramters of diagram item to be able to rebuild grid 
+
+        args = {**locals()}                                         # make a copy of argumnets 
+        args.pop ("self")
+        args.pop ("anItem")
+        self._diagram_items_grid_dict [anItem] = args               # build dict of diagram items 
+
+        # now add to pg.GraphicsLayout (a proxy of QGraphicsGridLayout)
+
+        graphicsLayout : pg.GraphicsLayout = self._graph_widget.ci
+
+        graphicsLayout.addItem (anItem, row, col, rowspan=rowspan, colspan=colspan)
+
+        if anItem.isVisible(): 
+
+            # core of Qt bug hack: set stretch only to visible items 
+            if rowStretch:      self.graph_layout.setRowStretchFactor    (row, rowStretch)
+            if columnStretch:   self.graph_layout.setColumnStretchFactor (col, columnStretch)
+
+        # connect to visible signal of item to rebuild grid 
+        try:
+            anItem.sig_visible.disconnect (self._on_item_visible)
+        except:
+            pass
+        anItem.sig_visible.connect (self._on_item_visible)
+
+
+    def _add_message_box (self):
+        """ add a message view box in the middle of the grid layout"""
+
+        graphicsLayout : pg.GraphicsLayout = self._graph_widget.ci
+        gridLayout : QGraphicsGridLayout   = graphicsLayout.layout
+
+        self._message_vb = pg.ViewBox()
+        self._message_vb.hide()
+        nrows = gridLayout.rowCount()
+        ncols = gridLayout.columnCount()
+        graphicsLayout.addItem (self._message_vb, nrows, 0, rowspan=1, colspan=ncols-1)
+
+
+    def _rebuild_grid_layout (self):
+        """ rebuild graphics grid layout out of saved diagram items"""
+
+        # ! rebuild is needed because of a Qt bug in QGraphicsGridLayout
+        # !     If a stretchFactor is set to a row (column), then this row
+        # !     does not disappear completly if the item is hidden
+        # !     Therefore a new grid has to be build up with now stretch factor for the hidden item (row)
+
+        # clear current graphicsLayout / delete QGraphicsGridLayout to remove exisating row or column stretches 
+
+        graphicsLayout : pg.GraphicsLayout = self._graph_widget.ci
+        graphicsLayout.clear()
+        graphicsLayout.rows = {}
+        graphicsLayout.layout=QGraphicsGridLayout()                         # hack to set fresh QGridLayout with *no* stretches
+        graphicsLayout.setLayout(graphicsLayout.layout)
+
+        # build grid layout with collected diagram items and their row, col specification
+
+        diagram_item: Diagram_Item
+        for diagram_item, args in self._diagram_items_grid_dict.items():
+
+            self._add_item (diagram_item, **args)
+
+        self._add_message_box()                                                # add a message box at the bottom                                
+
+        # ensure grid fills the widget - sometimes this little kick is needed 
+
+        self._graph_widget.resizeEvent(None)
 
 
     def _get_items (self, item_classes : Type['Diagram_Item'] | list[type['Diagram_Item']]) -> list['Diagram_Item']:
@@ -181,12 +250,9 @@ class Diagram (QWidget):
     @property
     def diagram_items (self) -> list['Diagram_Item']:
         """ list of my diagram items """
-        items = []
-        for i in range (self.graph_layout.count()):
-            item = self.graph_layout.itemAt(i)
-            if isinstance (item, Diagram_Item):
-                items.append (item)
-        return items
+
+        return list (self._diagram_items_grid_dict.keys())
+
 
     @property
     def graph_layout (self) -> QGraphicsGridLayout:
@@ -251,14 +317,6 @@ class Diagram (QWidget):
         pass
 
 
-    def _add_item (self, anItem: 'Diagram_Item', row, col, rowspan=1, colspan=1):
-        """ adds a diagram item to self graphic layout """
-
-        self._graph_widget.addItem (anItem, row, col, rowspan=rowspan, colspan=colspan)
-
-        anItem.sig_visible.connect (self._on_item_visible)
-
-
     def create_view_panel (self):
         """ 
         creates a view panel to the left of at least one diagram item 
@@ -292,11 +350,12 @@ class Diagram (QWidget):
 
         if nItems == 0: 
             self._message_show ("No diagram items selected ")
-        # the GraphicsLayout gets confused, if all items were switched off
-        #     and then switched on again - recalc layout
-        if aBool: 
-            if nItems > 0:
+        else:
+            if aBool: 
                 self._message_clear()
+
+            # QT Bug: the GraphicsGirdLayout doesn't handle invisible items having stretch properly
+            self._rebuild_grid_layout()
 
 
     def _message_show (self, aMessage):

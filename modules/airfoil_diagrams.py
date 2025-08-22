@@ -249,8 +249,9 @@ class Panel_Airfoils (Edit_Panel):
 
         self._show_design_airfoils = show 
 
-        self.airfoil_design.set_property ("show", show)
-        self.sig_airfoils_to_show_changed.emit()
+        if self.airfoil_design:
+            self.airfoil_design.set_property ("show", show)
+            self.sig_airfoils_to_show_changed.emit()
 
 
     def delete_airfoil (self, id : int):
@@ -1530,13 +1531,13 @@ class Diagram_Airfoil_Polar (Diagram):
         item = Diagram_Item_Airfoil (self, getter=self.airfoils, 
                                      case_fn=self._case_fn,
                                      iDesign_fn= lambda: self.iDesign)     
-        self._add_item (item, r, 0, colspan=2)
+        self._add_item (item, r, 0, colspan=2, rowStretch=2)
  
         item.sig_geometry_changed.connect (self._on_geometry_changed)
 
         r += 1
         item = Diagram_Item_Curvature (self, getter=self.airfoils, show=False)
-        self._add_item (item, r, 0, colspan=2)
+        self._add_item (item, r, 0, colspan=2, rowStretch=2)
 
         if Worker.ready:
             r += 1
@@ -1557,7 +1558,7 @@ class Diagram_Airfoil_Polar (Diagram):
                 item.sig_opPoint_def_changed.connect  (self._on_opPoint_def_changed)
                 item.sig_opPoint_def_selected.connect (self._on_opPoint_def_selected)
                 item.sig_opPoint_def_dblClick.connect (self._on_opPoint_def_dblClick)
-                self._add_item (item, r, iItem)
+                self._add_item (item, r, iItem, rowStretch=3)
  
 
     @override
@@ -1681,7 +1682,8 @@ class Diagram_Airfoil_Polar (Diagram):
     @property 
     def show_xo2_opPoint_result (self) -> bool:
         """ show opPoint result"""
-        return self._get_artist (Xo2_OpPoint_Artist)[0].show
+        artists = self._get_artist (Xo2_OpPoint_Artist)
+        return artists[0].show if artists else False
 
     def set_show_xo2_opPoint_result (self, aBool : bool, refresh=True):
         self._show_artist (Xo2_OpPoint_Artist, aBool, refresh=refresh)
@@ -1903,8 +1905,8 @@ class Diagram_Airfoil_Polar (Diagram):
             self.set_show_xo2_opPoint_result (True,  refresh=False)         # show opPoint result
 
         self.section_panel.reset_show_reference_airfoils ()                 # show reference airfoils if there are
+        self.section_panel.set_show_design_airfoils (not aBool)             # don't show design airfoil initially - would be too much
 
-        self._show_section_and_item (Diagram_Item_Airfoil, not aBool)       # switch off/on airfoil 
         item : Diagram_Item_Airfoil
         for item in self._get_items (Diagram_Item_Airfoil):
             item.bezier_artist.set_show_mouse_helper (not aBool)            # switch Bezier movable points 
