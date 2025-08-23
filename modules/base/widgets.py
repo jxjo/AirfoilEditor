@@ -1453,7 +1453,9 @@ class Button (Widget, QPushButton):
                  **kwargs):
         super().__init__(*args, signal=signal, styleRole=styleRole, **kwargs)
 
-        self._text = text 
+        self._text = None 
+        self._text_getter = text 
+        
         self._button_style = None 
         self._button_style_getter = button_style
 
@@ -1486,6 +1488,7 @@ class Button (Widget, QPushButton):
     def _get_properties (self): 
         " get all the properties like disable"
         super()._get_properties () 
+        self._text = self._get_value (self._text_getter, default='')
         self._button_style = self._get_value (self._button_style_getter)
 
 

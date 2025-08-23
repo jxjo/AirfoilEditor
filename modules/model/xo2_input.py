@@ -2340,7 +2340,9 @@ class Nml_info (Nml_Abstract):
         return '\n'.join(self.descriptions)
 
     @property
-    def ref_airfoils_pathFileName (self) -> list:           return self._get('ref_airfoil', default=[])
+    def ref_airfoils_pathFileName (self) -> list: 
+        refs = self._get('ref_airfoil', default=[])
+        return list(dict.fromkeys(refs))                    # sanity - remove duplicates
     def set_ref_airfoils_pathFileName (self, aList:list):   self._set ('ref_airfoil', [line for line in aList if line]) 
 
 

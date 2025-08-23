@@ -47,9 +47,9 @@ def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
         color = 'dodgerblue'
     elif airfoil_type == usedAs.SEED_DESIGN:
         color = 'cornflowerblue'
-    elif airfoil_type == usedAs.REF:                         
-        color = _color_airfoil_ref (airfoils, airfoil)
-        # alpha = 0.9
+    elif airfoil_type == usedAs.REF: 
+        i, n = airfoil.usedAs_i_Ref (airfoils)  
+        color = color_in_series ('lightskyblue', i, n, delta_hue=0.4)                      
     elif airfoil_type == usedAs.TARGET:
         color = 'cornflowerblue'
     elif airfoil_type == usedAs.SECOND:
@@ -63,32 +63,13 @@ def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
     return qcolor
 
 
-def _color_airfoil_ref (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
-    """ returns QColor for reference airfoil """
-
-    # get the how many reference 
-    iRef, nRef = 0, 0 
-    for a in airfoils:
-        if a == airfoil: iRef = nRef 
-        if a.usedAs == usedAs.REF: nRef += 1
-
-    # get color depending on iRef 
-    color = color_in_series ('lightskyblue', iRef, nRef, delta_hue=0.4)
-    # color.setAlphaF (0.9)
-
-    return color 
-
-
 def _label_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> str:
     """ nice label including usedAs for airfoil"""
 
     if airfoil.usedAs == usedAs.REF:
-        iRef, nRef = 0, 0                                       # get the how many reference 
-        for a in airfoils:
-            if a == airfoil: iRef = nRef 
-            if a.usedAs == usedAs.REF: nRef += 1
-        use = f"Ref {iRef+1}: "
-    elif airfoil.usedAs == usedAs.DESIGN or airfoil.usedAs == usedAs.NORMAL or airfoil.usedAs is None: # no prefix 
+        i, n = airfoil.usedAs_i_Ref (airfoils)  
+        use = f"Ref {i+1}: "
+    elif airfoil.usedAs in [usedAs.DESIGN, usedAs.NORMAL] or airfoil.usedAs is None: # no prefix 
         use = ""
     else: 
         use = f"{airfoil.usedAs}: " 
@@ -441,11 +422,13 @@ class Airfoil_Artist (Artist):
 
 
     def __init__ (self, *args, 
+                  airfoils_ref_scale_fn = None,
                   show_points = False,
                   **kwargs):
 
         self._show_panels = False                       # show ony panels 
         self._show_points = show_points is True         # show coordinate points
+        self._show_airfoils_refs_scaled = True          # show reference airfoils scaled 
 
         super().__init__ (*args, **kwargs)
 
@@ -474,6 +457,15 @@ class Airfoil_Artist (Artist):
                     p.setSymbol(None)
         self.plot()             # do refresh will show leading edge of spline 
 
+
+    @property
+    def show_airfoils_refs_scaled (self) -> bool:
+        """ True if ref airfoils will be scaled """
+        return self._show_airfoils_refs_scaled 
+    
+    def set_show_airfoils_refs_scaled (self, aBool):
+        self._show_airfoils_refs_scaled = aBool
+        self.refresh()
 
 
     def set_current (self, aLineLabel):
@@ -519,8 +511,11 @@ class Airfoil_Artist (Artist):
                 width = 1
                 antialias = False
                 zValue = 1
+                scale = 1.0 
 
                 if airfoil.usedAs == usedAs.FINAL:
+                    width = 2
+                    antialias = True
                     zValue = 5                                      # final top most 
                 elif airfoils_with_design:
                     if airfoil.usedAsDesign:
@@ -538,6 +533,14 @@ class Airfoil_Artist (Artist):
                 sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
                 s = 'o' if self.show_points else None 
 
+                x,y = airfoil.geo.x, airfoil.geo.y 
+
+                # apply optional scale value for reference airfoils 
+
+                if self.show_airfoils_refs_scaled and airfoil.usedAs == usedAs.REF:
+                    scale = airfoil.get_property ("scale", 1.0)
+                    x,y = x * scale, y * scale
+
                 # plot contour and fill airfoil if it's only one 
                 #   use geometry.xy to refelect changes in diesign airfoil
 
@@ -545,19 +548,16 @@ class Airfoil_Artist (Artist):
 
                     # if there is only one airfoil, fill the airfoil contour with a soft color tone  
                     brush = pg.mkBrush (color.darker (600))
-                    self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
-                                          symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush, 
-                                          fillLevel=0.0, fillBrush=brush, antialias = antialias,
+                    self._plot_dataItem  (x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
+                                          symbolBrush=sBrush, fillLevel=0.0, fillBrush=brush, antialias = antialias,
                                           zValue=zValue)
                     
                     # plot note if reflexed or rearloaded
                     self._plot_reflexed_rearloaded (airfoil, color)
 
                 else: 
-                    self._plot_dataItem  (airfoil.geo.x, airfoil.geo.y, name=label, pen = pen, 
-                                          symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                          antialias = antialias,
-                                          zValue=zValue)
+                    self._plot_dataItem  (x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
+                                          symbolBrush=sBrush, antialias = antialias, zValue=zValue)
 
                 # optional plot of real LE defined by spline 
 

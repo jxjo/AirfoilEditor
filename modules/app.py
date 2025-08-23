@@ -110,6 +110,7 @@ class Main (QMainWindow):
         self._airfoil           = None                  # current airfoil 
         self._airfoil_org       = None                  # airfoil saved in mode_modify 
         self._airfoils_ref      = []                    # reference airfoils 
+        self._airfoils_ref_scale= None                  # indexed list of re scale factors of ref airfoils
         self._airfoil_2         = None                  # 2nd airfoil for blend    
 
         self._polar_definitions = None                  # current polar definitions  
@@ -225,6 +226,7 @@ class Main (QMainWindow):
         self.diagram.sig_airfoil_changed.connect           (self._on_airfoil_changed)
         self.diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
         self.diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
+        self.diagram.sig_airfoils_ref_scale_changed.connect(self._on_airfoils_ref_scale_changed)
         self.diagram.sig_airfoil_design_selected.connect   (self._on_airfoil_design_selected)
         self.diagram.sig_opPoint_def_selected.connect      (self._on_xo2_opPoint_def_selected)     # inform dialog 
         self.diagram.sig_opPoint_def_changed.connect       (self._on_xo2_opPoint_def_changed)      # inform dialog 
@@ -341,6 +343,7 @@ class Main (QMainWindow):
 
             self._diagram       = Diagram_Airfoil_Polar (self, lambda: self.airfoils, 
                                                         polar_defs_fn = lambda: self.polar_definitions,
+                                                        airfoils_ref_scale_fn = lambda: self.airfoils_ref_scale,
                                                         case_fn = lambda: self.case, 
                                                         diagram_settings= Settings().get('diagram_settings', []))
         return self._diagram
@@ -387,9 +390,9 @@ class Main (QMainWindow):
         """ list of airfoils (current, ref1 and ref2) """
         airfoils = []
 
+        if self.airfoil_final:      airfoils.append (self.airfoil_final)
         if self.airfoil:            airfoils.append (self.airfoil)
         if self.airfoil_seed:       airfoils.append (self.airfoil_seed)
-        if self.airfoil_final:      airfoils.append (self.airfoil_final)
         if self.airfoil_2:          airfoils.append (self.airfoil_2)
         if self.airfoil_org:        airfoils.append (self.airfoil_org)
         if self.airfoils_ref:       airfoils.extend (self.airfoils_ref)
@@ -401,6 +404,8 @@ class Main (QMainWindow):
         for airfoil in airfoils [:]:
             if path_dict.get (airfoil.pathFileName_abs, False):
                 airfoils.remove (airfoil)
+                if airfoil.usedAs == usedAs.REF:                    # sanity: also remove from ref airfoils 
+                    self.set_airfoil_ref (airfoil, None, silent=True)
             else: 
                 path_dict [airfoil.pathFileName_abs] = True
 
@@ -476,40 +481,64 @@ class Main (QMainWindow):
 
         return self._polar_definitions
 
-      
+
+    @property
+    def airfoils_ref_scale (self) -> list:
+        """ chord/re scale factor of ref airfoils"""
+
+        if self._airfoils_ref_scale is None: 
+            self._airfoils_ref_scale = [None] * len(self.airfoils_ref)
+        return self._airfoils_ref_scale
+
+
     @property
     def airfoils_ref (self) -> list[Airfoil]:
         """ reference airfoils"""
 
         if self.mode_optimize:
-            return self.case.airfoils_ref                           # take individual reference airfoils of case
+            airfoils_ref = self.case.airfoils_ref                           # take individual reference airfoils of case
         else:
-            return self._airfoils_ref                               # normal handling
+            airfoils_ref = self._airfoils_ref                               # normal handling
  
+        # ensure scale property is set for airfoil artist 
+        if self._airfoils_ref_scale is None:                                # first time not initialized
+            self._airfoils_ref_scale = [None] * len(airfoils_ref)
+        airfoil : Airfoil
+        for iRef, airfoil in enumerate(airfoils_ref):
+            airfoil.set_property ("scale", self._airfoils_ref_scale[iRef])  # used in airfoil_artist to scale airfoil
+
+        return airfoils_ref
+    
     
     def set_airfoil_ref (self, cur_airfoil_ref: Airfoil | None,
-                               new_airfoil_ref: Airfoil | None):
+                               new_airfoil_ref: Airfoil | None,
+                               scale : float|None = None,
+                               silent = False):
         """ adds, replace, delete airfoil to the list of reference airfoils"""
 
         # check if already in list 
         if new_airfoil_ref in self.airfoils_ref: return 
 
         if new_airfoil_ref:
-            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions, only_active=True))
-            new_airfoil_ref.set_usedAs (usedAs.REF)   
+            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions, 
+                                                     re_scale=scale, only_active=True))
+            new_airfoil_ref.set_usedAs (usedAs.REF) 
 
         if cur_airfoil_ref:
             # replace or delete existing 
             i = self.airfoils_ref.index (cur_airfoil_ref)
             if new_airfoil_ref:
-               self.airfoils_ref[i] = new_airfoil_ref
+                self.airfoils_ref[i] = new_airfoil_ref
             else: 
                 del self.airfoils_ref [i]
+                del self.airfoils_ref_scale [i]
         else:
             # add new  
             self.airfoils_ref.append(new_airfoil_ref)
+            self.airfoils_ref_scale.append(scale)
 
-        self.sig_airfoils_ref_changed.emit()
+        if not silent: 
+            self.sig_airfoils_ref_changed.emit()
 
         if self.mode_optimize:                                      # reference airfoils are in input file
             self._on_xo2_input_changed (silent=True)                # silent - we already signaled
@@ -602,7 +631,9 @@ class Main (QMainWindow):
             if aBool: 
                 self._airfoil_org = self._airfoil           # save current airfoil 
             else: 
-                self._airfoil_org = None    
+                self._airfoil_org = None   
+
+            self._airfoils_ref_scale = None                 # re-init scales for new airfois ref 
 
 
     def mode_modify_finished (self, ok=False):
@@ -722,7 +753,16 @@ class Main (QMainWindow):
 
         for airfoil in self.airfoils:
 
-            new_polarSet = Polar_Set (airfoil, polar_def=self.polar_definitions, only_active=True)
+            # get re scale for reference airfoils
+            if airfoil.usedAs == usedAs.REF:
+                iRef, _ = airfoil.usedAs_i_Ref (self.airfoils)
+                re_scale = self.airfoils_ref_scale [iRef] if self.airfoils_ref_scale [iRef] else 1.0
+            else:
+                re_scale = 1.0 
+
+            # assign new polarset if it changed
+
+            new_polarSet = Polar_Set (airfoil, polar_def=self.polar_definitions, re_scale=re_scale, only_active=True)
 
             # check changes to avoid unnecessary refresh
             if not new_polarSet.is_equal_to (airfoil.polarSet):
@@ -1190,6 +1230,22 @@ class Main (QMainWindow):
             pass
 
 
+    def _on_airfoils_ref_scale_changed (self): 
+        """ slot to handle change of a reference airfoil scale """
+
+        # update airfoils temp property to plot scaled 
+
+        for iRef, airfoil in enumerate (self.airfoils_ref):
+            airfoil.set_property ("scale", self.airfoils_ref_scale[iRef])
+
+        # update polar sets with new re_scale
+
+        self.refresh_polar_sets (silent=True)
+
+        self.sig_airfoils_ref_changed.emit()                    # will refresh diagram airfoils and polars 
+
+
+
     def _on_new_xo2_state (self):
         """ slot to handle new state during Xoptfoil2 run"""
 
@@ -1267,10 +1323,11 @@ class Main (QMainWindow):
 
         # reference airfoils 
         ref_list = []
-        for airfoil in self.airfoils_ref:
+        for iRef, airfoil in enumerate(self.airfoils_ref):
             ref_entry = {}
-            ref_entry ["path"] = airfoil.pathFileName_abs
-            ref_entry ["show"] = airfoil.get_property ("show", True)
+            ref_entry ["path"]  = airfoil.pathFileName_abs
+            ref_entry ["show"]  = airfoil.get_property ("show", True)
+            ref_entry ["scale"] = self.airfoils_ref_scale [iRef]
             ref_list.append (ref_entry)
         toDict (settings,'reference_airfoils', ref_list)
 
@@ -1309,19 +1366,25 @@ class Main (QMainWindow):
 
         # polar definitions 
 
-        self._polar_definitions = []
+        self._polar_definitions : list [Polar_Definition] = []
         for def_dict in Settings().get('polar_definitions', []):
             self._polar_definitions.append(Polar_Definition(dataDict=def_dict))
+        self._polar_definitions.sort (key=lambda aDef : aDef.re)
 
-        # reference airfoils 
 
-        for ref_entry in Settings().get('reference_airfoils', []):
+        # reference airfoils including initial re scale 
+
+        ref_entries = Settings().get('reference_airfoils', [])
+
+        for ref_entry in ref_entries:
             if isinstance (ref_entry, str):                             # compatible with older version
                 pathFileName = ref_entry
                 show = True
             elif isinstance (ref_entry, dict):                          # mini dict with show boolean 
                 pathFileName = ref_entry.get ("path", None)
                 show         = ref_entry.get ("show", True)
+                scale        = ref_entry.get ("scale", None)
+                scale        = round(scale,2) if scale else None
             else:
                 pathFileName = None 
 
@@ -1330,7 +1393,7 @@ class Main (QMainWindow):
                     airfoil = Airfoil.onFileType (pathFileName=pathFileName)
                     airfoil.load ()
                     airfoil.set_property ("show", show)
-                    self.set_airfoil_ref (None, airfoil)
+                    self.set_airfoil_ref (None, airfoil, scale=scale)
                 except: 
                     pass
 

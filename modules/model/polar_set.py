@@ -448,7 +448,7 @@ class Polar_Set:
 
     def __init__(self, myAirfoil: Airfoil, 
                  polar_def : Polar_Definition | list | None = None,
-                 re_scale = 1.0,
+                 re_scale : float | None = None,
                  only_active : bool = False):
         """
         Main constructor for new polar set which belongs to an airfoil 
@@ -462,7 +462,9 @@ class Polar_Set:
 
         self._airfoil = myAirfoil 
         self._polars = []                                   # list of Polars of self is holding
-        self._re_scale = clip (re_scale, 0.001, 10)
+
+        self._re_scale = re_scale if re_scale is not None else 1.0 
+        self._re_scale = clip (self._re_scale, 0.001, 10)
 
         self._polar_worker_tasks = []                       # polar generation tasks for worker 
         self._worker_polar_sets = {}                        # polar generation job list for worker  
@@ -565,11 +567,18 @@ class Polar_Set:
             polar.polar_set_detach ()
             Polar_Task.terminate_task_of_polar (polar) 
         
+    @property
+    def re_scale (self) -> float:
+        """ scale factor for re of polars """
+        return self._re_scale
 
 
     def is_equal_to (self, polar_set: 'Polar_Set'):
         """ True if polar_set has the same polars (defs) """
 
+        if self.re_scale != polar_set.re_scale: 
+            return False 
+        
         if len(self.polars) == len(polar_set.polars):
             for i, polar in enumerate (self.polars):
                 if not polar.is_equal_to (polar_set.polars[i], ignore_active=False):

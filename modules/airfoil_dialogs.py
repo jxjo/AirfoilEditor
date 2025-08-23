@@ -1375,3 +1375,59 @@ class Airfoil_Info_Dialog (Dialog):
         self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
         return buttonBox 
 
+
+
+
+class Airfoil_Scale_Dialog (Dialog):
+    """ small dialog to edit scale factor of an (reference) airfoil"""
+
+    _width  = 320
+    _height = 170
+
+    name = "Set Scale Value"
+
+    def __init__ (self, *args, title : str= None, **kwargs): 
+
+        self._close_btn  : QPushButton = None 
+
+        super().__init__ ( *args, **kwargs)
+
+        self._close_btn.clicked.connect  (self.close)
+
+
+    @property
+    def scale_value (self) -> float:
+        return self.dataObject_copy
+
+    def set_scale_value (self, aVal):
+        self._dataObject_copy = aVal
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        Label  (l,r,c, style=style.COMMENT, height=80, colSpan=3,
+                get="Set a scale value for the selected reference airfoil.<br>" +\
+                    "This also scales the Reynolds number of its polars<br>" +\
+                    "allowing to compare airfoils at their wing section.<br>")
+        r += 1
+        FieldF (l,r,c, lab="Scale to", width=60, unit="%", step=10, dec=0, lim=(5,500),
+                obj=self, prop=Airfoil_Scale_Dialog.scale_value)
+        r += 1
+
+        l.setRowStretch (r,1)    
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnStretch (2,2)
+
+        return l
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttonBox = QDialogButtonBox (QDialogButtonBox.StandardButton.Close) #  | QDialogButtonBox.StandardButton.Cancel)
+        self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
+        return buttonBox 
+

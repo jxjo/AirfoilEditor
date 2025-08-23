@@ -43,16 +43,18 @@ class Panel_Airfoils (Edit_Panel):
 
     name = "Airfoils"   
 
-    sig_airfoil_ref_changed      = pyqtSignal(object, object)    # changed reference airfoil 
-    sig_airfoils_to_show_changed = pyqtSignal()                  # changed show filter 
-    sig_airfoil_design_selected  = pyqtSignal(int)               # an airfoil design iDesign was selected in the Combobox
+    sig_airfoil_ref_changed         = pyqtSignal(object, object)    # changed reference airfoil 
+    sig_airfoils_ref_scale_changed  = pyqtSignal()                  # switch off/on, set scale of reference airfoil 
+    sig_airfoils_to_show_changed    = pyqtSignal()                  # changed show filter 
+    sig_airfoil_design_selected     = pyqtSignal(int)               # an airfoil design iDesign was selected in the Combobox
 
     _main_margins  = (10, 5, 0, 5)                 # margins of Edit_Panel
 
 
-    def __init__(self, *args, airfoil_designs_fn=None, **kwargs):
+    def __init__(self, *args, airfoils_ref_scale_fn=None, airfoil_designs_fn=None, **kwargs):
 
         self._airfoil_designs_fn = airfoil_designs_fn
+        self._airfoils_ref_scale_fn = airfoils_ref_scale_fn
         self._show_reference_airfoils = None                    # will be set in init_layout
         self._show_design_airfoils = True                       # show all design airfoils on/off
 
@@ -72,6 +74,12 @@ class Panel_Airfoils (Edit_Panel):
     def airfoil_designs (self) -> list [Airfoil]:
         """ airfoil designs of case modify or optimize """
         return self._airfoil_designs_fn() if self._airfoil_designs_fn else []
+
+    @property
+    def airfoils_ref_scale (self) -> list:
+        """ chord/re scale factor of ref airfoils"""
+        return self._airfoils_ref_scale_fn() if self._airfoils_ref_scale_fn else []
+
 
     @property
     def airfoil_design (self) -> Airfoil:
@@ -127,6 +135,22 @@ class Panel_Airfoils (Edit_Panel):
                 return False
         return True
 
+    @property
+    def airfoils_refs_are_scaled (self) -> bool:
+        """ True if ref airfoils will be scaled """
+        return any (scale for scale in self.airfoils_ref_scale)
+    
+
+    def set_airfoils_refs_are_scaled (self, aBool):
+
+        for i, scale in enumerate(self.airfoils_ref_scale):
+            self.airfoils_ref_scale[i] = 1.0 if aBool else None
+
+        self.refresh()
+
+        # app will handle setting 
+        self.sig_airfoils_ref_scale_changed.emit()
+
 
     @override
     def _init_layout (self): 
@@ -136,87 +160,97 @@ class Panel_Airfoils (Edit_Panel):
             self._show_reference_airfoils = self._n_REF_to_show() > 0
         # ensure consistency of show state  
         elif not self._show_reference_airfoils :
-            for iair, airfoil in enumerate (self.airfoils):
-                if airfoil.usedAs == usedAs.REF:
+            for iair, air in enumerate (self.airfoils):
+                if air.usedAs == usedAs.REF:
                     self.airfoils[iair].set_property ("show", False)
 
         l = QGridLayout()
         r,c = 0, 0 
-        iRef = 0
 
-        for iair, airfoil in enumerate (self.airfoils):
+        for iair, air in enumerate (self.airfoils):
 
             #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
 
-            if airfoil.usedAs == usedAs.NORMAL :
+            if air.usedAs == usedAs.NORMAL :
                 CheckBox    (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
                              disable=lambda: self._DESIGN_in_list(), toolTip="Show/Hide airfoil in diagram")
-                Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
-                             toolTip=airfoil.info_as_html)
+                Field       (l,r,c+1, colSpan=2, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
+                             toolTip=air.info_as_html)
                 r += 1
 
-            elif airfoil.usedAs == usedAs.DESIGN:                
+            elif air.usedAs == usedAs.DESIGN:                
                 CheckBox    (l,r,c  , width=18, get=lambda: self.show_design_airfoils, set=self.set_show_design_airfoils,
                              toolTip="Show/Hide Design airfoils in diagram")
                 if self.airfoil_designs:
-                    ComboBox    (l,r,c+1, width=155, get=lambda: self.airfoil_design.fileName if self.airfoil_design else None,
+                    ComboBox    (l,r,c+1, colSpan=2, width=155, get=lambda: self.airfoil_design.fileName if self.airfoil_design else None,
                                  set=self._on_airfoil_design_selected,
                                  options= lambda: [airfoil.fileName for airfoil in self.airfoil_designs],  
                                  toolTip=f"Select a Design out of list of airfoil designs")
                 else: 
-                    Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
-                                 toolTip=airfoil.info_as_html)
+                    Field       (l,r,c+1, colSpan=2, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
+                                 toolTip=air.info_as_html)
                 r += 1
 
-            elif airfoil.usedAs in [usedAs.SECOND, usedAs.SEED, usedAs.FINAL, usedAs.DESIGN]:
+            elif air.usedAs in [usedAs.SECOND, usedAs.SEED, usedAs.FINAL, usedAs.DESIGN]:
                 CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
                              toolTip="Show/Hide airfoil in diagram")
-                Field       (l,r,c+1, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
+                Field       (l,r,c+1, colSpan=2, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
                              style=lambda i=iair: style.GOOD if self.airfoil(i).usedAs == usedAs.FINAL else style.NORMAL,
-                             toolTip=airfoil.info_as_html)
+                             toolTip=air.info_as_html)
                 r += 1
 
-        CheckBox (l,r,c, colSpan=4, text="Reference airfoils", 
+        CheckBox (l,r,c, colSpan=3, text="Reference airfoils", 
                   get=lambda: self.show_reference_airfoils,
                   set=self.set_show_reference_airfoils,
                   toolTip="Activate additional reference airfoils to show in diagram") 
+
+        CheckBox (l,r,c+2, colSpan=2, text="Scaled", align=ALIGN_RIGHT, 
+                  get=self.airfoils_refs_are_scaled, set=self.set_airfoils_refs_are_scaled,
+                  hide=lambda: not self.show_reference_airfoils,
+                  toolTip="Scale reference airfoils and their polars relative to the main airfoil") 
         
         if self.show_reference_airfoils:
 
+            iRef = 0
             r += 1
-            for iair, airfoil in enumerate (self.airfoils):
+            for iair, air in enumerate (self.airfoils):
 
-                if iair == 4: 
-                    pass
-                if airfoil.usedAs == usedAs.REF:
-                    iRef += 1
+                if air.usedAs == usedAs.REF:
                     CheckBox   (l,r,c  , width=18, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
                                 toolTip="Show/Hide airfoil in diagram")
+                    Button     (l,r,c+1, text=lambda i=iRef: f"{self.airfoil_scale_value(i):.0%}", width=40, 
+                                set=self.edit_airfoil_scale_value, id=iRef,
+                                hide=lambda: not self.airfoils_refs_are_scaled,
+                                toolTip="Change this scale value")
 
-                    Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
+                    Airfoil_Select_Open_Widget (l,r,c+2, 
                                     get=self.airfoil, set=self.set_airfoil, id=iair,
                                     initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
-                                    toolTip=airfoil.info_as_html)
+                                    toolTip=air.info_as_html)
 
-                    ToolButton (l,r,c+2, icon=Icon.DELETE, set=self.delete_airfoil, id=iair,
+                    ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_airfoil, id=iair,
                                 toolTip="Remove this airfoil as reference")
                     r += 1
+                    iRef += 1
 
             # add new reference as long as < max REF airfoils 
             if self._n_REF() < 3:
-                Airfoil_Select_Open_Widget (l,r,c+1, widthOpen=60,
+                Airfoil_Select_Open_Widget (l,r,c+2, 
                                 get=None, set=self.set_airfoil, id=iair+1,
                                 initialDir=self.airfoils[-1], addEmpty=True,
                                 toolTip=f"New reference airfoil {iRef+1}")
                 r +=1
             # SpaceR (l,r,stretch=0)
 
-        l.setColumnMinimumWidth (c  ,18)
-        l.setColumnMinimumWidth (c+2,ToolButton._width)
-        l.setColumnStretch (c+1,2)
+        l.setColumnMinimumWidth (0,18)
+        l.setColumnMinimumWidth (2,ToolButton._width)
+        l.setColumnStretch (2,5)
+        l.setColumnStretch (3,1)
 
         return l 
 
+
+    # -- methods based on index in init_layout 
 
     def airfoil (self, id : int):
         """ get airfoil with index id from list"""
@@ -265,6 +299,27 @@ class Panel_Airfoils (Edit_Panel):
         if airfoil.usedAs == usedAs.REF:
             self.sig_airfoil_ref_changed.emit (airfoil, None)
 
+
+    def airfoil_scale_value (self, id : int) -> float:
+        """ the scale value of ref airfoil - defaults to 1.0"""
+        return self.airfoils_ref_scale[id] if self.airfoils_ref_scale[id]  else 1.0 
+
+
+    def edit_airfoil_scale_value (self, id : int):
+        """ the scale value of (ref) airfoil"""
+
+        from airfoil_dialogs import Airfoil_Scale_Dialog
+
+        scale_value = self.airfoils_ref_scale [id]
+
+        diag = Airfoil_Scale_Dialog (self, scale_value, dx=400, dy=100)
+        diag.exec()
+
+        self.airfoils_ref_scale [id] = diag.scale_value
+        self.refresh()
+
+        self.sig_airfoils_ref_scale_changed.emit()
+    
 
     def _on_airfoil_design_selected (self, fileName):
         """ callback of combobox when an airfoil design was selected"""
@@ -1398,22 +1453,24 @@ class Diagram_Airfoil_Polar (Diagram):
     Diagram view to show/plot airfoil diagrams - Container for diagram items 
     """
 
-    sig_airfoil_changed         = pyqtSignal()                  # airfoil data changed in a diagram 
-    sig_new_airfoil_ref1        = pyqtSignal(object)            # new ref1 airfoil  
-    sig_airfoil_ref_changed     = pyqtSignal(object, object)    # changed reference airfoil 
-    sig_airfoil_design_selected = pyqtSignal(int)               # a airfoil design iDesign was selected in ComboBox 
-    sig_polar_def_changed       = pyqtSignal()                  # polar definition changed  
+    sig_airfoil_changed             = pyqtSignal()                  # airfoil data changed in a diagram 
+    sig_new_airfoil_ref1            = pyqtSignal(object)            # new ref1 airfoil  
+    sig_airfoil_ref_changed         = pyqtSignal(object, object)    # changed reference airfoil 
+    sig_airfoil_design_selected     = pyqtSignal(int)               # a airfoil design iDesign was selected in ComboBox 
+    sig_airfoils_ref_scale_changed  = pyqtSignal()                  # switch off/on, set scale of reference airfoil 
+    sig_polar_def_changed           = pyqtSignal()                  # polar definition changed  
 
-    sig_opPoint_def_selected    = pyqtSignal()                  # opPoint definition selected  
-    sig_opPoint_def_changed     = pyqtSignal()                  # opPoint definition changed  
-    sig_opPoint_def_dblClick    = pyqtSignal(object,object, object)     # opPoint definition double clicked
+    sig_opPoint_def_selected        = pyqtSignal()                  # opPoint definition selected  
+    sig_opPoint_def_changed         = pyqtSignal()                  # opPoint definition changed  
+    sig_opPoint_def_dblClick        = pyqtSignal(object,object, object)     # opPoint definition double clicked
 
 
-    def __init__(self, *args, polar_defs_fn= None, case_fn=None, diagram_settings=[], **kwargs):
+    def __init__(self, *args, polar_defs_fn= None, airfoils_ref_scale_fn=None, case_fn=None, diagram_settings=[], **kwargs):
 
-        self._polar_defs_fn     = polar_defs_fn 
-        self._case_fn           = case_fn 
-        self._diagram_settings  = diagram_settings
+        self._polar_defs_fn         = polar_defs_fn
+        self._airfoils_ref_scale_fn = airfoils_ref_scale_fn 
+        self._case_fn               = case_fn 
+        self._diagram_settings      = diagram_settings
 
         self._panel_polar       = None 
         self._panel_optimization= None 
@@ -1458,6 +1515,12 @@ class Diagram_Airfoil_Polar (Diagram):
     def polar_defs (self) -> list [Polar_Definition]:
         """ actual polar definitions"""
         return self._polar_defs_fn() if self._polar_defs_fn else []
+
+
+    @property 
+    def airfoils_ref_scale (self) -> list:
+        """ chord/re scale factor of ref airfoils"""
+        return self._airfoils_ref_scale_fn() if self._airfoils_ref_scale_fn else []
 
 
     @property 
@@ -1608,12 +1671,15 @@ class Diagram_Airfoil_Polar (Diagram):
 
         if self._section_panel is None:
         
-            p = Panel_Airfoils (self, getter=self.all_airfoils, airfoil_designs_fn=lambda: self.airfoil_designs,
+            p = Panel_Airfoils (self, getter=self.all_airfoils,
+                                airfoils_ref_scale_fn=lambda: self.airfoils_ref_scale,
+                                airfoil_designs_fn=lambda: self.airfoil_designs,
                                 height=(None,None))
             
             p.sig_airfoil_ref_changed.connect (self.sig_airfoil_ref_changed.emit)
             p.sig_airfoils_to_show_changed.connect (self._on_show_airfoil_changed)
             p.sig_airfoil_design_selected.connect (self.sig_airfoil_design_selected.emit)
+            p.sig_airfoils_ref_scale_changed.connect (self.sig_airfoils_ref_scale_changed.emit)
 
             self._section_panel = p 
 

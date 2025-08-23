@@ -42,6 +42,7 @@ class usedAs (StrEnum):
     SECOND      = "Airfoil 2"
     FINAL       = "Final"
 
+
 # geometry specification 
 
 GEO_BASIC  = Geometry
@@ -490,6 +491,18 @@ class Airfoil:
             except ValueError:
                 self._name_org = self.name
                 pass
+
+    def usedAs_i_Ref (self, airfoils : list['Airfoil']) -> tuple[int,int]:
+        """ if self is usedAs REF returns index i and no of all REF airfoils"""
+
+        if self.usedAs == usedAs.REF:
+            iRef, nRef = 0, 0                                       # get the how many reference 
+            for a in airfoils:
+                if a == self: iRef = nRef 
+                if a.usedAs == usedAs.REF: nRef += 1
+            return iRef, nRef
+        else:
+            None, None     
 
 
     def get_property (self, name, default):
