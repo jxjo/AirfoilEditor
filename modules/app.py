@@ -516,26 +516,33 @@ class Main (QMainWindow):
                                silent = False):
         """ adds, replace, delete airfoil to the list of reference airfoils"""
 
-        # check if already in list 
+        # sanity - check if already in list 
         if new_airfoil_ref in self.airfoils_ref: return 
 
-        if new_airfoil_ref:
-            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions, 
-                                                     re_scale=scale, only_active=True))
-            new_airfoil_ref.set_usedAs (usedAs.REF) 
-
+        # replace or delete existing ref airfoil
         if cur_airfoil_ref:
-            # replace or delete existing 
             i = self.airfoils_ref.index (cur_airfoil_ref)
             if new_airfoil_ref:
                 self.airfoils_ref[i] = new_airfoil_ref
             else: 
                 del self.airfoils_ref [i]
                 del self.airfoils_ref_scale [i]
-        else:
-            # add new  
+
+        # add new ref airfoil
+        elif new_airfoil_ref:
             self.airfoils_ref.append(new_airfoil_ref)
             self.airfoils_ref_scale.append(scale)
+
+        # prepare new airfoil with polar_set 
+        if new_airfoil_ref:
+            if scale is None:                                   # get current scale at i 
+                i = self.airfoils_ref.index (new_airfoil_ref)
+                scale = self.airfoils_ref_scale [i]
+
+            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions, 
+                                                     re_scale=scale, only_active=True))
+            new_airfoil_ref.set_usedAs (usedAs.REF) 
+
 
         if not silent: 
             self.sig_airfoils_ref_changed.emit()

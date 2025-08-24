@@ -469,7 +469,7 @@ class Polar_Set:
         self._polar_worker_tasks = []                       # polar generation tasks for worker 
         self._worker_polar_sets = {}                        # polar generation job list for worker  
 
-        self._add_polar_defs (polar_def, only_active=only_active)  # add initial polar def 
+        self._add_polar_defs (polar_def, re_scale=self._re_scale, only_active=only_active)  # add initial polar def 
 
         # not active Polar_Set.add_to_instances (self)
 
@@ -608,26 +608,22 @@ class Polar_Set:
         else: 
             polar_def_list = [polar_defs]
 
-        # scale reynolds number 
-
-        if re_scale is not None: 
-            self._re_scale = re_scale
-
         # create polar for each polar definition 
         polar_def : Polar_Definition
         for polar_def in polar_def_list:
 
-            # is there already a similar polar - remove it 
-            polar: Polar
-            for polar in self.polars: 
-                if polar.name == polar_def.name: 
-                    polar.polar_set_detach ()
-                    self.polars.remove(polar)
-
             # append new polar if it is active 
             if not only_active or (only_active and polar_def.active) or polar_def.is_mandatory:
-                self.polars.append (Polar(self, polar_def, re_scale=self._re_scale))
 
+                new_polar = Polar(self, polar_def, re_scale=re_scale)
+
+                # is there already a similar polar - remove old one 
+                for polar in self.polars[:]: 
+                    if polar.name == new_polar.name: 
+                        polar.polar_set_detach ()
+                        self.polars.remove(polar)
+
+                self.polars.append (new_polar)
 
 
     def remove_polars (self):
@@ -868,6 +864,7 @@ class Polar (Polar_Definition):
                 ma_scaled = round (self.ma * re_scale,  MA_SCALE_ROUND_DEC)
                 self.set_re (re_scaled)
                 self.set_ma (ma_scaled)
+                self._re_scale  = 1.0                         # scale is now 1.0 again
 
             # sanity - no polar with flap angle == 0.0 
             if polar_def.flap_def and polar_def.flap_def.flap_angle != 0.0:

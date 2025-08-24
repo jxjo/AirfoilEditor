@@ -816,7 +816,7 @@ class OpPoint_Definition:
         polar_point =  polar.get_interpolated_point (self.specVar, self.specValue, allow_outside_range=True)
 
         if polar_point is None: 
-            logger.error (f"{self} - no polar point found in seed polar")
+            logger.error (f"{self.__class__} - no polar point found in seed polar")
             return None
 
         # if target set optValue in polar point 
