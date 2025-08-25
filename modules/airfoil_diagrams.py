@@ -310,7 +310,7 @@ class Panel_Airfoils (Edit_Panel):
 
         from airfoil_dialogs import Airfoil_Scale_Dialog
 
-        scale_value = self.airfoils_ref_scale [id]
+        scale_value = self.airfoils_ref_scale [id] if self.airfoils_ref_scale[id]  else 1.0
 
         diag = Airfoil_Scale_Dialog (self, scale_value, dx=400, dy=100)
         diag.exec()
