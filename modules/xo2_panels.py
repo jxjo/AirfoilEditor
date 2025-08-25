@@ -143,12 +143,12 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
         r += 1
         SpaceR      (l,r,height=10, stretch=0)
         r += 1
-        Button      (l,r,c, text="Run Xoptfoil2", colSpan=2, button_style = button_style.PRIMARY,
+        Button      (l,r,c, text="&Run Xoptfoil2", colSpan=2, button_style = button_style.PRIMARY,
                         set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
         r += 1
         SpaceR      (l,r)
         r += 1
-        Button      (l,r,c,  text="&Close",  width=90, 
+        Button      (l,r,c,  text="&Finish",  width=90, 
                         set=lambda : self.app.mode_optimize_finished(),
                         toolTip="Leave optimization mode")
         r += 1

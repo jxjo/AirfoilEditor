@@ -921,54 +921,7 @@ class Curvature_Artist (Artist):
                 else: 
                     anchor = (1,-0.2)
                 self._plot_point (reversal_xy, color=point_color, size=2, text="R", anchor=anchor,
-                                  textColor=Artist.COLOR_LEGEND)
-
-
-# class Difference_Artist (Airfoil_Line_Artist):
-#     """Plot the y-difference of two airfoils 
-
-#         2nd airfoil is Bezier based airfoil 
-#         1st is reference or original airfoil from where x-stations are taken  
-#     """
-
-#     @property
-#     def airfoil (self) -> Airfoil_Bezier: 
-#         return self.airfoils[1] 
-    
-#     @property
-#     def ref_airfoil (self) -> Airfoil : 
-#         return self.airfoils[0] 
-    
-
-#     def _get_difference (self, side_ref: Side_Airfoil, side_actual: Side_Airfoil_Bezier):
-#         # calculate difference at y-stations of reference airfoil 
-#         diff  = np.zeros (len(side_ref.x))
-#         for i, x in enumerate(side_ref.x):
-#             diff [i] = side_actual.bezier.eval_y_on_x (x, fast=True) - side_ref.y[i]
-#         return diff 
-
-
-#     def _plot (self): 
-
-#         if len(self.airfoils) != 2 : return 
-
-#         self.set_showLegend (False)                             # no legend 
-#         color = _color_airfoil (self.airfoil.usedAs)
-#         linewidth=0.8
-
-#         if self.upper:
-#             x = self.ref_airfoil.geo.upper.x
-#             y = 10 * self._get_difference (self.ref_airfoil.geo.upper, self.airfoil.geo.upper )
-#             p = self.ax.plot (x, y, ls_difference, color = color, 
-#                             linewidth= linewidth, **self._marker_style)
-#             self._add(p)
-
-#         if self.lower:
-#             x = self.ref_airfoil.geo.lower.x
-#             y = 10 * self._get_difference (self.ref_airfoil.geo.lower, self.airfoil.geo.lower ) 
-#             p = self.ax.plot (x, y, ls_difference, color = color, 
-#                             linewidth= linewidth, **self._marker_style)
-#             self._add(p)
+                                  textColor=point_color)
 
 
 
