@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "AirfoilEditor"
-__version__      = "4.0.1"                              # hatch "version dynamic" reads this version for build
+__version__      = "4.1.0"                              # hatch "version dynamic" reads this version for build
 
 
 class Main (QMainWindow):
@@ -73,8 +73,8 @@ class Main (QMainWindow):
         App - Main Window 
     '''
 
-    WORKER_MIN_VERSION         = '1.0.7'
-    XOPTFOIL2_MIN_VERSION      = '1.0.7'
+    WORKER_MIN_VERSION         = '1.0.9'
+    XOPTFOIL2_MIN_VERSION      = '1.0.9'
 
     # Qt Signals 
 

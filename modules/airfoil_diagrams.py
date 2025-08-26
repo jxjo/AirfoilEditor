@@ -988,33 +988,30 @@ class Diagram_Item_Welcome (Diagram_Item):
         self.buttonsHidden      = True                          # don't show buttons and coordinates
 
         # set margins (inset) of self 
-        self.setContentsMargins ( 0,20,0,0)
+        self.setContentsMargins ( 0,40,0,0)
+        self.setFixedHeight(280)
 
-        parentPos = (0.0)                               # parent x starts at PlotItem (including axis)       
-        itemPos   = (0,0)
-        offset    = (50,0)
-
+        # add Welcome text as html label item
         p1 = pg.LabelItem(self._welcome_message(), color=QColor(Artist.COLOR_HEADER), size=f"{Artist.SIZE_HEADER}pt")    
-
         p1.setParentItem(self.viewBox)                            # add to self (Diagram Item) for absolute position 
-        p1.anchor(itemPos=itemPos, parentPos=parentPos, offset=offset)
+        p1.anchor(itemPos=(0,0), parentPos=(0.0), offset=(50,0))
         p1.setZValue(5)
         self._title_item = p1
-
-        self.setFixedHeight(220)
 
 
     def _welcome_message (self) -> str: 
         # use Notepad++ or https://froala.com/online-html-editor/ to edit 
 
+        # ... can't get column width working ...
+         
         message = """
-<span style="font-size: 18pt; color: whitesmoke">Welcome to <strong>Airfoil<span style="color:deeppink">Editor</span></strong></span>
+<span style="font-size: 18pt; color: whitesmoke">Welcome to the <strong>Airfoil<span style="color:deeppink">Editor</span></strong></span>
 <br>
 
 <span style="font-size: 10pt; color: darkgray">
 <table style="width:100%">
   <tr>
-    <td style="width:50%">
+    <td style="width:40%">
         <p>
         This is an example airfoil as no airfoil was provided on startup.<br>
         Try out the functionality with this example airfoil or <strong><span style="color: silver;">Open&nbsp;</span></strong>an existing airfoil.
@@ -1025,17 +1022,24 @@ class Diagram_Item_Welcome (Diagram_Item):
         examine the polars created by Worker & Xfoil with <strong><span style="color: silver;">View Polar</span></strong>. 
         </p> 
         <p>
-        <span style="color: deepskyblue;">Tip: </span>Assign extension '.dat' to the AirfoilEditor to open an airfoil with a double click.
+        <span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the AirfoilEditor to open an airfoil <br>
+        with a double click in the file Explorer.
         </p>
     </td>
-    <td style="width:50%">
+    <td style="width:20%">
+        <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+    </td>
+    <td style="width:40%">
         <p>
-        <strong><span style="color: silver;">Modify Airfoil</span></strong> lets you change the geometry of the airfoil<br> 
+        <strong><span style="color: silver;">Modify</span></strong> lets you change the geometry of the airfoil<br> 
         creating a new design for each change.
         </p> 
         <p>
-        <strong><span style="color: silver;">New as Bezier</span></strong> allows to convert the airfoil into a new airfoil<br> 
+        <strong><span style="color: silver;">As Bezier based</span></strong> allows to convert the airfoil into a new airfoil<br> 
         based on two Bezier curves. Use the 'Match Bezier' optimization algorithm. 
+        </p> 
+        <p>
+        <strong><span style="color: silver;">Optimize</span></strong> switches to airfoil optimization based on Xoptfoil2. 
         </p> 
     </td>
   </tr>
@@ -1588,7 +1592,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
             # show Welcome text if Airfoil is the Example arfoil 
             item = Diagram_Item_Welcome (self)
-            self._add_item (item, r, 0, colspan=2)
+            self._add_item (item, r, 0, colspan=2)                          # item has fixed height
             r += 1
 
         item = Diagram_Item_Airfoil (self, getter=self.airfoils, 

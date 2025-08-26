@@ -1,6 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 4
+### Version 4.1
 
 ---
 
@@ -84,7 +84,7 @@ For polar generation the auto_range feature of the Worker is applied which optim
 
 ### Polars on Demand
 
-Within the app, a polar is generated on demand, specifically at the time it needs to be displayed, and this occurs asynchronously in a background task. Each polar is stored in an individual file using the Xfoil polar format. 
+Within the app, a polar is generated on demand at the time it needs to be displayed. If a polar is required, a Xfoil polar generation will be executed asynchronously in a background task. Each generated polar is stored in an individual file using the Xfoil polar format for fast access if the polar is needed again. 
 
 This method enables the sequential review of airfoils or airfoil designs, displaying the polars without requiring additional user input.
 
@@ -95,8 +95,16 @@ A ‘flapped polar’ is convenient when different airfoils should be compared h
 
 In difference, a flap can be configured in 'Modify Mode' for an individual airfoil and saved as a separate airfoil. This method is used when the modified flapped airfoil is needed for further processing for example in Xflr5. (see ‘Modification of an Airfoil’) 
 
+![AE](images/polars.png "Flapped polars")
 
-![AE](images/polars.png "polars flapp")
+### Scaled Polars
+
+When designing airfoils as wing sections along the wing span, the airfoils have to be compared with different Reynolds numbers according to the chord length of the wing section. The comparsion of wing sections is supported by defining a 'scale' value in percent for the reference airfoils of the main airfoil. 
+
+This allows to compare the airfoils of a wing with a single polar definition for the main airfoil.
+
+![AE](images/polars_scaled.png "Scaled polars")
+
 
 # 1. View Mode
 
