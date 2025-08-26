@@ -273,6 +273,20 @@ As a little reward for the extra effort polar generation and airfoil optimizatio
 
 If there is warning message like "Failed to create wl_display" when starting the app, set a QT environment variable with `export QT_QPA_PLATFORM=xcb`.
 
+### Cloning from Github
+
+If you want to clone the AirfoilEditor repo from GitHub for local development, the following package have to be installed in your (virtual) python environment 
+
+```
+pip install  "numpy~=2.2.0"
+pip install  "packaging>=24.0"
+pip install  "requests"
+pip install  "pyqt6>=6.9.1"
+pip install  "pyqtgraph>=0.13.7"
+pip install  "f90nml>=1.4.4"
+pip install  "termcolor>=2.3.0"
+pip install  "platformdirs>=4.3.0"
+```
 
 # Finally 
 
