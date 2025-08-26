@@ -1,6 +1,6 @@
 ![AE](https://github.com/jxjo/AirfoilEditor/blob/main/images/AirfoilEditor_logo.png?raw=true)
 
-### Version 4
+### Version 4.1
 
 ---
 
@@ -22,6 +22,10 @@ The **AirfoilEditor** serves as a fast airfoil viewer and an advanced geometry e
 * User Interface of [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
 * Graphical definition of polar based objectives
 * View results while optimizing
+
+#### New in 4.1
+* Show laminar separation bubbles
+* Scale reference airfoils and their polars
 
 The app was initially developed to address artefacts found in other tools like Xflr5 when using xfoil geometry routines. The aim has been an intuitive, user-friendly experience that encourages exploration.
 
