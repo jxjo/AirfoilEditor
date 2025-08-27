@@ -447,7 +447,7 @@ class Input_File:
 
                         self._airfoils_ref.append (airfoil)
                 except: 
-                    logger.warning (f"{self.fileName} reference airfoil {pathFileName} could be created")
+                    logger.warning (f"{self.fileName} reference airfoil {pathFileName} could not be created")
 
             # write back updated list of airfoils 
             self.airfoils_ref_set_nml ()
@@ -809,6 +809,9 @@ class OpPoint_Definition:
         polar = self._myList.get_seed_polar (self)
         if polar is None: 
             logger.error (f"{self} - no polar found")
+            return None
+        elif not polar.isLoaded:
+            logger.debug (f"{self} - {polar} not (yet) loaded")
             return None
         
         # get interpolated polar point in this polar - allow vals lt, gt than seed

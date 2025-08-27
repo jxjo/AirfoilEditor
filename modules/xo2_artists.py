@@ -106,6 +106,11 @@ class Movable_OpPoint_Def (Movable_Point):
 
         size    = _size_opPoint (opPoint_def.weighting)
         xy      = self.xy_in_xyVars()                                   # get x,y coordinates in xyVars
+
+        # sanity - opPoint_def could be not ready because seed polar has to be calculated async
+        if xy == (None, None):
+            return 
+
         movable = movable and self.is_movable_in_xyVars()               # can be moved in xyVars?
 
         super().__init__(xy, movable=movable, label_anchor = (0, 0.5),
