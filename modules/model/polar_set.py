@@ -1166,7 +1166,12 @@ class Polar (Polar_Definition):
         point = Polar_Point()
         point.set_value (xVar, xVal)                            # set xVar value in point
 
-        for yVar in [var.CL, var.CD, var.CDP, var.ALPHA, var.CM, var.XTRT, var.XTRB]:
+        # do not interpolate self 
+        vars =  [var.CL, var.CD, var.CDP, var.ALPHA, var.CM, var.XTRT, var.XTRB]
+        if xVar in vars: vars.remove(xVar)
+
+        # set other polar variables interpolated
+        for yVar in vars:
 
             yVal = self.get_interpolated (xVar, xVal, yVar, allow_outside_range=allow_outside_range)
 
