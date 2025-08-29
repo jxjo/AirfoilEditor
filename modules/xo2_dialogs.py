@@ -1930,6 +1930,13 @@ class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
         return l
 
 
+    @override
+    def _on_widget_changed (self,*_):
+        """ slot for change of widgets"""
+        # refresh design variables
+        self.refresh()
+
+
 
 class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist bezier_options"""
@@ -1976,6 +1983,13 @@ class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
         l.setColumnStretch (4,2)
 
         return l
+
+    @override
+    def _on_widget_changed (self,*_):
+        """ slot for change of widgets"""
+        # refresh design variables
+        self.refresh()
+
 
 
 class Xo2_Camb_Thick_Dialog (Xo2_Abstract_Options_Dialog):
@@ -2027,6 +2041,11 @@ class Xo2_Camb_Thick_Dialog (Xo2_Abstract_Options_Dialog):
 
         return l
 
+    @override
+    def _on_widget_changed (self,*_):
+        """ slot for change of widgets"""
+        # refresh design variables
+        self.refresh()
 
 
 class Xo2_Constraints_Dialog (Xo2_Abstract_Options_Dialog):
