@@ -759,6 +759,9 @@ class Diagram_Item_Airfoil (Diagram_Item):
         a  = Flap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True)
         self._add_artist (a)
 
+        a  = TE_Gap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=False)
+        self._add_artist (a)
+
         a  = Xo2_Transition_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True,
                                     opPoints_result_fn=lambda: self.design_opPoints)
         self._add_artist (a)
@@ -1995,10 +1998,25 @@ class Diagram_Airfoil_Polar (Diagram):
 
 
     def on_flap_changed (self):
-        """ slot flap settings changec - refresh flap artist"""
+        """ slot flap settings changed - refresh flap artist"""
         artist : Flap_Artist
         for artist in self._get_artist (Flap_Artist):
             artist.refresh()
+
+
+    def on_enter_te_gap (self, aBool):
+        """ slot enter set te gap - show te_gap artist"""
+        artist : TE_Gap_Artist
+        for artist in self._get_artist (TE_Gap_Artist):
+            artist.set_show (aBool)
+
+
+    def on_te_gap_changed (self):
+        """ slot te gap changed - refresh te gap artist"""
+        artist : TE_Gap_Artist
+        for artist in self._get_artist (TE_Gap_Artist):
+            artist.refresh()
+
 
 
     # --- private slots ---------------------------------------------------

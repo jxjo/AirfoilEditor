@@ -308,7 +308,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
     """ Main geometry data of airfoil"""
 
     name = 'Geometry'
-    _width  = 370
+    _width  = 380
 
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
@@ -338,7 +338,12 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 disable=lambda: self.airfoil.isBezierBased)
         r += 1
         FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
-                obj=lambda: self.geo, prop=Geometry.te_gap)
+                obj=lambda: self.geo, prop=Geometry.te_gap,
+                toolTip=f"Set trailing edge gap in % of chord with a blending distance of {Geometry.TE_GAP_XBLEND:.0%}")
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.app.do_te_gap,
+                hide=lambda: not self.mode_modify or self.mode_bezier,
+                toolTip="Set trailing edge gap with a flexible blending distance")
+
         r += 1
         SpaceR (l,r, height=5)
         r += 1
@@ -363,6 +368,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 style=lambda: style.NORMAL if self.geo.curvature.max_te <2 else style.WARNING)
 
         l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,30)
         l.setColumnMinimumWidth (3,60)
         l.setColumnStretch (5,2)
         return l 

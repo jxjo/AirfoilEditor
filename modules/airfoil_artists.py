@@ -180,6 +180,7 @@ class Movable_TE_Point (Movable_Point):
     def __init__ (self, 
                   geo : Geometry, 
                   upper_plot_item : pg.PlotDataItem, 
+                  show_label_static_with_value = False, 
                   movable = False, 
                   **kwargs):
 
@@ -189,10 +190,11 @@ class Movable_TE_Point (Movable_Point):
 
         self._geo = geo
         self._upper_plot_item = upper_plot_item
+        self._show_label_static_with_value = show_label_static_with_value
 
         xy = self._te_point_xy()
 
-        super().__init__(xy, movable=movable, show_label_static = movable,**kwargs)
+        super().__init__(xy, movable=movable, **kwargs)
 
     
     def _te_point_xy (self): 
@@ -219,9 +221,16 @@ class Movable_TE_Point (Movable_Point):
         self._changed()
 
 
-    def label_moving (self, *_):
+    def label_static (self, *_):
+        if self._show_label_static_with_value:
+            return self.label_moving()
+        else: 
+            return super().label_static() 
 
+
+    def label_moving (self, *_):
         return f"{self.name}  {self.y*2:.2%} "
+
 
     def _label_opts (self, moving=False, hover=False) -> dict:
         """ returns the label options as dict """
@@ -575,8 +584,8 @@ class Airfoil_Artist (Artist):
     def _plot_reflexed_rearloaded (self, airfoil : Airfoil, color : QColor): 
         """ plot note if reflexed or rearloaded"""
 
-        textColor = color.darker (140)                  #Artist.COLOR_LEGEND
-
+        textColor = color.darker (130)  
+        
         if airfoil.isReflexed: 
             x = 0.8
             y = airfoil.geo.upper.yFn (x) 
@@ -591,10 +600,6 @@ class Airfoil_Artist (Artist):
 
 class Flap_Artist (Artist):
     """Plot the flapped airfoil based on Flapper data  """
-
-    def __init__ (self, *args, **kwargs):
-        super().__init__ (*args, **kwargs)
-
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -644,6 +649,43 @@ class Flap_Artist (Artist):
         y = y_base + self.flap_setter.y_flap * thick 
 
         self._plot_point ((x,y), color=color, size=10,text=f"Hinge {self.flap_setter.x_flap:.1%}" )
+
+
+
+class TE_Gap_Artist (Artist):
+    """Plot airfoil based on current TE gap"""
+
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+    @property
+    def design_airfoil (self) -> Airfoil:
+        for airfoil in self.airfoils:
+            if airfoil.usedAsDesign:
+                return airfoil 
+
+    def _plot (self): 
+    
+        if not self.design_airfoil: return
+
+        color = _color_airfoil (self.airfoils, self.design_airfoil)
+        color.setAlphaF (0.8)
+
+        for line in [self.design_airfoil.geo.upper, 
+                     self.design_airfoil.geo.lower]:
+            
+            style = _linestyle_of (line._type)
+            pen   = pg.mkPen(color, width=1, style=style)
+
+            p = self._plot_dataItem (line.x, line.y, pen = pen, zValue=5)
+
+            # te gap point for upper line 
+
+            if line.type == Line.Type.UPPER:
+                pt = Movable_TE_Point (self.design_airfoil.geo, p, show_label_static_with_value=True,
+                                       movable=False, color=color)
+                self._add (pt) 
 
 
 
@@ -866,8 +908,10 @@ class Curvature_Artist (Artist):
                 else: 
                     pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
 
-                label = f"{side.name} - {_label_airfoil (self.airfoils, airfoil)}"
-                self._plot_dataItem (x, y, name=label, pen=pen)
+                label   = f"{side.name} - {_label_airfoil (self.airfoils, airfoil)}"
+                zValue = 3 if airfoil.usedAsDesign else 1
+
+                self._plot_dataItem (x, y, name=label, pen=pen, zValue=zValue)
 
                 # plot derivative1 of curvature ('spikes') 
 
@@ -879,49 +923,45 @@ class Curvature_Artist (Artist):
 
                 # plot max points at le and te and reversals
 
-                self._plot_le_te_max_point (side, color )
-                self._plot_reversals (side, color)
+                self._plot_le_te_max_point (side, color, airfoil.usedAsDesign)
+                self._plot_reversals       (side, color, airfoil.usedAsDesign)
 
 
 
-    def _plot_le_te_max_point (self, aSide : Line, color ):
+    def _plot_le_te_max_point (self, aSide : Line, color, usedAsDesign : bool ):
         """ plot the max values at LE and te"""
 
-        point_color = QColor (color).darker (150)
+        color   = QColor (color).darker (130)
+        zValue  = 5 if usedAsDesign else 3
 
         # le 
-        if aSide.isUpper:
-            anchor = (0,1)
-        else: 
-            anchor = (0,0)
-        text = f"max {aSide.name} {aSide.max_xy[1]:.0f}"
-        self._plot_point (aSide.max_xy, color=point_color, text=text, anchor=anchor,
-                          textColor=Artist.COLOR_LEGEND)
+        anchor = (0,1) if aSide.isUpper else (0,0)
+        text   = f"max {aSide.name} {aSide.max_xy[1]:.0f}"
+
+        self._plot_point (aSide.max_xy, color=color, text=text, anchor=anchor, zValue=zValue,
+                          textColor=color)
 
         # te 
-        if aSide.isUpper:
-            anchor = (1,1)
-        else: 
-            anchor = (1,0)
-        text = f"max {aSide.name} {aSide.te[1]:.1f}"
-        self._plot_point (aSide.te, color=point_color, text=text, anchor=anchor,
-                          textColor=Artist.COLOR_LEGEND)
+        anchor = (1,1) if aSide.isUpper else (1,0)
+        text   = f"max {aSide.name} {aSide.te[1]:.1f}"
+
+        self._plot_point (aSide.te, color=color, text=text, anchor=anchor, zValue=zValue,
+                          textColor=color)
 
 
-    def _plot_reversals (self, side : Line, color):
+    def _plot_reversals (self, side : Line, color, usedAsDesign : bool):
         """ annotate reversals of curvature """
 
-        point_color = QColor (color).darker (150)
+        color   = QColor (color).darker (130)
+        zValue  = 5 if usedAsDesign else 3
 
         reversals = side.reversals()
         if reversals:
             for reversal_xy in reversals: 
-                if side.isUpper:
-                    anchor = (1,1.2)
-                else: 
-                    anchor = (1,-0.2)
-                self._plot_point (reversal_xy, color=point_color, size=2, text="R", anchor=anchor,
-                                  textColor=point_color)
+                anchor = (1,1.2) if side.isUpper else (1,-0.2)
+
+                self._plot_point (reversal_xy, color=color, size=2, text="R", anchor=anchor,
+                                  zValue=zValue, textColor=color)
 
 
 

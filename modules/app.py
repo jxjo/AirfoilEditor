@@ -49,7 +49,7 @@ from base.widgets           import *
 from app_utils              import *
 from airfoil_widgets        import * 
 from airfoil_dialogs        import (Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog,
-                                    Flap_Airfoil_Dialog)
+                                    Flap_Airfoil_Dialog, TE_Gap_Dialog)
 from airfoil_diagrams       import Diagram_Airfoil_Polar            
 from xo2_dialogs            import (Xo2_Run_Dialog, Xo2_Select_Dialog, Xo2_OpPoint_Def_Dialog, Xo2_New_Dialog)
 
@@ -92,7 +92,9 @@ class Main (QMainWindow):
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
     sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
     sig_enter_flapping          = pyqtSignal(bool)      # start /end flapping dialog 
+    sig_enter_te_gap            = pyqtSignal(bool)      # start /end te gap dialog
     sig_flap_changed            = pyqtSignal()          # flap setting (Flapper) changed 
+    sig_te_gap_changed          = pyqtSignal()          # te gap changed 
 
     sig_mode_optimize           = pyqtSignal(bool)      # enter / leave mode optimize
     sig_new_case_optimize       = pyqtSignal()          # new case optimize selected
@@ -255,8 +257,9 @@ class Main (QMainWindow):
         self.sig_enter_blend.connect            (self.diagram.on_blend_airfoil)
         self.sig_enter_panelling.connect        (self.diagram.on_enter_panelling)
         self.sig_enter_flapping.connect         (self.diagram.on_enter_flapping)
+        self.sig_enter_te_gap.connect           (self.diagram.on_enter_te_gap)
         self.sig_flap_changed.connect           (self.diagram.on_flap_changed)
-
+        self.sig_te_gap_changed.connect         (self.diagram.on_te_gap_changed)
 
     # ----------- end __init__ -------------------------------------------
 
@@ -967,6 +970,28 @@ class Main (QMainWindow):
             self._on_airfoil_changed()
 
         self.sig_enter_flapping.emit(False)
+
+
+    def do_te_gap (self): 
+        """ set TE gap - run set TE gap dialog""" 
+
+        if self.airfoil.isBezierBased: return                   # not for Bezier airfoils
+
+        self.sig_enter_te_gap.emit(True)
+
+        dialog = TE_Gap_Dialog (self, self.airfoil,
+                                parentPos=(0.25, 0.75), dialogPos=(0,1))
+
+        dialog.sig_new_te_gap.connect (self.sig_te_gap_changed.emit)
+        dialog.exec()     
+
+        if dialog.has_been_set:
+            # finalize modifications 
+            self.airfoil.geo.set_te_gap (dialog.te_gap, xBlend= dialog.xBlend)              
+
+            self._on_airfoil_changed()
+
+        self.sig_enter_te_gap.emit(False)
 
 
     def do_save_as (self): 

@@ -57,9 +57,10 @@ from typing             import override
 from copy               import deepcopy
 from math               import isclose
 
-from base.math_util    import * 
-from base.spline import Spline1D, Spline2D, Bezier
-from base.spline import HicksHenne
+from base.common_utils  import clip
+from base.math_util     import * 
+from base.spline        import Spline1D, Spline2D, Bezier
+from base.spline        import HicksHenne
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1560,8 +1561,11 @@ class Geometry ():
     MOD_BLEND           = "blend"
     MOD_FLAP            = "flap"
 
+    # default values of modifications
 
-    EPSILON_LE_CLOSE =  1e-6                    # max norm2 distance of le_real 
+    TE_GAP_XBLEND       = 0.8                       # default x position from TE where te gap blending starts
+
+    EPSILON_LE_CLOSE    = 1e-6                      # max norm2 distance of le_real 
 
     isBasic         = True
     isSplined       = False 
@@ -1569,7 +1573,7 @@ class Geometry ():
     isHicksHenne    = False
     description     = "based on linear interpolation"
 
-    sideDefaultClass = Line
+    sideClass = Line
 
     def __init__ (self, 
                   x : np.ndarray, y: np.ndarray,
@@ -1804,9 +1808,9 @@ class Geometry ():
         return self.x[0], self.y[0], self.x[-1], self.y[-1]
   
     @property
-    def te_gap (self): 
+    def te_gap (self) -> float: 
         """ trailing edge gap"""
-        return  round(self.y[0] - self.y[-1],7)
+        return  round(float (self.y[0] - self.y[-1]),7)
 
     @property
     def le_radius (self): 
@@ -1880,18 +1884,16 @@ class Geometry ():
     def upper(self) -> 'Line': 
         """the upper surface as a line object - where x 0..1"""
         if self._upper is None: 
-            self._upper = self.sideDefaultClass (np.flip (self.x [0: self.iLe + 1]),
-                                        np.flip (self.y [0: self.iLe + 1]),
-                                        linetype=Line.Type.UPPER)
+            self._upper = self.sideClass (np.flip (self.x [0: self.iLe + 1]), np.flip (self.y [0: self.iLe + 1]),
+                                          linetype=Line.Type.UPPER)
         return self._upper 
 
     @property
     def lower(self) -> 'Line': 
         """the lower surface as a line object - where x 0..1"""
         if self._lower is None: 
-            self._lower =  self.sideDefaultClass (self.x[self.iLe:], 
-                                        self.y[self.iLe:],
-                                        linetype=Line.Type.LOWER)
+            self._lower =  self.sideClass (self.x[self.iLe:], self.y[self.iLe:],
+                                           linetype=Line.Type.LOWER)
         return self._lower 
 
     def side(self, sidetype) -> 'Line': 
@@ -1958,49 +1960,55 @@ class Geometry ():
 
 
 
-    def set_te_gap (self, newGap, xBlend = 0.8, moving=False):
+    def set_te_gap (self, newGap : float, xBlend = TE_GAP_XBLEND, moving=False):
         """ set te gap - must be / will be normalized .
 
-        Arguments: 
+        Args: 
             newGap:   in y-coordinates - typically 0.01 or so 
-            xblend:   the blending distance from trailing edge 0..1 - Default 0.8
+            xblend:   the blending distance from trailing edge 0..1
         """
 
         try: 
             self._set_te_gap (newGap, xBlend) 
-            self._rebuild_from_upper_lower ()
             if not moving:
+                self._rebuild_from_upper_lower ()
                 self._reset () 
-                self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 7))   # finalize (parent) airfoil 
+                self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))   # finalize (parent) airfoil 
                 self._set_xy (self._x, self._y)
         except GeometryException:
             self._clear_xy()
     
 
-    def _set_te_gap (self, newGap, xBlend = 0.8):
+    def _set_te_gap (self, newGap, xBlend = TE_GAP_XBLEND):
         """ set te gap of upper and lower 
          The procedere is based on xfoil allowing to define a blending distance from le.
 
         Arguments: 
             newGap:   in y-coordinates - typically 0.01 or so 
-            xblend:   the blending distance from trailing edge 0..1 - Default 0.8
+            xblend:   the blending distance from trailing edge 0..1
         """
 
-        newGap = max(0.0, newGap)
-        newGap = min(0.1, newGap)
+        newGap = clip (newGap, 0.0, 0.1)
+        xBlend = clip (xBlend, 0.0, 1.0)
 
-        gap = self.upper.y[-1] * 2 
-        dgap = newGap - gap 
-        xBlend = min( max( xBlend , 0.0 ) , 1.0 )
+        dgap   = newGap - self.te_gap 
 
-        for side in [self.upper, self.lower]:
+        if dgap == 0.0: return                              # nothing to do
+
+        # create new side objects from x,y to allow repeated setting of te gap 
+        self._upper  = self.sideClass (np.flip (self.x [0: self.iLe + 1]), np.flip (self.y [0: self.iLe + 1]),
+                                 linetype=Line.Type.UPPER)
+        self._lower  = self.sideClass (self.x[self.iLe:], self.y[self.iLe:],
+                                 linetype=Line.Type.LOWER)
+
+        for side in [self._upper, self._lower]:
 
             y_new = np.zeros (len(side.x))
             for i in range(len(side.x)):
                 # thickness factor tails off exponentially away from trailing edge
                 if (xBlend == 0.0): 
                     tfac = 0.0
-                    if (i == 0 or i == (len(self._x)-1)):
+                    if (i == 0 or i == (len(side.x)-1)):
                         tfac = 1.0
                 else:
                     arg = min ((1.0 - side.x[i]) * (1.0/xBlend -1.0), 15.0)
@@ -2039,13 +2047,11 @@ class Geometry ():
 
         # The procedere is based on xfoil allowing to define a blending distance from le.
 
-        new_radius = min(0.05,  new_radius)
-        new_radius = max(0.002, new_radius)
+        new_radius = clip (new_radius, 0.002, 0.05)             # limit radius to reasonable values
+        xBlend     = clip (xBlend, 0.001, 1.0)  
 
         cur_radius = 1 / self.curvature.at_le
-
-        factor = new_radius / cur_radius
-        xBlend = min( max( xBlend , 0.001 ) , 1.0 )
+        factor     = new_radius / cur_radius
 
         # go over each thickness point, changing the thickness appropriately
 
@@ -2176,7 +2182,7 @@ class Geometry ():
 
         upper_y = np.round(upper_y, 10)
 
-        return self.sideDefaultClass (new_x, upper_y, linetype=Line.Type.UPPER)
+        return self.sideClass (new_x, upper_y, linetype=Line.Type.UPPER)
 
 
     def lower_new_x (self, new_x): 
@@ -2192,7 +2198,7 @@ class Geometry ():
 
         lower_y = np.round(lower_y, 10)
 
-        return self.sideDefaultClass (new_x, lower_y, linetype=Line.Type.LOWER)
+        return self.sideClass (new_x, lower_y, linetype=Line.Type.LOWER)
 
 
     def normalize (self, just_basic=False) -> bool:
@@ -2465,10 +2471,10 @@ class Geometry ():
         if np.max(camber_y) < 0.00001: 
             camber_y = np.zeros (len(camber_y))
 
-        self._thickness = self.sideDefaultClass (upper.x, thickness_y, 
+        self._thickness = self.sideClass (upper.x, thickness_y, 
                                             linetype=Line.Type.THICKNESS)
 
-        self._camber    = self.sideDefaultClass (upper.x, camber_y, 
+        self._camber    = self.sideClass (upper.x, camber_y, 
                                             linetype=Line.Type.CAMBER)
         return 
 
@@ -2541,7 +2547,7 @@ class Geometry_Splined (Geometry):
 
     description     = "based on spline interpolation"
 
-    sideDefaultClass = Line_Splined
+    sideClass = Line_Splined
 
     def __init__ (self, *args, **kwargs):
         super().__init__( *args, **kwargs)        
@@ -2639,7 +2645,7 @@ class Geometry_Splined (Geometry):
 
         upper_y = np.round(upper_y, 10)
 
-        return self.sideDefaultClass (new_x, upper_y, linetype=Line.Type.UPPER)
+        return self.sideClass (new_x, upper_y, linetype=Line.Type.UPPER)
 
 
 
@@ -2686,7 +2692,7 @@ class Geometry_Splined (Geometry):
 
         lower_y = np.round(lower_y, 12)
 
-        return self.sideDefaultClass (new_x, lower_y, linetype=Line.Type.LOWER)
+        return self.sideClass (new_x, lower_y, linetype=Line.Type.LOWER)
 
 
     def _normalize (self):
@@ -2920,7 +2926,7 @@ class Geometry_Bezier (Geometry):
     isBezier        = True
     description     = "based on 2 Bezier curves"
 
-    sideDefaultClass = Line
+    sideClass = Line
 
     def __init__ (self, **kwargs):
         """new Geometry based on two Bezier curves for upper and lower side """
@@ -2996,6 +3002,10 @@ class Geometry_Bezier (Geometry):
 
         self._reset()
 
+        # ensure TE is symmetrical when upper side TE point changed
+        if aSide.isUpper:
+            self.lower.set_te_gap (- aSide.te_gap)
+
         if aSide.isUpper:
             self._changed (Geometry.MOD_BEZIER_UPPER, '')
         else:
@@ -3039,12 +3049,14 @@ class Geometry_Bezier (Geometry):
     def le_real (self) -> tuple: 
         """ coordinates of le defined by a virtual curve- - Bezier always 0,0 """
         return self.le
-        
+
+
+    @override    
     @property
-    def te_gap (self): 
+    def te_gap (self) -> float: 
         """ trailing edge gap in y"""
-        #overloaded to get data from Bezier curves
-        return  self.upper.te_gap - self.lower.te_gap
+        #overridden to get data from Bezier curves
+        return  round (float (self.upper.te_gap - self.lower.te_gap),7)
 
 
     def set_maxThick (self, newY): 
@@ -3176,7 +3188,7 @@ class Geometry_HicksHenne (Geometry):
     isHicksHenne    = True
     description     = "based on a seed and hicks henne functions"
 
-    sideDefaultClass = Line
+    sideClass = Line
 
     def __init__ (self, seed_x : np.ndarray, seed_y : np.ndarray, **kwargs):
         """new Geometry based on a seed airfoil and hicks henne bump (hh) functions for upper and lower side"""

@@ -1428,3 +1428,103 @@ class Airfoil_Scale_Dialog (Dialog):
         self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
         return buttonBox 
 
+
+
+class TE_Gap_Dialog (Dialog):
+    """ Dialog to set TE gap of airfoil"""
+
+    _width  = 320
+    _height = 150
+
+    name = "Set Trailing Edge Gap"
+
+    sig_new_te_gap    = pyqtSignal ()
+
+
+    def __init__ (self, parent : QWidget, 
+                  airfoil : Airfoil, **kwargs): 
+
+        self._airfoil = airfoil
+        
+        self._has_been_set = False
+
+        self._xBlend = airfoil.geo.TE_GAP_XBLEND                # start with initial value
+        self._te_gap = airfoil.geo.te_gap
+
+        super().__init__ (parent, **kwargs)
+
+
+    @property
+    def xBlend (self) -> float:
+        """ blending distance x/c from TE"""
+        return self._xBlend
+    
+    def set_xBlend (self, aVal: float):
+        self._xBlend = aVal
+        self._airfoil.geo.set_te_gap (self.te_gap, xBlend=aVal, moving=True)
+
+        self._has_been_set = True
+        self.refresh()
+        self.sig_new_te_gap.emit()                              # inform parent -> diagram update
+
+
+    @property
+    def te_gap (self) -> float:
+        """  TE gap as y/c """
+        return self._te_gap
+    
+    def set_te_gap (self, aVal: float):
+        self._te_gap = aVal
+        self._airfoil.geo.set_te_gap (aVal, xBlend=self.xBlend, moving=True)
+
+        self._has_been_set = True
+        self.refresh()
+        self.sig_new_te_gap.emit()                              # inform parent -> diagram update
+
+
+    @property
+    def has_been_set (self) -> bool:
+        """ True if TE gap was set in this dialog """
+        return self._has_been_set 
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Blend from TE", width=75, step=1, lim=(0, 98), dec=1, unit="%",
+                        obj=self, prop=TE_Gap_Dialog.xBlend)
+        Slider  (l,r,c+3, colSpan=2, width=100,  
+                        lim=(0.0, 0.98), dec=2,  
+                        obj=self, prop=TE_Gap_Dialog.xBlend)
+        r += 1
+        SpaceR  (l, r, stretch=1, height=10) 
+        r += 1
+        FieldF  (l,r,c, lab="TE gap", width=75, unit="%", step=0.1, lim=(0.0, 10),
+                        obj=self, prop=TE_Gap_Dialog.te_gap)
+
+        Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.0, 0.1), step=0.001, dec=3, 
+                        obj=self, prop=TE_Gap_Dialog.te_gap)
+        r += 1
+        SpaceR  (l, r, stretch=3) 
+
+        l.setColumnMinimumWidth (0,90)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,50)
+        l.setColumnStretch (5,2)   
+
+        return l
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
