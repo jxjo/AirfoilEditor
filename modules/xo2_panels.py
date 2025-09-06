@@ -16,7 +16,7 @@ from PyQt6.QtCore           import Qt
 from base.widgets           import * 
 from base.panels            import Edit_Panel, MessageBox
 
-from airfoil_dialogs        import Airfoil_Info_Dialog, Polar_Definition_Dialog
+from airfoil_dialogs        import Airfoil_Info_Dialog, Polar_Definition_Dialog, Flap_Airfoil_Dialog
 from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
 
 from xo2_dialogs            import *
@@ -354,6 +354,9 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         r += 1
         CheckBox    (l,r,c, text="Use Flaps", 
                     obj=lambda:  self.operating_conditions, prop=Nml_operating_conditions.use_flap)
+        ToolButton  (l,r,c+1, icon=Icon.EDIT, set=self._edit_flap_def,
+                     hide= lambda: not self.operating_conditions.use_flap,
+                     toolTip="Edit flap deinition")
         
         r += 1
         l.setRowStretch (r,3)
@@ -361,15 +364,6 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         l.setColumnStretch (0,1)
 
         return l
-
-
-    def set_polar_def (self, polar_def_str: str):
-        """ set defualt polar definition by string"""
-        polar_defs : list [Polar_Definition] = self.app.polar_definitions
-        for polar_def in polar_defs:
-            if polar_def.name == polar_def_str:
-                self.opPoint_defs.set_polar_def_default (polar_def)
-                break
 
 
     def _edit_polar_def (self):
@@ -382,6 +376,16 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         diag.exec()
 
         self.opPoint_defs.set_polar_def_default (polar_def)
+        self.app._on_xo2_input_changed()
+
+
+    def _edit_flap_def (self):
+        """ edit default flap definition"""
+
+        diag = Xo2_Flap_Definition_Dialog (self, getter=self.operating_conditions,
+                                         parentPos=(0.9, 0.1), dialogPos=(0,1))        
+        diag.exec()     
+
         self.app._on_xo2_input_changed()
 
 

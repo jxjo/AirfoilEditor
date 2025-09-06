@@ -450,9 +450,6 @@ class Flap_Airfoil_Dialog (Dialog):
                         obj=self.flap_setter, prop=Flap_Setter.flap_angle)
         r += 1
         SpaceR  (l, r, stretch=3) 
-        r += 1
-        Label   (l,r,c, colSpan=5, get=f"Powered by {Worker.NAME} {Worker.version} using Xfoil", 
-                 style=style.COMMENT, fontSize=size.SMALL)
 
         l.setColumnMinimumWidth (0,70)
         l.setColumnMinimumWidth (2,10)

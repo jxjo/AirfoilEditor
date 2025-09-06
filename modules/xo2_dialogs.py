@@ -2205,3 +2205,44 @@ class Xo2_Curvature_Dialog (Xo2_Abstract_Options_Dialog):
     @override
     def _on_widget_changed (self):
         self.refresh(9)
+
+
+
+
+class Xo2_Flap_Definition_Dialog (Xo2_Abstract_Options_Dialog):
+    """ Dialog to edit flap definition"""
+
+    _width  = 280
+    _height = 170
+
+    name = "Flap Definition"
+
+    @property
+    def operating_conditions (self) -> Nml_operating_conditions:
+        return self.dataObject
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
+                        obj=self.operating_conditions, prop=Nml_operating_conditions.x_flap)
+        r += 1
+        FieldF  (l,r,c, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
+                        obj=self.operating_conditions, prop=Nml_operating_conditions.y_flap)
+        Label   (l,r,c+3, get="of thickness", style=style.COMMENT)
+        r += 1
+        FieldF  (l,r,c, lab="Default angle", width=60, step=1, lim=(-30, 30), dec=1, unit='°',
+                        obj=self.operating_conditions, prop=Nml_operating_conditions.flap_angle_default)
+        r += 1
+        SpaceR  (l, r, stretch=3) 
+
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnStretch (3,2)   
+
+        return l
+
