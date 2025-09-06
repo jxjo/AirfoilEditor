@@ -731,29 +731,32 @@ class OpPoint_Definition:
         """
         # format spec Value 
 
-        if self.specVar == var.ALPHA:
-            valstr = "%4.2f" % self.specValue
-        else :
-            valstr = "%4.2f" % self.specValue
+        valstr = f"{self.specValue:4.2f}" 
         if not fix: 
                 valstr = (f"{valstr}").rstrip('0')                          # remove trailing 0
                 valstr = valstr if valstr[-1] != "." else valstr + "0"      # at least one '0'
 
-        specText = f"{self.specVar} {valstr}: " 
+        spec = f"{self.specVar} {valstr}: " 
 
         iPoint = f"{self.iPoint}:  "
 
-        # add re and ncrit if defined for opPoint 
+        # add re, ncrit, flap if defined for opPoint 
 
-        if self._re: 
-            reText = f"  {int(self._re/1000):3d}k" 
-        else:
-            reText = ''
-        if self._ncrit: 
-            ncritText = f"  N{int(self._ncrit)}" 
-        else:
-            ncritText = ''
-        return iPoint + specText + self._get_opt_label (optType, optVar, optValue, fix=fix) + reText + ncritText
+        re      = f"  {int(self._re/1000):3d}k"     if self._re else ''
+        ncrit   = f"  N{int(self._ncrit)}"          if self._ncrit else ''
+
+        flap = ''
+        if self._myList.use_flap: 
+            if self.flap_optimize:
+                flap = "  Fopt"
+            else:
+                valstr = f"{self.flap_angle:4.1f}".strip()
+                if not fix: 
+                    valstr = (f"{valstr}").rstrip('0')                          # remove trailing 0
+                    valstr = valstr if valstr[-1] != "." else valstr + "0"      # at least one '0'
+                flap = f"  F{valstr}"
+
+        return iPoint + spec + self._get_opt_label (optType, optVar, optValue, fix=fix) + re + ncrit + flap
 
 
     def _get_opt_label (self, optType : str, optVar : var, optValue : float, fix=False): 
@@ -1124,7 +1127,7 @@ class OpPoint_Definition:
     
     @property
     def flap_optimize (self) -> bool: 
-        """ optimize this flap angle flap angle """
+        """ optimize this flap angle"""
         return self._flap_optimize is True
     def set_flap_optimize (self, aVal : bool): 
         self._flap_optimize = aVal
