@@ -1210,7 +1210,7 @@ class Polar_Definition_Dialog (Dialog):
         c += 2
         SpaceC  (l,c, width=10)
         c += 1
-        FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=1,
+        FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=2,
                         obj=self.polar_def, prop=Polar_Definition.ma)
         l.setColumnMinimumWidth (c,45)
         c += 2
