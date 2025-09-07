@@ -8,7 +8,7 @@ Diagram (items) for airfoil
 """
 
 import logging
-
+from copy                   import deepcopy 
 from base.widgets           import * 
 from base.diagram           import * 
 
@@ -439,11 +439,9 @@ class Panel_Polar_Defs (Edit_Panel):
     def add_polar_def (self):
         """ add a new polar definition"""
 
-        from copy  import copy 
-
         # increase re number for the new polar definition
         if self.polar_defs:
-            new_polar_def  = copy (self.polar_defs[-1])
+            new_polar_def  = deepcopy (self.polar_defs[-1])
             new_polar_def.set_is_mandatory (False)                  # parent could have been madatory
             new_polar_def.set_re (new_polar_def.re + 100000)
             new_polar_def.set_active(True)
