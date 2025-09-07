@@ -468,11 +468,9 @@ class Xo2_OpPoint_Artist (Artist):
 
         # message if dynamic weighting of opPoints occured 
 
-        if prev_opPoints:
-            weightings      = [op.weighting for op in opPoints]
-            prev_weightings = [op.weighting for op in prev_opPoints]
-            if sum(weightings) != sum (prev_weightings):
-                self._plot_text ('New weightings applied', color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
+        if any (op.is_new_weighting for op in opPoints):
+            self._plot_text ('Dynamic weightings applied', color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
+
 
         
     def _opPoint_color (self, opPoint : OpPoint_Result, opPoint_def : OpPoint_Definition | None) -> QColor:
@@ -584,7 +582,6 @@ class Xo2_OpPoint_Artist (Artist):
         distance = opPoint.distance
 
         if optType == OPT_TARGET:                            # targets - take deviation to target
-
             if allow_improved   and optVar == var.CD and distance < 0.0:
                 distance = 0.0
             elif allow_improved and optVar != var.CD and distance > 0.0:
@@ -597,26 +594,29 @@ class Xo2_OpPoint_Artist (Artist):
         label = None 
 
         if  optType == OPT_TARGET:                              # targets - take deviation to target
-
             if optVar == var.CD and round_down (distance,5):
                 label = f"delta {optVar}: {distance:.5f}"
             elif optVar != var.CD and round_up (distance,2):
                 label = f"delta {optVar}: {distance:.2f}"        
             else: 
                 label = f"hit"        
-
         else:                                               # min/max - deviation is improvement 
-
             if  opPoint_def.optType == OPT_MAX:             # eg. OPT_MAX of 'glide' - more is better 
                 improv = distance
             else:                                           # eg OPT_MIN of 'cd' - less is better
                 improv = distance
 
             if improv: 
-                if optVar == var.CD:
-                    label = f"d{var.CD} {improv:.5f}"
-                else:
-                    label = f"d{optVar} {improv:.2f}"
+                label = f"d{var.CD} {improv:.5f}" if optVar == var.CD else f"d{var.CD} {improv:.2f}"
+
+        # add flap angle if flap optimize 
+
+        if opPoint_def.flap_optimize:
+            if label:
+                label = f"{label}, F{opPoint.flap:.1f}°"
+            else:
+                label = f"F{opPoint.flap:.1f}°"
+
         return label 
         
 

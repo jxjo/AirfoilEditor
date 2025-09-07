@@ -1496,15 +1496,16 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         l =  QGridLayout()
         r,c, = 0,0
         ComboBox (l,r,c, lab="Spec", width=90, 
-                    get=lambda: self.opPoint_def.specVar, set=self.opPoint_def.set_specVar,
+                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.specVar,
                     options=SPEC_TYPES,
                     toolTip="Specification of this Operating Point is either based on cl or alpha")
         FieldF   (l,r,c+2, width=70, dec=2, lim=(-20,20), step=0.01,
-                    get=lambda: self.opPoint_def.specValue, set=lambda aVal: self.opPoint_def.set_specValue_limited(aVal),
+                    get=lambda: self.opPoint_def.specValue, 
+                    set=lambda aVal: self.opPoint_def.set_specValue_limited(aVal),
                     toolTip="Specification of this Operating Point is on the polar")
         r += 1
         ComboBox (l,r,c, lab="Type", width=90, 
-                    get=lambda: self.opPoint_def.opt_asString, set=self.opPoint_def.set_opt_asString,
+                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.opt_asString,
                     options=lambda:self.opPoint_def.opt_allowed_asString(),
                     toolTip="Type of optimization for this Operating Point")
         FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.00001, 

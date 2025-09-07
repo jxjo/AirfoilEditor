@@ -314,6 +314,8 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             # copy seed airfoil to working dir 
             airfoil_seed.saveAs (dir=self.input_file.workingDir, isWorkingDir=True)
 
+            self.input_file.set_airfoil_seed (airfoil_seed)   # make sure new path is written to namelist
+
             text = f"Seed airfoil <b>{airfoil_seed.fileName}</b> copied to working directory."
             MessageBox.info(self, "Copy seed airfoil", text)
 

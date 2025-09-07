@@ -382,12 +382,13 @@ class Input_File:
                     airfoil = Airfoil.onFileType (airfoil_fileName, workingDir=self.workingDir, geometry=GEO_BASIC)
                     airfoil.load()
                 except:
-                    logger.error (f"{airfoil_fileName} could not be created. Using example")
+                    logger.error (f"{airfoil_fileName} could not be read. Using Example airfoil")
             else: 
-                logger.warning (f"Seed airfoil is missing in input file. Using Example.")
+                logger.warning (f"Seed airfoil is missing in input file. Using Example airfoil.")
 
             if airfoil is None:
                 airfoil = Example(workingDir=self.workingDir)
+                airfoil.save ()
 
             airfoil.set_usedAs (usedAs.SEED)
             self._airfoil_seed = airfoil
@@ -721,7 +722,7 @@ class OpPoint_Definition:
 
     def __repr__(self) -> str:
         """ nice print string polarType and Re """
-        return f"<{type(self).__name__} {self.labelLong}>"
+        return f"<{type(self).__name__} {self.iPoint}: {self.specVar} {self.specValue:4.2f}>"
 
 
     def _get_labelLong (self, optType: str, optVar:var, optValue:float, fix=False): 
@@ -945,7 +946,8 @@ class OpPoint_Definition:
             else: 
                 return self._optValue
         else: 
-            return self.polar_point().get_value(self.optVar)
+            polar_point = self.polar_point()
+            return polar_point.get_value(self.optVar) if polar_point else None
         
         
     def set_optValue (self, aVal):  
@@ -1427,7 +1429,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         ncrits              = nml._get('ncrit_pt',       default=[None] * n)
         op_modes            = nml._get('op_mode',        default=[None] * n)
         flap_angles         = nml._get('flap_angle',     default=[None] * n)
-        flap_optimizes      = nml._get('flap_optimizes', default=[None] * n)
+        flap_optimizes      = nml._get('flap_optimize',  default=[None] * n)
 
         # collect opPoint definitions
 
@@ -2371,7 +2373,8 @@ class Nml_optimization_options (Nml_Abstract):
   
     @property
     def airfoil_file (self) -> str:             return self._get ('airfoil_file', default=None) 
-    def set_airfoil_file (self, aStr : str):    self._set ('airfoil_file', PathHandler.relPath (aStr, self._input_file.workingDir)) 
+    def set_airfoil_file (self, aStr : str):    
+        self._set ('airfoil_file', PathHandler.relPath (aStr, self._input_file.workingDir)) 
 
     @property 
     def show_details (self) -> bool:            return self._get ('show_details', default=True)

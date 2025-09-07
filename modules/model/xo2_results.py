@@ -305,68 +305,19 @@ class Optimization_History_Entry:
 #-------------------------------------------------------------------------------
 
 
-class GeoTarget_Result (Polar_Point):
+class GeoTarget_Result:
     """ 
-    The optimization result of the Geometry target  
+    optimization result of a geometry target  
     """
+
     def __init__(self):
-        """
-        New geo target result from optimization 
-        """
 
         self.optVar         = None             # either CAMBER or THICKNESS 
         self.value          = 0.0 
         self.deviation      = 0.0              # deviation from target / improvement to seed 
         self.distance       = 0.0              # distance from target  / distance from seed 
         self.weighting      = 1.0              # actual weighting during optimization 
-
-    @property
-    def deviation_label (self):
-        """ deviation as formatted string"""
-
-        dev = round(abs(self.deviation),1)
-
-        if dev >= 10.0:
-            lab = f"{self.deviation:2.0f}"
-        elif dev >= 1.0:
-            lab = f"{self.deviation:3.1f}"
-        elif dev == 0.0:
-            lab = "0"
-        else: 
-            lab = f"{self.deviation:0.1f}"
-        return lab
-
-    @property
-    def value_label (self):
-        """ value as formatted string"""
-        return f"{self.value:.4f}"
-    
-    @property
-    def distance_label (self):
-        """ value as formatted string"""
-
-        dist = round(abs(self.distance),5)
-
-        if dist >= 100.0:
-           return f"{self.distance:.1f}"
-        elif dist >= 10.0:
-           return f"{self.distance:.2f}"
-        elif dist >= 1.0:
-           return f"{self.distance:.3f}"
-        elif dist > 0.0:
-            if self.distance > 0.0:
-                return ("%7.5f" % self.distance)[1:]          # remove leading 0 
-            else: 
-                return "-" + ("%7.5f" % self.distance)[2:]    # replace leading -0 with - 
-        else:
-            return "0.0"
-    
-    @property
-    def weighting_label (self):
-        """ weighting as formatted string"""
-        lab = f"{self.weighting:3.1f}"
-        return lab
-
+        self.is_new_weighting = False          # flag if weighting changed to previous design
 
 
 
@@ -391,31 +342,10 @@ class OpPoint_Result (Polar_Point):
 
         self.distance       = 0.0              # distance from target  / distance from seed 
         self.deviation      = 0.0              # deviation from target / improvement to seed 
-        self.flap           = 0.0              # flap setting vom optimzation with flaps
+        self.flap           = 0.0              # flap angle (optimzation with flaps)
         self.weighting      = 1.0              # actual weighting during optimization 
+        self.is_new_weighting = False          # flag if weighting changed to previous design
 
-    @property
-    def deviation_label (self):
-        """ deviation as formatted string"""
-
-        dev = round(abs(self.deviation),1)
-
-        if dev >= 10.0:
-            lab = f"{self.deviation:2.0f}"
-        elif dev >= 1.0:
-            lab = f"{self.deviation:3.1f}"
-        elif dev == 0.0:
-            lab = "0"
-        else: 
-            lab = f"{self.deviation:0.1f}"
-        return lab
-
-    @property
-    def weighting_label (self):
-        """ weighting as formatted string"""
-
-        lab = f"{self.weighting:3.1f}"
-        return lab
 
 
 
@@ -724,30 +654,35 @@ class Reader_OpPoints (Reader_Abstract):
         n_new = 0 
         if idesign == len (self._results):          # new, next design in list 
 
-            ops = []
+            ops      = []
+
             for iop, op_result_list in enumerate (ops_results_list): 
 
                 if len(op_result_list) >= 10: 
-                    op_result = OpPoint_Result ()
+                    op = OpPoint_Result ()
 
-                    op_result.idesign   = idesign 
-                    op_result.iopPoint  = iop 
+                    op.idesign   = idesign 
+                    op.iopPoint  = iop 
 
-                    op_result.alpha     = op_result_list[0]
-                    op_result.cl        = op_result_list[1]
-                    op_result.cd        = op_result_list[2]
-                    op_result.cm        = op_result_list[3]
-                    op_result.xtrt      = op_result_list[4]
-                    op_result.xtrb      = op_result_list[5]
-                    op_result.distance  = op_result_list[6]
-                    op_result.deviation = op_result_list[7]
-                    op_result.flap      = op_result_list[8]
-                    op_result.weighting = op_result_list[9]
-                    ops.append(op_result)
+                    op.alpha     = op_result_list[0]
+                    op.cl        = op_result_list[1]
+                    op.cd        = op_result_list[2]
+                    op.cm        = op_result_list[3]
+                    op.xtrt      = op_result_list[4]
+                    op.xtrb      = op_result_list[5]
+                    op.distance  = op_result_list[6]
+                    op.deviation = op_result_list[7]
+                    op.flap      = op_result_list[8]
+                    op.weighting = op_result_list[9]
+                    ops.append(op)
                 else: 
                     logger.error (f"Format of '{self.filename}' doesn't fit. Skipping op point data...")       
 
+            # compare weighting to previous design and set flag if changed (dynamic weighting)
+            self._set_is_new_weighting (ops, self._results[-1] if self._results else [])
+
             self._results.append(ops)   
+
             n_new += 1  
 
         elif idesign < len (self._results):         # we have it already 
@@ -757,6 +692,16 @@ class Reader_OpPoints (Reader_Abstract):
         else:                                       #  there would be a gap in design list
             raise ValueError ("Add new design: Index %i doesn't fit" %idesign)
         return n_new
+
+
+    def _set_is_new_weighting (self, new_ops : list [OpPoint_Result], prev_ops : list [OpPoint_Result]):
+        """ set new weighting flag if new weighting of op point is different to previous one """
+
+        if len(new_ops) != len(prev_ops): return  
+
+        for new_op, prev_op in zip (new_ops, prev_ops):
+            if abs (new_op.weighting - prev_op.weighting) > 1e-6:
+                new_op.is_new_weighting = True 
 
 
 
@@ -821,19 +766,22 @@ class Reader_GeoTargets (Reader_Abstract):
             for geo_result_list in geos_results_list: 
 
                 if len(geo_result_list) >= 2: 
-                    geo_result = GeoTarget_Result ()
+                    geo = GeoTarget_Result ()
 
                     optVar_result : str = geo_result_list[0]
                     for optVar in GEO_OPT_VARS:                         # support "thickness" and "Thickness"
                         if optVar_result.lower() == optVar.lower():
-                            geo_result.optVar    = optVar
-                            geo_result.value     = geo_result_list[1]
-                            geo_result.distance  = geo_result_list[2]
-                            geo_result.deviation = geo_result_list[3]
-                            geo_result.weighting = geo_result_list[4]
-                            geos.append(geo_result)
+                            geo.optVar    = optVar
+                            geo.value     = geo_result_list[1]
+                            geo.distance  = geo_result_list[2]
+                            geo.deviation = geo_result_list[3]
+                            geo.weighting = geo_result_list[4]
+                            geos.append(geo)
                 else: 
                     logger.error (f"Format of '{self.filename}' doesn't fit. Skipping op point data...")       
+
+            # compare weighting to previous design and set flag if changed (dynamic weighting)  
+            self._set_is_new_weighting (geos, self._results[-1] if self._results else [])
 
             self._results.append(geos)  
             n_new += 1  
@@ -845,6 +793,16 @@ class Reader_GeoTargets (Reader_Abstract):
         else:                                       #  there would be a gap in design list
             raise ValueError ("Add new design: Index %i doesn't fit" %idesign)
         return n_new
+
+
+    def _set_is_new_weighting (self, new_geos : list [GeoTarget_Result], prev_geos : list [GeoTarget_Result]):
+        """ set new weighting flag if new weighting of op point is different to previous one """
+
+        if len(new_geos) != len(prev_geos): return  
+
+        for new_geo, prev_geo in zip (new_geos, prev_geos):
+            if abs (new_geo.weighting - prev_geo.weighting) > 1e-6:
+                new_geo.is_new_weighting = True 
 
 
 
@@ -1081,9 +1039,10 @@ class Reader_Airfoils_HH (Reader_Abstract):
                     hhs_top = [float(i) for i in vals[3:]] 
                 else: 
                     hhs_bot = [float(i) for i in vals[3:]] 
-                if hhs_top and hhs_bot: 
-                    n_new += self.add_airfoil_design (idesign, name, hhs_top, hhs_bot) 
-                    hhs_top, hhs_bot = [], []
+
+                n_new += self.add_airfoil_design (idesign, name, hhs_top, hhs_bot)  # hh can be []
+                hhs_top, hhs_bot = [], []
+
             else:
                 logger.error ("Invalid Hicks Henne file format for designs - skipped.")
                 break 
