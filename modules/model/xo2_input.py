@@ -150,7 +150,7 @@ class Input_File:
          
         self._init_nml ()
 
-        # save namelist dict as string for later comapre 
+        # save namelist dict as string for later change detection 
 
         self.opPoint_defs.set_nml()                                             # dummy write to have same format
         self.nml_geometry_targets.geoTarget_defs.set_nml ()
@@ -180,24 +180,22 @@ class Input_File:
         self._nml_constraints            = Nml_constraints (self)
         self._nml_geometry_targets       = Nml_geometry_targets (self)
 
-        # definitions from input file 
+        # higher level objects based on input file definitions 
 
-        self._airfoil_seed   = None                 # seed Airfoil    
-        self._airfoils_ref   = None                 # optional reference airfoils in input file     
-        self._opPoints_def   = None                 # op Points definition in input file
-        self._polar_defs     = None                 # Polar definitions in input file
-        self._geoTargets_def = None                 # geo targets definition in input file
+        self._airfoil_seed   = None                                             # seed Airfoil    
+        self._airfoils_ref   = None                                             # optional reference airfoils in input file     
+        self._opPoints_def   = None                                             # op Points definition in input file
+        self._polar_defs     = None                                             # Polar definitions in input file
+        self._geoTargets_def = None                                             # geo targets definition in input file
 
-        self._hasErrors  = False                    # errors in input file? 
-        self._error_text = None                     # text from error check by worker
+        self._hasErrors  = False                                                # errors in input file? 
+        self._error_text = None                                                 # text from error check by worker
 
         # additional consistency 
 
-        if self._airfoil_seed and self._airfoil_seed.isBezierBased:
-            self.set_airfoil_seed (self.airfoil_seed)           # will asign control points of seed to shape functions
+        if self.airfoil_seed.isBezierBased:
+            self.set_airfoil_seed (self.airfoil_seed)                           # will asign control points of seed to shape functions
 
-
-    # ---- Properties -------------------------------------------
 
     @property
     def workingDir (self) -> str: 
@@ -229,7 +227,7 @@ class Input_File:
 
     @property
     def fileName(self) -> str:  
-        """ name of input file including .inp"""
+        """ name of xo2 input file including extension"""
         return self._fileName
 
 
@@ -237,20 +235,7 @@ class Input_File:
     def pathFileName (self) -> str: 
         """returns the path of the input file rebuild from name """
         return os.path.join (self.workingDir, self.fileName)
-
-
-    @property
-    def pathFileName_relative (self) -> str: 
-        """returns the relative path of the input 'save' file to working directory """
-        return  PathHandler.relPath (self.pathFileName_save, self.workingDir)
     
-    @property
-    def pathFileName_save (self) -> str: 
-        """returns the pathFileName of the output file"""
-
-        # dir  = os.path.split (self.pathFileName) [0]
-        # return os.path.join(dir, self.name + '_patched.nml')
-        return self.pathFileName
 
     @property
     def nml_file (self) -> f90nml.Namelist:
@@ -325,47 +310,6 @@ class Input_File:
     def hasErrors (self) -> bool:
         """ are syntax errors in input file"""
         return self._hasErrors
-
-    @property
-    def summary (self) -> list:  
-        """ a summary self as list of line items """
-
-        if self.hasErrors:
-            summary = textwrap.wrap(self._error_text, width=30, max_lines=5)
-        else:
-            summary = []
-            shape = self.nml_optimization_options.shape_functions
-            if shape == 'bezier': 
-                top = self.nml_bezier_options.ncp_top
-                bot = self.nml_bezier_options.ncp_bot
-                line = f"{shape} (top {top}, bot {bot})"
-            elif shape == 'hicks_henne':
-                top = self.nml_hicks_henne_options.nfunctions_top
-                bot = self.nml_hicks_henne_options.nfunctions_bot
-                line = f"{shape} (top {top}, bot {bot})"
-            else: 
-                line = f"{shape}"
-            summary.append(line)
-
-            nop  = self.nml_operating_conditions.noppoint
-            ngeo = self.nml_geometry_targets.ngeo_targets
-
-            if nop: 
-                re_def    = self.nml_operating_conditions.re_default
-                ncrit_def = self.nml_xfoil_run_options.ncrit
-                line = f"Re default {re_def}, Ncrit {ncrit_def}"
-                summary.append(line)
-
-            if nop or ngeo: 
-                line = f"{nop} op points"
-                if ngeo: 
-                    line = f"{line}, {ngeo} geo targets"
-                summary.append(line)
-
-            for i, line in enumerate (summary):
-                summary[i] = "- " + summary[i]
-
-        return "\n".join (summary)
 
 
     @property
@@ -482,41 +426,6 @@ class Input_File:
     # ---- Methods -------------------------------------------
 
 
-    def check_file (self): 
-        """check self input file with Worker for errors
-
-        Returns:
-            returncode: = 0 no errors 
-            error_text: the error text from Xoptfoil2
-        """
-
-        faulty, text =self.check_content(self.as_text())
-
-        self._hasErrors, self._error_text = faulty, text
-
-        return faulty, text
-
-
-    def check_additional (self): 
-        """check additional sanity of input file 
-
-        Returns:
-            faulty: True - there are errors 
-            text: error text 
-        """
-
-        faulty = False
-        text = ""
-
-        # does airfoil exists? 
-        airfoil_name = self.nml_optimization_options.airfoil_file
-        if not airfoil_name: 
-            text = "(seed) airfoil_file is missing"
-            faulty = True 
-
-        return faulty, text
-
-
     def as_text (self) -> str: 
         "returns the content of input file as text string"
 
@@ -558,13 +467,10 @@ class Input_File:
         # run Worker in 'check-input' mode 
         returncode,error_text = Worker().check_inputFile (inputFile = tmpFilePath)
 
-        if returncode == 0: 
-            tmpInput = Input_File (tmpFile, workingDir=self.workingDir) 
-            returncode,error_text = tmpInput.check_additional()
-
         os.remove (tmpFilePath)
 
         return returncode,error_text
+
 
     @property
     def isChanged (self) -> bool:
@@ -588,7 +494,7 @@ class Input_File:
 
         # write namelist dictionaries to file 
 
-        with open(self.pathFileName_save, 'w') as nml_stream:
+        with open(self.pathFileName, 'w') as nml_stream:
 
             nml_file = dict (self.nml_file)                             # make a copy 
 
@@ -613,17 +519,6 @@ class Input_File:
 
         return True
 
-    # -----------------------------------------------
-
-
-    def opPoints_def_as_splined_polar (self):
-        """ returns a splines polar based on opPoins_def"""
-
-        pass
-        # polar = Polar_Splined (None, polar_def=self.polar_defs[0])
-        # polar.set_knots_from_opPoints_def (var.CL, var.CD, self.opPoints_def)
-        # polar.generate()
-        # return polar 
 
 
 #-------------------------------------------------------------------------------
