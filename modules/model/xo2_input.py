@@ -749,7 +749,7 @@ class OpPoint_Definition:
         flap = ''
         if self._myList.use_flap: 
             if self.flap_optimize:
-                flap = "  Fopt"
+                flap = "  F-opt"
             else:
                 valstr = f"{self.flap_angle:4.1f}".strip()
                 if not fix: 
@@ -1138,7 +1138,7 @@ class OpPoint_Definition:
     def has_default_flap (self) -> bool:
         """ True if op point has default (no) flap settings """
         return not self._myList.use_flap or \
-              (self._myList.use_flap and self._flap_angle is None and not self.flap_optimize)
+              (self._myList.use_flap and self._flap_angle is None ) 
 
     #------------
 

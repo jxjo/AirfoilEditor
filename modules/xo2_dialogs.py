@@ -1562,7 +1562,8 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         FieldF   (l,r,c+2, width=70, step=0.2, lim=(-15,15), dec=1, unit='°', colSpan=2,
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_angle,
                     hide=lambda: not self.individual_flap,
-                    toolTip="An individual flap angle of this Operating Point")
+                    toolTip="An individual flap angle of this Operating Point. <br>" + \
+                            "When the flap angle is optimized, this will be the start value.")
         r += 1
         CheckBox (l,r,c, text="Flap Optimize", colSpan=3,
                     obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_optimize,
@@ -1662,7 +1663,6 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         self._individual_flap = aBool 
         if not aBool:
             self.opPoint_def.set_flap_angle (None)                    # will set to default 
-            self.opPoint_def.set_flap_optimize (None)                    
 
 
     @override
