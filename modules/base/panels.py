@@ -432,7 +432,7 @@ class Edit_Panel (Panel_Abstract):
             self.setVisible (self.shouldBe_visible)
             logger.debug (f"{self} - setVisible ({self.shouldBe_visible})")
 
-        if self.isVisible():
+        if self.shouldBe_visible: 
 
             # reinit layout 
             if show or reinit_layout:

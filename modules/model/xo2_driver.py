@@ -337,7 +337,7 @@ class X_Program:
                 else: 
                     flags  = 0                      # posix must be 0       
 
-            logger.info (f"... {self.NAME_EXE} run sync: '{args}' in: {workingDir}")
+            logger.info (f"... {self.NAME_EXE} run sync: '{" ".join(args)}' in: {workingDir}")
 
             process = run (arg_list, text=True, capture_output=capture_output, creationflags=flags)
 
@@ -430,7 +430,7 @@ class X_Program:
                     flags  = 0                              # posix must be 0 
                 startupinfo = self._get_popen_startupinfo (SW_MINIMIZE)  
 
-            logger.info (f"... {self.NAME_EXE} run async: '{args}' in: {workingDir}")
+            logger.info (f"... {self.NAME_EXE} run async: '{" ".join(args)}' in: {workingDir}")
 
             popen = Popen (arg_list, creationflags=flags, text=True, **startupinfo, 
                                 stdout=stdout, stderr=stderr)  

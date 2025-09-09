@@ -34,6 +34,30 @@ logger = logging.getLogger(__name__)
 
 
 
+def create_case_from_path (parent, pathFilename,  message_delayed=False) -> Case_Optimize:
+    """
+    Create and return a optimization case based on pathFilename.
+        Return None if Case couldn't be loaded
+    """
+
+    try: 
+        case = Case_Optimize (pathFilename)
+        case_loaded = True
+    except:
+        case = None
+        case_loaded = False
+
+    if not case_loaded and pathFilename:
+        msg     =  f"<b>{pathFilename}</b> couldn't be loaded."
+        if message_delayed:
+            QTimer.singleShot (100, lambda: MessageBox.error   (parent,'Load Input File', msg, min_height= 60))
+        else:
+            MessageBox.error   (parent,'Load Airfoil', msg, min_height= 60)
+
+    return case  
+
+
+
 class Panel_Xo2_Abstract (Edit_Panel):
     """ 
     Abstract superclass for Edit/View-Panels of AirfoilEditor Optimize mode

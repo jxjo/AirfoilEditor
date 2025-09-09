@@ -415,7 +415,15 @@ class Case_Optimize (Case_Abstract):
 
         elif isinstance (airfoil_or_input_file, str):
 
-            fileName : str      = airfoil_or_input_file
+            pathFileName = airfoil_or_input_file
+            if not os.path.isabs (pathFileName):                                # support absolute, relative 
+                if workingDir is not None:
+                    pathFileName = os.path.join (workingDir, pathFileName)
+                else:
+                    pathFileName = os.path.join (os.getcwd(), pathFileName)
+            if not os.path.isfile (pathFileName):
+                raise ValueError (f"Input File {pathFileName} doesn't exist")
+            workingDir, fileName = os.path.split (pathFileName)
             self._input_file    = Input_File (fileName, workingDir=workingDir)
 
         else: 

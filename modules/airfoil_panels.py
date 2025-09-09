@@ -96,7 +96,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: only enabled in edit mode of App """
-        return not self.airfoil.isEdited or (self.airfoil.isFlapped if self.airfoil else False)
+        return not self.mode_modify or (self.airfoil.isFlapped if self.airfoil else False)
     
 
 

@@ -193,6 +193,9 @@ class Input_File:
 
         # additional consistency 
 
+        self.airfoil_seed                                                       # will check if exists, if not create Example                             
+        self.airfoils_ref                                                       # will check if exists, if not empty list 
+
         if self.airfoil_seed.isBezierBased:
             self.set_airfoil_seed (self.airfoil_seed)                           # will asign control points of seed to shape functions
 
@@ -392,7 +395,7 @@ class Input_File:
 
                         self._airfoils_ref.append (airfoil)
                 except: 
-                    logger.warning (f"{self.fileName} reference airfoil {pathFileName} could not be created")
+                    logger.warning (f"{self.fileName} reference airfoil {pathFileName} not found or valid. Ignored.")
 
             # write back updated list of airfoils 
             self.airfoils_ref_set_nml ()

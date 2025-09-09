@@ -52,6 +52,7 @@ from airfoil_dialogs        import (Airfoil_Save_Dialog, Blend_Airfoil_Dialog, R
                                     Flap_Airfoil_Dialog, TE_Gap_Dialog)
 from airfoil_diagrams       import Diagram_Airfoil_Polar            
 from xo2_dialogs            import (Xo2_Run_Dialog, Xo2_Select_Dialog, Xo2_OpPoint_Def_Dialog, Xo2_New_Dialog)
+from xo2_panels             import create_case_from_path
 
 import logging
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ class Main (QMainWindow):
         if parent is not None:
             self.setWindowModality(Qt.WindowModality.ApplicationModal)  
 
-        # set user settings path 
+        # set user settings path, load settings 
 
         Settings.set_path (APP_NAME, file_extension= '.settings')
 
@@ -146,13 +147,13 @@ class Main (QMainWindow):
         if update.is_newer_version_available():
             QTimer.singleShot (1000, lambda: update.show_user_info (self))        
 
-        # --- init model, load initial airfoil or input file ---------------
 
-        self._load_settings ()
+        # --- init Model ---------------
+
+        self._load_model_settings ()
+        Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 
 
         # if no initial airfoil file, try to get last openend airfoil file 
-
-        Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 
 
         if not initial_file: 
             initial_file = Settings().get('last_opened', default=None) 
@@ -161,10 +162,17 @@ class Main (QMainWindow):
             logger.info (f"Starting on initial file: {initial_file}")
 
         # either airfoil or Xoptfoil2 input file 
-        if Input_File.is_xo2_input (initial_file, workingDir=os.getcwd()):
 
-            self.set_airfoil (Example(), silent=True)                     # dummy when returning from optimize
-            self.optimize_airfoil (initial_file)
+        if Input_File.is_xo2_input (initial_file):
+
+            case = create_case_from_path (self, initial_file, message_delayed=True)
+            if case: 
+                self.set_case_optimize (case, silent=True)    
+                self.set_airfoil (case.initial_airfoil_design(), silent=True)                
+                self.set_mode_optimize (True)  
+            else:                              
+                self.set_airfoil (Example(), silent=True)                   # just show example airfoil
+
         else:
 
             airfoil = create_airfoil_from_path(self, initial_file, example_if_none=True, message_delayed=True)
@@ -172,15 +180,20 @@ class Main (QMainWindow):
 
         # Worker for polar generation and Xoptfoil2 for optimization ready? 
 
-        Worker().isReady (os.path.dirname(os.path.abspath(__file__)), min_version=self.WORKER_MIN_VERSION)
+        workingDir = Settings.user_data_dir (APP_NAME)                      # temp working dir for Worker and Xoptfoil2  
+        projectDir = os.path.dirname(os.path.abspath(__file__))                
+
+        Worker    (workingDir=workingDir).isReady (projectDir, min_version=self.WORKER_MIN_VERSION)
+        Xoptfoil2 (workingDir=workingDir).isReady (projectDir, min_version=self.XOPTFOIL2_MIN_VERSION)
+
         if Worker.ready and self.airfoil:
             Worker().clean_workingDir (self.airfoil.pathName)
-
-        Xoptfoil2().isReady (os.path.dirname(os.path.abspath(__file__)), min_version=self.XOPTFOIL2_MIN_VERSION)
 
 
         # --- init UI ---------------
         
+        logger.info (f"Initialize UI")
+
         self.setWindowIcon (Icon ('AE_ico.ico'))                                            # get icon either in modules or in icons 
 
         # Qt color scheme, initial window size from settings      
@@ -261,6 +274,16 @@ class Main (QMainWindow):
         self.sig_flap_changed.connect           (self.diagram.on_flap_changed)
         self.sig_te_gap_changed.connect         (self.diagram.on_te_gap_changed)
 
+        # --- final set of UI depending on mode View or Optimize ---------------
+
+        self.refresh()  
+
+        if self.mode_optimize:
+            self.sig_mode_optimize.emit(True)                           # signal enter / leave mode optimize for diagram
+
+        logger.info (f"Ready for action ...")
+
+
     # ----------- end __init__ -------------------------------------------
 
     @override
@@ -278,12 +301,12 @@ class Main (QMainWindow):
                                              Panel_Bezier, Panel_Flap) 
 
             l = QHBoxLayout()
-            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, height=190, lazy_layout=not self.mode_view))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=not self.mode_view))
+            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
             l.addStretch (1)
 
             self._panel_view = Container_Panel (layout = l, hide=lambda: not self.mode_view)
@@ -301,13 +324,13 @@ class Main (QMainWindow):
                                              Panel_Flap, Panel_Bezier, Panel_Bezier_Match) 
 
             l = QHBoxLayout()
-            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, height=190, lazy_layout=not self.mode_modify))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
-            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy_layout=not self.mode_modify))
+            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy_layout=True))
             l.addStretch (1)
 
             self._panel_modify    = Container_Panel (layout = l, hide=lambda: not self.mode_modify)
@@ -325,13 +348,13 @@ class Main (QMainWindow):
                                                 Panel_Xo2_Geometry_Targets, Panel_Xo2_Operating_Conditions, Panel_Xo2_Operating_Points)
 
             l = QHBoxLayout()        
-            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, height=190, lazy_layout=not self.mode_optimize))
-            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy_layout=not self.mode_optimize))
-            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy_layout=not self.mode_optimize))
-            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy_layout=not self.mode_optimize))
-            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy_layout=not self.mode_optimize))
-            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy_layout=not self.mode_optimize))
-            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy_layout=not self.mode_optimize))
+            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy_layout=True))
+            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy_layout=True))
             l.addStretch (1)
 
             self._panel_optimize = Container_Panel (layout = l, hide=lambda: not self.mode_optimize or self._xo2_run_dialog)
@@ -374,11 +397,9 @@ class Main (QMainWindow):
 
         self.set_case (case)
 
-        self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  [" + self._case.name + "]")
-
         if not silent: 
-                self.refresh ()
-                self.sig_new_case_optimize.emit()
+            self.refresh ()
+            self.sig_new_case_optimize.emit()
 
 
     @property
@@ -427,14 +448,6 @@ class Main (QMainWindow):
 
             logger.debug (f"Set new airfoil {aNew.fileName} including polarSet")
 
-        # set window title
-
-        if self.mode_optimize:
-            ext = f"[Case {self.case.name}]"
-        else: 
-            ext = f"[{self.airfoil.fileName if self.airfoil else ''}]"
-        self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
-
         if not silent: 
             self.refresh()
             if aNew is not None and self._airfoil.usedAsDesign:
@@ -462,7 +475,7 @@ class Main (QMainWindow):
 
         # take polar_defs defined by case optimize 
 
-        if self.mode_optimize:
+        if self.mode_optimize and self._case:
             polar_defs = self._case.input_file.opPoint_defs.polar_defs [:]
         else: 
             polar_defs = []
@@ -499,7 +512,8 @@ class Main (QMainWindow):
         """ reference airfoils"""
 
         if self.mode_optimize:
-            airfoils_ref = self.case.airfoils_ref                           # take individual reference airfoils of case
+            # take individual reference airfoils of case optimize
+            airfoils_ref = self.case.airfoils_ref if self.case else []                         
         else:
             airfoils_ref = self._airfoils_ref                               # normal handling
  
@@ -703,7 +717,15 @@ class Main (QMainWindow):
         # be sure input file data is written to file 
         self._save_xo2_nml (ask=True)
 
-        next_airfoil = self.case.airfoil_final if  self.case.airfoil_final else self._airfoil_org
+        # set next airfoil to show when finsihing optimize mode
+        if  self.case.airfoil_final:
+            next_airfoil = self.case.airfoil_final
+        elif self.case.airfoil_seed:
+            next_airfoil = self.case.airfoil_seed
+        elif self._airfoil_org:
+            next_airfoil = self._airfoil_org
+        else:
+            next_airfoil = Example()                            # should not happen
         next_airfoil.set_usedAs (usedAs.NORMAL)                 # normal AE color 
         
         self.set_case (None)  
@@ -754,6 +776,14 @@ class Main (QMainWindow):
         if self._panel_view:        self.panel_view.refresh()               # refresh view mode panels - if UI is visible   
         if self._panel_modify:      self.panel_modify.refresh()
         if self._panel_optimize:    self.panel_optimize.refresh()
+
+        # set window title
+
+        if self.mode_optimize:
+            ext = f"[Case {self.case.name if self.case else '?'}]"
+        else: 
+            ext = f"[{self.airfoil.fileName if self.airfoil else '?'}]"
+        self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
 
 
     def refresh_polar_sets (self, silent=False):
@@ -1375,8 +1405,8 @@ class Main (QMainWindow):
         Settings().write_dataDict (settings)
 
 
-    def _load_settings (self):
-        """ load default settings from file """
+    def _load_model_settings (self):
+        """ load default settings of model from file """
 
         # panelling 
 
