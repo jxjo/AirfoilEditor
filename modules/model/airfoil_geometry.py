@@ -648,7 +648,7 @@ class Curvature_of_Bezier (Curvature_Abstract):
         self._upper_side = upper
         self._lower_side = lower
 
-        self._curvature = np.concatenate ((np.flip(upper.curvature.y), lower.curvature.y[1:]))  
+        self._curvature = np.concatenate ((np.flip(-upper.curvature.y), lower.curvature.y[1:]))  
         self._upper     = Line (upper.x, - upper.curvature.y, linetype=Line.Type.UPPER)
         self._lower     = Line (lower.x,   lower.curvature.y, linetype=Line.Type.LOWER)
 
