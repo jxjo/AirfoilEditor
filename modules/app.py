@@ -111,7 +111,6 @@ class Main (QMainWindow):
         super().__init__(parent)
 
         self._airfoil           = None                  # current airfoil 
-        self._airfoil_org       = None                  # airfoil saved in mode_modify 
         self._airfoils_ref      = []                    # reference airfoils 
         self._airfoils_ref_scale= None                  # indexed list of re scale factors of ref airfoils
         self._airfoil_2         = None                  # 2nd airfoil for blend    
@@ -418,7 +417,6 @@ class Main (QMainWindow):
         if self.airfoil:            airfoils.append (self.airfoil)
         if self.airfoil_seed:       airfoils.append (self.airfoil_seed)
         if self.airfoil_2:          airfoils.append (self.airfoil_2)
-        if self.airfoil_org:        airfoils.append (self.airfoil_org)
         if self.airfoils_ref:       airfoils.extend (self.airfoils_ref)
 
         # remove duplicates 
@@ -461,8 +459,6 @@ class Main (QMainWindow):
         """ directory we are currently in (equals dir of airfoil)"""
         if self.case:                                         # case working dir has prio 
             return self.case.workingDir
-        elif self._airfoil_org:                                 # modify mode use airfoil org   
-            return self._airfoil_org.pathName
         elif self.airfoil:                                     
             return self.airfoil.pathName
         else:
@@ -584,12 +580,14 @@ class Main (QMainWindow):
 
     @property
     def airfoil_seed (self) -> Airfoil | None:
-        """ seed airfoil of optimization"""
-        if self.mode_optimize and self.case:
+        """ seed airfoil of optimization or original airfoil during modify mode"""
+        if self.case:
             seed =  self.case.airfoil_seed
             if not seed.polarSet:
                seed.set_polarSet (Polar_Set (seed, polar_def=self.polar_definitions, only_active=True))
             return seed
+        else:
+            return None
         
 
     @property
@@ -600,12 +598,6 @@ class Main (QMainWindow):
             if final and not final.polarSet:
                final.set_polarSet (Polar_Set (final, polar_def=self.polar_definitions, only_active=True))
             return final
-
-
-    @property
-    def airfoil_org (self) -> Airfoil:
-        """ the original airfoil during modify mode"""
-        return self._airfoil_org if self.mode_modify else None
 
 
     @property
@@ -629,9 +621,6 @@ class Main (QMainWindow):
             if self._mode_modify:
                 # save possible example to file to ease consistent further handling in widgets
                 if self._airfoil.isExample: self._airfoil.save()
-                self._airfoil_org = self._airfoil       # enter mode_modify - save original 
-            else: 
-                self._airfoil_org = None                # leave mode_modify - remove original 
         
 
     @property
@@ -652,11 +641,6 @@ class Main (QMainWindow):
         if self._mode_optimize != aBool: 
             self._mode_optimize = aBool   
 
-            if aBool: 
-                self._airfoil_org = self._airfoil           # save current airfoil 
-            else: 
-                self._airfoil_org = None   
-
             self._airfoils_ref_scale = None                 # re-init scales for new airfois ref 
 
 
@@ -675,7 +659,7 @@ class Main (QMainWindow):
         if ok:
             # create new, final airfoil based on actual design and path from airfoil org 
             case : Case_Direct_Design = self.case
-            new_airfoil = case.get_final_from_design (self.airfoil_org, self.airfoil)
+            new_airfoil = case.get_final_from_design (self.airfoil)
 
             # dialog to edit name, choose path, ..
 
@@ -691,11 +675,11 @@ class Main (QMainWindow):
         # leave mode_modify  
 
         if not ok:
-            new_airfoil = self._airfoil_org                     # restore original airfoil 
+            new_airfoil = self.airfoil_seed                     # restore original airfoil 
 
         # close case 
 
-        self.case.close (remove_designs=remove_designs)       # shut down case
+        self.case.close (remove_designs=remove_designs)         # shut down case
         self.set_case (None)                                
 
         self.set_mode_modify (False)  
@@ -722,8 +706,6 @@ class Main (QMainWindow):
             next_airfoil = self.case.airfoil_final
         elif self.case.airfoil_seed:
             next_airfoil = self.case.airfoil_seed
-        elif self._airfoil_org:
-            next_airfoil = self._airfoil_org
         else:
             next_airfoil = Example()                            # should not happen
         next_airfoil.set_usedAs (usedAs.NORMAL)                 # normal AE color 
@@ -946,7 +928,7 @@ class Main (QMainWindow):
 
         self.sig_enter_blend.emit()
 
-        dialog = Blend_Airfoil_Dialog (self, self.airfoil, self.airfoil_org, 
+        dialog = Blend_Airfoil_Dialog (self, self.airfoil, self.airfoil_seed, 
                                        parentPos=(0.25, 0.75), dialogPos=(0,1))  
 
         dialog.sig_blend_changed.connect (self.sig_blend_changed.emit)
@@ -956,7 +938,7 @@ class Main (QMainWindow):
 
         if dialog.airfoil2 is not None: 
             # do final blend with high quality (splined) 
-            self.airfoil.geo.blend (self.airfoil_org.geo, 
+            self.airfoil.geo.blend (self.airfoil_seed.geo, 
                                       dialog.airfoil2.geo, 
                                       dialog.blendBy) 
             self.set_airfoil_2 (None)
@@ -1375,7 +1357,7 @@ class Main (QMainWindow):
         toDict (settings,'bezier_te_bunch', Panelling_Bezier().te_bunch)
 
         # save airfoils
-        airfoil : Airfoil = self.airfoil_org if (self.airfoil and self.airfoil.usedAsDesign) else self.airfoil
+        airfoil : Airfoil = self.airfoil_seed if (self.airfoil and self.airfoil.usedAsDesign) else self.airfoil
 
         if airfoil: 
             if airfoil.isExample:

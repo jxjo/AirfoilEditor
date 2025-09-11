@@ -231,10 +231,6 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
         return False
     
     @property
-    def airfoilg_org (self) -> Airfoil:
-        return self.app.airfoil_org
-
-    @property
     def case (self) -> Case_Direct_Design:
         return self.app.case
 
@@ -245,7 +241,7 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Field (l,r,c, colSpan=3, width=190, get=lambda: self.airfoilg_org.fileName)
+        Field (l,r,c, colSpan=3, width=190, get=lambda: self.case.airfoil_seed.fileName)
         r += 1
         ComboSpinBox (l,r,c, colSpan=2, width=160, get=self.airfoil_fileName, 
                              set=self.set_airfoil_by_fileName,
@@ -787,7 +783,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
 
     @property
     def target_airfoil (self) -> Airfoil:
-        return self.app.airfoil_org
+        return self.app.airfoil_seed
 
     @property
     def target_upper (self) -> Line:
