@@ -403,7 +403,7 @@ class Flap_Airfoil_Dialog (Dialog):
 
     name = "Set Flap"
 
-    sig_new_flap_settings    = pyqtSignal ()
+    sig_new_flap_settings    = pyqtSignal (bool)
 
 
     def __init__ (self, parent : QWidget, 
@@ -467,7 +467,7 @@ class Flap_Airfoil_Dialog (Dialog):
         self.flap_setter.set_flap()
 
         self._has_been_flapped = True                   # for change detection 
-        self.sig_new_flap_settings.emit()               # inform parent -> diagram update
+        self.sig_new_flap_settings.emit(True)           # inform parent -> diagram update
 
 
     @override
@@ -1438,7 +1438,7 @@ class TE_Gap_Dialog (Dialog):
 
     name = "Set Trailing Edge Gap"
 
-    sig_new_te_gap    = pyqtSignal ()
+    sig_new_te_gap    = pyqtSignal (object, object)
 
 
     def __init__ (self, parent : QWidget, 
@@ -1465,7 +1465,7 @@ class TE_Gap_Dialog (Dialog):
 
         self._has_been_set = True
         self.refresh()
-        self.sig_new_te_gap.emit()                              # inform parent -> diagram update
+        self.sig_new_te_gap.emit(self.te_gap, self.xBlend)      # inform parent -> diagram update
 
 
     @property
@@ -1479,7 +1479,7 @@ class TE_Gap_Dialog (Dialog):
 
         self._has_been_set = True
         self.refresh()
-        self.sig_new_te_gap.emit()                              # inform parent -> diagram update
+        self.sig_new_te_gap.emit(self.te_gap, self.xBlend)      # inform parent -> diagram update
 
 
     @property
@@ -1507,6 +1507,109 @@ class TE_Gap_Dialog (Dialog):
 
         Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.0, 0.1), step=0.001, dec=3, 
                         obj=self, prop=TE_Gap_Dialog.te_gap)
+        r += 1
+        SpaceR  (l, r, stretch=3) 
+
+        l.setColumnMinimumWidth (0,90)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,50)
+        l.setColumnStretch (5,2)   
+
+        return l
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
+
+
+class LE_Radius_Dialog (Dialog):
+    """ Dialog to set LE Radius of airfoil"""
+
+    _width  = 320
+    _height = 180
+
+    name = "Set Leading Edge Radius"
+
+    sig_new_le_radius    = pyqtSignal (float, float)
+
+
+    def __init__ (self, parent : QWidget, 
+                  airfoil : Airfoil, **kwargs): 
+
+        self._airfoil = airfoil
+        
+        self._has_been_set = False
+
+        self._xBlend = airfoil.geo.LE_RADIUS_XBLEND                # start with initial value
+        self._le_radius = airfoil.geo.le_radius
+
+        super().__init__ (parent, **kwargs)
+
+
+    @property
+    def xBlend (self) -> float:
+        """ blending distance x/c from LE"""
+        return self._xBlend
+    
+    def set_xBlend (self, aVal: float):
+        self._xBlend = aVal
+        self._airfoil.geo.set_le_radius (self.le_radius, xBlend=aVal, moving=True)
+
+        self._has_been_set = True
+        self.refresh()
+        self.sig_new_le_radius.emit(self.le_radius, self.xBlend)          # inform parent -> diagram update
+
+
+    @property
+    def le_radius (self) -> float:
+        """  LE radius as y/c """
+        return self._le_radius
+    
+    def set_le_radius (self, aVal: float):
+        self._le_radius = aVal
+        self._airfoil.geo.set_le_radius (aVal, xBlend=self.xBlend, moving=True)
+
+        self._has_been_set = True
+        self.refresh()
+        self.sig_new_le_radius.emit(self.le_radius, self.xBlend)          # inform parent -> diagram update
+
+
+    @property
+    def has_been_set (self) -> bool:
+        """ True if TE gap was set in this dialog """
+        return self._has_been_set 
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Blend from TE", width=75, step=1, lim=(1, 100), dec=1, unit="%",
+                        obj=self, prop=LE_Radius_Dialog.xBlend)
+        Slider  (l,r,c+3, colSpan=2, width=100,  
+                        lim=(0.01, 1.0), dec=2,  
+                        obj=self, prop=LE_Radius_Dialog.xBlend)
+        r += 1
+        SpaceR  (l, r, stretch=1, height=10) 
+        r += 1
+        FieldF  (l,r,c, lab="LE radius", width=75, unit="%", step=0.1, lim=(0.1, 3),
+                        obj=self, prop=LE_Radius_Dialog.le_radius)
+
+        Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.001, 0.03), step=0.001, dec=3, 
+                        obj=self, prop=LE_Radius_Dialog.le_radius)
+        r += 1
+        FieldF  (l,r,c, lab="LE curvature", width=60, dec=0, 
+                        get=lambda: self._airfoil.geo.curvature.max_around_le, disable=True)
         r += 1
         SpaceR  (l, r, stretch=3) 
 

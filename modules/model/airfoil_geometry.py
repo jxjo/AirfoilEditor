@@ -1564,6 +1564,7 @@ class Geometry ():
     # default values of modifications
 
     TE_GAP_XBLEND       = 0.8                       # default x position from TE where te gap blending starts
+    LE_RADIUS_XBLEND    = 0.1                       # default x position from LE where le radius blending ends
 
     EPSILON_LE_CLOSE    = 1e-6                      # max norm2 distance of le_real 
 
@@ -1813,7 +1814,7 @@ class Geometry ():
         return  round(float (self.y[0] - self.y[-1]),7)
 
     @property
-    def le_radius (self): 
+    def le_radius (self) -> float: 
         """ 
         Leading edge radius which is the reciprocal of curvature at le 
         """
@@ -2023,9 +2024,10 @@ class Geometry ():
 
 
 
-    def set_le_radius (self, new_radius : float, xBlend : float = 0.1):
-        """ set le radius which is the reciprocal of curvature at le
-
+    def set_le_radius (self, new_radius : float, xBlend = LE_RADIUS_XBLEND, moving=False):
+        """ 
+        Set le radius of upper and lowe which is the reciprocal of curvature at le
+        
         Arguments: 
             factor:   to increase/decrease le radius 
             xblend:   the blending distance from leading edge 0.001..1 - Default 0.1
@@ -2033,35 +2035,61 @@ class Geometry ():
 
         try: 
             self._set_le_radius (new_radius, xBlend) 
-            self._rebuild_from_camb_thick ()
-            self._reset () 
-            self._changed (Geometry.MOD_LE_RADIUS, round(new_radius*100,2))
-            self._set_xy (self._x, self._y)
+            if not moving:
+                self._rebuild_from_upper_lower ()
+                self._reset () 
+                self._changed (Geometry.MOD_LE_RADIUS, round(new_radius*100,2))
+                self._set_xy (self._x, self._y)
  
         except GeometryException:
             self._clear_xy()
     
 
     def _set_le_radius (self, new_radius : float, xBlend : float = 0.1):
-        """ set le radius which is the reciprocal of curvature at le """
+        """ 
+        Set le radius which is the reciprocal of curvature at le 
 
-        # The procedere is based on xfoil allowing to define a blending distance from le.
+        The procedere is based on xfoil allowing to define a blending distance from le.
+        Uses thickness, changes upper and lower side.
+        
+        Arguments: 
+            new_radius:   in y-coordinates - typically 0.01 or so
+            xblend:   the blending distance from leading edge 0.001..1 - Default 0.1"""
 
-        new_radius = clip (new_radius, 0.002, 0.05)             # limit radius to reasonable values
-        xBlend     = clip (xBlend, 0.001, 1.0)  
+
+        new_radius = clip (new_radius, 0.001, 0.03)             # limit radius to reasonable values
+        xBlend     = clip (xBlend, 0.01, 1.0)  
+
+        # reset curvature so it's rebuild from x,y to get original curvature at LE
+        self._curvature = None
 
         cur_radius = 1 / self.curvature.at_le
         factor     = new_radius / cur_radius
 
         # go over each thickness point, changing the thickness appropriately
 
+        new_thickness = np.zeros (len(self.thickness.x))  
+
         for i in range(len(self.thickness.x)):
             # thickness factor tails off exponentially away from trailing edge
             arg = min (self.thickness.x[i] / xBlend, 15.0)
             srfac = (abs (factor)) ** 0.5 
             tfac = 1.0 - (1.0 - srfac) * np.exp(-arg)
-            self.thickness.y [i] = self.thickness.y [i] * tfac
+            new_thickness [i] = self.thickness.y [i] * tfac
 
+        # create new side objects from x,y to allow repeated setting of te gap 
+
+        self._upper  = self.sideClass (self.thickness.x, self.camber.y + new_thickness / 2.0 ,
+                                 linetype=Line.Type.UPPER)
+        self._lower  = self.sideClass (self.thickness.x, self.camber.y - new_thickness / 2.0 ,
+                                 linetype=Line.Type.LOWER)
+        
+        # create new curvature to recalc curvature at LE
+
+        x = np.concatenate ((np.flip(self.upper.x), self.lower.x[1:]))
+        y = np.concatenate ((np.flip(self.upper.y), self.lower.y[1:]))
+
+        self._curvature = Curvature_of_xy (x, y) 
 
 
     def set_flapped_data (self, x : np.ndarray, y : np.ndarray, flap_angle : float):

@@ -23,7 +23,8 @@ from model.case             import Case_Abstract, Case_Direct_Design
 from model.xo2_driver       import Xoptfoil2
 
 from airfoil_widgets        import * 
-from airfoil_dialogs        import Match_Bezier_Dialog, Matcher
+from airfoil_dialogs        import (Match_Bezier_Dialog, Matcher, LE_Radius_Dialog, TE_Gap_Dialog,
+                                   Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
 
 
 logger = logging.getLogger(__name__)
@@ -312,7 +313,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         # blend with airfoil - currently Bezier is not supported
         Button (l_head, text="&Blend", width=80,
-                set=self.app.do_blend_with, 
+                set=self.do_blend_with, 
                 hide=lambda: not self.airfoil.isEdited or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
 
@@ -330,13 +331,14 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
         r += 1
         FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.02,
-                obj=lambda: self.geo, prop=Geometry.le_radius,
-                disable=lambda: self.airfoil.isBezierBased)
+                obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_le_radius, 
+                hide=lambda: not self.mode_modify or self.mode_bezier,
+                toolTip="Set leading edge radius with a flexible blending distance")
         r += 1
         FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
-                obj=lambda: self.geo, prop=Geometry.te_gap,
-                toolTip=f"Set trailing edge gap in % of chord with a blending distance of {Geometry.TE_GAP_XBLEND:.0%}")
-        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.app.do_te_gap,
+                obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
                 hide=lambda: not self.mode_modify or self.mode_bezier,
                 toolTip="Set trailing edge gap with a flexible blending distance")
 
@@ -380,6 +382,68 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         return text 
 
 
+    def do_blend_with (self): 
+        """ blend with another airfoil - open blend airfoil dialog """ 
+
+        dialog = Blend_Airfoil_Dialog (self, self.airfoil, self.app.airfoil_seed, 
+                                       parentPos=(0.25, 0.75), dialogPos=(0,1))  
+
+        dialog.sig_blend_changed.connect (self.app.sig_blend_changed.emit)
+        dialog.sig_airfoil_2_changed.connect (self.app.set_airfoil_2)
+
+        dialog.exec()     
+
+        if dialog.airfoil2 is not None: 
+            # do final blend with high quality (splined) 
+            self.airfoil.geo.blend (self.app.airfoil_seed.geo, 
+                                      dialog.airfoil2.geo, 
+                                      dialog.blendBy) 
+            self.app.set_airfoil_2 (None)
+            self.app._on_airfoil_changed()
+
+
+
+    def do_le_radius (self): 
+        """ set LE radius - run set LE radius dialog""" 
+
+        if self.airfoil.isBezierBased: return                   # not for Bezier airfoils
+
+        dialog = LE_Radius_Dialog (self, self.airfoil, parentPos=(0.25, 0.75), dialogPos=(0,1))
+
+        self.app.sig_le_radius_changed.emit(dialog.le_radius, dialog.xBlend)     # diagram show le radius
+        dialog.sig_new_le_radius.connect    (self.app.sig_le_radius_changed.emit)
+
+        dialog.exec()     
+
+        if dialog.has_been_set:
+            # finalize modifications 
+            self.airfoil.geo.set_le_radius (dialog.le_radius, xBlend= dialog.xBlend)              
+
+            self.app._on_airfoil_changed()
+
+        self.app.sig_le_radius_changed.emit(None, None)                         # diagram hide le radius
+
+
+    def do_te_gap (self): 
+        """ set TE gap - run set TE gap dialog""" 
+
+        if self.airfoil.isBezierBased: return                   # not for Bezier airfoils
+
+        dialog = TE_Gap_Dialog (self, self.airfoil, parentPos=(0.25, 0.75), dialogPos=(0,1))
+
+        self.app.sig_te_gap_changed.emit(dialog.te_gap, dialog.xBlend)     # diagram show le radius
+        dialog.sig_new_te_gap.connect (self.app.sig_te_gap_changed.emit)
+
+        dialog.exec()     
+
+        if dialog.has_been_set:
+            # finalize modifications 
+            self.airfoil.geo.set_te_gap (dialog.te_gap, xBlend= dialog.xBlend)              
+
+            self.app._on_airfoil_changed()
+
+        self.app.sig_te_gap_changed.emit(None, None)                         # diagram hide le radius
+
 
 class Panel_Panels (Panel_Airfoil_Abstract):
     """ Panelling information """
@@ -392,7 +456,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=80,
-                set=self.app.do_repanel, hide=lambda: not self.airfoil.isEdited,
+                set=self.do_repanel, hide=lambda: not self.airfoil.isEdited,
                 disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
                 toolTip="Repanel airfoil with a new number of panels" ) 
 
@@ -423,6 +487,25 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         
         return l
  
+
+
+    def do_repanel (self): 
+        """ repanel airfoil - open repanel dialog""" 
+
+        dialog = Repanel_Airfoil_Dialog (self, self.airfoil.geo,
+                                         parentPos=(0.35, 0.75), dialogPos=(0,1))
+
+        self.app.sig_panelling_changed.emit()                 # diagram show panelling
+        dialog.sig_new_panelling.connect (self.app.sig_panelling_changed.emit)
+
+        dialog.exec()     
+
+        if dialog.has_been_repaneled:
+            # finalize modifications 
+            self.airfoil.geo.repanel (just_finalize=True)                
+
+            self.app._on_airfoil_changed()
+
 
     def _on_panelling_finished (self, aSide : Side_Airfoil_Bezier):
         """ slot for panelling (dialog) finished - reset airfoil"""
@@ -481,7 +564,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
         """ add Widgets to header layout"""
 
         Button (l_head, text="Set F&lap", width=80,
-                set=self.app.do_flap, hide=lambda: not self.mode_modify,
+                set=self.do_flap, hide=lambda: not self.mode_modify,
                 disable=self._set_flap_disabled,
                 toolTip="Set flap at airfoil" ) 
 
@@ -498,7 +581,6 @@ class Panel_Flap (Panel_Airfoil_Abstract):
 
 
     def _init_layout (self):
-
 
         geo             = self.airfoil.geo
 
@@ -579,6 +661,26 @@ class Panel_Flap (Panel_Airfoil_Abstract):
                 l.setColumnStretch (2,3)
 
         return l
+
+
+    def do_flap (self): 
+        """ set flaps - run set flap dialog""" 
+
+        dialog = Flap_Airfoil_Dialog (self, self.airfoil, parentPos=(0.55, 0.80), dialogPos=(0,1))
+
+        self.app.sig_flap_changed.emit (True)                        # diagram show flap settings
+        dialog.sig_new_flap_settings.connect (self.app.sig_flap_changed.emit)
+
+        dialog.exec()     
+
+        if dialog.has_been_flapped:
+            # finalize modifications 
+            self.airfoil.do_flap ()              
+
+            self.app._on_airfoil_changed()
+
+        self.app.sig_flap_changed.emit (False)                       # diagram hide flap settings
+
 
     @override
     def refresh(self, reinit_layout=False):

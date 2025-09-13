@@ -82,15 +82,15 @@ def _linestyle_of (aType : Line.Type) -> QColor:
     """ returns PenStyle for line depending on its type """
 
     if aType == Line.Type.CAMBER:
-        style = style=Qt.PenStyle.DashDotLine
+        style = Qt.PenStyle.DashDotLine
     elif aType == Line.Type.THICKNESS:
-        style = style=Qt.PenStyle.DashLine
+        style = Qt.PenStyle.DashLine
     elif aType == Line.Type.UPPER:
-        style = style=Qt.PenStyle.DotLine
+        style = Qt.PenStyle.DotLine
     elif aType == Line.Type.LOWER:
-        style = style=Qt.PenStyle.DotLine
+        style = Qt.PenStyle.DotLine
     else:
-        style = style=Qt.PenStyle.SolidLine
+        style = Qt.PenStyle.SolidLine
 
     return style
 
@@ -260,6 +260,7 @@ class Movable_LE_Point (Movable_Point):
     def __init__ (self, 
                   geo : Geometry, 
                   circle : pg.ScatterPlotItem, 
+                  show_label_static_with_value = False, 
                   movable = False, 
                   **kwargs):
 
@@ -267,6 +268,7 @@ class Movable_LE_Point (Movable_Point):
         if geo.isBezier:
             movable = False 
 
+        self._show_label_static_with_value = show_label_static_with_value
         self._geo = geo
         self._circle_item = circle
         xy = 2 * self._geo.le_radius , 0
@@ -297,6 +299,13 @@ class Movable_LE_Point (Movable_Point):
         new_radius = self.x / 2
         self._geo.set_le_radius (new_radius)
         self._changed()
+
+
+    def label_static (self, *_):
+        if self._show_label_static_with_value:
+            return self.label_moving()
+        else: 
+            return super().label_static() 
 
 
     def label_moving (self, *_):
@@ -686,6 +695,46 @@ class TE_Gap_Artist (Artist):
                 pt = Movable_TE_Point (self.design_airfoil.geo, p, show_label_static_with_value=True,
                                        movable=False, color=color)
                 self._add (pt) 
+
+
+
+
+class LE_Radius_Artist (Artist):
+    """Plot airfoil based on current LE radius"""
+
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+    @property
+    def design_airfoil (self) -> Airfoil:
+        for airfoil in self.airfoils:
+            if airfoil.usedAsDesign:
+                return airfoil 
+
+    def _plot (self): 
+    
+        if not self.design_airfoil: return
+
+        color = _color_airfoil (self.airfoils, self.design_airfoil)
+        color.setAlphaF (0.8)
+            
+        for line in [self.design_airfoil.geo.upper, 
+                     self.design_airfoil.geo.lower]:
+            
+            style = _linestyle_of (line._type)
+            pen   = pg.mkPen(color, width=1, style=style)
+
+            p = self._plot_dataItem (line.x, line.y, pen = pen, zValue=5)
+
+        # plot le circle 
+
+        radius = self.design_airfoil.geo.le_radius
+        circle_item = self._plot_circle (radius, 0, color=color, size=2*radius, 
+                                        style=Qt.PenStyle.DotLine)
+        pl = Movable_LE_Point (self.design_airfoil.geo, circle_item, 
+                               show_label_static_with_value=True, movable=False, color=color)
+        self._add(pl) 
 
 
 

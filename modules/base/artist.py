@@ -362,7 +362,13 @@ class Movable_Point (pg.TargetItem):
     @override
     def mouseDragEvent(self, ev: MouseDragEvent):
 
-        super().mouseDragEvent (ev) 
+        try:
+            # it can happen that during move there is None in a position which leads to an exception
+            super().mouseDragEvent (ev) 
+        except:
+            # avoid further processing 
+            ev.accept()
+            return
 
         if ev.isStart() and self.moving:
             self.setLabel (self.label_moving, self._label_opts(moving=True))

@@ -48,8 +48,7 @@ from base.widgets           import *
 
 from app_utils              import *
 from airfoil_widgets        import * 
-from airfoil_dialogs        import (Airfoil_Save_Dialog, Blend_Airfoil_Dialog, Repanel_Airfoil_Dialog,
-                                    Flap_Airfoil_Dialog, TE_Gap_Dialog)
+from airfoil_dialogs        import Airfoil_Save_Dialog
 from airfoil_diagrams       import Diagram_Airfoil_Polar            
 from xo2_dialogs            import (Xo2_Run_Dialog, Xo2_Select_Dialog, Xo2_OpPoint_Def_Dialog, Xo2_New_Dialog)
 from xo2_panels             import create_case_from_path
@@ -91,11 +90,10 @@ class Main (QMainWindow):
     sig_blend_changed           = pyqtSignal()          # new (intermediate) blend 
     sig_polar_set_changed       = pyqtSignal()          # new polar sets attached to airfoil
     sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
-    sig_enter_blend             = pyqtSignal()          # starting blend airfoil with
-    sig_enter_flapping          = pyqtSignal(bool)      # start /end flapping dialog 
-    sig_enter_te_gap            = pyqtSignal(bool)      # start /end te gap dialog
-    sig_flap_changed            = pyqtSignal()          # flap setting (Flapper) changed 
-    sig_te_gap_changed          = pyqtSignal()          # te gap changed 
+    sig_flap_changed            = pyqtSignal(bool)      # flap setting (Flapper) changed 
+
+    sig_te_gap_changed          = pyqtSignal(object, object)  # te gap changed 
+    sig_le_radius_changed       = pyqtSignal(object, object)  # le radius changed 
 
     sig_mode_optimize           = pyqtSignal(bool)      # enter / leave mode optimize
     sig_new_case_optimize       = pyqtSignal()          # new case optimize selected
@@ -254,8 +252,6 @@ class Main (QMainWindow):
         self.sig_airfoil_changed.connect        (self.diagram.on_airfoil_changed)
         self.sig_airfoil_2_changed.connect      (self.diagram.on_airfoil_2_changed)
         self.sig_bezier_changed.connect         (self.diagram.on_bezier_changed)
-        self.sig_panelling_changed.connect      (self.diagram.on_airfoil_changed)
-        self.sig_blend_changed.connect          (self.diagram.on_blend_changed)
         self.sig_polar_set_changed.connect      (self.diagram.on_polar_set_changed)
         self.sig_airfoils_ref_changed.connect   (self.diagram.on_airfoils_ref_changed)
 
@@ -266,12 +262,11 @@ class Main (QMainWindow):
         self.sig_new_case_optimize.connect      (self.diagram.on_new_case_optimize)
         self.sig_xo2_opPoint_def_selected.connect (self.diagram.on_xo2_opPoint_def_selected)
 
-        self.sig_enter_blend.connect            (self.diagram.on_blend_airfoil)
-        self.sig_enter_panelling.connect        (self.diagram.on_enter_panelling)
-        self.sig_enter_flapping.connect         (self.diagram.on_enter_flapping)
-        self.sig_enter_te_gap.connect           (self.diagram.on_enter_te_gap)
+        self.sig_panelling_changed.connect      (self.diagram.on_panelling_changed)
+        self.sig_blend_changed.connect          (self.diagram.on_blend_changed)
         self.sig_flap_changed.connect           (self.diagram.on_flap_changed)
         self.sig_te_gap_changed.connect         (self.diagram.on_te_gap_changed)
+        self.sig_le_radius_changed.connect      (self.diagram.on_le_radius_changed)
 
         # --- final set of UI depending on mode View or Optimize ---------------
 
@@ -922,90 +917,6 @@ class Main (QMainWindow):
         self.set_airfoil (self.case.initial_airfoil_design() , silent=False)
   
 
-
-    def do_blend_with (self): 
-        """ blend with another airfoil - open blend airfoil dialog """ 
-
-        self.sig_enter_blend.emit()
-
-        dialog = Blend_Airfoil_Dialog (self, self.airfoil, self.airfoil_seed, 
-                                       parentPos=(0.25, 0.75), dialogPos=(0,1))  
-
-        dialog.sig_blend_changed.connect (self.sig_blend_changed.emit)
-        dialog.sig_airfoil_2_changed.connect (self.set_airfoil_2)
-
-        dialog.exec()     
-
-        if dialog.airfoil2 is not None: 
-            # do final blend with high quality (splined) 
-            self.airfoil.geo.blend (self.airfoil_seed.geo, 
-                                      dialog.airfoil2.geo, 
-                                      dialog.blendBy) 
-            self.set_airfoil_2 (None)
-            self._on_airfoil_changed()
-
-
-    def do_repanel (self): 
-        """ repanel airfoil - open repanel dialog""" 
-
-        self.sig_enter_panelling.emit()
-
-        dialog = Repanel_Airfoil_Dialog (self, self.airfoil.geo,
-                                         parentPos=(0.35, 0.75), dialogPos=(0,1))
-
-        dialog.sig_new_panelling.connect (self.sig_panelling_changed.emit)
-        dialog.exec()     
-
-        if dialog.has_been_repaneled:
-            # finalize modifications 
-            self.airfoil.geo.repanel (just_finalize=True)                
-
-            self._on_airfoil_changed()
-
-
-
-    def do_flap (self): 
-        """ set flaps - run set flap dialog""" 
-
-        self.sig_enter_flapping.emit(True)
-
-        dialog = Flap_Airfoil_Dialog (self, self.airfoil,
-                                         parentPos=(0.55, 0.80), dialogPos=(0,1))
-
-        dialog.sig_new_flap_settings.connect (self.sig_flap_changed.emit)
-        dialog.exec()     
-
-        if dialog.has_been_flapped:
-            # finalize modifications 
-            self.airfoil.do_flap ()              
-
-            self._on_airfoil_changed()
-
-        self.sig_enter_flapping.emit(False)
-
-
-    def do_te_gap (self): 
-        """ set TE gap - run set TE gap dialog""" 
-
-        if self.airfoil.isBezierBased: return                   # not for Bezier airfoils
-
-        self.sig_enter_te_gap.emit(True)
-
-        dialog = TE_Gap_Dialog (self, self.airfoil,
-                                parentPos=(0.25, 0.75), dialogPos=(0,1))
-
-        dialog.sig_new_te_gap.connect (self.sig_te_gap_changed.emit)
-        dialog.exec()     
-
-        if dialog.has_been_set:
-            # finalize modifications 
-            self.airfoil.geo.set_te_gap (dialog.te_gap, xBlend= dialog.xBlend)              
-
-            self._on_airfoil_changed()
-
-        self.sig_enter_te_gap.emit(False)
-
-
     def do_save_as (self): 
         """ save current airfoil as ..."""
 
@@ -1134,8 +1045,7 @@ class Main (QMainWindow):
         self._watchdog.set_case_optimize (lambda: self.case)
 
         self._watchdog.sig_xo2_new_state.connect        (self.panel_optimize.refresh)
-        self._watchdog.sig_xo2_new_state.connect        (diag.on_results)
-        self._watchdog.sig_xo2_new_design.connect       (diag.on_results)
+        self._watchdog.sig_xo2_new_state.connect        (diag.on_results) 
         self._watchdog.sig_xo2_new_step.connect         (diag.on_new_step)
         self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
 
@@ -1159,7 +1069,6 @@ class Main (QMainWindow):
         self._watchdog.sig_xo2_new_state.disconnect     (self.panel_optimize.refresh)
 
         self._watchdog.sig_xo2_new_state.disconnect     (diag.on_results)
-        self._watchdog.sig_xo2_new_design.disconnect    (diag.on_results)
         self._watchdog.sig_xo2_new_step.disconnect      (diag.on_new_step)
         self._watchdog.sig_xo2_still_running.disconnect (diag.refresh)
         self._watchdog.set_case_optimize (None)

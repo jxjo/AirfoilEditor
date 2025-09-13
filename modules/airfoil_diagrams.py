@@ -550,15 +550,6 @@ class Diagram_Item_Airfoil (Diagram_Item):
         logger.debug (f"{str(self)} _on_enter_panelling")
 
 
-    def _on_blend_airfoil (self):
-        """ slot to handle blend airfoil entered"""
-
-        self.line_artist.set_show (False)           # switch off thickness & camber 
-        self.section_panel.refresh()
-
-        logger.debug (f"{str(self)} _on_blend_airfoil")
-
-
     @property 
     def case (self) -> Case_Abstract:
         """ actual case (Direct Design or Optimize)"""
@@ -742,10 +733,14 @@ class Diagram_Item_Airfoil (Diagram_Item):
     def setup_artists (self):
         """ create and setup the artists of self"""
         
-        self.airfoil_artist = Airfoil_Artist   (self, self.airfoils, show_legend=True)
+        a = Airfoil_Artist   (self, self.airfoils, show_legend=True)
+        self.airfoil_artist = a
+        self._add_artist (a)
 
-        self.line_artist = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
-        self.line_artist.sig_geometry_changed.connect (self.sig_geometry_changed.emit)
+        a = Airfoil_Line_Artist (self, self.airfoils, show=False, show_legend=True)
+        a.sig_geometry_changed.connect (self.sig_geometry_changed.emit)
+        self.line_artist = a
+        self._add_artist (a)
 
         self.bezier_artist = Bezier_Artist (self, self.airfoils)
         self.bezier_artist.sig_bezier_changed.connect (self.sig_geometry_changed.emit)
@@ -758,6 +753,9 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self._add_artist (a)
 
         a  = TE_Gap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=False)
+        self._add_artist (a)
+
+        a  = LE_Radius_Artist (self, lambda: self.design_airfoil, show=False, show_legend=False)
         self._add_artist (a)
 
         a  = Xo2_Transition_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True,
@@ -786,8 +784,6 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
     @override
     def refresh_artists (self):
-        self.airfoil_artist.refresh() 
-        self.line_artist.refresh() 
 
         # switch off deviation artist if not design
         if not self._is_design_and_bezier():
@@ -1865,15 +1861,6 @@ class Diagram_Airfoil_Polar (Diagram):
         self.refresh(also_viewRange=False)
 
 
-    def on_blend_changed (self):
-        """ slot to handle blending of airfoil changed signal """
-
-        logger.debug (f"{str(self)} on blend changed")
-        for item in self.diagram_items:
-            if item.isVisible(): 
-                item.refresh()
-
-
     def on_new_design (self):
         """ slot to handle new airfoil design signal """
 
@@ -1898,28 +1885,11 @@ class Diagram_Airfoil_Polar (Diagram):
         item.bezier_artist.refresh_from_side (aSide_type)
 
 
-    def on_blend_airfoil (self):
-        """ slot to handle blend airfoil entered signal -> show org airfoil"""
-
-        item : Diagram_Item_Airfoil = self._get_first_item (Diagram_Item_Airfoil)
-        item._on_blend_airfoil ()
-
-        self.refresh()                          # plot ref airfoils 
-        logger.debug (f"{str(self)} on_blend_airfoil")
-
-
     def on_airfoil_2_changed (self):
         """ slot to handle airfoil target changed signal """
 
         logger.debug (f"{str(self)} on airfoil target changed")
         self.refresh(also_viewRange=False)
-
-
-    def on_enter_panelling (self):
-        """ slot user started panelling dialog - show panels """
-
-        item : Diagram_Item_Airfoil = self._get_first_item (Diagram_Item_Airfoil)
-        item._on_enter_panelling ()
 
 
     def on_polar_set_changed (self):
@@ -1988,33 +1958,53 @@ class Diagram_Airfoil_Polar (Diagram):
             artist.refresh()
 
 
-    def on_enter_flapping (self, aBool):
-        """ slot enter flapping - show flap artist"""
-        artist : Flap_Artist
-        for artist in self._get_artist (Flap_Artist):
-            artist.set_show (aBool)
 
-
-    def on_flap_changed (self):
+    def on_flap_changed (self, aBool : bool):
         """ slot flap settings changed - refresh flap artist"""
         artist : Flap_Artist
         for artist in self._get_artist (Flap_Artist):
-            artist.refresh()
-
-
-    def on_enter_te_gap (self, aBool):
-        """ slot enter set te gap - show te_gap artist"""
-        artist : TE_Gap_Artist
-        for artist in self._get_artist (TE_Gap_Artist):
             artist.set_show (aBool)
 
 
-    def on_te_gap_changed (self):
+    def on_te_gap_changed (self, te_gap, xBlend):
         """ slot te gap changed - refresh te gap artist"""
         artist : TE_Gap_Artist
         for artist in self._get_artist (TE_Gap_Artist):
-            artist.refresh()
+            artist.set_show (te_gap is not None)
 
+
+    def on_le_radius_changed (self, le_radius, xBlend):
+        """ slot le radius changed- show le_radius artist"""
+        artist : LE_Radius_Artist
+        for artist in self._get_artist (LE_Radius_Artist):
+            artist.set_show (le_radius is not None)
+
+
+    def on_blend_changed (self):
+        """ slot to handle blending of airfoil changed signal """
+
+        logger.debug (f"{str(self)} on blend changed")
+
+        # swich off Line artist
+        for artist in self._get_artist (Airfoil_Line_Artist):
+            if artist.show: artist.set_show (False)
+
+        self.refresh()                          
+
+
+    def on_panelling_changed (self):
+        """ slot to handle blending of airfoil changed signal """
+
+        logger.debug (f"{str(self)} on blend changed")
+
+        # swich off Line artist
+        for artist in self._get_artist (Airfoil_Line_Artist):
+            if artist.show: artist.set_show (False)
+
+        # switch on show points
+        artist : Airfoil_Artist
+        for artist in self._get_artist (Airfoil_Artist):
+            artist.set_show_points (True)
 
 
     # --- private slots ---------------------------------------------------
