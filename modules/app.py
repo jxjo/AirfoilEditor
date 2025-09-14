@@ -40,7 +40,7 @@ from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
 from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from model.xo2_driver       import Worker, Xoptfoil2
 from model.xo2_input        import Input_File
-from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract
+from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
 
 from base.common_utils      import * 
 from base.panels            import Container_Panel, Win_Util, Toaster
@@ -391,6 +391,8 @@ class Main (QMainWindow):
 
         self.set_case (case)
 
+        self._airfoils_ref_scale = None                 # re-init scales for new airfois ref 
+
         if not silent: 
             self.refresh ()
             self.sig_new_case_optimize.emit()
@@ -636,8 +638,6 @@ class Main (QMainWindow):
         if self._mode_optimize != aBool: 
             self._mode_optimize = aBool   
 
-            self._airfoils_ref_scale = None                 # re-init scales for new airfois ref 
-
 
     def mode_modify_finished (self, ok=False):
         """ 
@@ -705,7 +705,7 @@ class Main (QMainWindow):
             next_airfoil = Example()                            # should not happen
         next_airfoil.set_usedAs (usedAs.NORMAL)                 # normal AE color 
         
-        self.set_case (None)  
+        self.set_case_optimize (None, silent=True)    
         self.set_mode_optimize (False) 
 
         self.set_airfoil (next_airfoil, silent=True)            # set next airfoil to show      
@@ -901,17 +901,13 @@ class Main (QMainWindow):
 
             text = "The airfoil is not normalized.\n\n" + \
                    "Match Bezier will not lead to the best results."
-            button = MessageBox.confirm (self, "Modify Airfoil", text)
+            button = MessageBox.confirm (self, "New As Bezier", text)
             if button == QMessageBox.StandardButton.Cancel:
                 return
 
-        # create initial Bezier airfoil based on current
-
-        airfoil_bez = Airfoil_Bezier.onAirfoil (self._airfoil)
-
         # create new Design Case and get/create first design 
 
-        self.set_case (Case_Direct_Design (airfoil_bez))
+        self.set_case (Case_As_Bezier (self._airfoil))
 
         self.set_mode_modify (True)  
         self.set_airfoil (self.case.initial_airfoil_design() , silent=False)

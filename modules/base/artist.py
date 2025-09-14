@@ -326,7 +326,7 @@ class Movable_Point (pg.TargetItem):
         try:
             newPos = pg.Point(*args)
         except: 
-            raise TypeError(f"Could not make Point from arguments: {args!r}")
+            return                                  # ignore wrong args
 
         if (round(self._pos.x(), 6) !=  round(newPos.x(), 6) or
             round(self._pos.y(), 6) !=  round(newPos.y(), 6)): 

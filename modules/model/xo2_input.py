@@ -740,7 +740,10 @@ class OpPoint_Definition:
 
                 if self.optVar == var.GLIDE:                        # recalc cl/cd to cd  - or vice versa 
                     optVar = var.CD 
-                    optValue = polar_point.cl / optValue            # cd = cl / glide
+                    if optValue != 0.0:     
+                        optValue = polar_point.cl / optValue        # cd = cl / glide
+                    else:
+                        optValue = 0.005                            # avoid div by 0 - should not happen  - take dummy value  
                 else:
                     optVar = self.optVar
 

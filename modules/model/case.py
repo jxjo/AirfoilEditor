@@ -130,6 +130,9 @@ class Case_Direct_Design (Case_Abstract):
 
         super().__init__()
 
+        if not isinstance (airfoil, Airfoil):
+            raise ValueError (f"{airfoil} is not an airfoil for Case")
+
         self._airfoil_seed = airfoil
         self._workingDir   = airfoil.pathName_abs 
 
@@ -382,6 +385,75 @@ class Case_Direct_Design (Case_Abstract):
 
 
 
+class Case_As_Bezier (Case_Direct_Design):
+    """
+    A Direct Design Case: New Bezier airfoil based on a .dat airfoil
+    """
+
+    NAME_EXT = "_bezier"
+
+    def __init__(self, airfoil: Airfoil):
+
+        if not type(airfoil) is Airfoil:
+            raise ValueError (f"Airfoil for 'New as Bezier' must be .dat Airfoil, not {type(airfoil)}")
+
+        # create initial Bezier airfoil based on current
+        self._initial_airfoil_bez = Airfoil_Bezier.onAirfoil (airfoil)
+
+        # remove existing design dir - start with new designs
+        shutil.rmtree (self.design_dir, ignore_errors=True)
+
+        super().__init__(airfoil)
+
+
+
+    @property
+    def design_dir (self) -> str:
+        """ relative directory with airfoil designs"""
+
+        return f"{os.path.splitext(self._initial_airfoil_bez.fileName)[0]}{self.DESIGN_DIR_EXT}"
+
+
+    def initial_airfoil_design (self) -> Airfoil:
+        """ 
+        returns first design as the working airfoil - either 
+            - normalized version of seed airfoil 
+            - last design of already existing design in design folder 
+        """
+
+        airfoil : Airfoil_Bezier = self._initial_airfoil_bez.asCopy ()
+        airfoil.useAsDesign()
+        airfoil.set_pathName   (self.design_dir, noCheck=True)      # no check, because workingDir is needed
+        airfoil.set_workingDir (self.workingDir)
+
+        self._airfoil_designs = []                                  # reset designs - start new
+        self.add_design (airfoil)
+
+        airfoil_copy = airfoil.asCopy_design () 
+        airfoil_copy.set_isEdited (True)
+
+        return airfoil_copy
+
+    def get_final_from_design (self, airfoil_design : Airfoil) -> Airfoil:
+        """ returns a final airfoil from airfoil_design based on original airfoil  """
+
+        airfoil = airfoil_design.asCopy ()
+        airfoil.set_isEdited (False)
+
+        # set new name and fileName 
+
+        airfoil.set_name     (self._initial_airfoil_bez.name)
+        airfoil.set_pathName (self._initial_airfoil_bez.pathName)
+        airfoil.set_fileName (self._initial_airfoil_bez.fileName)
+
+        return airfoil
+
+
+
+
+
+
+# -------------------------------------------------------------------
 
 class Case_Optimize (Case_Abstract):
     """
