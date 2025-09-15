@@ -569,45 +569,44 @@ class Xo2_OpPoint_Artist (Artist):
         # sanity 
         if opPoint_def is None: return None
 
+        label   = None 
         optVar  = opPoint_def.optVar
         optType = opPoint_def.optType
         allow_improved = opPoint_def._myList.allow_improved_target
 
-        # optVar must be in diagram to show distanc 
+        # optVar must be in diagram to show distance as it comes from Xo2 results 
 
-        if not (optVar in xyVars): return None 
+        if optVar in xyVars:  
 
-        # set distance = 0 if 'allow_improved_target' and result (distance) is better
+            # set distance = 0 if 'allow_improved_target' and result (distance) is better
 
-        distance = opPoint.distance
+            distance = opPoint.distance
 
-        if optType == OPT_TARGET:                            # targets - take deviation to target
-            if allow_improved   and optVar == var.CD and distance < 0.0:
-                distance = 0.0
-            elif allow_improved and optVar != var.CD and distance > 0.0:
-                distance = 0.0
-            else:
-                distance = abs(distance)
+            if optType == OPT_TARGET:                            # targets - take deviation to target
+                if allow_improved   and optVar == var.CD and distance < 0.0:
+                    distance = 0.0
+                elif allow_improved and optVar != var.CD and distance > 0.0:
+                    distance = 0.0
+                else:
+                    distance = abs(distance)
 
-        # format value for label 
+            # format value for label 
 
-        label = None 
+            if  optType == OPT_TARGET:                              # targets - take deviation to target
+                if optVar == var.CD and round_down (distance,5):
+                    label = f"delta {optVar}: {distance:.5f}"
+                elif optVar != var.CD and round_up (distance,2):
+                    label = f"delta {optVar}: {distance:.2f}"        
+                else: 
+                    label = f"hit"        
+            else:                                               # min/max - deviation is improvement 
+                if  opPoint_def.optType == OPT_MAX:             # eg. OPT_MAX of 'glide' - more is better 
+                    improv = distance
+                else:                                           # eg OPT_MIN of 'cd' - less is better
+                    improv = distance
 
-        if  optType == OPT_TARGET:                              # targets - take deviation to target
-            if optVar == var.CD and round_down (distance,5):
-                label = f"delta {optVar}: {distance:.5f}"
-            elif optVar != var.CD and round_up (distance,2):
-                label = f"delta {optVar}: {distance:.2f}"        
-            else: 
-                label = f"hit"        
-        else:                                               # min/max - deviation is improvement 
-            if  opPoint_def.optType == OPT_MAX:             # eg. OPT_MAX of 'glide' - more is better 
-                improv = distance
-            else:                                           # eg OPT_MIN of 'cd' - less is better
-                improv = distance
-
-            if improv: 
-                label = f"d{var.CD} {improv:.5f}" if optVar == var.CD else f"d{var.CD} {improv:.2f}"
+                if improv: 
+                    label = f"d{var.CD} {improv:.5f}" if optVar == var.CD else f"d{var.CD} {improv:.2f}"
 
         # add flap angle if flap optimize 
 
