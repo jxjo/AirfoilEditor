@@ -1437,7 +1437,7 @@ class Watchdog (QThread):
 
             case : Case_Optimize = self._case_optimize_fn ()
 
-            # reset saved xo2 state for state change detection if there is new xo2 instance  
+            # reset saved xo2 state for state change detection if there is new xo2 instance 
 
             if id(case.xo2) != self._xo2_id:
                 case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
@@ -1448,26 +1448,31 @@ class Watchdog (QThread):
                 self.sig_xo2_new_state.emit()                                   # ensure, UI starts with current state 
                 return 
 
+            # get current xo2 state and nDesigns, nSteps 
+
+            xo2_state    = case.xo2.state                                       # ... will re-calc state info 
+            xo2_nDesigns = case.xo2.nDesigns
+            xo2_nSteps   = case.xo2.nSteps  
+
             # detect state change of new design and siganl (if not first)
 
-            if case.xo2.state != self._xo2_state:
+            if xo2_state != self._xo2_state:
 
                 case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
                 self._xo2_state = case.xo2.state
                 self.sig_xo2_new_state.emit()
 
-            elif case.xo2.nDesigns != self._xo2_nDesigns:
-
-                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
-                self._xo2_nDesigns = case.xo2.nDesigns
-                self._xo2_nSteps = case.xo2.nSteps                              # new design will also update nsteps
-                self.sig_xo2_new_design.emit(case.xo2.nDesigns)
-
-            elif case.xo2.nSteps != self._xo2_nSteps:
+            elif xo2_nSteps != self._xo2_nSteps:
 
                 case.results._reader_optimization_history.set_results_could_be_dirty(True)
-                self._xo2_nSteps = case.xo2.nSteps
+                self._xo2_nSteps = xo2_nSteps
                 self.sig_xo2_new_step.emit()
+
+            elif xo2_nDesigns != self._xo2_nDesigns:
+
+                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
+                self._xo2_nDesigns = xo2_nDesigns
+                self.sig_xo2_new_design.emit(case.xo2.nDesigns)
  
             elif case.isRunning:
 
