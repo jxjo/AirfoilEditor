@@ -221,17 +221,27 @@ class Movable_TE_Point (Movable_Point):
         self._changed()
 
 
+    @override
     def label_static (self, *_):
+        """label static"""
         if self._show_label_static_with_value:
-            return self.label_moving()
+            return f"{self.name}  {self.y*2:.2%}"
         else: 
             return super().label_static() 
 
 
+    @override
+    def label_hover (self, *_):
+        """label when hovered"""
+        return f"{self.name}  {self.y*2:.2%}"
+
+
+    @override
     def label_moving (self, *_):
-        return f"{self.name}  {self.y*2:.2%} "
+        """label when moving"""
+        return f"{self.name}  {self.y*2:.2%} with {Geometry.TE_GAP_XBLEND:.0%} blend range"
 
-
+    @override
     def _label_opts (self, moving=False, hover=False) -> dict:
         """ returns the label options as dict """
 
@@ -301,16 +311,25 @@ class Movable_LE_Point (Movable_Point):
         self._changed()
 
 
+    @override
     def label_static (self, *_):
+        """label static"""
         if self._show_label_static_with_value:
-            return self.label_moving()
+            return f"{self.name}  {self.x/2:.2%}"
         else: 
             return super().label_static() 
 
 
-    def label_moving (self, *_):
+    @override
+    def label_hover (self, *_):
+        """label when hovered"""
+        return f"{self.name}  {self.x/2:.2%}"
 
-        return f"{self.name}  {self.x/2:.2%} "
+
+    @override
+    def label_moving (self, *_):
+        """label when moving"""
+        return f"{self.name}  {self.x/2:.2%} with {Geometry.LE_RADIUS_XBLEND:.0%} blend range"
 
 
 

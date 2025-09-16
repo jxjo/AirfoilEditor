@@ -1463,7 +1463,6 @@ class TE_Gap_Dialog (Dialog):
         self._xBlend = aVal
         self._airfoil.geo.set_te_gap (self.te_gap, xBlend=aVal, moving=True)
 
-        self._has_been_set = True
         self.refresh()
         self.sig_new_te_gap.emit(self.te_gap, self.xBlend)      # inform parent -> diagram update
 
@@ -1563,7 +1562,6 @@ class LE_Radius_Dialog (Dialog):
         self._xBlend = aVal
         self._airfoil.geo.set_le_radius (self.le_radius, xBlend=aVal, moving=True)
 
-        self._has_been_set = True
         self.refresh()
         self.sig_new_le_radius.emit(self.le_radius, self.xBlend)          # inform parent -> diagram update
 

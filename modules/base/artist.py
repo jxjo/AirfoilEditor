@@ -277,7 +277,6 @@ class Movable_Point (pg.TargetItem):
     def label_hover (self, *_):
         """ the label when hovered - can be overloaded """
         return self.label_moving (*_)
-        # return f"Point {self.y:.4n}@{self.x:.4n} hovered"
 
 
     def _label_opts (self, moving=False, hover=False) -> dict:

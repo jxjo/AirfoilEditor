@@ -666,6 +666,7 @@ class Main (QMainWindow):
             else: 
                 remove_designs = dlg.remove_designs
                 self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
+                logger.info (f"New airfoil {new_airfoil.fileName} created from {self.airfoil.fileName}")
 
         # leave mode_modify  
 
@@ -922,6 +923,7 @@ class Main (QMainWindow):
         if ok_save: 
             self.set_airfoil (self.airfoil)
             self._toast_message (f"New airfoil {self.airfoil.fileName} saved", toast_style=style.GOOD)
+            logger.info (f"Airfoil saved as {self.airfoil.fileName}")
 
 
     def do_rename (self): 
@@ -941,6 +943,7 @@ class Main (QMainWindow):
             # a copy with new name was created 
             self.set_airfoil (self.airfoil)                                 # refresh with new 
             self._toast_message (f"Airfoil renamed to {self.airfoil.fileName}", toast_style=style.GOOD)
+            logger.info (f"Airfoil renamed to {self.airfoil.fileName}")
 
 
     def do_delete (self): 
@@ -959,6 +962,8 @@ class Main (QMainWindow):
             os.remove (self.airfoil.pathFileName_abs)                               # remove airfoil
 
             self._toast_message (f"Airfoil {self.airfoil.fileName} deleted", toast_style=style.GOOD)
+            logger.info (f"Airfoil {self.airfoil.fileName} deleted")
+
             self.set_airfoil (next_airfoil)                                         # try to set on next airfoil
 
             if next_airfoil.isExample:
