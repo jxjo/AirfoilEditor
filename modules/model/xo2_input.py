@@ -2406,7 +2406,7 @@ class Nml_camb_thick_options (Nml_Abstract):
         camber           = .true.                      ! optimize camber
         camber_pos       = .true.                      ! optimize max. camber position
         le_radius        = .true.                      ! optimize leading edge radius
-        le_radius_blend  = .true.                      ! optimize blending distance for le radius change 
+        le_radius_blend  = .true.                      ! optimize blending range for le radius change 
         initial_perturb  = 0.1d0                       ! max. perturb when creating initial designs     
     """
     name = "camb_thick_options"

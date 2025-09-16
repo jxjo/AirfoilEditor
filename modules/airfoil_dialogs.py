@@ -1456,7 +1456,7 @@ class TE_Gap_Dialog (Dialog):
 
     @property
     def xBlend (self) -> float:
-        """ blending distance x/c from TE"""
+        """ blending range x/c from TE"""
         return self._xBlend
     
     def set_xBlend (self, aVal: float):
@@ -1494,10 +1494,10 @@ class TE_Gap_Dialog (Dialog):
         r,c = 0,0 
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
-        FieldF  (l,r,c, lab="Blend from TE", width=75, step=1, lim=(0, 98), dec=1, unit="%",
+        FieldF  (l,r,c, lab="Blend from TE", width=75, step=1, lim=(10, 100), dec=1, unit="%",
                         obj=self, prop=TE_Gap_Dialog.xBlend)
         Slider  (l,r,c+3, colSpan=2, width=100,  
-                        lim=(0.0, 0.98), dec=2,  
+                        lim=(0.1, 1.0), dec=2,  
                         obj=self, prop=TE_Gap_Dialog.xBlend)
         r += 1
         SpaceR  (l, r, stretch=1, height=10) 
@@ -1556,7 +1556,7 @@ class LE_Radius_Dialog (Dialog):
 
     @property
     def xBlend (self) -> float:
-        """ blending distance x/c from LE"""
+        """ blending range x/c from LE"""
         return self._xBlend
     
     def set_xBlend (self, aVal: float):
@@ -1570,7 +1570,7 @@ class LE_Radius_Dialog (Dialog):
 
     @property
     def le_radius (self) -> float:
-        """  LE radius as y/c """
+        """ LE radius as y/c """
         return self._le_radius
     
     def set_le_radius (self, aVal: float):
@@ -1581,6 +1581,14 @@ class LE_Radius_Dialog (Dialog):
         self.refresh()
         self.sig_new_le_radius.emit(self.le_radius, self.xBlend)          # inform parent -> diagram update
 
+    @property
+    def le_curvature (self) -> float:
+        """ LE curvature """
+        return 1 / self.le_radius if self.le_radius != 0 else 0.0
+    
+    def set_le_curvature (self, aVal: float):
+        if aVal != 0.0:
+            self.set_le_radius (1 / aVal)
 
     @property
     def has_been_set (self) -> bool:
@@ -1594,7 +1602,7 @@ class LE_Radius_Dialog (Dialog):
         r,c = 0,0 
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
-        FieldF  (l,r,c, lab="Blend from TE", width=75, step=1, lim=(1, 100), dec=1, unit="%",
+        FieldF  (l,r,c, lab="Blend from LE", width=75, step=1, lim=(1, 100), dec=1, unit="%",
                         obj=self, prop=LE_Radius_Dialog.xBlend)
         Slider  (l,r,c+3, colSpan=2, width=100,  
                         lim=(0.01, 1.0), dec=2,  
@@ -1608,8 +1616,10 @@ class LE_Radius_Dialog (Dialog):
         Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.001, 0.03), step=0.001, dec=3, 
                         obj=self, prop=LE_Radius_Dialog.le_radius)
         r += 1
-        FieldF  (l,r,c, lab="LE curvature", width=60, dec=0, 
-                        get=lambda: self._airfoil.geo.curvature.max_around_le, disable=True)
+        FieldF  (l,r,c, lab="LE curvature", width=75, dec=0, step=1.0, lim=(10, 1000),
+                        obj=self, prop=LE_Radius_Dialog.le_curvature)
+        Slider  (l,r,c+3, colSpan=2, width=100, lim=(10, 1000), step=10, dec=0, 
+                        obj=self, prop=LE_Radius_Dialog.le_curvature)
         r += 1
         SpaceR  (l, r, stretch=3) 
 

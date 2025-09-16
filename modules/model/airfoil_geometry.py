@@ -1819,17 +1819,19 @@ class Geometry ():
         Leading edge radius which is the reciprocal of curvature at le 
         """
         if self.curvature.at_le:
-            return 1.0 / self.curvature.at_le
+            return round (1.0 / self.curvature.at_le, 7)
         else: 
             return 0.0 
 
-    def _le_radius (self, moving=False): 
-        """ when 'moving' the radius of a temporary curvature based on _x,_y is returned"""
-        if moving: 
-            curv = Curvature_of_xy (self._x, self._y) 
+    @property
+    def le_curvature (self) -> float: 
+        """ 
+        Leading edge curvature which is the reciprocal of the le radius 
+        """
+        if self.curvature.at_le:
+            return self.curvature.at_le
         else: 
-            curv = self.curvature
-        return  1.0 / curv.at_le
+            return 0.0 
 
 
     @property
@@ -1966,7 +1968,7 @@ class Geometry ():
 
         Args: 
             newGap:   in y-coordinates - typically 0.01 or so 
-            xblend:   the blending distance from trailing edge 0..1
+            xblend:   the blending range from trailing edge 0..1
         """
 
         try: 
@@ -1982,15 +1984,15 @@ class Geometry ():
 
     def _set_te_gap (self, newGap, xBlend = TE_GAP_XBLEND):
         """ set te gap of upper and lower 
-         The procedere is based on xfoil allowing to define a blending distance from le.
+         The procedere is based on xfoil allowing to define a blending range from le.
 
         Arguments: 
             newGap:   in y-coordinates - typically 0.01 or so 
-            xblend:   the blending distance from trailing edge 0..1
+            xblend:   the blending range from trailing edge 0..1
         """
 
         newGap = clip (newGap, 0.0, 0.1)
-        xBlend = clip (xBlend, 0.0, 1.0)
+        xBlend = clip (xBlend, 0.1, 1.0)
 
         dgap   = newGap - self.te_gap 
 
@@ -2026,11 +2028,11 @@ class Geometry ():
 
     def set_le_radius (self, new_radius : float, xBlend = LE_RADIUS_XBLEND, moving=False):
         """ 
-        Set le radius of upper and lowe which is the reciprocal of curvature at le
+        Set le radius of upper and lower which is the reciprocal of curvature at le
         
         Arguments: 
-            factor:   to increase/decrease le radius 
-            xblend:   the blending distance from leading edge 0.001..1 - Default 0.1
+            new_radius:  new radius to apply 
+            xblend:      the blending range from leading edge 0.001..1
         """
 
         try: 
@@ -2045,16 +2047,29 @@ class Geometry ():
             self._clear_xy()
     
 
+    def set_le_curvature (self, new_curvature : float, xBlend = LE_RADIUS_XBLEND, moving=False):
+        """ 
+        Set le curvature of upper and lower which is the reciprocal of radius at le
+        
+        Arguments: 
+            new_curvature:   new curvature to apply 
+            xblend:          the blending range from leading edge 0.001..1
+        """
+
+        if new_curvature: 
+            self.set_le_radius (1.0 / new_curvature, xBlend, moving)
+
+
     def _set_le_radius (self, new_radius : float, xBlend : float = 0.1):
         """ 
         Set le radius which is the reciprocal of curvature at le 
 
-        The procedere is based on xfoil allowing to define a blending distance from le.
+        The procedere is based on xfoil allowing to define a blending range from le.
         Uses thickness, changes upper and lower side.
         
         Arguments: 
             new_radius:   in y-coordinates - typically 0.01 or so
-            xblend:   the blending distance from leading edge 0.001..1 - Default 0.1"""
+            xblend:   the blending range from leading edge 0.001..1 - Default 0.1"""
 
 
         new_radius = clip (new_radius, 0.001, 0.03)             # limit radius to reasonable values

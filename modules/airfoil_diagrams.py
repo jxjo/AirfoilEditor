@@ -1970,6 +1970,7 @@ class Diagram_Airfoil_Polar (Diagram):
         """ slot te gap changed - refresh te gap artist"""
         artist : TE_Gap_Artist
         for artist in self._get_artist (TE_Gap_Artist):
+            artist.set_xBlend (xBlend)
             artist.set_show (te_gap is not None)
 
 
@@ -1977,6 +1978,7 @@ class Diagram_Airfoil_Polar (Diagram):
         """ slot le radius changed- show le_radius artist"""
         artist : LE_Radius_Artist
         for artist in self._get_artist (LE_Radius_Artist):
+            artist.set_xBlend (xBlend)
             artist.set_show (le_radius is not None)
 
 

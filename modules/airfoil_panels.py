@@ -334,13 +334,13 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_le_radius, 
                 hide=lambda: not self.mode_modify or self.mode_bezier,
-                toolTip="Set leading edge radius with a flexible blending distance")
+                toolTip="Set leading edge radius with a flexible blending range")
         r += 1
         FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
                 hide=lambda: not self.mode_modify or self.mode_bezier,
-                toolTip="Set trailing edge gap with a flexible blending distance")
+                toolTip="Set trailing edge gap with a flexible blending range")
 
         r += 1
         SpaceR (l,r, height=5)

@@ -664,6 +664,11 @@ class Flap_Artist (Artist):
 class TE_Gap_Artist (Artist):
     """Plot airfoil based on current TE gap"""
 
+    def __init__ (self, *args, **kwargs):
+
+        self._xBlend = None                             # blend range
+        super().__init__ (*args, **kwargs)
+
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -673,6 +678,14 @@ class TE_Gap_Artist (Artist):
         for airfoil in self.airfoils:
             if airfoil.usedAsDesign:
                 return airfoil 
+
+    @property
+    def xBlend (self): return self._xBlend
+
+    def set_xBlend (self, xBlend):
+        """ set blend range for LE circle """
+        self._xBlend = xBlend 
+
 
     def _plot (self): 
     
@@ -696,11 +709,28 @@ class TE_Gap_Artist (Artist):
                                        movable=False, color=color)
                 self._add (pt) 
 
+        # plot blending range
+
+        if self.xBlend is not None:
+
+            pen = pg.mkPen("dimgray", width=1)
+            lr  = pg.LinearRegionItem (values=[1.0-self.xBlend, 1.0], pen=pen, movable=False, span=(0.2, 0.8))
+
+            lab = pg.InfLineLabel(lr.lines[0], f"Blending Range {self.xBlend:.0%}", position=0.95, 
+                                  color=Artist.COLOR_LEGEND)
+
+            self._add(lr)
+
 
 
 
 class LE_Radius_Artist (Artist):
     """Plot airfoil based on current LE radius"""
+
+    def __init__ (self, *args, **kwargs):
+
+        self._xBlend = None                             # blend range
+        super().__init__ (*args, **kwargs)
 
 
     @property
@@ -711,6 +741,14 @@ class LE_Radius_Artist (Artist):
         for airfoil in self.airfoils:
             if airfoil.usedAsDesign:
                 return airfoil 
+
+    @property
+    def xBlend (self): return self._xBlend
+
+    def set_xBlend (self, xBlend):
+        """ set blend range for LE circle """
+        self._xBlend = xBlend 
+
 
     def _plot (self): 
     
@@ -735,6 +773,18 @@ class LE_Radius_Artist (Artist):
         pl = Movable_LE_Point (self.design_airfoil.geo, circle_item, 
                                show_label_static_with_value=True, movable=False, color=color)
         self._add(pl) 
+
+        # plot blending range
+
+        if self.xBlend is not None:
+
+            pen = pg.mkPen("dimgray", width=1)
+            lr  = pg.LinearRegionItem (values=[0, self.xBlend], pen=pen, movable=False, span=(0.2, 0.8))
+
+            lab = pg.InfLineLabel(lr.lines[1], f"Blending Range {self.xBlend:.0%}", position=0.95,  
+                                  color=Artist.COLOR_LEGEND) 
+
+            self._add(lr)
 
 
 
