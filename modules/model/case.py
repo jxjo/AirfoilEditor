@@ -40,18 +40,29 @@ class Case_Abstract:
 
     @classmethod
     def design_fileName (cls, iDesign : int, extension : str) -> str:
-        """ returns fileName of design iDesign"""
+        """ returns fileName of design iDesign like Design__34.dat"""
 
-        return f"{cls.DESIGN_NAME_BASE}{iDesign:4}{extension}"
+        postfix = str(iDesign).rjust(3,'_') if iDesign < 100 else "_"+str(iDesign)
+
+        return f"{cls.DESIGN_NAME_BASE}{postfix}{extension}"
 
     @classmethod
     def get_iDesign (cls, airfoil : Airfoil) -> int:
         """ get iDesign from Airfoil fileName - or None if couldn't retrieved"""
 
-        fileName = airfoil.fileName_stem
-        if fileName.startswith (cls.DESIGN_NAME_BASE):
-            return int (fileName [len(cls.DESIGN_NAME_BASE):])
+        i = None 
+        base = airfoil.fileName_stem                                # remove extension
+        base_parts = airfoil.fileName_stem.split()                  # seperate number separated by blanks
 
+        if len(base_parts) == 1:
+            base_parts = base.split('_')                            # try with underscore
+
+        if len(base_parts) > 1:                                     # convert to int 
+            try: 
+                i = int (base_parts[-1])
+            except:
+                pass
+        return i 
 
     # ---------------------------------
 
@@ -203,8 +214,8 @@ class Case_Direct_Design (Case_Abstract):
         # get highest design number 
 
         if len(self.airfoil_designs) > 0:
-            iDesign = self.get_i_from_design (self.airfoil_designs[-1])
-            iDesign += 1
+            iDesign = self.get_iDesign (self.airfoil_designs[-1])
+            iDesign += 1 if iDesign is not None else 0 
         else: 
             iDesign = 0 
 
@@ -278,21 +289,6 @@ class Case_Direct_Design (Case_Abstract):
                 return airfoil 
 
 
-    def get_i_from_design (self, airfoil_design : Airfoil) -> int:
-        """ returns the number of the design airfoil (retrieved from filename)"""
-
-        i = None 
-        base = os.path.splitext(airfoil_design.fileName)[0]         # remove extension
-        base_parts = base.split()                                   # seperate number
-
-        if len(base_parts) > 1:                                     # convert to int 
-            try: 
-                i = int (base_parts[-1])
-            except:
-                pass
-        return i 
-
-
     def get_final_from_design (self, airfoil_design : Airfoil) -> Airfoil:
         """ returns a final airfoil from airfoil_design based on original airfoil  """
 
@@ -302,7 +298,7 @@ class Case_Direct_Design (Case_Abstract):
         # create name extension - does name have already ..._mod?
      
         if self.airfoil_seed.name.find ('mod') >= 0:
-            i = self.get_i_from_design (airfoil_design)
+            i = self.get_iDesign (airfoil_design)
             name_ext = f"_Design_{i}" if i is not None else f"_Design"
         else: 
             name_ext = f"_mod"

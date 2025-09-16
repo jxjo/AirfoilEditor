@@ -369,8 +369,11 @@ class Reader_Abstract:
     def design_fileName (cls, iDesign : int, extension : str) -> str:
         """ returns fileName of design iDesign"""
 
-        return f"{cls.DESIGN_NAME_BASE}{iDesign:4}{extension}"
+        postfix = str(iDesign).rjust(4,'_') if iDesign < 1000 else "_"+str(iDesign)
+
+        return f"{cls.DESIGN_NAME_BASE}{postfix}{extension}"  
     
+      
     # ----------------------------------
 
 
