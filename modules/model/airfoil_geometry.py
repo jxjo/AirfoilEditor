@@ -1568,6 +1568,11 @@ class Geometry ():
 
     EPSILON_LE_CLOSE    = 1e-6                      # max norm2 distance of le_real 
 
+    # bad, good values for geometry quality
+
+    LE_PANEL_ANGLE_TOO_BLUNT   = 175.0              # angle between first two panels at LE above too blunt
+    PANEL_ANGLE_TOO_SHARP      = 150.0              # angle between two panels below too sharp
+
     isBasic         = True
     isSplined       = False 
     isBezier        = False

@@ -456,7 +456,8 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=80,
-                set=self.do_repanel, hide=lambda: not self.airfoil.isEdited,
+                set=self.do_repanel, 
+                hide=lambda: not self.mode_modify,
                 disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
                 toolTip="Repanel airfoil with a new number of panels" ) 
 
@@ -470,12 +471,13 @@ class Panel_Panels (Panel_Airfoil_Abstract):
                 get=lambda: self.geo.nPanels, )
         r += 1
         FieldF (l,r,c, lab="Angle at LE", width=70, dec=1, unit="°", style=self._style_angle,
-                obj=lambda: self.geo, prop=Geometry.panelAngle_le)
+                get=lambda: self.geo.panelAngle_le)
         SpaceC (l,c+2, width=10, stretch=0)
-        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo.iLe}")
+        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo.iLe}", style=style.COMMENT)
         r += 1
         FieldF (l,r,c, lab="Angle min", width=70, dec=1, unit="°",
-                get=lambda: self.geo.panelAngle_min[0], )
+                get=lambda: self.geo.panelAngle_min[0])
+        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo.panelAngle_min[1]}", style=style.COMMENT)
         r += 1
         SpaceR (l,r,height=5)
         r += 1
@@ -521,7 +523,9 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
     def _style_angle (self):
         """ returns style.WARNING if panel angle too blunt"""
-        if self.geo.panelAngle_le > 175.0: 
+        if self.geo.panelAngle_le > Geometry.LE_PANEL_ANGLE_TOO_BLUNT: 
+            return style.WARNING
+        elif self.geo.panelAngle_le < Geometry.PANEL_ANGLE_TOO_SHARP: 
             return style.WARNING
         else: 
             return style.NORMAL
@@ -529,14 +533,18 @@ class Panel_Panels (Panel_Airfoil_Abstract):
     def _messageText (self): 
 
         text = []
-        minAngle, _ = self.geo.panelAngle_min
+        minAngle, iAngle = self.geo.panelAngle_min
 
-        if self.geo.panelAngle_le > 175.0: 
-            text.append("- Panel angle at LE (%d°) is too blunt" %(self.geo.panelAngle_le))
-        if minAngle < 150.0: 
-            text.append("- Min. angle of two panels is < 150°")
         if self.geo.panelAngle_le == 180.0: 
             text.append("- Leading edge has 2 points")
+        elif self.geo.panelAngle_le > Geometry.LE_PANEL_ANGLE_TOO_BLUNT: 
+            text.append(f"- Panel angle at LE {self.geo.panelAngle_le:.1f}° is too blunt")
+
+        if self.geo.panelAngle_le < Geometry.PANEL_ANGLE_TOO_SHARP: 
+            text.append(f"- Panel angle at LE {self.geo.panelAngle_le:.1f}° is too sharp")
+        elif minAngle < Geometry.PANEL_ANGLE_TOO_SHARP: 
+            text.append(f"- Panel angle at i={iAngle} is < {Geometry.PANEL_ANGLE_TOO_SHARP}°")
+
         if self.geo.nPanels < 100 or self.geo.nPanels > 200: 
             text.append("- No of panels should be > 100 and < 200")
         

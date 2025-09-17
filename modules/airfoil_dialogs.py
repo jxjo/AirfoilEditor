@@ -346,7 +346,7 @@ class Repanel_Airfoil_Dialog (Dialog):
         FieldF (l,r,4, width=60, step=0.02, lim=(0, 1),
                         obj=self._geo.panelling, prop=Panelling_Spline.te_bunch)
         r += 1
-        Label  (l,r,0, colSpan=4, get=self._le_bunch_message, style=style.COMMENT)        
+        Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)        
         SpaceC (l,5, width=5)
         r += 1
         SpaceR (l, r, height=5) 
@@ -355,10 +355,10 @@ class Repanel_Airfoil_Dialog (Dialog):
 
     def _le_bunch_message (self): 
         angle = self._geo.panelAngle_le
-        if angle > 175.0: 
-            text = "Panel angle at LE is too blunt. Decrease panels or LE bunch" 
-        elif angle < 150.0: 
-            text = "Panel angle at LE is too sharp. Increase panels or LE bunch"
+        if angle > Geometry.LE_PANEL_ANGLE_TOO_BLUNT: 
+            text = f"Panel angle at LE of {angle:.1f}° is too blunt. Decrease panels or LE bunch" 
+        elif angle < Geometry.PANEL_ANGLE_TOO_SHARP: 
+            text = f"Panel angle at LE of {angle:.1f}° is too sharp. Increase panels or LE bunch"
         else:
             text = ""
         return text 
@@ -366,7 +366,7 @@ class Repanel_Airfoil_Dialog (Dialog):
 
     def _le_bunch_style (self): 
         angle = self._geo.panelAngle_le
-        if angle > 175.0 or angle < 150.0: 
+        if angle > Geometry.LE_PANEL_ANGLE_TOO_BLUNT or angle < Geometry.PANEL_ANGLE_TOO_SHARP: 
             return style.WARNING
         else: 
             return style.NORMAL
@@ -376,8 +376,8 @@ class Repanel_Airfoil_Dialog (Dialog):
     def _on_widget_changed (self):
         """ slot a input field changed - repanel and refresh"""
 
-        self.refresh()
         self._geo._repanel (based_on_org=True)              # repanel based on original x,y 
+        self.refresh()
 
         self.has_been_repaneled = True                      # for change detection 
         self.sig_new_panelling.emit()                       # inform parent -> diagram update

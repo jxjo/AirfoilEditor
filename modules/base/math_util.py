@@ -335,7 +335,7 @@ def panel_angles (x,y):
 #------------ derivative -----------------------------------
 
 
-def derivative1 (x, y):
+def derivative1 (x, y) -> np.ndarray:
     """
     evaluate first derivative of polyline (x,y)
     using Backward, center, forward adapted difference approximation
@@ -351,7 +351,7 @@ def derivative1 (x, y):
     return dydx
 
 
-def curvature(x, y):
+def curvature(x, y) -> np.ndarray:
     """
     evaluate curvature of polyline (x,y)
 

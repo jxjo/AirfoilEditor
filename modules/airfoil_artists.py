@@ -599,14 +599,20 @@ class Airfoil_Artist (Artist):
                 # optional plot of real LE defined by spline 
 
                 if self.show_points and airfoil.geo.isSplined:
+                    textColor = None
                     if airfoil.isNormalized:
-                        brushcolor = "limegreen"
+                        brushcolor = COLOR_GOOD
                         text = None
                     else: 
-                        brushcolor = "yellow"
+                        brushcolor = COLOR_WARNING
                         text="LE spline"
-                    self._plot_point (airfoil.geo.le_real, color=color, brush=brushcolor,
-                                      text=text,anchor=(0.5,1) )
+
+                    self._plot_point (airfoil.geo.le_real, color=brushcolor, brush=brushcolor,
+                                      text=text, textColor=textColor, anchor=(1.1,0.5) )
+                    
+                # optional plot of LE angle lines
+                if self.show_points and airfoil.usedAsDesign:
+                    self._plot_le_angle_lines (airfoil, color)
 
 
     def _plot_reflexed_rearloaded (self, airfoil : Airfoil, color : QColor): 
@@ -623,6 +629,38 @@ class Airfoil_Artist (Artist):
             x = 0.8
             y = airfoil.geo.lower.yFn (x) 
             self._plot_point ((x,y), size=0, text="Rearloaded", anchor=(0.5,-1.0), textColor=textColor)
+
+
+    def _plot_le_angle_lines (self, airfoil : Airfoil, color : QColor): 
+        """ plot helper lines showing le panel angle"""
+
+        iLe = airfoil.geo.iLe
+
+        xLe, yLe = airfoil.geo.x[iLe], airfoil.geo.y[iLe]
+
+        # upper line
+        x2, y2   = airfoil.geo.x[iLe-1], airfoil.geo.y[iLe-1]
+        yEnd   = 0.08
+        xEnd   = interpolate (yLe, y2, xLe, x2, yEnd)
+
+        self._plot_dataItem ([xLe, xEnd], [yLe, yEnd], pen=pg.mkPen(color, style=Qt.PenStyle.DotLine))
+
+        # lower line
+        x2, y2   = airfoil.geo.x[iLe+1], airfoil.geo.y[iLe+1]
+        yEnd   = -0.08
+        xEnd   = interpolate (yLe, y2, xLe, x2, yEnd)
+
+        self._plot_dataItem ([xLe, xEnd], [yLe, yEnd], pen=pg.mkPen(color, style=Qt.PenStyle.DotLine))
+
+        # text LE angle
+
+        angle = airfoil.geo.panelAngle_le
+        text  = f"LE angle {angle:.1f}°"
+        if angle >  Geometry.LE_PANEL_ANGLE_TOO_BLUNT:
+            text += " (too blunt)"
+        elif angle < Geometry.PANEL_ANGLE_TOO_SHARP:    
+            text += " (too sharp)"
+        self._plot_point ((xEnd,yEnd), size=0, text=text, textColor=None, anchor=(-0.05, 1))  
 
 
 
