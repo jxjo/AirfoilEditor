@@ -377,10 +377,10 @@ class Repanel_Airfoil_Dialog (Dialog):
         """ slot a input field changed - repanel and refresh"""
 
         self.refresh()
-        self._geo._repanel ()
+        self._geo._repanel (based_on_org=True)              # repanel based on original x,y 
 
-        self.has_been_repaneled = True              # for change detection 
-        self.sig_new_panelling.emit()               # inform parent -> diagram update
+        self.has_been_repaneled = True                      # for change detection 
+        self.sig_new_panelling.emit()                       # inform parent -> diagram update
 
 
     @override

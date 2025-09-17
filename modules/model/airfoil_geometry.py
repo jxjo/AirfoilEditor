@@ -64,7 +64,7 @@ from base.spline        import HicksHenne
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.DEBUG)
 
 
 class GeometryException(Exception):
@@ -2828,14 +2828,21 @@ class Geometry_Splined (Geometry):
 
 
     def _repanel (self, retain : bool = False, 
-                        nPanels : int = None):
+                        nPanels : int = None,
+                        based_on_org = False):
         """ 
         Inner repanel without normalization and change handling
             - retain = True keeps the current distribution for the new calculated LE 
+            - nPanels = new total number of panels (optional)
+            - based_on_org = True will use original x,y coordinates to build spline (if available
         """
 
-        # reset le of spline 
-        # self._uLe = None 
+        # for repeated repanelling use the original x,y coordinates to repanel to avoid numerical issues
+        if based_on_org and self._x_org is not None and self._y_org is not None:
+            
+            self._x, self._y = None, None                       # will use original x,y coordinates to build spline 
+            self._reset_spline()
+            logger.debug (f"{self} repanel based on org x,y")
 
         # sanity
         if len(self.spline.u) != len(self.x):
@@ -3164,7 +3171,7 @@ class Geometry_Bezier (Geometry):
 
 
 
-    def _repanel (self, nPanels : int = None):
+    def _repanel (self, nPanels : int = None, **kwargs):
         """ 
         Inner repanel without change handling
         """
