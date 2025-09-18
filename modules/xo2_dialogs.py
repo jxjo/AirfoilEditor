@@ -483,10 +483,11 @@ class Xo2_New_Dialog (Dialog):
         w.sig_changed.connect (self._airfoil_seed_changed)                          # copy seed to working Dir
         r += 1
         ComboBox    (l,r,c+1, lab="Shape functions", lab_disable=True,
-                     get=lambda: self.optimization_options.shape_functions_label_long, 
-                     set=self.optimization_options.set_shape_functions_label_long,
-                     options=lambda: self.optimization_options.shape_functions_list)     
-
+                     obj=self.optimization_options, prop=Nml_optimization_options.shape_functions_label_long,
+                     disable=lambda: self.input_file.airfoil_seed.isBezierBased,
+                     options=lambda: self.optimization_options.shape_functions_list,     
+                     toolTip=lambda: "Bezier based seed airfoil is master of shape functions" if self.input_file.airfoil_seed.isBezierBased \
+                                     else "Select shape functions for optimization")     
         r += 1
         SpaceR      (l,r, stretch=0)
         r += 1

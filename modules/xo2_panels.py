@@ -259,9 +259,6 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
                      get=lambda: self.input_file.airfoil_final_fileName,
                      style=lambda: style.GOOD if self.case.airfoil_final else style.NORMAL,
                      toolTip=lambda: (self.case.airfoil_final.info_as_html if self.case.airfoil_final else "it does not yet exist"))
-        # ToolButton  (l,r,c+2, icon=Icon.SHOW_INFO, set=self._show_info_airfoil_final,
-        #              hide=lambda: self.case.airfoil_final is None,
-        #              toolTip="Edit options of shape functions")
         r += 1
         Label       (l,r,c, get="Seed Airfoil", lab_disable=True)
         w = Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, textOpen="&Open", widthOpen=90, 
@@ -277,7 +274,6 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
                                      else "Select shape functions for optimization")     
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_shape_functions,
                      toolTip="Edit options of shape functions")
-
 
         r += 1
         l.setRowStretch (r,1)
@@ -298,13 +294,6 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             self.input_file.nml_info.set_descriptions (descriptions)
             
             self.app._on_xo2_input_changed ()
-
-
-    def _show_info_airfoil_final (self):
-        """ show little info dialog about final airfoil"""
-
-        dialog = Airfoil_Info_Dialog (self,self.case.airfoil_final, parentPos=(0.8,0,3), dialogPos=(0,1))
-        dialog.exec () 
 
 
     def _edit_shape_functions (self):

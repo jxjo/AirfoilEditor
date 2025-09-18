@@ -148,7 +148,7 @@ class Input_File:
 
         # read all the namelist group from nml_file
          
-        self._init_nml ()
+        self._init_nml (is_new=is_new)
 
         # save namelist dict as string for later change detection 
 
@@ -158,7 +158,7 @@ class Input_File:
         self._nml_file_str = str(self.nml_file)
 
 
-    def _init_nml (self): 
+    def _init_nml (self, is_new=False): 
         """" init and read all single namelist objects"""
 
         # fortran namelist of the input file  
@@ -193,11 +193,12 @@ class Input_File:
 
         # additional consistency 
 
-        self.airfoil_seed                                                       # will check if exists, if not create Example                             
-        self.airfoils_ref                                                       # will check if exists, if not empty list 
+        if not is_new:
+            self.airfoil_seed                                                   # will check if exists, if not create Example                             
+            self.airfoils_ref                                                   # will check if exists, if not empty list 
 
-        if self.airfoil_seed.isBezierBased:
-            self.set_airfoil_seed (self.airfoil_seed)                           # will asign control points of seed to shape functions
+            if self.airfoil_seed.isBezierBased:
+                self.set_airfoil_seed (self.airfoil_seed)                       # will asign control points of seed to shape functions
 
 
     @property
