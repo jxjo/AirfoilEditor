@@ -207,8 +207,8 @@ class Diagram (QWidget):
         return result 
 
 
-    def _get_first_item (self, item_class : Type['Diagram_Item']) -> list['Diagram_Item']:
-        """get Diagram Items of self having class name(s)"""
+    def _get_first_item (self, item_class : Type['Diagram_Item']) -> 'Diagram_Item':
+        """get first Diagram Items of self having class name(s)"""
         items = self._get_items (item_class)
         if items:
             return items [0]

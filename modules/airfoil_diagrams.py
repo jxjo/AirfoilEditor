@@ -1991,7 +1991,9 @@ class Diagram_Airfoil_Polar (Diagram):
         for artist in self._get_artist (Airfoil_Line_Artist):
             if artist.show: artist.set_show (False)
 
-        self.refresh()                          
+        # update airfoils 
+        for artist in self._get_artist (Airfoil_Artist):
+            artist.refresh()                          
 
 
     def on_panelling_changed (self):

@@ -215,15 +215,15 @@ class Blend_Airfoil_Dialog (Dialog):
         SpaceR (l, r, stretch=0, height=5) 
         r += 1 
         Label  (l,r,1, get="Airfoil")
-        Label  (l,r,3, get="Blended")
+        Label  (l,r,3, get="Blended with")
         Label  (l,r,6, get="Airfoil 2")
         r += 1 
         Field  (l,r,1, get=self._airfoil_org.fileName, width = 130)
         SpaceC (l,2, width=10, stretch=0)
         Slider (l,r,3, width=110, lim=(0,1), get=lambda: self.blendBy,
-                       set=self._set_blendBy, disable=lambda: self._airfoil2 is None)
-        FieldF (l,r,4, width=60,  lim=(0, 1),get=lambda: self.blendBy, step=0.1,
-                       set=self._set_blendBy, disable=lambda: self.airfoil2 is None)
+                       set=self._set_blendBy, hide=lambda: self._airfoil2 is None)
+        FieldF (l,r,4, width=60,  lim=(0, 100),get=lambda: self.blendBy, step=1, unit="%", dec=0,
+                       set=self._set_blendBy, hide=lambda: self.airfoil2 is None)
         SpaceC (l,5, width=10, stretch=0)
         Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
                                     get=lambda: self.airfoil2, set=self._set_airfoil2,
@@ -247,8 +247,8 @@ class Blend_Airfoil_Dialog (Dialog):
 
         # Blend with new blend value - use copy as airfoil2 could be normalized
         if self._airfoil2_copy is not None: 
-            self._airfoil.geo._blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
-                                     self._blendBy, ensure_fast=True)
+            self._airfoil.geo.blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
+                                     self._blendBy, moving=True)
             self.sig_blend_changed.emit()
 
 
@@ -268,8 +268,8 @@ class Blend_Airfoil_Dialog (Dialog):
         self._airfoil2_copy = aAirfoil.asCopy()
 
         if aAirfoil is not None: 
-            self._airfoil.geo._blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
-                                     self._blendBy, ensure_fast=True)
+            self._airfoil.geo.blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
+                                     self._blendBy, moving=True)
             self.sig_blend_changed.emit()
 
 
@@ -1004,7 +1004,7 @@ class Matcher (QThread):
                 ivar += 1                  
             else:                                       
                 vars[ivar] = cp_x[icp]                  # x value of control point
-                bounds[ivar] = (0.01, 0.95)             # right bound not too close to TE
+                bounds[ivar] = (0.005, 0.95)            # right bound not too close to TE
                 ivar += 1                               #    to avoid curvature peaks 
                 if self._isLower:
                     y = -cp_y[icp]             # - >pos. solution space
