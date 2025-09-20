@@ -1365,11 +1365,12 @@ class Slider (Widget, QSlider):
         self._layout_add ()                                 # put into layout - so it gets parent early
 
         self._set_Qwidget_static ()
-        self._set_Qwidget ()
 
         # connect signals 
-        # self.valueChanged.connect(self._on_changed)  - would be also set, if value is set into slider
-        self.sliderMoved.connect(self._on_changed)
+        self.valueChanged.connect(self._on_changed)  # - would be also set, if value is set into slider
+
+        # set value after connect as it will be temporarly disconnected
+        self._set_Qwidget ()
 
 
     @override
@@ -1394,7 +1395,10 @@ class Slider (Widget, QSlider):
         super()._set_Qwidget (**kwargs)
 
         self._slider_val = self._from_val_to_slider ()
+
+        self.valueChanged.disconnect (self._on_changed)         # otherwise QSlider would ping-pong the rounded value
         self.setValue (self._slider_val)
+        self.valueChanged.connect(self._on_changed)  
 
 
     def _on_changed(self, slider_val):
@@ -1402,7 +1406,7 @@ class Slider (Widget, QSlider):
 
         self._slider_val = slider_val
         newVal = self._from_slider_to_val ()
-        newVal = round(newVal, self._dec)                   # Qt sometimes has float artefacts 
+        newVal = round(newVal, self._dec)                       # Qt sometimes has float artefacts 
         self._set_value (newVal)
 
 
