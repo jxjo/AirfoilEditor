@@ -901,9 +901,7 @@ class OpPoint_Definition:
         if aVal == self._myList.re_default: 
             self._re = None
         elif aVal:  
-            aVal = max (1000, aVal)
-            aVal = min (2000000, aVal)
-            self._re = aVal 
+            self._re = clip (aVal, 1000, 1e8-1) 
         else: 
             self._re = None
 
@@ -2544,7 +2542,7 @@ class Nml_operating_conditions (Nml_Abstract):
 
     @property
     def re_default (self) -> float:             return self._get('re_default', default=400000)
-    def set_re_default (self, aVal):            self._set ('re_default', clip (aVal, 1000, 10000000)) 
+    def set_re_default (self, aVal):            self._set ('re_default', clip (aVal, 1000, 1e8-1)) 
 
     @property
     def re_default_asK (self) -> int:           return int (self.re_default/1000) 

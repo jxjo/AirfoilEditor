@@ -358,7 +358,7 @@ class Polar_Definition:
         """ Reynolds number"""
         return self._re
     def set_re (self, re): 
-        self._re = clip (re, 1000, 10000000)
+        self._re = clip (re, 1000, 1e+8 - 1)
 
     @property
     def re_asK (self) -> int: 

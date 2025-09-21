@@ -1183,7 +1183,7 @@ class Polar_Definition_Dialog (Dialog):
 
         if small_mode:
             self._height = 160
-            self._width  = 430
+            self._width  = 450
 
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
@@ -1204,7 +1204,7 @@ class Polar_Definition_Dialog (Dialog):
         r,c = 0,0 
         SpaceR (l, r, stretch=1) 
         r += 1 
-        FieldF (l,r,c, lab="Re number", width=60, step=10, lim=(1, 5000), unit="k", dec=0,
+        FieldF (l,r,c, lab="Re number", width=70, step=10, lim=(1, 99999), unit="k", dec=0,
                         obj=self.polar_def, prop=Polar_Definition.re_asK)
         l.setColumnMinimumWidth (c,80)
         c += 2
