@@ -245,7 +245,7 @@ class Update_Info_Dialog (Dialog):
         # r += 1
         text =  f"There is a new version <b>{self._latest_version }</b> of {self._app_name} available.<br><br>" +   \
                 f"Depending on your installation mode,<br><br>" + \
-                f" - either update package with 'pip -install {self._package_name} -U'<br>" + \
+                f" - either update package with 'pip install {self._package_name} -U'<br>" + \
                 f" - or download new version from <a href='https://github.com/jxjo/{self._app_name}/releases/'>GitHub" 
         lab = Label    (l,r,c, height=110, wordWrap=True, get=text)
         lab.setOpenExternalLinks(True)
