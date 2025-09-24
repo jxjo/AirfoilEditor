@@ -312,7 +312,9 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         return self._val
     def set_airfoil (self, anAirfoil : Airfoil):
 
-        self._no_files_here = None                      # reset cached value 
+        self._no_files_here = None                              # reset cached value 
+        if isinstance(anAirfoil, Airfoil):                      # new initial for searches
+            self._initial_dir = anAirfoil.pathFileName_abs
 
         self._set_value (anAirfoil)
 
