@@ -107,11 +107,71 @@ SPEC_ALLOWED = [var.ALPHA, var.CL]
 RE_SCALE_ROUND_TO  = 5000                               # round when polar is scaled down 
 MA_SCALE_ROUND_DEC = 2
 
-AIR_RHO     = 1.225                     # density air kg/m³ at 15°C, sea level
-AIR_ETA     = 0.0000179                 # η dynamic viscosity air Pa·s (k/m.s) at 15°C, sea level
-AIR_NY      = AIR_ETA / AIR_RHO         # ν kinematic viscosity air m²/s at 15°C, η = ν * ρ
- 
-#------------------------------------------------------------------------------
+
+#--- Aero constants ---------------------------------------------------------------------------
+
+TEMP_DEFAULT = 15                       # default temperature in °C
+ALT_DEFAULT  = 0                        # default altitude in m (sea level)
+
+
+def air_rho (temp_C = TEMP_DEFAULT, alt_m = ALT_DEFAULT) -> float: 
+    """ 
+    calc air density ρ (rho) in kg/m³ from temperature and altitude
+
+    Args:   
+        temp_C: temperature in °C
+        alt_m: altitude in m
+    """
+
+    p = 101325 * (1 - 2.25577e-5 * alt_m)**5.25588      # calc pressure p in Pa
+    t = temp_C + 273.15                                 # calc absolute temperature t in K
+    
+    rho = p / (287.05 * t)                              # calc air density ρ (rho) in kg/m³
+
+    return round (rho, 3)
+
+
+def air_eta (temp_C = TEMP_DEFAULT) -> float:
+    """ 
+    calc dynamic viscosity η (eta) in Pa·s (k/m.s) from temperature
+
+    Args:   
+        temp_C: temperature in °C
+    """
+
+    t = temp_C + 273.15                                 # calc absolute temperature t in K
+
+    eta = 1.458e-6 * t**1.5 / (t + 110.4)               # Sutherland's formula
+
+    return round(eta, 10)
+
+
+def air_ny (temp_C = TEMP_DEFAULT, alt_m = ALT_DEFAULT) -> float:
+    """ 
+    calc kinematic viscosity ν (nu) in m²/s from temperature and altitude
+
+    Args:   
+        temp_C: temperature in °C
+        alt_m: altitude in m
+    """
+
+    rho = air_rho (temp_C, alt_m)
+    eta = air_eta (temp_C)
+
+    ny = eta / rho 
+
+    return round(ny, 10)
+
+
+# convenience constants - at 15°C, sea level
+
+AIR_RHO     = air_rho (temp_C = TEMP_DEFAULT, alt_m = ALT_DEFAULT)  # density air kg/m³ at 15°C, sea level
+AIR_ETA     = air_eta (temp_C = TEMP_DEFAULT)                       # η dynamic viscosity air Pa·s (k/m.s) at 15°C, sea level
+AIR_NY      = AIR_ETA / AIR_RHO                                     # ν kinematic viscosity air m²/s at 15°C, η = ν * ρ
+
+
+
+#--- Re, Re*sqrt(CL), v ----------------------------------------------------------------
 
 
 def re_from_v (v : float, chord : float, round_to = 1000) -> float:

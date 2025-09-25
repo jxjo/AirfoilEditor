@@ -26,7 +26,8 @@ from model.airfoil          import Airfoil, Flap_Setter, Flap_Definition
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline, Curvature_Abstract
 from model.polar_set        import (Polar_Definition, polarType, var,  
-                                    re_from_v, v_from_re, AIR_RHO, AIR_ETA,re_sqrt_from_load, load_from_re_sqrt)
+                                    re_from_v, v_from_re, re_sqrt_from_load, load_from_re_sqrt,
+                                    TEMP_DEFAULT, ALT_DEFAULT, AIR_RHO, AIR_ETA,)
 
 from model.xo2_driver       import Worker
 from airfoil_widgets        import Airfoil_Select_Open_Widget
@@ -1666,7 +1667,7 @@ class LE_Radius_Dialog (Dialog):
 class Calc_Reynolds_Dialog (Dialog):
     """ Little dialog to calculate Reynolds from velocity and chord"""
 
-    _width  = 300
+    _width  = 310
     _height = 200
 
     name = "Calculate Reynolds Number"
@@ -1725,7 +1726,7 @@ class Calc_Reynolds_Dialog (Dialog):
 
     @property
     def has_been_set (self) -> bool:
-        """ True if TE gap was set in this dialog """
+        """ True if Reynolds was been set in this dialog """
         return self._has_been_set 
 
 
@@ -1737,26 +1738,25 @@ class Calc_Reynolds_Dialog (Dialog):
         r += 1
         FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
                         obj=self, prop=Calc_Reynolds_Dialog.chord)
-        Slider  (l,r,c+3, colSpan=2, width=80,  lim=(10, 500),   
+        Slider  (l,r,c+3, width=80,  lim=(10, 500),   
                         obj=self, prop=Calc_Reynolds_Dialog.chord)
         r += 1
         FieldF  (l,r,c, lab="Velocity", width=80, unit="m/s", step=1, lim=(1, 360), dec=1,
                         obj=self, prop=Calc_Reynolds_Dialog.v)
 
-        Slider  (l,r,c+3, colSpan=2, width=80, lim=(1,100), 
+        Slider  (l,r,c+3, width=80, lim=(1,100), 
                         obj=self, prop=Calc_Reynolds_Dialog.v)
         r += 1
-        SpaceR  (l, r, stretch=1, height=10) 
+        SpaceR  (l, r, stretch=2, height=5) 
         r += 1
         FieldF  (l,r,c, lab="Reynolds", width=80, unit="k", step=10, lim=(1, 9999), dec=0,
                         obj=self, prop=Calc_Reynolds_Dialog.re_asK)
-        Label   (l,r,c+3, style=style.COMMENT, colSpan=2, height=35, align=Qt.AlignmentFlag.AlignVCenter,
-                        get=f"ρ={AIR_RHO} kg/m³\nη={AIR_ETA} Pa·s")
         r += 1
-        SpaceR  (l, r, stretch=3) 
+        Label   (l,r,c+1, style=style.COMMENT, colSpan=5, 
+                        get=f"ρ={AIR_RHO}, η={AIR_ETA:.2E} at {TEMP_DEFAULT}°C and {ALT_DEFAULT}m")
 
         l.setColumnMinimumWidth (0,70)
-        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (2,5)
         l.setColumnMinimumWidth (3,50)
         l.setColumnStretch (5,2)   
 
@@ -1779,7 +1779,7 @@ class Calc_Reynolds_Dialog (Dialog):
 class Calc_Re_Sqrt_Cl_Dialog (Dialog):
     """ Little dialog to calculate Re.sqrt(Cl) from wing load and chord"""
 
-    _width  = 300
+    _width  = 310
     _height = 200
 
     name = "Calculate Re · √Cl"
@@ -1838,7 +1838,7 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog):
 
     @property
     def has_been_set (self) -> bool:
-        """ True if TE gap was set in this dialog """
+        """ True if Re sqrt(cl) was been set in this dialog """
         return self._has_been_set 
 
 
@@ -1850,26 +1850,25 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog):
         r += 1
         FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord)
-        Slider  (l,r,c+3, colSpan=2, width=80,  lim=(10, 500),   
+        Slider  (l,r,c+3, width=80,  lim=(10, 500),   
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord)
         r += 1
         FieldF  (l,r,c, lab="Wing load", width=80, unit="g/dm²", step=1, lim=(1, 999), dec=0,
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
 
-        Slider  (l,r,c+3, colSpan=2, width=80, lim=(1,200), 
+        Slider  (l,r,c+3, width=80, lim=(1,200), 
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
         r += 1
-        SpaceR  (l, r, stretch=1, height=10) 
+        SpaceR  (l, r, stretch=2, height=5) 
         r += 1
         FieldF  (l,r,c, lab="Re · √Cl", width=80, unit="k", step=10, lim=(1, 999), dec=0,
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.re_asK)
-        Label   (l,r,c+3, style=style.COMMENT, colSpan=2, height=35, align=Qt.AlignmentFlag.AlignVCenter,
-                        get=f"ρ={AIR_RHO} kg/m³\nη={AIR_ETA} Pa·s")
         r += 1
-        SpaceR  (l, r, stretch=3) 
+        Label   (l,r,c+1, style=style.COMMENT, colSpan=5, 
+                        get=f"ρ={AIR_RHO}, η={AIR_ETA:.2E} at {TEMP_DEFAULT}°C and {ALT_DEFAULT}m")
 
         l.setColumnMinimumWidth (0,70)
-        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (2,5)
         l.setColumnMinimumWidth (3,50)
         l.setColumnStretch (5,2)   
 
