@@ -25,7 +25,8 @@ from base.panels            import Dialog
 from model.airfoil          import Airfoil, Flap_Setter, Flap_Definition
 from model.airfoil_geometry import Side_Airfoil_Bezier, Line
 from model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline, Curvature_Abstract
-from model.polar_set        import Polar_Definition, polarType, var
+from model.polar_set        import (Polar_Definition, polarType, var,  
+                                    re_from_v, v_from_re, AIR_RHO, AIR_ETA,re_sqrt_from_load, load_from_re_sqrt)
 
 from model.xo2_driver       import Worker
 from airfoil_widgets        import Airfoil_Select_Open_Widget
@@ -1167,7 +1168,7 @@ class Matcher (QThread):
 class Polar_Definition_Dialog (Dialog):
     """ Dialog to edit a single polar definition"""
 
-    _width  = 460
+    _width  = 480
     _height = (300, None)
 
     name = "Edit Polar Definition"
@@ -1183,7 +1184,7 @@ class Polar_Definition_Dialog (Dialog):
 
         if small_mode:
             self._height = 160
-            self._width  = 450
+            self._width  = 480
 
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
@@ -1204,10 +1205,19 @@ class Polar_Definition_Dialog (Dialog):
         r,c = 0,0 
         SpaceR (l, r, stretch=1) 
         r += 1 
-        FieldF (l,r,c, lab="Re number", width=70, step=10, lim=(1, 99999), unit="k", dec=0,
+        Label  (l,r,c, get="Polar type")
+        ComboBox (l,r,c+1,  width=55, options=polarType.values(),
+                        obj=self.polar_def, prop=Polar_Definition.type,
+                        disable=self._polar_type_fixed)
+        r += 1
+        FieldF (l,r,c, width=70, step=10, lim=(1, 99999), unit="k", dec=0,
+                        lab=lambda: "Re number" if self.polar_def.type == polarType.T1 else "Re · √Cl", 
                         obj=self.polar_def, prop=Polar_Definition.re_asK)
         l.setColumnMinimumWidth (c,80)
         c += 2
+        ToolButton  (l,r,c, icon=Icon.EDIT, set=self.calc_re,
+                        toolTip="Calculate Re from velocity and chord length")
+        c += 1
         SpaceC  (l,c, width=10)
         c += 1
         FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=2,
@@ -1223,11 +1233,6 @@ class Polar_Definition_Dialog (Dialog):
         SpaceC  (l,c, width=10, stretch=5)
 
         c = 0 
-        r += 1
-        Label  (l,r,c, get="Polar type")
-        ComboBox (l,r,c+1,  width=60, options=polarType.values(),
-                        obj=self.polar_def, prop=Polar_Definition.type,
-                        disable=self._polar_type_fixed)
         
         if not self._small_mode:
             r += 1
@@ -1239,10 +1244,10 @@ class Polar_Definition_Dialog (Dialog):
             FieldF  (l,r,c, lab="Flap Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
                             obj=lambda: self.flap_def, prop=Flap_Definition.flap_angle,
                             hide=lambda: not self.polar_def.is_flapped)
-            FieldF  (l,r,c+3, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
+            FieldF  (l,r,c+4, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
                             obj=lambda: self.flap_def, prop=Flap_Definition.x_flap,
                             hide=lambda: not self.polar_def.is_flapped)
-            FieldF  (l,r,c+6, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
+            FieldF  (l,r,c+7, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
                             obj=lambda: self.flap_def, prop=Flap_Definition.y_flap,
                             hide=lambda: not self.polar_def.is_flapped)
             # Label   (l,r,c+10, get="of thickness", style=style.COMMENT)
@@ -1265,6 +1270,23 @@ class Polar_Definition_Dialog (Dialog):
         SpaceR (l, r, height=5, stretch=3) 
 
         return l
+
+
+    def calc_re (self):
+        """ calc re from velocity and chord length"""
+
+        if self.polar_def.type == polarType.T1:
+            dialog = Calc_Reynolds_Dialog (self, re_asK=self.polar_def.re_asK, 
+                                        parentPos=(0.5, 0.5), dialogPos=(0,1))
+        else:
+            dialog = Calc_Re_Sqrt_Cl_Dialog (self, re_asK=self.polar_def.re_asK, 
+                                        parentPos=(0.5, 0.5), dialogPos=(0,1))  
+
+        dialog.exec()     
+
+        if dialog.has_been_set:
+            self.polar_def.set_re_asK (dialog.re_asK)
+            self.refresh()
 
 
     @override
@@ -1622,6 +1644,231 @@ class LE_Radius_Dialog (Dialog):
         SpaceR  (l, r, stretch=3) 
 
         l.setColumnMinimumWidth (0,90)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,50)
+        l.setColumnStretch (5,2)   
+
+        return l
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
+
+
+class Calc_Reynolds_Dialog (Dialog):
+    """ Little dialog to calculate Reynolds from velocity and chord"""
+
+    _width  = 300
+    _height = 200
+
+    name = "Calculate Reynolds Number"
+
+
+    def __init__ (self, parent : QWidget,  re_asK = None, **kwargs): 
+
+       
+        self._has_been_set = False
+        self._v      = 30.0
+        self._chord  = 200
+
+        super().__init__ (parent, **kwargs)
+        
+        if re_asK is not None:
+            self.set_re_asK (re_asK)                # will also set v
+            self._has_been_set = False              # but not yet confirmed by user
+
+
+    @property
+    def re_asK (self) -> int: 
+        """ Reynolds number base 1000"""
+        return int(re_from_v(self.v, self.chord/1000, round_to=None) / 1000)
+     
+    def set_re_asK (self, aVal : float): 
+
+        if not isinstance(aVal, (int, float)):
+            return
+        self.set_v (v_from_re(aVal*1000, self.chord/1000, round_dec=None))              # chord in m
+
+
+    @property
+    def v (self) -> float:
+        """ velocity in m/s """
+        return self._v  
+    
+    def set_v (self, aVal : float):
+        if not isinstance(aVal, (int, float)):
+            return
+        self._v = aVal
+        self._has_been_set = True
+        self.refresh()
+
+
+    @property
+    def chord (self) -> float:
+        """ chord in mm """
+        return self._chord
+    def set_chord (self, aVal : float):
+        if not isinstance(aVal, (int, float)):
+            return
+        self._chord = aVal
+        self._has_been_set = True
+        self.refresh()  
+
+
+    @property
+    def has_been_set (self) -> bool:
+        """ True if TE gap was set in this dialog """
+        return self._has_been_set 
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
+                        obj=self, prop=Calc_Reynolds_Dialog.chord)
+        Slider  (l,r,c+3, colSpan=2, width=80,  lim=(10, 500),   
+                        obj=self, prop=Calc_Reynolds_Dialog.chord)
+        r += 1
+        FieldF  (l,r,c, lab="Velocity", width=80, unit="m/s", step=1, lim=(1, 360), dec=1,
+                        obj=self, prop=Calc_Reynolds_Dialog.v)
+
+        Slider  (l,r,c+3, colSpan=2, width=80, lim=(1,100), 
+                        obj=self, prop=Calc_Reynolds_Dialog.v)
+        r += 1
+        SpaceR  (l, r, stretch=1, height=10) 
+        r += 1
+        FieldF  (l,r,c, lab="Reynolds", width=80, unit="k", step=10, lim=(1, 9999), dec=0,
+                        obj=self, prop=Calc_Reynolds_Dialog.re_asK)
+        Label   (l,r,c+3, style=style.COMMENT, colSpan=2, height=35, align=Qt.AlignmentFlag.AlignVCenter,
+                        get=f"ρ={AIR_RHO} kg/m³\nη={AIR_ETA} Pa·s")
+        r += 1
+        SpaceR  (l, r, stretch=3) 
+
+        l.setColumnMinimumWidth (0,70)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,50)
+        l.setColumnStretch (5,2)   
+
+        return l
+
+
+    @override
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+        buttons = QDialogButtonBox.StandardButton.Close
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.rejected.connect(self.close)
+
+        return buttonBox 
+
+
+
+
+class Calc_Re_Sqrt_Cl_Dialog (Dialog):
+    """ Little dialog to calculate Re.sqrt(Cl) from wing load and chord"""
+
+    _width  = 300
+    _height = 200
+
+    name = "Calculate Re · √Cl"
+
+
+    def __init__ (self, parent : QWidget,  re_asK = None, **kwargs): 
+
+       
+        self._has_been_set = False
+        self._load   = 40.0                         # wing load in g/dm²
+        self._chord  = 200                          # chord in mm
+
+        super().__init__ (parent, **kwargs)
+        
+        if re_asK is not None:
+            self.set_re_asK (re_asK)                # will also set load
+            self._has_been_set = False              # but not yet confirmed by user
+
+
+    @property
+    def re_asK (self) -> int: 
+        """ Reynolds number base 1000"""
+        return int(re_sqrt_from_load(self.load/10, self.chord/1000, round_to=None) / 1000)
+     
+    def set_re_asK (self, aVal : float): 
+
+        if not isinstance(aVal, (int, float)):
+            return
+        self.set_load (load_from_re_sqrt(aVal*1000, self.chord/1000, round_dec=None)*10)   # chord in m
+
+
+    @property
+    def load (self) -> float:
+        """ wing load in g/dm² """
+        return self._load   
+    def set_load (self, aVal : float):
+        if not isinstance(aVal, (int, float)):
+            return
+        self._load = aVal
+        self._has_been_set = True
+        self.refresh()
+
+
+
+    @property
+    def chord (self) -> float:
+        """ chord in mm """
+        return self._chord
+    def set_chord (self, aVal : float):
+        if not isinstance(aVal, (int, float)):
+            return
+        self._chord = aVal
+        self._has_been_set = True
+        self.refresh()  
+
+
+    @property
+    def has_been_set (self) -> bool:
+        """ True if TE gap was set in this dialog """
+        return self._has_been_set 
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
+                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord)
+        Slider  (l,r,c+3, colSpan=2, width=80,  lim=(10, 500),   
+                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord)
+        r += 1
+        FieldF  (l,r,c, lab="Wing load", width=80, unit="g/dm²", step=1, lim=(1, 999), dec=0,
+                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
+
+        Slider  (l,r,c+3, colSpan=2, width=80, lim=(1,200), 
+                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
+        r += 1
+        SpaceR  (l, r, stretch=1, height=10) 
+        r += 1
+        FieldF  (l,r,c, lab="Re · √Cl", width=80, unit="k", step=10, lim=(1, 999), dec=0,
+                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.re_asK)
+        Label   (l,r,c+3, style=style.COMMENT, colSpan=2, height=35, align=Qt.AlignmentFlag.AlignVCenter,
+                        get=f"ρ={AIR_RHO} kg/m³\nη={AIR_ETA} Pa·s")
+        r += 1
+        SpaceR  (l, r, stretch=3) 
+
+        l.setColumnMinimumWidth (0,70)
         l.setColumnMinimumWidth (2,10)
         l.setColumnMinimumWidth (3,50)
         l.setColumnStretch (5,2)   

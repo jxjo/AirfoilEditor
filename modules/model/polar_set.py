@@ -107,10 +107,10 @@ SPEC_ALLOWED = [var.ALPHA, var.CL]
 RE_SCALE_ROUND_TO  = 5000                               # round when polar is scaled down 
 MA_SCALE_ROUND_DEC = 2
 
-AIR_RHO     = 1.225             # density air 
-AIR_NY      = 0.0000182         # kinematic viscosity
-
-
+AIR_RHO     = 1.225                     # density air kg/m³ at 15°C, sea level
+AIR_ETA     = 0.0000179                 # η dynamic viscosity air Pa·s (k/m.s) at 15°C, sea level
+AIR_NY      = AIR_ETA / AIR_RHO         # ν kinematic viscosity air m²/s at 15°C, η = ν * ρ
+ 
 #------------------------------------------------------------------------------
 
 
@@ -124,7 +124,7 @@ def re_from_v (v : float, chord : float, round_to = 1000) -> float:
         round_to: if int, will round the Re number to this value
     """
 
-    re = round (v * chord * AIR_RHO / AIR_NY,0)
+    re = round (v * chord * AIR_RHO / AIR_ETA,0)
 
     if isinstance (round_to, int) and round_to:
         re = round (re / round_to, 0)
@@ -143,12 +143,52 @@ def v_from_re (re : float, chord : float, round_dec = 1) -> float:
         round_dec: if int, will round the velocity to this decimal places
     """
 
-    v = re * AIR_NY / (chord * AIR_RHO)
+    v = re * AIR_ETA / (chord * AIR_RHO)
 
     if isinstance (round_dec, int):
         v = round (v, round_dec)
 
     return v
+
+
+def re_sqrt_from_load (load : float, chord : float, round_to = 1000) -> float:
+    """ 
+    calc Re*sqrt(CL) from load (kg/m²)
+    
+    Args:   
+        load: load in kg/m² = 10 * g/dm²
+        chord: chord length in m
+        round_to: if int, will round the Re number to this value
+    """
+
+    re_sqrt_cl = chord * np.sqrt(AIR_RHO) / AIR_ETA * np.sqrt(2 * 9.81 * load)
+    re_sqrt_cl = round (re_sqrt_cl,0)
+
+    if isinstance (round_to, int) and round_to:
+        re_sqrt_cl = round (re_sqrt_cl / round_to, 0)
+        re_sqrt_cl = re_sqrt_cl * round_to
+
+    return re_sqrt_cl
+
+
+
+
+def load_from_re_sqrt (re_sqrt_cl : float, chord : float, round_dec = None) -> float:
+    """ 
+    calc load (kg/m²) from Re*sqrt(CL)
+    
+    Args:   
+        re_sqrt_cl: Re*sqrt(CL)
+        chord: chord length in m
+        round_to: if int, will round the load to this value
+    """
+
+    load = (re_sqrt_cl * AIR_ETA / (np.sqrt(AIR_RHO) * chord))**2  / (2 * 9.81)
+
+    if isinstance (round_dec, int):
+        load = round (load / round_dec, 0)
+ 
+    return load 
 
 
 #------------------------------------------------------------------------------
