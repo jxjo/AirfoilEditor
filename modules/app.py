@@ -12,8 +12,8 @@
 
         |-- Airfoil_Diagram                     - main airfoil view 
                 :
-                |-- Airfoil_Diagram_Item        - Pygtgraph Plot item for airfoil contour
-                |-- Curvature_Diagram_Item      - Pygtgraph Plot item for airfoil curvature 
+                |-- Airfoil_Diagram_Item        - Pyqtgraph Plot item for airfoil contour
+                |-- Curvature_Diagram_Item      - Pyqtgraph Plot item for airfoil curvature 
                 ...                             - ...
 
         |-- Airfoil                             - airfoil model object 
@@ -97,7 +97,7 @@ class Main (QMainWindow):
 
     sig_mode_optimize           = pyqtSignal(bool)      # enter / leave mode optimize
     sig_new_case_optimize       = pyqtSignal()          # new case optimize selected
-    sig_xo2_about_to_run        = pyqtSignal()          # short befure optimization starts
+    sig_xo2_about_to_run        = pyqtSignal()          # short before optimization starts
     sig_xo2_new_state           = pyqtSignal()          # Xoptfoil2 new info/state
     sig_xo2_input_changed       = pyqtSignal()          # data of Xoptfoil2 input changed
     sig_xo2_opPoint_def_selected= pyqtSignal()          # new opPoint definition selected somewhere 
@@ -114,9 +114,9 @@ class Main (QMainWindow):
         self._airfoil_2         = None                  # 2nd airfoil for blend    
 
         self._polar_definitions = None                  # current polar definitions  
-        self._watchdog          = None                  # polling thread for new olars
+        self._watchdog          = None                  # polling thread for new polars
 
-        self._mode_modify       = False                 # modifiy/view mode of app 
+        self._mode_modify       = False                 # modify/view mode of app 
         self._mode_optimize     = False                 # optimize mode of app 
         self._case              = None                  # design Case holding all designs 
 
@@ -150,7 +150,7 @@ class Main (QMainWindow):
         self._load_model_settings ()
         Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 
 
-        # if no initial airfoil file, try to get last openend airfoil file 
+        # if no initial airfoil file, try to get last opened airfoil file 
 
         if not initial_file: 
             initial_file = Settings().get('last_opened', default=None) 
@@ -310,7 +310,7 @@ class Main (QMainWindow):
 
     @property
     def panel_modify (self) -> Container_Panel:
-        """ lower UI main panel - modifiy mode """
+        """ lower UI main panel - modify mode """
         if self._panel_modify is None: 
 
             # lazy import to avoid circular references 
@@ -391,7 +391,7 @@ class Main (QMainWindow):
 
         self.set_case (case)
 
-        self._airfoils_ref_scale = None                 # re-init scales for new airfois ref 
+        self._airfoils_ref_scale = None                 # re-init scales for new airfoil ref 
 
         if not silent: 
             self.refresh ()
@@ -432,7 +432,7 @@ class Main (QMainWindow):
 
 
     def set_airfoil (self, aNew : Airfoil , silent=False):
-        """ set new current aurfoil """
+        """ set new current airfoil """
 
         # set airfoil and polarSets
 
@@ -454,7 +454,7 @@ class Main (QMainWindow):
     @property
     def workingDir (self) -> str: 
         """ directory we are currently in (equals dir of airfoil)"""
-        if self.case:                                         # case working dir has prio 
+        if self.case:                                         # case working dir has priority 
             return self.case.workingDir
         elif self.airfoil:                                     
             return self.airfoil.pathName
@@ -605,12 +605,12 @@ class Main (QMainWindow):
 
     @property
     def mode_modify (self) -> bool: 
-        """ True if self is modifiy mode"""
+        """ True if self is modify mode"""
         return self._mode_modify
 
 
     def set_mode_modify (self, aBool : bool):
-        """ switch modifiy / view mode """
+        """ switch modify / view mode """
 
         if self._mode_modify != aBool: 
             self._mode_modify = aBool
@@ -821,8 +821,8 @@ class Main (QMainWindow):
 
     def optimize_airfoil (self, input_fileName : str =None, workingDir : str = None ):
         """ 
-        optimize currrent airfoil with Xoptfoil2 - switch to optimize mode - create Case
-            There must be an existing Xoptfoil2 inputfile for the airfoil
+        optimize current airfoil with Xoptfoil2 - switch to optimize mode - create Case
+            There must be an existing Xoptfoil2 input file for the airfoil
         """
         
         if self.mode_optimize: 
@@ -994,7 +994,7 @@ class Main (QMainWindow):
 
 
     def edit_opPoint_def (self, parent:QWidget, parentPos:Tuple, dialogPos:Tuple):
-        """ open dialog to edit current xo2 opPoint def - relativ position with parent is provided"""
+        """ open dialog to edit current xo2 opPoint def - relative position with parent is provided"""
 
         if self._xo2_opPoint_def_dialog is None:
 
@@ -1026,7 +1026,7 @@ class Main (QMainWindow):
 
         if self._xo2_run_dialog: 
             self._xo2_run_dialog.activateWindow()
-            return                                 # already openend?
+            return                                 # already opened?
 
         # open dialog 
 
@@ -1050,7 +1050,7 @@ class Main (QMainWindow):
         self._watchdog.sig_xo2_new_step.connect         (diag.on_new_step)
         self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
 
-        # run immedately if ready and not finished (a re-run) 
+        # run immediately if ready and not finished (a re-run) 
         
         case: Case_Optimize = self.case
         # if  (case.xo2.isReady and not case.isFinished):
@@ -1156,7 +1156,7 @@ class Main (QMainWindow):
 
 
     def _on_xo2_opPoint_def_changed (self):
-        """ slot opPoint definiton changed in diagram"""
+        """ slot opPoint definition changed in diagram"""
 
         if self._xo2_opPoint_def_dialog:
             self._xo2_opPoint_def_dialog.refresh_current ()
@@ -1164,7 +1164,7 @@ class Main (QMainWindow):
 
 
     def _on_xo2_opPoint_def_selected (self):
-        """ slot opPoint definiton selected either in panel or diagram"""
+        """ slot opPoint definition selected either in panel or diagram"""
 
         if self._xo2_opPoint_def_dialog:
             self._xo2_opPoint_def_dialog.refresh_current ()
@@ -1235,15 +1235,9 @@ class Main (QMainWindow):
 
 
     def _toast_message (self, msg, toast_style = style.HINT):
-
-        # if self.mode_optimize:
-        #     parent = self._xo2_panel
-        # else: 
-        #     parent = self._data_panel
-
-        parent = self
-
-        Toaster.showMessage (parent, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(10, 10, 10, 10),
+        """ show toast message """
+        
+        Toaster.showMessage (self, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(10, 10, 10, 10),
                              toast_style=toast_style)
 
 
