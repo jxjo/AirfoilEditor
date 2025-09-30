@@ -89,7 +89,8 @@ class var (StrEnum_Extended):
     CDP     = "cdp"                                     # pressure drag
     CDF     = "cdf"                                     # friction drag
     GLIDE   = "cl/cd" 
-    CM      = "cm"               
+    CM      = "cm"   
+    RE_CALC = "Re"                                      # Reynolds number calculated for Type 2 polars
     SINK    = "sink"                                    # "cl^1.5/cd"              
     XTRT    = "xtrt"               
     XTRB    = "xtrb"    
@@ -455,14 +456,14 @@ class Polar_Definition:
 
     @property
     def re (self) -> float: 
-        """ Reynolds number"""
+        """ Reynolds number of polar - in case of Type 2 it is the Re*sqrt(cl)"""
         return self._re
     def set_re (self, re): 
         self._re = clip (re, 1000, 1e+8 - 1)
 
     @property
     def re_asK (self) -> int: 
-        """ Reynolds number base 1000"""
+        """ Reynolds number base 1000 - in case of Type 2 it is the Re*sqrt(cl)"""
         return int (self.re/1000) if self.re is not None else 0 
     def set_re_asK (self, aVal): 
         self.set_re (int(aVal) * 1000)
@@ -869,6 +870,8 @@ class Polar_Point:
             val = self.xtrb
         elif op_var == var.GLIDE:
             val = self.glide
+        elif op_var == var.RE_CALC:
+            val = None                                              # not available here 
         elif op_var == var.SINK:
             val = self.sink
         elif op_var == var.XTR:
@@ -922,7 +925,7 @@ class Polar (Polar_Definition):
 
         Args:
             mypolarSet: the polar set object it belongs to 
-            polar_def: optional the polar_definition to initilaize self deinitions
+            polar_def: optional the polar_definition to initialize self definitions
             re_scale: will scale (down) polar reynolds and mach number of self
 
         """
@@ -944,6 +947,7 @@ class Polar (Polar_Definition):
         self._xtrb  = None
         self._glide = None
         self._sink  = None
+        self._re_calc = None
 
         self._bubble_top = None                        # bubble top side values
         self._bubble_bot = None                        # bubble bot side values
@@ -1046,6 +1050,11 @@ class Polar (Polar_Definition):
         if not np.any(self._sink): self._sink = self._get_values_forVar (var.SINK)
         return self._sink
     
+    @property
+    def re_calc (self) -> np.ndarray:
+        if not np.any(self._re_calc): self._re_calc = self._get_values_forVar (var.RE_CALC)
+        return self._re_calc
+
     @property
     def cm (self) -> np.ndarray:
         if not np.any(self._cm): self._cm = self._get_values_forVar (var.CM)
@@ -1193,6 +1202,8 @@ class Polar (Polar_Definition):
             vals = self.alpha
         elif polar_var == var.GLIDE:
             vals = self.glide
+        elif polar_var == var.RE_CALC:
+            vals = self.re_calc
         elif polar_var == var.SINK:
             vals = self.sink
         elif polar_var == var.CM:
@@ -1204,11 +1215,11 @@ class Polar (Polar_Definition):
         elif polar_var == var.XTR:
             vals = self.xtr
         else:
-            raise ValueError ("Unkown polar variable: %s" % polar_var)
+            raise ValueError ("Unknown polar variable: %s" % polar_var)
         return vals
     
 
-    def _get_values_forVar (self, var) -> np.ndarray:
+    def _get_values_forVar (self, op_var) -> np.ndarray:
         """ copy values of var from op points to array"""
 
         nPoints = len(self.polar_points)
@@ -1216,9 +1227,25 @@ class Polar (Polar_Definition):
 
         values = np.zeros (nPoints)
         for i, op in enumerate(self.polar_points):
-            values[i] = op.get_value (var)
+
+            if op_var == var.RE_CALC:                                   # special case for re_calc    
+                values[i] = self._re_calc_for_op (op)
+            else:
+                values[i] = op.get_value (op_var)
         return values 
 
+
+    def _re_calc_for_op (self, op : Polar_Point) -> float:
+        """ returns the re_calc value for a single polar point"""
+
+        if self.type == polarType.T2:
+            if op.cl and self.re:
+                return self.re / np.sqrt(abs(op.cl))
+            else:
+                return 0.0      
+        else:
+            return self.re if self.re else 0.0
+        
 
     def get_interpolated (self, xVar : var, xVal : float, yVar : var,
                           allow_outside_range = False) -> float:

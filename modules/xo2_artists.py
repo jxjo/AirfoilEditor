@@ -440,7 +440,7 @@ class Xo2_OpPoint_Artist (Artist):
             y = opPoint.get_value (self.xyVars[1])
 
             if x is None or y is None:
-                logger.warning(f"OpPoint {iop} has no coordinates for this diagram - skipping")
+                logger.debug(f"OpPoint {iop} has no coordinates for this diagram - skipping")
                 continue
 
             # get opPoint definition for this opPoint - if not available, use None
