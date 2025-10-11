@@ -5,30 +5,24 @@
     Part of Optimizer Model to handle Xoptfoil2 result files 
 
     |-- Case                        - a single optimization case, define specs for an optimization 
-        |-- Results                 - proxy of the Xopfoil2 result files 
-            |-- Reader_Airfoils     - read airfoil designs of optimzation 
+        |-- Results                 - proxy of the Xoptfoil2 result files 
+            |-- Reader_Airfoils     - read airfoil designs of optimization 
             |-- Reader ...
 
                                           
 """
 
 import os
-import sys
 import shutil
-from datetime import datetime, timedelta
-from pathlib import Path
-
-
-# let python find the other modules in the dir of self  
-sys.path.append(Path(__file__).parent)
+from datetime import datetime
 
 from base.common_utils      import * 
 from base.spline            import HicksHenne
-from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, usedAs
-from model.airfoil          import GEO_BASIC, Line
-from model.polar_set        import * 
-from model.xo2_driver       import Xoptfoil2
-from model.xo2_input        import GEO_OPT_VARS
+from .airfoil               import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, usedAs
+from .airfoil               import GEO_BASIC, Line
+from .polar_set             import * 
+from .xo2_driver            import Xoptfoil2
+from .xo2_input             import GEO_OPT_VARS
 
 import logging
 logger = logging.getLogger(__name__)

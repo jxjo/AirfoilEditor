@@ -7,9 +7,9 @@
 """
 
 import pytest
-
 import numpy as np 
-from spline import *
+
+from .spline import *
 
 class Test_Spline:
 

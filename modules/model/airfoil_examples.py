@@ -10,7 +10,7 @@ import io
 from typing                 import override
 
 from base.common_utils      import * 
-from model.airfoil          import Airfoil, GEO_SPLINE, GEO_BASIC
+from .airfoil               import Airfoil, GEO_SPLINE, GEO_BASIC
 
 
 class Airfoil_Example_Abstract (Airfoil): 
@@ -44,7 +44,7 @@ class Airfoil_Example_Abstract (Airfoil):
 
     def _getCoordinates (self):
         """ returns the coordinates of example as a list of lines"""
-        # to over load by sublass for specific airfoil data
+        # to over load by subclass for specific airfoil data
         return []
 
 

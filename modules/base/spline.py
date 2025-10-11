@@ -7,11 +7,12 @@
 
 """
 import bisect
-import numpy as np
-from copy import deepcopy
 import math
+import numpy as np
+from copy                   import deepcopy
+from pathlib                import Path
 
-from base.math_util import findMin, newton
+from .math_util             import findMin, newton
 
 
 #------------ Helper -----------------------------------
@@ -405,7 +406,7 @@ class Spline2D:
         boundary : Type of boundary condition  - either 
            
             'notaknot'   - at the first and last interior break, 
-                           even the third derivative is continuous - defalt 
+                           even the third derivative is continuous - default 
             'natural'    - the second derivate at start and end is zero 
 
         Returns
@@ -705,7 +706,7 @@ class Bezier:
 
     @property
     def has_u (self) -> bool: 
-        """ True if curve paramter u is set (in cache) """
+        """ True if curve parameter u is set (in cache) """
         return self._u is not None 
 
 
@@ -715,7 +716,7 @@ class Bezier:
 
         Parameters
         ----------
-        u :   Scalar or an array of paramter 0..1 at which to return the value of Bezier
+        u :   Scalar or an array of parameter 0..1 at which to return the value of Bezier
 
         Returns
         -------
@@ -947,7 +948,7 @@ class Bezier:
 
 #------------ Hicks Henne  -----------------------------------
 
-# although Hicks Henne bump functions are no 'splines' it is implmented here for 
+# although Hicks Henne bump functions are no 'splines' it is implemented here for 
 #    not to have an extra module   
 
 

@@ -32,9 +32,9 @@ from pyqtgraph.GraphicsScene.mouseEvents        import MouseClickEvent, MouseDra
 from PyQt6.QtCore       import Qt, QTimer, QObject
 from PyQt6.QtGui        import QColor
 
-from base.common_utils  import *
-from base.math_util     import JPoint 
-from base.spline        import Bezier 
+from .common_utils      import *
+from .math_util         import JPoint 
+from .spline            import Bezier 
 
 import logging
 logger = logging.getLogger(__name__)
@@ -954,7 +954,8 @@ class Artist(QObject):
     def _plot_point (self,*args, 
                   text : str = None, textColor = None, textFill  = None, textOffset = (0,0), anchor = (0,1),
                   symbol = 'o', color  = "red", brush  = None, size = 7, style=Qt.PenStyle.SolidLine,
-                  zValue=3,
+                  zValue=3, 
+                  angle=0, ensureInBounds=False,
                   name=None,
                   **kwargs) -> pg.TargetItem:
         """ plot point with text item at x, y - text will follow the point """
@@ -979,7 +980,8 @@ class Artist(QObject):
         # text (label) options 
 
         color = QColor(textColor) if textColor else QColor(self.COLOR_NORMAL)
-        labelOpts = {'anchor': anchor, 'color': color, 'fill': textFill, 'offset': textOffset}
+        labelOpts = {'anchor': anchor, 'color': color, 'fill': textFill, 'offset': textOffset, 
+                     'angle': angle, 'ensureInBounds': ensureInBounds}
 
         # create TargetItem  
 
@@ -992,7 +994,7 @@ class Artist(QObject):
         self._add (p, name=name)
 
         return p 
-
+    
 
     def _plot_text (self, text : str, color=None, fontSize=None, 
                           parentPos = (0.5,0.5),    # pos within PlotItem 

@@ -11,23 +11,18 @@
 """
 
 import os
-import sys
-import textwrap
 import fnmatch      
 from pathlib import Path
 from typing import TextIO
 
-import f90nml         # fortran namelist parser
+import f90nml                                       # fortran namelist parser
 
-# let python find the other modules in the dir of self  
-sys.path.append(Path(__file__).parent)
 from base.common_utils      import * 
-from base.spline            import HicksHenne
 
-from model.polar_set        import * 
-from model.airfoil          import Airfoil, GEO_BASIC, usedAs
-from model.airfoil_geometry import Geometry_Bezier
-from model.airfoil_examples import Example
+from .polar_set             import * 
+from .airfoil               import Airfoil, GEO_BASIC, usedAs
+from .airfoil_geometry      import Geometry_Bezier
+from .airfoil_examples      import Example
 
 
 
@@ -894,7 +889,7 @@ class OpPoint_Definition:
 
     @property
     def re (self): 
-        """ the individual reynolds number - normaly the default value is returned"""
+        """ the individual reynolds number - normally the default value is returned"""
         return self._myList.re_default if self._re is None else self._re
 
     def set_re (self, aVal):
@@ -907,7 +902,7 @@ class OpPoint_Definition:
 
     @property
     def re_asK (self) -> int: 
-        """ the individual reynolds number in k - normaly the default value is returned"""
+        """ the individual reynolds number in k - normally the default value is returned"""
         return int (self.re/1000) if self.re is not None else 0 
     def set_re_asK (self, aVal): self.set_re (aVal * 1000)
 
@@ -918,7 +913,7 @@ class OpPoint_Definition:
 
     @property
     def ma (self): 
-        """ the individual mach number - normaly a common default value is used"""
+        """ the individual mach number - normally a common default value is used"""
         if self._ma is None:
             return self._myList.ma_default
         else: 
@@ -932,7 +927,7 @@ class OpPoint_Definition:
 
     @property
     def ncrit (self): 
-        """ the individual xfoil ncrit - normaly a common default value is used"""
+        """ the individual xfoil ncrit - normally a common default value is used"""
         if self._ncrit is None:
             return self._myList.ncrit
         else: 
@@ -1672,7 +1667,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         Args:
             xyVars: tuple of polar variables like (CD,CL)
             x,y: the values of xyVars 
-            re:  a guess for the reynolds nummber 
+            re:  a guess for the reynolds number 
         Returns:
             new OpPoint_Definition instance: 
         """

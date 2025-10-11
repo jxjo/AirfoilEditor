@@ -14,14 +14,14 @@ from typing             import override
 
 from PyQt6.QtCore       import Qt, QEvent, QPoint, QRectF
 from PyQt6.QtCore       import QSize, QMargins, QTimer, QPropertyAnimation, QAbstractAnimation
-from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QSizePolicy
-from PyQt6.QtWidgets    import QMainWindow, QWidget, QDialog, QDialogButtonBox, QLabel, QMessageBox, QFrame
-from PyQt6.QtWidgets    import QGraphicsOpacityEffect
+from PyQt6.QtWidgets    import (QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QSizePolicy,
+                                QWidget, QDialog, QDialogButtonBox, QLabel, QMessageBox, QFrame,
+                                QGraphicsOpacityEffect, QTabWidget)
 from PyQt6.QtGui        import QGuiApplication, QScreen, QColor, QPalette, QPainterPath, QRegion, QTransform
 from PyQt6              import sip
 
-from base.widgets       import set_background, style
-from base.widgets       import Widget, Label, CheckBox, size, Button, FieldI, SpaceR, Icon
+from .widgets           import set_background, style
+from .widgets           import Widget, Label, CheckBox, size, Icon
 
 import logging
 logger = logging.getLogger(__name__)
@@ -464,7 +464,7 @@ class Edit_Panel (Panel_Abstract):
 
         # remove and rebuild only in case of _init_layout done in a subclass
 
-        if self._initial_layout:
+        if isinstance(self._initial_layout, QLayout):
 
             layout = self._initial_layout
 
@@ -662,7 +662,7 @@ class MessageBox (QMessageBox):
 class Toaster (QFrame):
 
     """ 
-    Show a little notfication toaster 
+    Show a little notification toaster 
 
     based on https://stackoverflow.com/questions/59251823/is-there-an-equivalent-of-toastr-for-pyqt
     """
@@ -878,17 +878,10 @@ class Toaster (QFrame):
 class Dialog (QDialog):
     """
     Abstract super class for modal top windows with action buttons at bottom.
-    Extends QDialog with a dataObject (via 'getter') and common background
+    Extends QDialog with a dataObject (via 'getter') and common background color.
 
-    Args:
-        parent: parent widget self (position) should be related
-        getter: bound method for data object 
-        width : overwrite default width of self 
-        height: overwrite default height of self 
-        dx    : move top left corner dx pixel to the right of parent bottom left
-        dy    : move top left corner dy pixel down of parent bottom left
-    Returns:
-        _type_: _description_
+    The content of the dialog is defined in a subclass via _init_layout() which returns the
+    layout for the dialog.
     """
 
     name = "Dialog"             # will be title 
@@ -901,13 +894,13 @@ class Dialog (QDialog):
                  parent : QWidget = None,
                 #  flags : Qt.WindowType = None, 
                  getter = None, 
-                 width  : int | None =None, 
-                 height : int | None =None, 
-                 dialogPos : tuple = (0.4,0.5),          # reference point for positioning - (0,0) is upper, left corner
-                 parentPos : tuple = (0.3,0.6),          # position anchor in parent - (0,0) is upper, left corner
-                 dx : int | None = None, 
-                 dy : int | None = None, 
-                 title=None, 
+                 width  : int | None =None,             # optional width of dialog
+                 height : int | None =None,             # optional height of dialog
+                 dialogPos : tuple = (0.4,0.5),         # reference point for positioning - (0,0) is upper, left corner
+                 parentPos : tuple = (0.3,0.6),         # position anchor in parent - (0,0) is upper, left corner
+                 dx : int | None = None,                # optional move dialog dx pixels to the right
+                 dy : int | None = None,                # optional move dialog dy pixels down
+                 title=None,                            # optional title of dialog
                  flags=Qt.WindowType.Dialog, **kwargs):
         super().__init__(parent, flags=flags, **kwargs)
 
@@ -1051,7 +1044,7 @@ class Dialog (QDialog):
 
 
     def button_clicked (self, aButton): 
-        """ slot for button of buttonbox clicked. Can be overriden"""
+        """ slot for button of buttonbox clicked. Can be overridden"""
         pass
 
 
@@ -1068,6 +1061,176 @@ class Dialog (QDialog):
         """ handle reject (close) actions"""
         # to override 
         super().reject()
+
+
+#-------------------------------------------------------------------------------
+# Tab panel    
+#-------------------------------------------------------------------------------
+
+
+class Tab_Panel (QTabWidget):
+    """ 
+    Tab Widget as parent for other items 
+    """
+
+    name = "Panel"             # will be title 
+
+    _width  = None
+    _height = None 
+
+
+    def __init__(self,  
+                 parent=None,
+                 width=None, 
+                 height=None, 
+                 **kwargs):
+        super().__init__(parent=parent, **kwargs)
+
+        self._parent = parent
+
+        if width  is not None: self._width = width
+        if height is not None: self._height = height
+
+        # set width and height 
+        Widget._set_width  (self, self._width)
+        Widget._set_height (self, self._height)
+
+        font = self.font() 
+        _font = size.HEADER.value
+        font.setPointSize(_font[0])
+        font.setWeight   (_font[1])  
+        self.setFont(font)
+
+        # see https://doc.qt.io/qt-6/stylesheet-examples.html
+
+        if Widget.light_mode:
+            tab_style = """
+            QTabWidget::pane { /* The tab widget frame */
+                border-top:1px solid #ababab;
+            }
+
+            QTabWidget::tab-bar {
+                left: 400px; /* move to the right by 5px */
+            }
+
+            /* Style the tab using the tab sub-control. Note that
+                it reads QTabBar _not_ QTabWidget */
+            QTabBar::tab {
+                /*background: green; */
+                border: 1px solid #C4C4C3;
+                border-bottom: 0px;                                     /*remove */
+                border-top-left-radius: 3px;
+                border-top-right-radius: 3px;
+                min-width: 25ex;
+                padding: 6px;
+            }
+
+            QTabBar::tab:!selected {
+                margin-top: 2px; /* make non-selected tabs look smaller */
+                background: #e5e5e5
+            }
+                            
+            QTabBar::tab:hover {
+                background: rgba(255, 255, 255, 0.2) /* rgba(255, 20, 147, 0.1); */              
+            }
+
+            QTabBar::tab:selected {
+                background: rgba(255, 255, 255, 0.9) /* background: rgba(255, 20, 147, 0.2); */               
+            }
+
+            QTabBar::tab:selected {
+                /*color: white; */
+                color: #303030;
+                font-weight: 600;
+                border-color: #9B9B9B;
+                border-bottom-color: #C2C7CB; /* same as pane color */
+            }
+            """
+ 
+        else: 
+
+            tab_style = """
+            QTabWidget::pane { /* The tab widget frame */
+                border-top:1px solid #505050;
+            }
+
+            QTabWidget::tab-bar {
+                left: 400px; /* move to the right by 5px */
+            }
+
+            /* Style the tab using the tab sub-control. Note that
+                it reads QTabBar _not_ QTabWidget */
+            QTabBar::tab {
+                /*background: green; */
+                border: 1px solid #505050;  
+                border-bottom: 0px;                                     /*remove */
+                border-top-left-radius: 3px;
+                border-top-right-radius: 3px;
+                min-width: 25ex;
+                padding: 6px;
+            }
+
+            QTabBar::tab:!selected {
+                margin-top: 2px; /* make non-selected tabs look smaller */
+                color: #D0D0D0;
+                background: #353535
+            }
+                            
+            QTabBar::tab:hover {
+                background: rgba(255, 255, 255, 0.2) /* rgba(255, 20, 147, 0.1); */             
+            }
+
+            QTabBar::tab:selected {
+                background: rgba(77, 77, 77, 0.9) /* background: rgba(255, 20, 147, 0.2); */                   
+            }
+
+            QTabBar::tab:selected {
+                /*color: white; */
+                color: #E0E0E0;
+                font-weight: 600;
+                border-color: #909090;
+                border-bottom-color: #C2C7CB;   /* same as pane color */
+            }
+            """
+
+
+        self.setStyleSheet (tab_style) 
+
+
+    def __repr__(self) -> str:
+        # overwritten to get a nice print string 
+        return f"<Tab_Panel '{self.name}'>"
+
+
+    def add_tab (self, aWidget : QWidget, name : str = None):
+        """ at an item having 'name' to self"""
+
+        if name is None:
+            name = aWidget.name
+
+        self.addTab (aWidget, name)
+
+
+    def set_tab (self, class_name : str):
+        """ set the current tab to tab with widgets class name"""
+
+        for itab in range (self.count()):
+            if self.widget(itab).__class__.__name__ == class_name:
+                self.setCurrentIndex (itab)
+                return
+
+
+    def set_background_color (self, darker_factor : int | None = None,
+                                    color : QColor | int | None  = None,
+                                    alpha : float | None = None):
+        """ 
+        Set background color of a QWidget either by
+            - darker_factor > 100  
+            - color: QColor or string for new color
+            - alpha: transparency 0..1 
+        """
+        set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
+
 
 
 # ------------------------------------------------------------------------------

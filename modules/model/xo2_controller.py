@@ -9,9 +9,9 @@ Xoptfoil2 controler for run state
 import os
 
 from enum                   import StrEnum
-from datetime               import datetime, timedelta
+from datetime               import datetime
 
-from model.xo2_driver       import Xoptfoil2
+from .xo2_driver            import Xoptfoil2
 
 #-------------------------------------------------------------------------------
 # enums   

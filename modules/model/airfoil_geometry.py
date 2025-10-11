@@ -775,7 +775,7 @@ class Line:
         self._y         = np.array(y)
         self._type      = linetype 
         self._name      = name 
-        self._threshold = 0.1                   # threshold for reversal dectection 
+        self._threshold = 0.1                   # threshold for reversal detection 
         self._highpoint = None                  # the high Point of the line  
         self._max_spline = None                 # little helper spline to get maximum 
          
@@ -1080,7 +1080,7 @@ class Line:
 
         if y_cur == 0.0:
             y_new = 0.0      
-        elif self.type == Line.Type.LOWER:             # range is negativ 
+        elif self.type == Line.Type.LOWER:             # range is negative
             y_new = max (-0.5, y_new)
             y_new = min (-0.005, y_new)
         else: 
@@ -1634,12 +1634,12 @@ class Geometry ():
 
     @property
     def modification_dict (self) -> list [tuple]:
-        """returns a list of modfications as a dict of modifications"""
+        """returns a list of modifications as a dict of modifications"""
         return self._modification_dict
 
     @property
     def modifications_as_list (self) -> list [tuple]:
-        """returns a list of modfications as string like 'repenaled 190'"""
+        """returns a list of modifications as string like 'repaneled 190'"""
         mods = []
         for aMod, val in self._modification_dict.items():
                 val_str = f"{str(val)}" if val is not None else ''
@@ -1658,7 +1658,7 @@ class Geometry ():
                 elif isinstance (val, float): 
                     val = round(val,1)
                 name_val = (aMod, val)
-                if not (name_val in mods):                  # avoid dublicates 
+                if not (name_val in mods):                  # avoid duplicates 
                     mods.append ((aMod,val))
 
         # we got final list of tuples - build string
@@ -1749,7 +1749,7 @@ class Geometry ():
 
     @property
     def isLe_closeTo_le_real (self): 
-        """ true if LE of x,y cordinates nearly equal to the real (splined) leading edge.
+        """ true if LE of x,y coordinates nearly equal to the real (splined) leading edge.
             If not the airfoil should be repaneled... """
 
         xle, yle   = self.le

@@ -30,11 +30,6 @@ from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QDialog
 from PyQt6.QtWidgets        import QHBoxLayout, QMessageBox
 from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 
-# add directory of self to sys.path, so import is relative to self
-modules_path = os.path.dirname(__file__)
-if not modules_path in sys.path:
-    sys.path.append(modules_path)
-
 from model.airfoil          import Airfoil, usedAs
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
 from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
@@ -57,7 +52,7 @@ import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
-
+# print ("\n".join(sys.path))
 
 #-------------------------------------------------------------------------------
 # The App   

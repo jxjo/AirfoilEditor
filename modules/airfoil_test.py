@@ -13,11 +13,10 @@ import os
 import sys
 
 # add directory of self to sys.path, so import is relative to self
-modules_path = os.path.dirname(__file__)
+modules_path = os.path.dirname(os.path.realpath(__file__))
 if not modules_path in sys.path:
     sys.path.append(modules_path)
 
-print ("*********************", os.getcwd ())
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from model.airfoil_examples import Root_Example, Tip_Example

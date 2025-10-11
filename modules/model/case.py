@@ -9,12 +9,11 @@ from datetime               import datetime
 from pathlib                import Path
 from typing                 import override
 
-from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, GEO_SPLINE, usedAs
-from model.polar_set        import Polar_Definition
+from .airfoil               import Airfoil, Airfoil_Bezier, GEO_SPLINE
 
-from model.xo2_input        import Input_File
-from model.xo2_controller   import Xo2_Controller
-from model.xo2_results      import Xo2_Results
+from .xo2_input             import Input_File
+from .xo2_controller        import Xo2_Controller
+from .xo2_results           import Xo2_Results
 
 import logging
 logger = logging.getLogger(__name__)

@@ -17,12 +17,11 @@ from PyQt6.QtWidgets    import QWidget
 from PyQt6.QtGui        import QPalette, QIcon, QColor
 
 import pyqtgraph as pg                          # import PyQtGraph after PyQt6
-from pyqtgraph          import icons
 
-from base.common_utils  import *
-from base.panels        import Edit_Panel, Container_Panel
-from base.widgets       import ToolButton, Icon, Widget
-from base.artist        import Artist
+from .common_utils      import *
+from .panels            import Edit_Panel, Container_Panel
+from .widgets           import Icon, Widget
+from .artist            import Artist
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.WARNING)
@@ -158,7 +157,7 @@ class Diagram (QWidget):
         self._message_vb.hide()
         nrows = gridLayout.rowCount()
         ncols = gridLayout.columnCount()
-        graphicsLayout.addItem (self._message_vb, nrows, 0, rowspan=1, colspan=ncols-1)
+        graphicsLayout.addItem (self._message_vb, nrows, 0, rowspan=1, colspan=ncols)
 
 
     def _rebuild_grid_layout (self):

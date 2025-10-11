@@ -17,10 +17,10 @@ import numpy as np
 
 from base.math_util         import * 
 from base.common_utils      import * 
-from model.airfoil_geometry import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
-from model.airfoil_geometry import Line, Side_Airfoil_Bezier, GeometryException
+from .airfoil_geometry      import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
+from .airfoil_geometry      import Line, Side_Airfoil_Bezier, GeometryException
 
-from model.xo2_driver       import Worker
+from .xo2_driver            import Worker
 
 import logging
 logger = logging.getLogger(__name__)
@@ -318,12 +318,12 @@ class Airfoil:
     def info_short_as_html (self, thickness_color = None, camber_color = None) -> str:
         """ comprehensive info about self as formatted html string"""
 
-        info = "<p style='white-space:pre'>"                     # no word wrap 
+        info = "<p style='white-space:pre'>"                                # no word wrap 
 
         thickness_color = thickness_color if thickness_color else ''
         camber_color    = camber_color    if camber_color    else ''
 
-        if self.geo and self.geo.max_thick:
+        if self.x is not None and self.geo and self.geo.max_thick:          # could be strak airfoil
             info += f"<table>" + \
                     f"<tr>" + \
                         f"<td>Thickness  </td>" + \
@@ -345,7 +345,9 @@ class Airfoil:
                     f"</tr>" + \
                 f"</table>"
         else:
-            info += f"<br> Error when evaluating airfoil <br>"
+            info += f"No geometry info available"
+
+        info += "</p>"
         return info 
 
 
@@ -355,9 +357,10 @@ class Airfoil:
 
         info = "<p style='white-space:pre'>"                     # no word wrap 
 
-        used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
-        info += f"{used_as}{self.fileName}" 
-        info += f"<br><br>in {self.pathName_abs}<br>" 
+        if self.x is not None:
+            used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
+            info += f"{used_as}{self.fileName}" 
+            info += f"<br><br>in {self.pathName_abs}" 
 
         info += self.info_short_as_html()
 
@@ -589,6 +592,10 @@ class Airfoil:
         """ set current fileName as name of airfoil """
         self.set_fileName (self.name + self.fileName_ext) 
 
+    def set_fileName_add_suffix (self, aSuffix : str):
+        """ extend current fileName_stem with suffix """
+        self.set_fileName (self.fileName_stem + aSuffix + self.fileName_ext)
+
 
     @property
     def pathName (self):
@@ -750,7 +757,7 @@ class Airfoil:
             if not os.path.isdir (dir):
                 os.mkdir(dir)
             if isWorkingDir:
-                self.set_pathFileName (self.fileName)
+                self.set_pathFileName (self.fileName, noCheck=True)
                 self.set_workingDir   (dir)
             else:
                 self.set_pathFileName (os.path.join (dir, fileName), noCheck=True)
@@ -761,43 +768,44 @@ class Airfoil:
 
 
 
-    def save_copyAs (self, dir = None, destName = None, te_gap=None ):
+    def save_copyAs (self, 
+                     pathName : str|None = None, fileName : str|None = None, 
+                     name :str|None = None, te_gap=None ):
         """
-        Write a copy of self to destPath and destName (the airfoil can be renamed).
+        Write a copy of self to pathName and fileName with new name.
         Self remains with its current values.
-        Optionally a new te_gap may be defined for the exported airfoil  
+        Optionally a new te_gap may be defined for the exported airfoil
 
         Args: 
-            dir: -optional- new directory for the airfoil 
-            destName: - optional- new name
-            te_gap: -optional- new TE gap in x,y coordinates 
+            pathName: -optional- new directory for the airfoil
+            fileName: - optional- new file name
+            name:     -optional- new airfoil name
+            te_gap: -optional- new TE gap in x,y coordinates
 
         Returns: 
-            newPathFileName from dir and destName 
+            new_pathFileName_abs  of the copied airfoil
         """        
 
-        # determine (new) airfoils name  if not provided
-        if not destName:
-            if self.name: 
-                destName = self.name    
-            else:
-                if self.fileName:
-                    destName = Path(self.fileName).stem        # cut '.dat'
-                else: 
-                    raise ValueError ("Destination name of airfoil couldn't be evaluated")
+        # (new) airfoils name  if not provided
+        if not name and fileName:
+            name = Path(fileName).stem                      # cut '.dat'
+
+        # (new) airfoils fileName if not provided
+        if fileName is None:
+            fileName = self.fileName
 
         # create dir if not exist - build airfoil filename
-        if dir: 
-            if not os.path.isdir (dir):
-                os.mkdir(dir)
-            newPathFileName = os.path.join (dir, destName) + Airfoil.Extension
+        if pathName: 
+            pathName_abs = pathName if os.path.isabs (pathName) else os.path.join (self.workingDir, pathName)
+            if not os.path.isdir (pathName_abs):
+                os.mkdir(pathName_abs)
         else: 
-            newPathFileName = destName + Airfoil.Extension
+            pathName = self.pathName
 
-        # create temp new airfoil 
+        # create new airfoil 
         if not self.isLoaded: self.load()
 
-        airfoil = self.asCopy (name=destName, pathFileName=newPathFileName)
+        airfoil = self.asCopy (name=name, pathFileName=os.path.join (pathName, fileName))
 
         if te_gap is not None: 
 
@@ -806,12 +814,14 @@ class Airfoil:
             # build new airfoil name 
             mods = airfoil.geo.modifications_as_label
             airfoil.set_name (f"{airfoil._name_org}{mods}")
-            airfoil.set_fileName_from_name ()
+            # build new airfoil fileName
+            airfoil.set_fileName (airfoil._fileName_org)            # reset to original if possible
+            airfoil.set_fileName_add_suffix (mods)                  # add te_gap modification label to fileName
 
         # save it to file 
         airfoil.save ()
 
-        return airfoil.pathFileName
+        return airfoil.pathFileName_abs
 
 
     def asCopy (self, pathFileName = None, 
@@ -921,14 +931,12 @@ class Airfoil:
     
         blendBy = clip (blendBy, 0.0, 1.0)
 
-        # other geo strategy? 
+        # other geo strategy - change geometry_class of self 
         if not geometry_class is None and geometry_class != self._geometry_class:
-            geo : Geometry = geometry_class (self.x, self.y)
-            geo.blend (airfoil1.geo, airfoil2.geo, blendBy)
+            self._geometry_class = geometry_class
+            self._geo = None                                            # reset geometry
 
-            self._handle_geo_changed (geo=geo) 
-        else:
-            self.geo.blend (airfoil1.geo, airfoil2.geo, blendBy)
+        self.geo.blend (airfoil1.geo, airfoil2.geo, blendBy)
 
         self.set_isBlendAirfoil (True)
 
