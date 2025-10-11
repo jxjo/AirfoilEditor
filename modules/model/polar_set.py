@@ -39,15 +39,13 @@ from pathlib                import Path
 
 import numpy as np
 
-# let python find the other modules in the dir of self  
-sys.path.append(Path(__file__).parent)
 from base.common_utils      import * 
 from base.math_util         import * 
 from base.spline            import Spline1D, Spline2D
 
-from model.airfoil          import Airfoil, Airfoil_Bezier
-from model.airfoil          import Flap_Definition
-from model.xo2_driver       import Worker, file_in_use   
+from .airfoil               import Airfoil, Airfoil_Bezier
+from .airfoil               import Flap_Definition
+from .xo2_driver            import Worker, file_in_use   
 
 
 import logging
@@ -488,6 +486,13 @@ class Polar_Definition:
         """ returns polar extended name self represents """
         return f"{self.name}  {self.specVar}: {self.valRange_string}"    
 
+    def name_with_v (self, chord : float):
+        """ returns polar name with velocity for given chord """
+        if self.type == polarType.T1 and chord:
+            v = v_from_re (self.re, chord / 1000) 
+            return f"{self.name} | {v:.1f}m/s" if v is not None else self.name
+        else:
+            return self.name
 
     def is_equal_to (self, aDef: 'Polar_Definition', ignore_active=False):
         """ True if aPolarDef is equals self"""
@@ -544,7 +549,7 @@ class Polar_Set:
 
     """
 
-    instances : list ['Polar_Set']= []               # keep track of all instances ceated to reset 
+    instances : list ['Polar_Set']= []               # keep track of all instances created to reset 
 
 
     def __init__(self, myAirfoil: Airfoil, 
@@ -658,7 +663,7 @@ class Polar_Set:
 
 
     def set_polars_not_loaded (self):
-        """ set all polars to not_loaded - so they will be refreshed with next acceess"""
+        """ set all polars to not_loaded - so they will be refreshed with next access"""
 
         for i, polar in enumerate (self.polars[:]):
             
@@ -1008,7 +1013,7 @@ class Polar (Polar_Definition):
     
     @property
     def error_reason (self) -> str:
-        """ reason of error during polar geneation """
+        """ reason of error during polar generation """
         return self._error_reason
 
     def set_error_reason (self, aStr: str):
@@ -1318,7 +1323,7 @@ class Polar (Polar_Definition):
         """ 
         Loads self from Xfoil polar file.
 
-        If loading could be done or error occured, isLoaded will be True 
+        If loading could be done or error occurred, isLoaded will be True 
         """
 
         if self.isLoaded: return 
@@ -1380,9 +1385,9 @@ class Polar (Polar_Definition):
 
                 re_string    = splitline[0].strip()
                 splitstring = re_string.split("e")
-                faktor = float(splitstring[0].strip())
+                factor = float(splitstring[0].strip())
                 Exponent = float(splitstring[1].strip())
-                re = faktor * (10**Exponent)
+                re = factor * (10**Exponent)
 
                 # sanity checks 
                 if self.re != re: 
@@ -1442,7 +1447,7 @@ class Polar (Polar_Definition):
 
 class Polar_Task:
     """ 
-    Single Task for Worker to generate polars based on paramters
+    Single Task for Worker to generate polars based on parameters
     May generate many polars having same ncrit and type    
 
     Polar_Definition
@@ -1453,7 +1458,7 @@ class Polar_Task:
                 |--- Polar_Worker_Task
     """
 
-    instances : list ['Polar_Task']= []                 # keep track of all instances ceated to reset 
+    instances : list ['Polar_Task']= []                 # keep track of all instances created to reset 
 
     def __init__(self, polar: Polar =None):
         
@@ -1716,13 +1721,13 @@ class Polar_Splined (Polar_Definition):
 
         Args:
             mypolarSet: the polar set object it belongs to 
-            polar_def: optional the polar_definition to initilaize self deinitions
+            polar_def: optional the polar_definition to initialize self deinitions
         """
         super().__init__()
 
         self._polar_set = mypolarSet
 
-        self._polar_points = []                     # the single opPoins of self
+        self._polar_points = []                     # the single oppoints of self
         self._alpha = []
         self._cl = []
         self._cd = []
@@ -1862,7 +1867,7 @@ class Polar_Splined (Polar_Definition):
             x = self._ofVar (xyVars[0])
             y = self._ofVar (xyVars[1])
 
-            # sink polar - cut vlaues <= 0 
+            # sink polar - cut values <= 0 
             if var.SINK in xyVars: 
                 i = 0 
                 if var.SINK == xyVars[0]:
@@ -1877,7 +1882,7 @@ class Polar_Splined (Polar_Definition):
 
 
     def _get_values_forVar (self, var) -> list:
-        """ copy vaues of var from op points to list"""
+        """ copy values of var from op points to list"""
 
         nPoints = len(self.opPoints)
         if nPoints == 0: return [] 

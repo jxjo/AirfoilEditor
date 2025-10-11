@@ -1177,11 +1177,13 @@ class Polar_Definition_Dialog (Dialog):
     def __init__ (self, parent : QWidget, polar_def : Polar_Definition, 
                   small_mode = False,                                       # with flap etc 
                   polar_type_fixed = False,                                 # change of polar type not allowed 
+                  fixed_chord : float = None,                               # fixed chord length in mm
                   **kwargs): 
 
         self._polar_def         = polar_def
         self._small_mode        = small_mode
         self._polar_type_fixed  = polar_type_fixed
+        self._fixed_chord       = fixed_chord
 
         if small_mode:
             self._height = 160
@@ -1189,6 +1191,9 @@ class Polar_Definition_Dialog (Dialog):
 
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
+
+        if fixed_chord:
+            self.setWindowTitle (f"{self.name} at Chord {fixed_chord}mm")
 
 
     @property
@@ -1199,10 +1204,18 @@ class Polar_Definition_Dialog (Dialog):
     def flap_def (self) -> Flap_Definition:
         return self.polar_def.flap_def if self.polar_def else None
 
+    @property
+    def v (self) -> float:
+        """ velocity in m/s if chord is given"""
+        if self._fixed_chord and self.polar_def:
+            return v_from_re(self.polar_def.re, self._fixed_chord/1000, round_dec=None)
+        else:
+            return None
 
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
+        l.setVerticalSpacing(2)                                     # strange - otherwise vertcial spacing is too large
         r,c = 0,0 
         SpaceR (l, r, stretch=1) 
         r += 1 
@@ -1237,6 +1250,11 @@ class Polar_Definition_Dialog (Dialog):
         
         if not self._small_mode:
             r += 1
+            FieldF (l,r,c, width=70, unit="m/s", dec=1,
+                            lab=lambda: "Velocity", obj=self, prop=Polar_Definition_Dialog.v,
+                            disable=True,
+                            hide = lambda: self._fixed_chord is None or self.polar_def.type==polarType.T2)
+            r += 1 
             SpaceR (l, r, height=5, stretch=3) 
             r += 1 
             CheckBox (l,r,c, text=f"Set flap just for this polar", colSpan=7,
@@ -1269,7 +1287,6 @@ class Polar_Definition_Dialog (Dialog):
                             get="The smaller the value, the more time is needed")
         r += 1
         SpaceR (l, r, height=5, stretch=3) 
-
         return l
 
 
@@ -1277,11 +1294,11 @@ class Polar_Definition_Dialog (Dialog):
         """ calc re from velocity and chord length"""
 
         if self.polar_def.type == polarType.T1:
-            dialog = Calc_Reynolds_Dialog (self, re_asK=self.polar_def.re_asK, 
+            dialog = Calc_Reynolds_Dialog (self, re_asK=self.polar_def.re_asK, fixed_chord=self._fixed_chord,
                                         parentPos=(0.5, 0.5), dialogPos=(0,1))
         else:
-            dialog = Calc_Re_Sqrt_Cl_Dialog (self, re_asK=self.polar_def.re_asK, 
-                                        parentPos=(0.5, 0.5), dialogPos=(0,1))  
+            dialog = Calc_Re_Sqrt_Cl_Dialog (self, re_asK=self.polar_def.re_asK, fixed_chord=self._fixed_chord,
+                                        parentPos=(0.5, 0.5), dialogPos=(0,1))
 
         dialog.exec()     
 
@@ -1673,12 +1690,16 @@ class Calc_Reynolds_Dialog (Dialog):
     name = "Calculate Reynolds Number"
 
 
-    def __init__ (self, parent : QWidget,  re_asK = None, **kwargs): 
+    def __init__ (self, parent : QWidget,  
+                  re_asK : int = None,                  # initial Reynolds in 1000
+                  fixed_chord : float = None,           # fixed chord length in mm
+                  **kwargs): 
 
        
         self._has_been_set = False
         self._v      = 30.0
-        self._chord  = 200
+        self._chord  = fixed_chord if fixed_chord is not None else 200
+        self._chord_fixed = fixed_chord is not None
 
         super().__init__ (parent, **kwargs)
         
@@ -1737,9 +1758,11 @@ class Calc_Reynolds_Dialog (Dialog):
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
         FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
-                        obj=self, prop=Calc_Reynolds_Dialog.chord)
+                        obj=self, prop=Calc_Reynolds_Dialog.chord,
+                        disable=self._chord_fixed)
         Slider  (l,r,c+3, width=80,  lim=(10, 500),   
-                        obj=self, prop=Calc_Reynolds_Dialog.chord)
+                        obj=self, prop=Calc_Reynolds_Dialog.chord,
+                        hide=self._chord_fixed)
         r += 1
         FieldF  (l,r,c, lab="Velocity", width=80, unit="m/s", step=1, lim=(1, 360), dec=1,
                         obj=self, prop=Calc_Reynolds_Dialog.v)
@@ -1782,21 +1805,23 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog):
     _width  = 310
     _height = 200
 
-    name = "Calculate Re · √Cl"
+    name = "Calculate Re·√Cl"
 
+    def __init__ (self, parent : QWidget,  
+                  re_asK : int = None,                  # initial Reynolds in 1000
+                  fixed_chord : float = None,           # fixed chord length in mm
+                  **kwargs): 
 
-    def __init__ (self, parent : QWidget,  re_asK = None, **kwargs): 
-
-       
         self._has_been_set = False
-        self._load   = 40.0                         # wing load in g/dm²
-        self._chord  = 200                          # chord in mm
+        self._load   = 40.0                             # wing load in g/dm²
+        self._chord  = fixed_chord if fixed_chord is not None else 200
+        self._chord_fixed = fixed_chord is not None
 
         super().__init__ (parent, **kwargs)
         
         if re_asK is not None:
-            self.set_re_asK (re_asK)                # will also set load
-            self._has_been_set = False              # but not yet confirmed by user
+            self.set_re_asK (re_asK)                    # will also set load
+            self._has_been_set = False                  # but not yet confirmed by user
 
 
     @property
@@ -1849,9 +1874,11 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog):
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
         FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
-                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord)
+                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord,
+                        disable=self._chord_fixed)
         Slider  (l,r,c+3, width=80,  lim=(10, 500),   
-                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord)
+                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord,
+                        hide=self._chord_fixed)
         r += 1
         FieldF  (l,r,c, lab="Wing load", width=80, unit="g/dm²", step=1, lim=(1, 999), dec=0,
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
@@ -1861,7 +1888,7 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog):
         r += 1
         SpaceR  (l, r, stretch=2, height=5) 
         r += 1
-        FieldF  (l,r,c, lab="Re · √Cl", width=80, unit="k", step=10, lim=(1, 999), dec=0,
+        FieldF  (l,r,c, lab="Re·√Cl", width=80, unit="k", step=10, lim=(1, 999), dec=0,
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.re_asK)
         r += 1
         Label   (l,r,c+1, style=style.COMMENT, colSpan=5, 

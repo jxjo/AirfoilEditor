@@ -353,12 +353,16 @@ class Panel_Airfoils (Edit_Panel):
 class Panel_Polar_Defs (Edit_Panel):
     """ Panel to add, delete, edit polar definitions """
 
-    name = None                                         # suppress header
+    name = None                                                 # suppress header
 
-    sig_polar_def_changed = pyqtSignal()                # polar definition changed 
+    sig_polar_def_changed = pyqtSignal()                        # polar definition changed 
 
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args,
+                 chord_fn = None,                               # optional callable: chord length in mm
+                 **kwargs):
+
+        self._chord_fn = chord_fn
 
         # no margins 
         super().__init__(*args, main_margins=(0,0,0,0), panel_margins=(0,0,0,0), **kwargs)
@@ -368,6 +372,12 @@ class Panel_Polar_Defs (Edit_Panel):
     @property
     def polar_defs (self) -> list[Polar_Definition]: 
         return self.dataObject
+
+    @property
+    def chord (self) -> float|None:
+        """ Returns the optional chord length in mm"""
+        return self._chord_fn () if callable (self._chord_fn) else None
+
 
     def _init_layout (self): 
 
@@ -382,7 +392,7 @@ class Panel_Polar_Defs (Edit_Panel):
                             toolTip="Show/Hide this polar in diagram")  
             w.sig_changed.connect (self._on_polar_def_changed)
 
-            Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name)
+            Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name_with_v(self.chord))
 
             # either tool buttons 
             if not polar_def.is_mandatory: 
@@ -416,7 +426,7 @@ class Panel_Polar_Defs (Edit_Panel):
         if isinstance (id, int):
             polar_def = self.polar_defs[id]
 
-        diag = Polar_Definition_Dialog (self, polar_def, dx=260, dy=-150)
+        diag = Polar_Definition_Dialog (self, polar_def, dx=260, dy=-150, fixed_chord=self.chord)
         diag.exec()
 
         # sort polar definitions ascending re number 
