@@ -10,7 +10,7 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 import os
 
 from copy               import copy
-from typing             import override
+from typing             import override, Callable
 
 from PyQt6.QtCore       import Qt, QEvent, QPoint, QRectF
 from PyQt6.QtCore       import QSize, QMargins, QTimer, QPropertyAnimation, QAbstractAnimation
@@ -145,12 +145,13 @@ class Panel_Abstract (QWidget):
 
     def __init__(self,  
                  app = None,
-                 getter = None, 
-                 width=None, 
-                 hide=None,                                     # either callable or bool
-                 height=None, 
-                 title=None, **kwargs):
-        # super().__init__(parent=app, **kwargs)
+                 getter : Callable|None = None,                 # data object or callable returning it
+                 width : int|None = None, 
+                 height : int|None = None, 
+                 hide : Callable|bool|None = None,              # either callable or bool
+                 doubleClick: Callable|None = None,             # callable when doubleClick event occurs
+                 title=None, **kwargs):                         # title of panel (defualt self.name)
+
         super().__init__( **kwargs)
 
         self._app = app
@@ -163,11 +164,11 @@ class Panel_Abstract (QWidget):
 
         # handle visibility  
         self._shouldBe_visible = True                               # defaulit visibilty of self 
-        self._hidden_getter = None                                  # altern. getter to set visibility
+        self._hidden_fn = None                                      # altern. callable to set visibility
         if isinstance(hide, bool):
             self._shouldBe_visible = not hide
         elif callable (hide):
-            self._hidden_getter = hide
+            self._hidden_fn = hide
 
         # set width and height 
         Widget._set_width  (self, self._width)
@@ -176,12 +177,24 @@ class Panel_Abstract (QWidget):
         if title is not None: 
             self.name = title 
 
+        # handle double click event
+        self._doubleClick = doubleClick
+        self._doubleClick_hint = None
+
 
     def __repr__(self) -> str:
         # overwritten to get a nice print string 
         name = self.name if self.name else type(self).__name__
         return f"<Panel '{name}'>"
 
+
+    @override
+    def mouseDoubleClickEvent(self, event):
+        """ default double click event - call self._doubleClick if defined"""
+        if callable(self._doubleClick):
+            self._doubleClick()
+        else:
+            super().mouseDoubleClickEvent(event)
 
     @property
     def dataObject (self): 
@@ -196,9 +209,8 @@ class Panel_Abstract (QWidget):
         """ True if self should be visible 
             - can be overridden to control visibility in subclass """
         
-        if callable (self._hidden_getter):
-            self._shouldBe_visible = not self._hidden_getter ()
-
+        if callable (self._hidden_fn):
+            self._shouldBe_visible = not self._hidden_fn ()
         return self._shouldBe_visible
 
 
@@ -256,6 +268,82 @@ class Container_Panel (Panel_Abstract):
             self.setVisible (False)             # setVisible(True) results in a dummy window on startup 
 
 
+    @override
+    def mouseDoubleClickEvent(self, event):
+        """ default double click event - call self._doubleClick if defined"""
+        if callable(self._doubleClick):
+            self.remove_doubleClick_hint ()
+            self._doubleClick()
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
+    def add_doubleClick_hint (self, hint : str):
+        """ add stretchable hint for double click at the end of layout """
+
+        self._doubleClick_hint = hint
+        l = self.layout()
+
+        if hint is not None and isinstance(l, (QHBoxLayout, QVBoxLayout)):
+            Label (l, get=lambda: self._doubleClick_hint, width=(1, None),
+                      style=style.HINT, align=Qt.AlignmentFlag.AlignCenter)
+            l.setStretch (l.count()-1,2)
+
+            self.setToolTip (hint)
+
+
+    def remove_doubleClick_hint (self):
+        """ remove hint for double click from layout """
+
+        l = self.layout()
+        if self._doubleClick_hint is not None and isinstance(l, (QHBoxLayout, QVBoxLayout)):
+            # find and remove label with hint
+            for i in range(l.count()):
+                widget = l.itemAt(i).widget()
+                if isinstance (widget, Label):
+                    self._doubleClick_hint = None
+                    widget.refresh()                 
+                    self.setToolTip ("")
+                    break
+
+
+    @property
+    def edit_panels (self) -> list['Edit_Panel']:
+        """ list of Panels defined in self"""
+
+        # iterate over layout - not self._panel.findChildren (Widget) as widgets are "deleted later"
+        layout = self.layout()
+        panels = []
+        if isinstance (layout,QLayout): 
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if isinstance (widget, Edit_Panel):                
+                    panels.append(widget)
+        return panels
+
+
+    # def min_width (self, all_shouldBe_visible = False) -> int:
+    #     """ return minimum width of self to show all child panels"""
+
+    #     width = 0
+    #     for p in self.edit_panels:
+    #         if not all_shouldBe_visible or p.shouldBe_visible:
+    #             if isinstance (self.layout(), QHBoxLayout):             # add up widths
+    #                 width += p.width()
+    #                 width += self.layout().spacing()
+    #                 print (f"{p} {p.sizeHint().width()}  {p.width()}  {p.minimumWidth()}  {p.maximumWidth()}  {p.sizePolicy().horizontalPolicy()}")
+    #             elif isinstance (self.layout(), QVBoxLayout):           # take max width
+    #                 width = max (width, p.width())
+    #             else:
+    #                 width = 0 
+    #                 logger.warning (f"{self} min_width - unsupported layout {type(self.layout())}")
+    #                 break
+
+    #     if isinstance (self.layout(), QHBoxLayout):
+    #         width -= self.layout().spacing() if width > 0 else 0        # remove last spacing for hbox
+    #     return width
+
+
     def refresh (self):
         """ refresh all child Panels self"""
 
@@ -265,19 +353,11 @@ class Container_Panel (Panel_Abstract):
 
         if self.shouldBe_visible:
             # first hide the now not visible panels so layout won't be stretched
-            p : Edit_Panel
-            for p in self.findChildren (Panel_Abstract):
-                try:
-                    if not p.shouldBe_visible: p.refresh() 
-                except: 
-                    logger.warning (f"{p} {hex(id(p))} (not visible) already deleted")
-
+            for p in self.edit_panels:
+                if not p.shouldBe_visible: p.refresh() 
             # now show the now visible panels
-            for p in self.findChildren (Panel_Abstract):
-                if sip.isdeleted (p):
-                    logger.warning (f"{p} {hex(id(p))} (visible) already deleted")
-                else:
-                    if p.shouldBe_visible: p.refresh (reinit_layout=show_now) 
+            for p in self.edit_panels:
+                if p.shouldBe_visible: p.refresh (reinit_layout=show_now) 
 
 
 
@@ -332,7 +412,8 @@ class Edit_Panel (Panel_Abstract):
 
             if self._switchable:
                 CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
-                        get=lambda: self.switched_on, set=self.set_switched_on)
+                        get=lambda: self.switched_on, set=self.set_switched_on,
+                        toolTip='Show or hide -<br>Alternatively, you can double click on the panel')
             else: 
                 Label (l_head, fontSize=size.HEADER, get=self.title_text)
             l_head.setStretch (0,1)
@@ -374,6 +455,15 @@ class Edit_Panel (Panel_Abstract):
         # can be overwritten 
         return self.name 
 
+    @override
+    def mouseDoubleClickEvent(self, a0):
+        """ default double click event - toggle switch if switchable"""
+
+        if self._switchable and not callable(self._doubleClick):
+            self.toggle_switched()
+        else:
+            return super().mouseDoubleClickEvent(a0)
+
 
     @property 
     def switched_on (self) -> bool:
@@ -402,6 +492,9 @@ class Edit_Panel (Panel_Abstract):
         if not silent and callable (self._on_switched):                                          # set by checkbox - callback to Diagram_Item 
             self._on_switched (self._switched_on)
 
+    def toggle_switched (self):
+        """ toggle switched on/off """
+        self.set_switched_on (not self.switched_on)
 
     @property
     def widgets (self) -> list[Widget]:
@@ -1135,15 +1228,15 @@ class Tab_Panel (QTabWidget):
             }
 
             QTabBar::tab:selected {
-                background: rgba(255, 255, 255, 0.9) /* background: rgba(255, 20, 147, 0.2); */               
+                background: #000000 /*rgba(255, 255, 255, 0.9) */;               
             }
 
             QTabBar::tab:selected {
-                /*color: white; */
-                color: #303030;
+                color: #E0E0E0 /* #303030*/;
                 font-weight: 600;
                 border-color: #9B9B9B;
-                border-bottom-color: #C2C7CB; /* same as pane color */
+                /*border-bottom-color: #C2C7CB;  */
+                border-bottom-color: red; /* same as pane color */
             }
             """
  
@@ -1220,106 +1313,3 @@ class Tab_Panel (QTabWidget):
                 return
 
 
-    def set_background_color (self, darker_factor : int | None = None,
-                                    color : QColor | int | None  = None,
-                                    alpha : float | None = None):
-        """ 
-        Set background color of a QWidget either by
-            - darker_factor > 100  
-            - color: QColor or string for new color
-            - alpha: transparency 0..1 
-        """
-        set_background (self, darker_factor=darker_factor, color=color, alpha=alpha)
-
-
-
-# ------------------------------------------------------------------------------
-# ------------ test functions - to activate  -----------------------------------
-# ------------------------------------------------------------------------------
-
-# class Test_Panel (Edit_Panel):
-
-#     name = "Airfoil Data"
-#     _width  = 200
-#     _height = (100, None)
-
-#     def _init_layout (self)-> QLayout: 
-#         l = QGridLayout()
-#         Label  (l,0,0,get="Ein Label")
-#         Button (l,2,0, text= "Open dialog", set=self._open_dialog)
-#         l.setRowStretch (0,1)
-#         return l 
-
-#     def _open_dialog (self):
-
-#         dlg = Test_Dialog(parent=self, title="mein Titel", height=400, width=600)
-#         dlg.exec ()
-
-
-# class Test_Dialog (Dialog):
-
-#     def _init_layout(self) -> QLayout:
-#         l = QGridLayout()
-#         Label  (l,0,0,get="Hallo Dialog")
-#         SpaceR (l,1)
-#         Label  (l,2,0,get="ganz unten")
-#         l.setRowStretch (1,1)
-#         return l 
-
-
-# class Test_Panel2 (Edit_Panel):
-
-#     name   = "Curvature"
-#     _width  = 200
-#     _height = (200, None)
-
-#     def _init_layout (self) -> QLayout: 
-#         l = QGridLayout()
-#         r = 0 
-#         Label  (l,0,0, colSpan=2, get="Ein Läbele extra lang")
-#         r += 1
-#         Label  (l,r,0,get="Weight", width=70)
-#         FieldI (l,r,1,get=15, lim=(0,100), unit="kg", step=1, width=(70,90)) # (70, 90)
-#         r += 1
-#         Label  (l,r,0,get="Span")
-#         FieldI (l,r,1,get="2980", lim=(0,9999), unit="mm", step=10, width=(100, None))
-#         r+= 1
-#         SpaceR (l,r)
-#         l.setColumnStretch (1,3)
-#         l.setColumnStretch (2,1)
-#         l.setRowStretch (r, 1)
-#         return l 
-
-
-# class Test_Panels (QMainWindow):
-
-#     def __init__(self):
-#         super().__init__()
-
-#         self.setWindowTitle('Test Edit_Panel')
-#         self.setMinimumSize(QSize(400, 200))
-
-#         air_panel  = Test_Panel  (self) 
-#         curv_panel = Test_Panel2 (self, switchable=True,hide_switched=True) 
-
-#         container = QWidget()
-#         l = QHBoxLayout ()
-#         l.addWidget (air_panel) 
-#         l.addWidget (curv_panel)
-#         container.setLayout (l)  
-
-#         self.setCentralWidget(container)
-
-
-# if __name__ == "__main__":
-
-#     from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout
-#     # logging.basicConfig(level=logging.DEBUG)
- 
-#     app = QApplication([])
-#     app.setStyle('fusion')
-#     app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
-
-#     w = Test_Panels()
-#     w.show()
-#     app.exec() 
