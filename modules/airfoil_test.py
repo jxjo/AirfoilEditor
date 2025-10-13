@@ -224,7 +224,7 @@ class Test_Airfoil:
 
         te_gap =  0.01
         destName = 'huhu'
-        newPathFileName = airfoil.save_copyAs (dir=str(p_tmp), destName=destName, te_gap=te_gap)
+        newPathFileName = airfoil.save_copyAs (pathName=str(p_tmp), name=destName, te_gap=te_gap)
 
         new_airfoil = Airfoil (pathFileName=newPathFileName)
         new_airfoil.load()

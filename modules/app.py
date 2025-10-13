@@ -60,6 +60,8 @@ logger = logging.getLogger(__name__)
 
 
 APP_NAME         = "AirfoilEditor"
+PACKAGE_NAME     = "airfoileditor"
+
 __version__      = "4.1.2"                              # hatch "version dynamic" reads this version for build
 
 
@@ -135,7 +137,7 @@ class Main (QMainWindow):
 
         # check for newer version on PyPi 
 
-        update = Update_Checker (APP_NAME, "airfoileditor",  __version__)   
+        update = Update_Checker (APP_NAME, PACKAGE_NAME,  __version__)   
         if update.is_newer_version_available():
             QTimer.singleShot (1000, lambda: update.show_user_info (self))        
 
@@ -1395,7 +1397,6 @@ class Watchdog (QThread):
     Long running QThread to check if there is some new and signal parent
     
         - new polars generated - check Polar.Tasks 
-        - airfoil removed or created again - check airfoils 
         - Xoptfoil2 state 
 
     """

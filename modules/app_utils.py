@@ -19,7 +19,7 @@ from base.widgets           import *
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 # ----------------------------------------------------------------------------
@@ -137,11 +137,18 @@ class Update_Checker:
         API request to PYPI to get lastest version as string.
             return "" if failed or not available  
         """
+        latest_version = ""
 
         try: 
-            logger.debug (f"Getting latest version number from PyPI")
             response = requests.get(f'https://pypi.org/pypi/{package_name}/json')
-            latest_version = response.json()['info']['version'] if response.status_code == 200 else ""
+
+            if response.status_code == 200:             # http     
+                latest_version = response.json()['info']['version']
+                logger.debug (f"Package {package_name} version {latest_version} found on PyPI")
+            elif response.status_code == 404:
+                logger.error (f"Package {package_name} not found on PyPI")
+            else:
+                logger.error (f"Error {response.status_code} on accessing PyPI for package {package_name}")
 
             # get settings dict to avoid a lot of read/write
             settings = Settings().get_dataDict ()
@@ -150,7 +157,7 @@ class Update_Checker:
             Settings().write_dataDict (settings)
 
         except: 
-            latest_version = ""
+            pass
 
         return latest_version
 
@@ -165,7 +172,7 @@ class Update_Checker:
             last_check_date = datetime.strptime(last_check_date_str, '%Y-%m-%d').date()
             if last_check_date  == date.today():
                 # if already checked today - get version from settings
-                self._latest_version = Settings().get ("update_latest_version", None)
+                self._latest_version = Settings().get ("update_latest_version", "")
                 logger.debug (f"Version check on PyPI already made for today (latest version: {self._latest_version})")
             else:
                 logger.debug (f"Version check on PyPI made on {last_check_date_str}")

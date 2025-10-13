@@ -972,6 +972,9 @@ class Artist(QObject):
         else: 
             raise ValueError ("Arguments couldn't be interpreted as x,y")
 
+        # (optional) transformation of coordinate 
+        xy = self.t_fn (*xy)
+        
         # symbol pen colors and brushes 
 
         pen   = pg.mkPen (color, width=1, style=style)

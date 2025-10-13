@@ -106,16 +106,10 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
     name = 'View Mode'
 
-
     @override
     @property
-    def shouldBe_visible (self) -> bool:
-        """ overloaded: only visible if mode_modify """
-        return not (self.mode_modify or self.mode_optimize)
-
-    @property
     def _isDisabled (self) -> bool:
-        """ override: always enabled """
+        """ override: enabled (as parent data panel is disabled)"""
         return False
     
 

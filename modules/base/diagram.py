@@ -336,7 +336,7 @@ class Diagram (QWidget):
         
         layout.addStretch (1)
 
-        self._viewPanel = Container_Panel()
+        self._viewPanel = Container_Panel(title=self.name)
         self._viewPanel.setMinimumWidth(180)
         self._viewPanel.setMaximumWidth(250)
         self._viewPanel.setLayout (layout)
@@ -733,7 +733,11 @@ class Diagram_Item (pg.PlotItem):
     def setup_viewRange (self):
         """ define view range of this plotItem"""
         # must be implemented by subclass
-        
+
+        # print (self.viewBox.linkedView(0))
+        # if self.viewBox.linkedView(0):
+        #     print (self.viewBox.linkedView(0).isVisible())
+
         logger.warning (f"{self} no view range defined")
 
 
