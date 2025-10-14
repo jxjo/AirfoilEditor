@@ -24,7 +24,7 @@ from .widgets           import Icon, Widget
 from .artist            import Artist
 
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 
@@ -342,11 +342,12 @@ class Diagram (QWidget):
         self._viewPanel.setLayout (layout)
 
 
-    def _on_item_visible (self, aBool):
+    def _on_item_visible (self, aBool, anItem : 'Diagram_Item'):
         """ slot to handle actions when switch on/off of diagram items"""
 
         nItems = len([item for item in self.diagram_items if item.isVisible()])
 
+        # handle no items visible and first item visible again
         if nItems == 0: 
             self._message_show ("No diagram items selected ")
         else:
@@ -355,6 +356,20 @@ class Diagram (QWidget):
 
             # QT Bug: the GraphicsGirdLayout doesn't handle invisible items having stretch properly
             self._rebuild_grid_layout()
+
+        # handle broken XLink if item is made invisible
+        if not aBool and nItems > 0:
+            for item in self.diagram_items:
+                linked_vb : pg.ViewBox = item.viewBox.linkedView(0)
+                if item.isVisible() and linked_vb:
+                    if not linked_vb.isVisible():
+                        item._handle_broken_xLink()
+
+        # handle broken XLink if item is made visible
+        if aBool and nItems > 1:
+            for item in self.diagram_items:
+                if item.xLink_auto and not item.xLinked and item._desired_xLink_name == anItem.name:
+                    item.set_xLinked (True)
 
 
     def _message_show (self, aMessage):
@@ -390,7 +405,7 @@ class Diagram_Item (pg.PlotItem):
 
     # Signals 
 
-    sig_visible = pyqtSignal(bool)                      # when self is set to show/hide 
+    sig_visible = pyqtSignal(bool, object)              # when self is set to show/hide 
 
 
     def __init__(self, parent, 
@@ -410,6 +425,9 @@ class Diagram_Item (pg.PlotItem):
 
         self._title_item = None                         # LabelItem of the diagram title
         self._subtitle_item = None  
+
+        self._desired_xLink_name = None                 # name of item to xlink to - if None no xlink
+        self._xLink_auto = True                         # if desired xlink name is set - do it automatically
 
         self._help_messages         = {}                # current help messages which are shown 
         self._help_messages_shown   = {}                # all help messages shown up to now 
@@ -435,7 +453,7 @@ class Diagram_Item (pg.PlotItem):
 
         # set margins (inset) of self - ensure some space for coordinates
 
-        self.setContentsMargins ( 10,20,10,20)
+        self.setContentsMargins ( 0,20,10,20)
 
         # PlotItem needs a some size so that inital boundingBox calculation having pixel calculation work properly
         #   - see pixelVectors  (important for clickable and movable (mousesize))
@@ -552,7 +570,33 @@ class Diagram_Item (pg.PlotItem):
 
         self.set_show (aBool)
 
-        self.sig_visible.emit (aBool)
+        self.sig_visible.emit (aBool, self)
+
+
+    def set_desired_xLink_name (self, aName : str | None):
+        """ set the name of the item to xlink to """
+        self._desired_xLink_name = aName
+
+    @property
+    def xLink_auto (self) -> bool:
+        """ if desired xlink name is set - do it automatically"""
+        return self._xLink_auto and self._desired_xLink_name is not None
+
+    @property
+    def xLinked (self) -> bool:
+        """ is x axes linked with View Airfoil"""
+        linked_vb : pg.ViewBox = self.viewBox.linkedView(0)    
+        return linked_vb is not None and linked_vb.isVisible()
+
+
+    def set_xLinked (self, aBool):
+        """ link x axes to View Airfoil"""
+        if aBool and self._desired_xLink_name is not None:
+            self.viewBox.setXLink(self._desired_xLink_name)
+            logger.debug (f"{self} set xLink to {self._desired_xLink_name}" )
+
+        else: 
+            self.viewBox.setXLink(None)
 
 
     def set_show (self, aBool):
@@ -672,6 +716,23 @@ class Diagram_Item (pg.PlotItem):
     def _viewRangeChanged (self): 
         """ slot - view Range changed"""
         self._vb_state_changed = True 
+    
+
+    def _handle_broken_xLink (self):
+        """ handle broken xlink of self - if my viewbox is xlinked from another item which is invisible"""
+
+        # sanity check - if no xlink - nothing to do
+        linked_vb : pg.ViewBox = self.viewBox.linkedView(0)    
+        if not linked_vb or linked_vb.isVisible(): return
+
+        # unlink 
+
+        logger.debug (f"{self} unlink from invisible viewbox" )
+        self.viewBox.setXLink (None)
+
+        self._vb_state_changed = True 
+        self._viewRange_set = False
+        self.refresh()
 
 
     @property
@@ -696,7 +757,7 @@ class Diagram_Item (pg.PlotItem):
 
 
     def refresh(self): 
-        """ refresh my artits and section panel """
+        """ refresh my artists and section panel """
 
         refresh_done = False
 
@@ -733,10 +794,6 @@ class Diagram_Item (pg.PlotItem):
     def setup_viewRange (self):
         """ define view range of this plotItem"""
         # must be implemented by subclass
-
-        # print (self.viewBox.linkedView(0))
-        # if self.viewBox.linkedView(0):
-        #     print (self.viewBox.linkedView(0).isVisible())
 
         logger.warning (f"{self} no view range defined")
 

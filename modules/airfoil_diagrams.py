@@ -517,9 +517,6 @@ class Diagram_Item_Airfoil (Diagram_Item):
 
         super().__init__(*args, **kwargs)
 
-        # set margins (inset) of self 
-        self.setContentsMargins ( 0,30,10,20)
-
 
     def airfoils (self) -> list[Airfoil]: 
         return self._getter()
@@ -880,15 +877,6 @@ class Diagram_Item_Curvature (Diagram_Item):
     title       = "Curvature"                 
     subtitle    = None                                 # will be set dynamically 
 
-    def __init__(self, *args, **kwargs):
-
-        self._link_x  = False 
-
-        super().__init__(*args, **kwargs)
-
-        # set margins (inset) of self 
-        self.setContentsMargins ( 0,30,10,20)
-
 
     def airfoils (self) -> list[Airfoil]: 
         return self.data_list()
@@ -900,19 +888,6 @@ class Diagram_Item_Curvature (Diagram_Item):
         super().set_show (aBool)
 
         self.curvature_artist.set_show (aBool)
-
-
-    @property
-    def link_x (self) -> bool:
-        """ is x axes linked with View Airfoil"""
-        return self._link_x
-    def set_link_x (self, aBool):
-        """ link x axes to View Airfoil"""
-        self._link_x = aBool is True
-        if self.link_x:
-            self.setXLink(Diagram_Item_Airfoil.name)
-        else: 
-            self.setXLink(None)
 
 
     def setup_artists (self):
@@ -967,9 +942,9 @@ class Diagram_Item_Curvature (Diagram_Item):
             r += 1
             SpaceR   (l,r)
             r += 1
-            CheckBox (l,r,c, text=f"X axes linked to '{Diagram_Item_Airfoil.name}'", 
-                    get=lambda: self.link_x, set=self.set_link_x,
-                    toolTip="Link the x axis of the curvature diagram to the x axis of the airfoil diagram")
+            CheckBox (l,r,c, text=f"X axes linked to '{self._desired_xLink_name}'", 
+                    get=lambda: self.xLinked, set=self.set_xLinked,
+                    toolTip=f"Link the x axis of the curvature diagram to the x axis of {self._desired_xLink_name}")
             r += 1
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
@@ -1116,9 +1091,6 @@ class Diagram_Item_Polars (Diagram_Item):
         self._next_btn.clicked.connect(self._next_btn_clicked)       
 
         self._refresh_prev_next_btn ()
-
-        # set margins (inset) of self 
-        self.setContentsMargins ( 0,10,10,20)
 
 
     @property 
@@ -1611,6 +1583,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         r += 1
         item = Diagram_Item_Curvature (self, getter=self.airfoils, show=False)
+        item.set_desired_xLink_name (Diagram_Item_Airfoil.name)             # link x axis to airfoil item
         self._add_item (item, r, 0, colspan=2, rowStretch=2)
 
         if Worker.ready:
