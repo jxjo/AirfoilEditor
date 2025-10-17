@@ -118,6 +118,8 @@ class Main (QMainWindow):
         self._case              = None                  # design Case holding all designs 
 
         self._panel_view        = None                  # main UI panels
+        self._panel_view_small  = None                  # 
+        self._panel_view_minimized  = False             # is lower panel minimized
         self._panel_modify      = None
         self._panel_optimize    = None
         self._diagram           = None
@@ -205,10 +207,13 @@ class Main (QMainWindow):
 
         l = QGridLayout () 
 
-        l.addWidget (self.diagram,        0,0)
-        l.addWidget (self.panel_view,     2,0)
-        l.addWidget (self.panel_modify,   2,0)
-        l.addWidget (self.panel_optimize, 2,0)
+        self._panel_view_minimized = Settings().get('panel_view_minimized', False)
+
+        l.addWidget (self.diagram,          0,0)
+        l.addWidget (self.panel_view,       2,0)
+        l.addWidget (self.panel_view_small, 2,0)
+        l.addWidget (self.panel_modify,     2,0)
+        l.addWidget (self.panel_optimize,   2,0)
 
         l.setRowStretch (0,1)
         l.setRowMinimumHeight (1,5)
@@ -282,6 +287,13 @@ class Main (QMainWindow):
         return f"<{type(self).__name__}>"
 
 
+    def toggle_panel_view_size (self):
+        """ toggle between full and small data panel"""
+
+        self._panel_view_minimized = not self._panel_view_minimized
+        self.refresh()
+
+
     @property
     def panel_view (self) -> Container_Panel:
         """ lower UI main panel - view mode """
@@ -290,7 +302,6 @@ class Main (QMainWindow):
             # lazy import to avoid circular references 
             from airfoil_panels      import (Panel_File_View, Panel_Geometry, Panel_LE_TE, Panel_Panels, 
                                              Panel_Bezier, Panel_Flap) 
-
             l = QHBoxLayout()
             l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, height=190, lazy_layout=True))
             l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
@@ -298,11 +309,36 @@ class Main (QMainWindow):
             l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
-            l.addStretch (1)
 
-            self._panel_view = Container_Panel (layout = l, hide=lambda: not self.mode_view)
+            self._panel_view = Container_Panel (layout = l,
+                                                hide=lambda: not self.mode_view or self._panel_view_minimized,
+                                                doubleClick= self.toggle_panel_view_size)
+           # hint will add stretch to layout
+            self._panel_view.add_doubleClick_hint ("Double click to minimize")
 
         return self._panel_view 
+
+
+    @property
+    def panel_view_small (self) -> Container_Panel:
+        """ lower UI view panel - small version with only smlaa panels"""
+
+        if self._panel_view_small is None: 
+
+            # lazy import to avoid circular references 
+            from airfoil_panels      import (Panel_File_Small, Panel_Geometry_Small)
+
+            l = QHBoxLayout()
+            l.addWidget (Panel_File_Small       (self, lambda: self.airfoil, width=250, height=65, has_head=False))
+            l.addWidget (Panel_Geometry_Small   (self, lambda: self.airfoil, has_head=False, height=65))
+
+            self._panel_view_small = Container_Panel (layout=l, height=65,
+                                                      hide=lambda: not self._panel_view_minimized,
+                                                      doubleClick= self.toggle_panel_view_size)
+            # hint will add stretch to layout
+            self._panel_view_small.add_doubleClick_hint ("Double click to maximize")
+
+        return self._panel_view_small
 
 
     @property
@@ -748,7 +784,8 @@ class Main (QMainWindow):
 
         logger.debug (f"{self} refresh main panels")
 
-        if self._panel_view:        self.panel_view.refresh()               # refresh view mode panels - if UI is visible   
+        if self._panel_view:        self.panel_view.refresh()               # refresh panels - if UI is visible   
+        if self._panel_view_small:  self.panel_view_small.refresh()               
         if self._panel_modify:      self.panel_modify.refresh()
         if self._panel_optimize:    self.panel_optimize.refresh()
 
@@ -1247,6 +1284,7 @@ class Main (QMainWindow):
         # save Window size and position 
         toDict (settings,'window_maximize', self.isMaximized())
         toDict (settings,'window_geometry', self.normalGeometry().getRect())
+        toDict (settings,'panel_view_minimized', self._panel_view_minimized)
 
         # save panelling values 
         toDict (settings,'spline_nPanels',  Panelling_Spline().nPanels)

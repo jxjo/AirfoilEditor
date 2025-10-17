@@ -119,6 +119,15 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         pass
 
 
+    @override
+    def _add_to_header_layout(self, l_head: QHBoxLayout):
+        """ add Widgets to header layout"""
+
+        l_head.addStretch(1)
+        ToolButton   (l_head, icon=Icon.EXPAND, set=self.app.toggle_panel_view_size,
+                      toolTip='Minimize lower panel -<br>Alternatively, you can double click on the lower panels')
+
+
     def _init_layout (self): 
 
         l = QGridLayout()
@@ -207,6 +216,38 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
 
 
+class Panel_File_Small (Panel_Airfoil_Abstract):
+    """ File panel with open / save / ... """
+
+    name = 'View Mode'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, panel_margins=(15,0,0,0),**kwargs)
+
+    @override
+    @property
+    def _isDisabled (self) -> bool:
+        """ override: enabled (as parent data panel is disabled)"""
+        return False
+    
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
+                                    textOpen="&Open", widthOpen=90, 
+                                    get=lambda: self.airfoil, set=self.app.set_airfoil)
+        r += 1
+        Button (l,r,c, text="&Exit", width=90, set=self.app.close)
+        ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.app.toggle_panel_view_size,
+            toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
+
+        l.setColumnStretch (2,2)
+
+        return l 
+ 
+
+
 class Panel_File_Modify (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
@@ -293,6 +334,84 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
         if next_airfoil: 
             self.app.set_airfoil (next_airfoil)
 
+
+
+class Panel_Geometry_Small (Panel_Airfoil_Abstract):
+    """ Main geometry data of airfoil in small version"""
+
+    name = 'Geometry Small'
+    _width  = 710
+
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        FieldF (l,r,c, lab="Thickness", width=60, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_thick,
+                disable=lambda: self.airfoil.isBezierBased)
+        r += 1
+        FieldF (l,r,c, lab="Camber", width=60, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_camb,
+                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
+        r,c = 0, 2 
+        SpaceC (l,c, stretch=0)
+        c += 1 
+        FieldF (l,r,c, lab="at", width=60, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_thick_x,
+                disable=lambda: self.airfoil.isBezierBased)
+        r += 1
+        FieldF (l,r,c, lab="at", width=60, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_camb_x,
+                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
+
+        r,c = 0, 5 
+        SpaceC (l,c, stretch=0)
+        c += 1
+        FieldF (l,r,c, lab="LE curv", width=60, dec=0, disable=True,
+                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_around_le)
+        r += 1
+        FieldF (l,r,c, lab="TE gap", width=60, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
+
+        r,c = 0, 8 
+        SpaceC (l,c, stretch=0)
+        c += 1
+        FieldI (l,r,c, lab="Panels", disable=True, width=70, style=self._style_panel,
+                get=lambda: self.geo.nPanels, )
+        r += 1
+        FieldF (l,r,c, lab="LE x,y", get=lambda: self.geo.le[0], width=70, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
+        c += 1 
+        FieldF (l,r,c+1,get=lambda: self.geo.le[1], width=70, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
+
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,20)
+
+        l.setColumnMinimumWidth (5,40)
+        l.setColumnMinimumWidth (6,60)
+
+        l.setColumnMinimumWidth (8,40)
+        l.setColumnMinimumWidth (9,60)
+
+        l.setColumnStretch (12,2)
+        return l 
+
+    def _style (self, val, target_val):
+        """ returns style.WARNING if val isn't target_val"""
+        if val != target_val and not self.airfoil.isFlapped: 
+            return style.WARNING
+        else: 
+            return style.NORMAL
+
+    def _style_panel (self):
+        """ returns style.WARNING if panels not in range"""
+        if self.geo.nPanels < 120 or self.geo.nPanels > 260: 
+            return style.WARNING
+        else: 
+            return style.NORMAL
+
+    def refresh(self, reinit_layout=False):
+        return super().refresh(reinit_layout)
 
 
 class Panel_Geometry (Panel_Airfoil_Abstract):
@@ -437,6 +556,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
             self.app._on_airfoil_changed()
 
         self.app.sig_te_gap_changed.emit(None, None)                         # diagram hide le radius
+
 
 
 class Panel_Panels (Panel_Airfoil_Abstract):
