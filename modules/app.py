@@ -210,14 +210,14 @@ class Main (QMainWindow):
         self._panel_view_minimized = Settings().get('panel_view_minimized', False)
 
         l.addWidget (self.diagram,          0,0)
-        l.addWidget (self.panel_view,       2,0)
+        l.addWidget (self.panel_view,       1,0)
         l.addWidget (self.panel_view_small, 2,0)
-        l.addWidget (self.panel_modify,     2,0)
-        l.addWidget (self.panel_optimize,   2,0)
+        l.addWidget (self.panel_modify,     3,0)
+        l.addWidget (self.panel_optimize,   4,0)
 
         l.setRowStretch (0,1)
-        l.setRowMinimumHeight (1,5)
-        l.setSpacing (0)
+        l.setRowMinimumHeight (0,400)
+        l.setSpacing (5)
         l.setContentsMargins (QMargins(5, 5, 5, 5))
 
         main = QWidget()
