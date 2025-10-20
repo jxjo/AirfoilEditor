@@ -166,7 +166,6 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     """
 
     _width  = (120, None)
-    _height = 26 
 
     def __init__(self, *args,
                  get = None,                # get current / initial airfoil 

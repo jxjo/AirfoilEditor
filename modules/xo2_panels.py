@@ -154,33 +154,28 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ComboBox    (l,r,c, colSpan=2,  
+        ComboBox    (l,r,c, colSpan=3,  
                         get=lambda:self._input_fileName, set=self._set_input_fileName,
                         options= lambda: Input_File.files_in_dir (self.workingDir),
                         toolTip="The Xoptfoil2 input file")
         ToolButton  (l,r,c+3, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
         r += 1
-        Button      (l,r,c, width=90, text="New Version", set=self.app.case_optimize_new_version,
+        Button      (l,r,c, width=100, text="New Version", set=self.app.case_optimize_new_version,
                         toolTip="Create a new version of the existing input file")
-        Button      (l,r,c+1, width=90, text="New ...", set=self.app.optimize_new,
+        Button      (l,r,c+2, width=80, text="New ...", set=self.app.optimize_new,
                         toolTip="Create a new input file")
         r += 1
-        SpaceR      (l,r,height=10, stretch=0)
-        r += 1
-        Button      (l,r,c, text="&Run Xoptfoil2", colSpan=2, button_style = button_style.PRIMARY,
+        Button      (l,r,c, width=100, text="&Run Xoptfoil2", button_style = button_style.PRIMARY,
                         set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
         r += 1
-        SpaceR      (l,r)
+        l.setRowStretch (r,2)
         r += 1
-        Button      (l,r,c,  text="&Finish",  width=90, 
+        Button      (l,r,c,  text="&Finish",  width=100, 
                         set=lambda : self.app.mode_optimize_finished(),
                         toolTip="Leave optimization mode")
-        r += 1
-        SpaceR      (l,r, height=5, stretch=0)
 
+        l.setColumnMinimumWidth (1,12)
         l.setColumnStretch (1,2)
-        l.setContentsMargins (QMargins(0, 0, 0, 0)) 
-
         return l
 
 

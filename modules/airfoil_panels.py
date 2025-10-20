@@ -136,30 +136,22 @@ class Panel_File_View (Panel_Airfoil_Abstract):
                                     textOpen="&Open", widthOpen=90, 
                                     get=lambda: self.airfoil, set=self.app.set_airfoil)
         r += 1
-        Button (l,r,c, text="&Modify", width=90, 
+        Button (l,r,c, text="&Modify", width=100, 
                 set=self.app.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel, Set Flap",
                 button_style=button_style.PRIMARY)
-        MenuButton (l,r,c+2, text="More...", width=90, 
+        MenuButton (l,r,c+2, text="More...", width=80, 
                 menu=self._more_menu(), 
                 toolTip="Choose further actions for this airfoil")
-        # Button (l,r,c+2, text="&As Bezier", width=90, colSpan=2,
-        #         set=self.app.new_as_Bezier, disable=lambda: self.airfoil.isBezierBased,
-        #         toolTip="Create new Bezier airfoil based on current airfoil")
         r += 1
-        SpaceR (l,r, height=10, stretch=0)
-        r += 1
-        Button (l,r,c, text="&Optimize...", width=90, 
-                set=self.app.optimize_select, 
-                toolTip=self._tooltip_optimize,
+        Button (l,r,c, text="&Optimize...", width=100, 
+                set=self.app.optimize_select, toolTip=self._tooltip_optimize,
                 disable=lambda: not Xoptfoil2.ready)
         r += 1
-        SpaceR (l,r, stretch=1)
+        l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c, text="&Exit", width=90, set=self.app.close)
-        r += 1
-        SpaceR (l,r, height=5, stretch=0)        
+        Button (l,r,c, text="&Exit", width=100, set=self.app.close)
         l.setColumnStretch (2,2)
-        l.setColumnMinimumWidth (1,8)
+        l.setColumnMinimumWidth (1,12)
 
         return l 
  
@@ -221,9 +213,6 @@ class Panel_File_Small (Panel_Airfoil_Abstract):
 
     name = 'View Mode'
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, panel_margins=(15,0,0,0),**kwargs)
-
     @override
     @property
     def _isDisabled (self) -> bool:
@@ -235,10 +224,10 @@ class Panel_File_Small (Panel_Airfoil_Abstract):
         l = QGridLayout()
         r,c = 0, 0 
         Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
-                                    textOpen="&Open", widthOpen=90, 
+                                    textOpen="&Open", widthOpen=100, 
                                     get=lambda: self.airfoil, set=self.app.set_airfoil)
         r += 1
-        Button (l,r,c, text="&Exit", width=90, set=self.app.close)
+        Button (l,r,c, text="&Exit", width=100, set=self.app.close)
         ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.app.toggle_panel_view_size,
             toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
 
@@ -279,27 +268,22 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
         r,c = 0, 0 
         Field (l,r,c, colSpan=3, width=190, get=lambda: self.case.airfoil_seed.fileName)
         r += 1
-        ComboSpinBox (l,r,c, colSpan=2, width=160, get=self.airfoil_fileName, 
+        ComboSpinBox (l,r,c, colSpan=2, width=145, get=self.airfoil_fileName, 
                              set=self.set_airfoil_by_fileName,
                              options=self.airfoil_fileNames,
                              signal=False)
         ToolButton   (l,r,c+2, icon=Icon.DELETE, set=self.remove_current_airfoil,
                       hide=lambda: self.case.get_iDesign (self.airfoil) == 0) # hide Design 0 
         r += 1
-        SpaceR (l,r)
         l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c,  text="&Finish ...", width=90, 
+        Button (l,r,c,  text="&Finish ...", width=100, 
                         set=lambda : self.app.mode_modify_finished(ok=True), 
                         toolTip="Save current airfoil, optionally modifiy name and leave edit mode")
         r += 1
-        SpaceR (l,r, height=5, stretch=0)
-        r += 1
-        Button (l,r,c,  text="&Cancel",  width=90, 
+        Button (l,r,c,  text="&Cancel",  width=100, 
                         set=lambda : self.app.mode_modify_finished(ok=False),
                         toolTip="Cancel modifications of airfoil and leave edit mode")
-        r += 1
-        SpaceR (l,r, height=5, stretch=0)
         l.setColumnStretch (3,2)
 
         return l

@@ -250,7 +250,7 @@ class Widget:
     light_mode = True                                   # common setting of light/dark mode 
                                        
     _width  = None
-    _height = None 
+    _height = 24 
 
 
     def __init__(self,
@@ -865,16 +865,6 @@ class Field_With_Label (Widget):
         In this case, only QGridLayout is supported    
     """
 
-    _height = 26 
-
-    def __repr__(self) -> str:
-        # overwritten to get a nice print string 
-        lab = self._label._val if self._label else ""
-        text = f" '{str(self._val)}'" if self._val is not None else ''
-        return f"<{type(self).__name__} {lab}{text} {id(self)}>"
-    
-
-
     def __init__(self, *args, 
                  lab : str | None = None,                   # label of field 
                  disable : bool | None = None,
@@ -886,7 +876,6 @@ class Field_With_Label (Widget):
 
         super().__init__(*args, disable=disable, toolTip=toolTip, **kwargs)
 
-
         if lab is not None: 
             if not isinstance (self._layout, QGridLayout):
                 raise ValueError (f"{self} Only QGridLayout supported for Field with a Label")
@@ -897,6 +886,13 @@ class Field_With_Label (Widget):
                                     rowSpan=self._rowSpan,  # rowSpan same as parent field
                                     toolTip=None)           # no tooltip on label 
             
+
+    @override
+    def __repr__(self) -> str:
+        lab = self._label._val if self._label else ""
+        text = f" '{str(self._val)}'" if self._val is not None else ''
+        return f"<{type(self).__name__} {lab}{text} {id(self)}>"
+    
 
     def _layout_add (self, widget=None):
         # overloaded
@@ -953,8 +949,6 @@ class Label (Widget, QLabel):
     """
     label text with word wrap 
     """
-
-    _height = 26 
 
     def __init__(self, *args, 
                  styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Window
@@ -1020,17 +1014,16 @@ class Field (Field_With_Label, QLineEdit):
     String entry field  
     """
 
-    _height = 24 
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._get_properties ()
 
+        self._set_Qwidget_static ()
+
         # put into grid / layout 
         self._layout_add ()
 
-        self._set_Qwidget_static ()
         self._set_Qwidget ()
 
         # connect signals 
@@ -1151,6 +1144,16 @@ class FieldI (Field_With_Label, QSpinBox):
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
+        # QT Bug: adjust margin so inner widgets occupy full height
+        style = """
+            QSpinBox {
+                margin-top: -1px;
+                margin-bottom: -1px;
+            }
+            """
+        self.setStyleSheet(style)
+
+
     @override
     def _initial_palette(self):
         """ returns initial normal palette of self"""
@@ -1191,8 +1194,6 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
     """
     Float entry field with spin buttons
     """
-
-    _height = 26 
 
     def __init__(self, *args, 
                  step : float = None,
@@ -1276,6 +1277,15 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
+        # QT Bug: adjust margin so inner widgets occupy full height
+        style = """
+            QDoubleSpinBox {
+                margin-top: -1px;
+                margin-bottom: -1px;
+            }
+            """
+        self.setStyleSheet(style)
+         
 
     @override
     def _initial_palette(self):
@@ -1332,8 +1342,6 @@ class Slider (Widget, QSlider):
 
     Default are 100 steps with a step size of 1% between the lim () 
     """
-
-    _height = 26 
 
     def __init__(self, *args, 
                  step : float = None,
@@ -1449,6 +1457,7 @@ class Button (Widget, QPushButton):
         - gets its label via 'text' 
         - when clicked, 'set' is called without argument 
     """
+
     def __init__(self, *args,
                  signal = False,                                # default is not to signal change 
                  text = None, 
@@ -1521,7 +1530,6 @@ class ToolButton (Widget, QToolButton):
     """
 
     _width  = 22
-    _height = 22 
 
     def __init__(self, *args, 
                  icon : str =None, 
@@ -1673,8 +1681,6 @@ class CheckBox (Widget, QCheckBox):
         - when clicked, 'set' is called with argument of checkSTate 
     """
 
-    _height = 26 
-
     def __init__(self, *args, 
                  text=None,
                  styleRole = QPalette.ColorRole.WindowText,
@@ -1744,11 +1750,9 @@ class ComboBox (Field_With_Label, QComboBox):
         - values list via 'options' (bound method or list)
         - when clicked, 'set' is called argument with selected text as argument 
     """
-        
-    _height = 24 
 
-    def __init__(self, *args, 
-                 options = [], 
+    def __init__(self, *args,
+                 options = [],
                  **kwargs):
         super().__init__(*args, **kwargs)
 

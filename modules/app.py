@@ -303,14 +303,14 @@ class Main (QMainWindow):
             from airfoil_panels      import (Panel_File_View, Panel_Geometry, Panel_LE_TE, Panel_Panels, 
                                              Panel_Bezier, Panel_Flap) 
             l = QHBoxLayout()
-            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, lazy_layout=True))
             l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
 
-            self._panel_view = Container_Panel (layout = l,
+            self._panel_view = Container_Panel (layout = l, height=180,
                                                 hide=lambda: not self.mode_view or self._panel_view_minimized,
                                                 doubleClick= self.toggle_panel_view_size)
            # hint will add stretch to layout
@@ -351,7 +351,7 @@ class Main (QMainWindow):
                                              Panel_Flap, Panel_Bezier, Panel_Bezier_Match) 
 
             l = QHBoxLayout()
-            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, lazy_layout=True))
             l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
             l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
@@ -360,7 +360,7 @@ class Main (QMainWindow):
             l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy_layout=True))
             l.addStretch (1)
 
-            self._panel_modify    = Container_Panel (layout = l, hide=lambda: not self.mode_modify)
+            self._panel_modify    = Container_Panel (layout = l,  height=180, hide=lambda: not self.mode_modify)
 
         return self._panel_modify 
 
@@ -375,7 +375,7 @@ class Main (QMainWindow):
                                                 Panel_Xo2_Geometry_Targets, Panel_Xo2_Operating_Conditions, Panel_Xo2_Operating_Points)
 
             l = QHBoxLayout()        
-            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, height=190, lazy_layout=True))
+            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, lazy_layout=True))
             l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy_layout=True))
             l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy_layout=True))
             l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy_layout=True))
@@ -384,7 +384,7 @@ class Main (QMainWindow):
             l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy_layout=True))
             l.addStretch (1)
 
-            self._panel_optimize = Container_Panel (layout = l, hide=lambda: not self.mode_optimize or self._xo2_run_dialog)
+            self._panel_optimize = Container_Panel (layout = l,  height=180, hide=lambda: not self.mode_optimize or self._xo2_run_dialog)
 
         return self._panel_optimize 
 

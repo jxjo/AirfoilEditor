@@ -379,7 +379,7 @@ class Edit_Panel (Panel_Abstract):
                  has_head : bool = True,
                  main_margins  : tuple = (10, 5,10, 5),             
                  head_margins  : tuple = ( 0, 0, 0, 5),             
-                 panel_margins : tuple = (15, 0, 0, 0),           
+                 panel_margins : tuple = (10, 0, 0, 0),           
                  **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -483,7 +483,7 @@ class Edit_Panel (Panel_Abstract):
             if self.switched_on:
                 Widget._set_height (self, self._height)
             else: 
-                Widget._set_height (self, 40)
+                Widget._set_height (self, 35)
 
         # refresh also header checkbox
         for w in self.header_widgets:
@@ -575,7 +575,14 @@ class Edit_Panel (Panel_Abstract):
                 layout.addWidget (wdt)
 
         layout.setContentsMargins (QMargins(*self._panel_margins))   # inset left 
-        layout.setSpacing(2)
+
+        # set default spacings 
+        if isinstance (layout, (QHBoxLayout, QVBoxLayout)):
+            layout.setSpacing (2)
+        elif isinstance (layout, QGridLayout):
+            layout.setVerticalSpacing(4)
+            layout.setHorizontalSpacing(2)
+
         self._panel.setLayout (layout)
 
 

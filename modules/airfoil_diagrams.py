@@ -861,7 +861,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title=self.name, layout=l, height=(None,None), 
+            self._section_panel = Edit_Panel (title=self.name, layout=l, height=(None,None),
                                               switchable=True, on_switched=self.setVisible)
 
         return self._section_panel 
@@ -940,8 +940,6 @@ class Diagram_Item_Curvature (Diagram_Item):
                     toolTip="Show the derivative of curvature which amplifies curvature artefacts.<br>"+
                             "Only active if one airfoil is displayed or Design airfoil is shown.")
             r += 1
-            SpaceR   (l,r)
-            r += 1
             CheckBox (l,r,c, text=f"X axes linked to '{self._desired_xLink_name}'", 
                     get=lambda: self.xLinked, set=self.set_xLinked,
                     toolTip=f"Link the x axis of the curvature diagram to the x axis of {self._desired_xLink_name}")
@@ -949,8 +947,8 @@ class Diagram_Item_Curvature (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title=self.name, layout=l, 
-                                              height=160, switchable=True, switched_on=self._show, 
+            self._section_panel = Edit_Panel (title=self.name, layout=l, height=(None,None),
+                                              switchable=True, switched_on=self._show, 
                                               on_switched=self.setVisible)
 
         return self._section_panel 
@@ -1617,36 +1615,28 @@ class Diagram_Airfoil_Polar (Diagram):
  
         # build side view panel with the section panels 
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins (QMargins(0, 0, 0, 0)) 
+        l = QVBoxLayout()
+        l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         # airfoils panel 
-
-        layout.addWidget (self.section_panel,stretch=0)
+        l.addWidget (self.section_panel,stretch=0)
 
         # optimization panel 
-
         if Worker.ready and Xoptfoil2.ready:
-            layout.addWidget (self.panel_optimization,stretch=0)
+            l.addWidget (self.panel_optimization,stretch=0)
 
         # diagram items panel
-
         for item in self.diagram_items:
             if item.section_panel is not None: 
-                layout.addWidget (item.section_panel,stretch=0)
+                l.addWidget (item.section_panel,stretch=0)
 
         # polar panel
-
-        layout.addWidget (self.panel_polar)
+        l.addWidget (self.panel_polar)
         
         # stretch add end 
+        l.addStretch (1)
 
-        layout.addStretch (1)
-
-        self._viewPanel = Container_Panel()
-        self._viewPanel.setMinimumWidth(180)
-        self._viewPanel.setMaximumWidth(250)
-        self._viewPanel.setLayout (layout)
+        self._viewPanel = Container_Panel(layout=l,width=250)
  
 
     @property
@@ -1780,8 +1770,6 @@ class Diagram_Airfoil_Polar (Diagram):
                     r += 1
 
                 r += 1
-                SpaceR (l,r, height=5, stretch=0) 
-                r += 1
                 CheckBox (l,r,c, text="Polar points", colSpan=4,
                             get=lambda: self.show_polar_points, set=self.set_show_polar_points,
                             toolTip="Show the polar data points")
@@ -1807,17 +1795,14 @@ class Diagram_Airfoil_Polar (Diagram):
                 r += 1
                 SpaceR (l,r, height=5) 
 
-
             self._panel_polar = Edit_Panel (title="View Polars", layout=l, height=(150,None),
                                               switchable=True, switched_on=False, on_switched=self._on_polars_switched)
             
             # patch Worker version into head of panel 
-
             if Worker.ready:
                 l_head = self._panel_polar._head.layout()
                 Label  (l_head, get=f"{Worker.NAME} {Worker.version}", style=style.COMMENT, fontSize=size.SMALL,
                         align=Qt.AlignmentFlag.AlignBottom)
-
 
         return self._panel_polar 
 

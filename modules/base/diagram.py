@@ -324,22 +324,19 @@ class Diagram (QWidget):
 
         # build side view panel with the section panels 
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins (QMargins(0, 0, 0, 0)) 
+        l = QVBoxLayout()
+        l.setContentsMargins (QMargins(0, 0, 0, 0)) 
         for item in self.diagram_items:
             if item.section_panel is not None: 
-                layout.addWidget (item.section_panel,stretch=1)
+                l.addWidget (item.section_panel,stretch=1)
 
         # add section panel of self (master) 
 
-        if self.section_panel is not None: layout.addWidget (self.section_panel,stretch=0)
+        if self.section_panel is not None: l.addWidget (self.section_panel,stretch=0)
         
-        layout.addStretch (1)
+        l.addStretch (1)
 
-        self._viewPanel = Container_Panel(title=self.name)
-        self._viewPanel.setMinimumWidth(180)
-        self._viewPanel.setMaximumWidth(250)
-        self._viewPanel.setLayout (layout)
+        self._viewPanel = Container_Panel(layout=l, title=self.name, width=250)
 
 
     def _on_item_visible (self, aBool, anItem : 'Diagram_Item'):
