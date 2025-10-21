@@ -25,7 +25,7 @@ from .widgets           import Widget, Label, CheckBox, size, Icon
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 #------------------------------------------------------------------------------
@@ -367,7 +367,7 @@ class Edit_Panel (Panel_Abstract):
     having a layout area for content  
     """
 
-    _height = (150, None) 
+    _height = (None, None) 
 
     def __init__(self, *args, 
                  layout : QLayout | None = None,
@@ -377,6 +377,7 @@ class Edit_Panel (Panel_Abstract):
                  on_switched = None, 
                  hide_switched : bool = True,
                  has_head : bool = True,
+                 auto_height : bool = False,                # if True fix min height after layout init
                  main_margins  : tuple = (10, 5,10, 5),             
                  head_margins  : tuple = ( 0, 0, 0, 5),             
                  panel_margins : tuple = (10, 0, 0, 0),           
@@ -386,7 +387,8 @@ class Edit_Panel (Panel_Abstract):
         self._switchable = switchable
         self._hide_switched = hide_switched
         self._switched_on = switched_on
-        self._on_switched = on_switched 
+        self._on_switched = on_switched
+        self._auto_height = auto_height
 
         self._head  = None
         self._panel = None
@@ -433,7 +435,7 @@ class Edit_Panel (Panel_Abstract):
         l_main   = QVBoxLayout()
         if self._head: 
             l_main.addWidget (self._head)
-        l_main.addWidget (self._panel, stretch=2)
+        l_main.addWidget (self._panel, stretch=1)
         l_main.setContentsMargins (QMargins(*self._main_margins))  
         l_main.setSpacing(2)
         self.setLayout (l_main)
@@ -574,16 +576,19 @@ class Edit_Panel (Panel_Abstract):
                 wdt = QLabel ("This shouldn't be visible")
                 layout.addWidget (wdt)
 
-        layout.setContentsMargins (QMargins(*self._panel_margins))   # inset left 
+        if layout:
+            layout.setContentsMargins (QMargins(*self._panel_margins))   # inset left 
 
-        # set default spacings 
-        if isinstance (layout, (QHBoxLayout, QVBoxLayout)):
+            # set default spacings 
             layout.setSpacing (2)
-        elif isinstance (layout, QGridLayout):
-            layout.setVerticalSpacing(4)
-            layout.setHorizontalSpacing(2)
+            if isinstance (layout, QGridLayout):
+                layout.setVerticalSpacing(4)
 
-        self._panel.setLayout (layout)
+            self._panel.setLayout (layout)
+
+            # if height of panel to height of layout with all the widgets
+            if self._auto_height:
+                self._set_auto_height_panel ()
 
 
     def _clear_existing_panel_layout(self):
@@ -605,6 +610,45 @@ class Edit_Panel (Panel_Abstract):
 
             # finally remove self 
             sip.delete (self._panel.layout())
+
+
+    def _set_auto_height_panel (self):
+        """ fix minimum height of self._panel to nrows of widgets """
+
+        layout = self._panel.layout()
+
+        # only GridLayout supported here
+        if not isinstance (layout, QGridLayout):
+            return
+
+        min_height = 0
+        nrows = layout.rowCount()
+        ncols = layout.columnCount()
+        nrows_filled = 0
+
+        # loop over rows to find maximum row height
+        for row in range(nrows):
+            row_height = 0
+            for col in range(ncols):
+                item = layout.itemAtPosition(row, col)
+                if item:
+                    widget = item.widget()
+                    if isinstance (widget, Widget):
+                        if not widget._hidden:
+                            row_height = max(row_height, widget.height()) 
+                    elif isinstance(widget, QWidget) and widget.isVisible():
+                        row_height = max(row_height, widget.height())
+            min_height += row_height
+            if row_height > 0:
+                nrows_filled += 1
+
+        # add vertical spacings and margins
+        min_height = min_height + (nrows_filled-1) * layout.verticalSpacing() + self._panel_margins[1] + self._panel_margins[3]
+
+        if min_height > 0:
+            logger.debug (f"{self} - fix min height of panel to {min_height} ")
+
+            self._panel.setMinimumHeight (min_height)
 
 
     def _init_layout(self) -> QLayout:

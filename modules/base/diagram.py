@@ -55,6 +55,7 @@ class Diagram (QWidget):
         self._myApp  = parent
         self._section_panel = None 
         self._diagram_items_grid_dict = {}
+        self._show_first_time = True
 
         # set width and height 
 
@@ -298,10 +299,13 @@ class Diagram (QWidget):
             if item.isVisible(): 
                 item.refresh() 
 
-        # refresh all panels on viewPanel 
+        # refresh all panels on viewPanel - but not the initial first time
 
         if self._viewPanel:
-            self._viewPanel.refresh()
+            if self._show_first_time:
+                self._show_first_time = False
+            else:
+                self._viewPanel.refresh()
 
         super().showEvent (ev) 
 
@@ -328,7 +332,7 @@ class Diagram (QWidget):
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
         for item in self.diagram_items:
             if item.section_panel is not None: 
-                l.addWidget (item.section_panel,stretch=1)
+                l.addWidget (item.section_panel,stretch=0)
 
         # add section panel of self (master) 
 

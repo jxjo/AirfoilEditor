@@ -341,12 +341,9 @@ class Panel_Airfoils (Edit_Panel):
             self.airfoil_design.set_property ("show", self.show_design_airfoils)
 
         # rebuild layout with new airfoil entries 
-        logger.debug (f"{self} refresh with reinit layout")
+        logger.debug (f"{self} refresh with reinit layout: {reinit_layout}")
 
-        # layout has to be rebuild to show updated list of airfoils
-        # strange: the old widgets are not deleted on the screen
-        #          -> let the event loop calm down ...
-        QTimer.singleShot (50, self._set_panel_layout)
+        self._set_panel_layout()
 
 
 
@@ -861,7 +858,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title=self.name, layout=l, height=(None,None),
+            self._section_panel = Edit_Panel (title=self.name, layout=l, auto_height=True,
                                               switchable=True, on_switched=self.setVisible)
 
         return self._section_panel 
@@ -947,7 +944,7 @@ class Diagram_Item_Curvature (Diagram_Item):
             l.setColumnStretch (3,2)
             l.setRowStretch    (r,2)
 
-            self._section_panel = Edit_Panel (title=self.name, layout=l, height=(None,None),
+            self._section_panel = Edit_Panel (title=self.name, layout=l, auto_height=True,
                                               switchable=True, switched_on=self._show, 
                                               on_switched=self.setVisible)
 
@@ -1631,10 +1628,10 @@ class Diagram_Airfoil_Polar (Diagram):
                 l.addWidget (item.section_panel,stretch=0)
 
         # polar panel
-        l.addWidget (self.panel_polar)
+        l.addWidget (self.panel_polar, stretch=0)
         
         # stretch add end 
-        l.addStretch (1)
+        l.addStretch (3)
 
         self._viewPanel = Container_Panel(layout=l,width=250)
  
@@ -1648,7 +1645,7 @@ class Diagram_Airfoil_Polar (Diagram):
             p = Panel_Airfoils (self, getter=self.all_airfoils,
                                 airfoils_ref_scale_fn=lambda: self.airfoils_ref_scale,
                                 airfoil_designs_fn=lambda: self.airfoil_designs,
-                                height=(None,None))
+                                auto_height=True)
             
             p.sig_airfoil_ref_changed.connect (self.sig_airfoil_ref_changed.emit)
             p.sig_airfoils_to_show_changed.connect (self._on_show_airfoil_changed)
@@ -1746,7 +1743,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
                 # helper panel for polar definitions 
 
-                p = Panel_Polar_Defs (self, lambda: self.polar_defs, height=(None,None))
+                p = Panel_Polar_Defs (self, lambda: self.polar_defs, auto_height=True)
 
                 p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
 
@@ -1795,7 +1792,7 @@ class Diagram_Airfoil_Polar (Diagram):
                 r += 1
                 SpaceR (l,r, height=5) 
 
-            self._panel_polar = Edit_Panel (title="View Polars", layout=l, height=(150,None),
+            self._panel_polar = Edit_Panel (title="View Polars", layout=l, auto_height=True,
                                               switchable=True, switched_on=False, on_switched=self._on_polars_switched)
             
             # patch Worker version into head of panel 

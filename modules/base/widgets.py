@@ -391,9 +391,8 @@ class Widget:
             max_height = height[1]
         else:
             min_height = height
-            max_height = height
-
-        min_height = min_height if min_height else QWIDGETSIZE_MAX
+            max_height = height            
+        min_height = min_height if min_height else 0
         max_height = max_height if max_height else QWIDGETSIZE_MAX
         widget.setMinimumHeight(min_height)
         widget.setMaximumHeight(max_height)        
@@ -410,7 +409,7 @@ class Widget:
         else:
             min_width = width
             max_width = width
-        min_width = min_width if min_width else QWIDGETSIZE_MAX
+        min_width = min_width if min_width else 0
         max_width = max_width if max_width else QWIDGETSIZE_MAX
         widget.setMinimumWidth(min_width)
         widget.setMaximumWidth(max_width)
@@ -892,25 +891,18 @@ class Field_With_Label (Widget):
         lab = self._label._val if self._label else ""
         text = f" '{str(self._val)}'" if self._val is not None else ''
         return f"<{type(self).__name__} {lab}{text} {id(self)}>"
-    
 
+
+    @override
     def _layout_add (self, widget=None):
-        # overloaded
+        """ adds self to layout - if label is set add one column"""
 
-        # put into grid / layout - if there is a label one col more 
         if self._label:
             col = self._col + 1 if self._col is not None else None 
         else: 
             col = self._col 
 
-        # strange (bug?): if layout is on main window the stretching works as expected
-        # on a sub layoutthe widget doesn't stretch if on widget in the column is fixed 
         super()._layout_add (col=col, widget=widget)
-
-        # if self._label and self._alignment is not None:
-        #     self._layout.setAlignment (self._label, self._alignment)
-
-        self.setSizePolicy( QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed )
 
 
     @override

@@ -272,7 +272,7 @@ class Main (QMainWindow):
 
         # --- final set of UI depending on mode View or Optimize ---------------
 
-        self.refresh()  
+        self.refresh()                                                  # show lazy loaded active panels  
 
         if self.mode_optimize:
             self.sig_mode_optimize.emit(True)                           # signal enter / leave mode optimize for diagram
