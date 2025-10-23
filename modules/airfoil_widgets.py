@@ -39,39 +39,43 @@ class mode_color:
 # ----- common methods -----------
 
 
-def create_airfoil_from_path (parent, pathFilename, example_if_none=False, message_delayed=False) -> Airfoil:
+def create_airfoil_from_path (parent, pathFilename : str | None,
+                              workingDir : str | None = None, 
+                              example_if_none=False, 
+                              message_delayed=False) -> Airfoil:
     """
     Create and return a new airfoil based on pathFilename.
         Return None if the Airfoil couldn't be loaded 
         or 'Example' airfoil if example_if_none == True  
     """
 
-    file_found     = False
     airfoil_loaded = False
     airfoil        = None
+    msg            = None
 
-    try: 
-        airfoil = Airfoil.onFileType(pathFilename, geometry=GEO_BASIC)
-        airfoil.load()
-        airfoil_loaded = airfoil.isLoaded
-        file_found     = True
-    except:
-        pass
+    if pathFilename:
+        try: 
+            airfoil = Airfoil.onFileType(pathFilename, workingDir=workingDir, geometry=GEO_BASIC)
+            airfoil.load()
+            airfoil_loaded = airfoil.isLoaded
+            if not airfoil_loaded:
+                msg = f"Airfoil <b>{os.path.basename(pathFilename)}</b> couldn't be loaded."
+        except Exception as e:
+            msg = f"Airfoil <b>{os.path.basename(pathFilename)}</b> couldn't be loaded: <br>{str(e)}"
 
     if not airfoil_loaded:
 
         airfoil = Example() if example_if_none else None
 
         if pathFilename: 
-            fileName = os.path.basename (pathFilename)
             
-            msg     = f"<b>{fileName}</b> does not exist." if not file_found else f"<b>{fileName}</b> couldn't be loaded."
-            example = "\nUsing example airfoil." if example_if_none else ""
+            logger.error (msg)
+            using_example = "<br>Using example airfoil." if example_if_none else ""
 
             if message_delayed:
-                QTimer.singleShot (100, lambda: MessageBox.error   (parent,'Load Airfoil', f"{msg}{example}", min_height= 60))
+                QTimer.singleShot (100, lambda: MessageBox.error   (parent,'Load Airfoil', f"{msg}{using_example}", min_height= 60))
             else:
-                MessageBox.error   (parent,'Load Airfoil', f"{msg}{example}", min_height= 60)
+                MessageBox.error   (parent,'Load Airfoil', f"{msg}{using_example}", min_height= 60)
 
     return airfoil  
 
@@ -135,8 +139,8 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
         next_file = airfoil_files [0] if airfoil_files else None 
 
     if next_file: 
-        next_airfoil = Airfoil.onFileType(next_file, workingDir = anAirfoil.pathName_abs, geometry=GEO_BASIC)
         try: 
+            next_airfoil = Airfoil.onFileType(next_file, workingDir = anAirfoil.pathName_abs, geometry=GEO_BASIC)
             next_airfoil.load()
         except:
             next_airfoil = None 
@@ -346,12 +350,11 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             # create and set new airfoil
 
             workingDir = self.airfoil.pathName_abs if self.airfoil else self._initial_dir
-            try:
-                new_airfoil = Airfoil.onFileType(newFileName, workingDir = workingDir, geometry=GEO_BASIC)
-                new_airfoil.load()
+
+            new_airfoil = create_airfoil_from_path (self, newFileName, workingDir=workingDir)
+ 
+            if new_airfoil:
                 self.set_airfoil (new_airfoil)
-            except:
-                logger.error (f"Couldn't create Airfoil {newFileName}")
         
 
     def airfoil_fileNames_sameDir (self): 

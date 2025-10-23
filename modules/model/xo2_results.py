@@ -119,11 +119,13 @@ class Xo2_Results:
 
         fileName = outName + extension
         if os.path.isfile (os.path.join (workingDir, fileName)):
-            airfoil =  Airfoil.onFileType (fileName, workingDir=workingDir)
-            airfoil.load()
-            airfoil.set_usedAs (usedAs.FINAL)
-            return airfoil 
-
+            try:
+                airfoil =  Airfoil.onFileType (fileName, workingDir=workingDir)
+                airfoil.load()
+                airfoil.set_usedAs (usedAs.FINAL)
+                return airfoil 
+            except:
+                pass
 
 
     @property

@@ -177,7 +177,8 @@ class Main (QMainWindow):
         # Worker for polar generation and Xoptfoil2 for optimization ready? 
 
         workingDir = Settings.user_data_dir (APP_NAME)                      # temp working dir for Worker and Xoptfoil2  
-        projectDir = os.path.dirname(os.path.abspath(__file__))                
+        modulesDir = os.path.dirname(os.path.abspath(__file__))                
+        projectDir = os.path.dirname(modulesDir)
 
         Worker    (workingDir=workingDir).isReady (projectDir, min_version=self.WORKER_MIN_VERSION)
         Xoptfoil2 (workingDir=workingDir).isReady (projectDir, min_version=self.XOPTFOIL2_MIN_VERSION)
@@ -1377,8 +1378,8 @@ class Main (QMainWindow):
                     airfoil.load ()
                     airfoil.set_property ("show", show)
                     self.set_airfoil_ref (None, airfoil, scale=scale)
-                except: 
-                    pass
+                except Exception as e: 
+                    logger.warning (f"Reference airfoil {pathFileName} could not be loaded: {e}")
 
 
     def _save_xo2_nml (self, ask = False, toast=True): 

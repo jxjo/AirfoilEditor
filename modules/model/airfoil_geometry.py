@@ -2338,7 +2338,7 @@ class Geometry ():
 
         # sanity 
         if xn[0] == 0.0 or xn[-1] == 0.0: 
-            raise GeometryException (f"{self} - x,y corrupt (x[0]={xn[0]}) ")
+            raise GeometryException (f"Geometry corrupt during normalize")
 
         if xn[0] != 1.0 or xn[-1] != 1.0: 
             scale_upper = 1.0 / xn[0]
