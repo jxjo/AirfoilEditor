@@ -170,7 +170,8 @@ class Airfoil:
             geometry : geometry tyoe - only for .dat files 
         """
 
-        ext = os.path.splitext(pathFileName)[1]
+        ext : str = os.path.splitext(pathFileName)[1]
+        ext = ext.lower() if ext else None
 
         if ext == Airfoil.Extension: 
             return Airfoil (pathFileName=pathFileName, workingDir=workingDir, geometry=geometry)
@@ -769,18 +770,22 @@ class Airfoil:
 
 
     def save_copyAs (self, 
-                     pathName : str|None = None, fileName : str|None = None, 
-                     name :str|None = None, te_gap=None ):
+                     pathName : str|None = None, 
+                     fileName : str|None = None, 
+                     name :str|None = None, 
+                     te_gap : float|None = None, 
+                     flap_def  = None) -> str:
         """
         Write a copy of self to pathName and fileName with new name.
         Self remains with its current values.
-        Optionally a new te_gap may be defined for the exported airfoil
+        Optionally a new te_gap or an flap_def may be defined for the exported airfoil
 
         Args: 
-            pathName: -optional- new directory for the airfoil
-            fileName: - optional- new file name
-            name:     -optional- new airfoil name
-            te_gap: -optional- new TE gap in x,y coordinates
+            pathName:   -optional- new directory for the airfoil
+            fileName:   -optional- new file name
+            name:       -optional- new airfoil name
+            te_gap:     -optional- new TE gap in x,y coordinates
+            flap_def:   -optional- flap definition to be applied
 
         Returns: 
             new_pathFileName_abs  of the copied airfoil
@@ -807,9 +812,14 @@ class Airfoil:
 
         airfoil = self.asCopy (name=name, pathFileName=os.path.join (pathName, fileName))
 
-        if te_gap is not None: 
+        # apply modifications
+        if flap_def is not None or te_gap is not None: 
 
-            airfoil.geo.set_te_gap (te_gap)
+            if te_gap is not None: 
+                airfoil.geo.set_te_gap (te_gap)
+
+            if flap_def is not None:
+                airfoil.do_flap (flap_def=flap_def)
 
             # build new airfoil name 
             mods = airfoil.geo.modifications_as_label
@@ -910,7 +920,7 @@ class Airfoil:
                 fileName_stem = os.path.splitext(self._fileName_org)[0]
                 fileName_ext  = os.path.splitext(self._fileName_org)[1]
                 self.set_fileName (fileName_stem + mod_string + fileName_ext)  
-                self.set_name     (f"{self._name_org}")
+                self.set_name     (self._name_org + mod_string)
 
         return normalize_done  
 
@@ -950,10 +960,18 @@ class Airfoil:
         return self._flap_setter 
 
 
-    def do_flap (self):
-        """ flap self based on current 'flapper' data"""
+    def do_flap (self, flap_def = None):
+        """ 
+        flap self based on current 'flap_setter' data
 
-        if self._flap_setter is None: return 
+        Args:
+            flap_def: optional new flap definition to be applied
+        """
+
+        if flap_def is not None:                                 # set new flap definition
+            self.flap_setter.set_flap_definition (flap_def)
+        elif self._flap_setter is None: 
+            return 
 
         # run worker - read flapped airfoil 
         self.flap_setter.set_flap ()
@@ -1615,11 +1633,21 @@ class Flap_Setter (Flap_Definition):
         return self._airfoil_flapped
 
 
+    def set_flap_definition (self, flap_def : 'Flap_Definition'):
+        """ set new flap definition from another flap_def """
+        self.set_x_flap (flap_def.x_flap)
+        self.set_y_flap (flap_def.y_flap)
+        self.set_y_flap_spec (flap_def.y_flap_spec)
+        self.set_flap_angle (flap_def.flap_angle)
+
+
     def set_flap (self, flap_angle=None, outname : str=None) -> Airfoil:
         """ 
         flap the base airfoil using worker - an optional flap angle can be submitted
         If successful, airfoil_flapped is available 
         """
+
+        airfoil_base_saved = False
 
         self._airfoil_flapped = None                        # reset flapped airfoil 
 
@@ -1632,6 +1660,12 @@ class Flap_Setter (Flap_Definition):
             self.set_flap_angle (flap_angle)
         if self.flap_angle == 0.0: return
 
+        # ensure airfoil_base is (temporarly) saved
+
+        if not os.path.isfile (self.airfoil_base.pathFileName_abs):
+            self.airfoil_base.save()
+            airfoil_base_saved = True
+
         # run Worker 
 
         worker = Worker(self._worker_workingDir)
@@ -1640,6 +1674,16 @@ class Flap_Setter (Flap_Definition):
                                         x_flap = self.x_flap, y_flap = self.y_flap, y_flap_spec = self.y_flap_spec,
                                         flap_angle = self.flap_angle,
                                         outname = outname )
+        # delete base airfoil file if it was just saved
+
+        if airfoil_base_saved: 
+            try: 
+                os.remove(self.airfoil_base.pathFileName_abs) 
+            except OSError as exc: 
+                logger.error (f"{self.airfoil_base.pathFileName_abs} couldn't be removed")
+
+        # load flapped airfoil if successful
+        
         if flapped_fileName: 
 
             # load new airfoil 
