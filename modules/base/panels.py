@@ -25,7 +25,7 @@ from .widgets           import Widget, Label, CheckBox, size, Icon
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 #------------------------------------------------------------------------------
@@ -140,6 +140,23 @@ class Panel_Abstract (QWidget):
                 elif isinstance (widget,QWidget):                       # could be helper QWidget with seperate layout
                     widgets.extend (Panel_Abstract.widgets_of_layout (widget.layout()))
         return widgets
+
+
+    @staticmethod
+    def panels_of_layout  (layout: QLayout) -> list['Edit_Panel']:
+        """ list of first level Edit_Panels defined in layout"""
+
+        # iterate over layout - not self._panel.findChildren (Widget) as widgets are "deleted later"
+        #       and can still exist although they are no more in the layout 
+
+        panels = []
+        if isinstance (layout,QLayout): 
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if isinstance (widget, Edit_Panel):                
+                    panels.append(widget)
+        return panels
+
 
     # ------------------------------------------------------
 
@@ -309,18 +326,9 @@ class Container_Panel (Panel_Abstract):
 
     @property
     def edit_panels (self) -> list['Edit_Panel']:
-        """ list of Panels defined in self"""
+        """ list of first level Edit_Panels defined in self"""
 
-        # iterate over layout - not self._panel.findChildren (Widget) as widgets are "deleted later"
-        layout = self.layout()
-        panels = []
-        if isinstance (layout,QLayout): 
-            for i in range(layout.count()):
-                widget = layout.itemAt(i).widget()
-                if isinstance (widget, Edit_Panel):                
-                    panels.append(widget)
-        return panels
-
+        return self.panels_of_layout (self.layout())
 
     # def min_width (self, all_shouldBe_visible = False) -> int:
     #     """ return minimum width of self to show all child panels"""
@@ -539,12 +547,15 @@ class Edit_Panel (Panel_Abstract):
             logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
 
 
-    def refresh_widgets (self, disable : bool):
+    def refresh_widgets (self, disable : bool, reinit_layout=False):
         """ enable / disable all widgets of self - except Labels (color!) """
 
-        w : Widget
         for w in self.widgets:
             w.refresh (disable=disable)
+
+        # refresh child edit panels like Polar_Panel
+        for p in self.panels_of_layout (self._panel.layout()):
+            p.refresh (reinit_layout=reinit_layout)
 
         # refresh also header 
         for w in self.header_widgets:

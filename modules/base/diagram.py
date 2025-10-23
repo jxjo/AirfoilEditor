@@ -145,7 +145,9 @@ class Diagram (QWidget):
             anItem.sig_visible.disconnect (self._on_item_visible)
         except:
             pass
-        anItem.sig_visible.connect (self._on_item_visible)
+
+        if isinstance (anItem, Diagram_Item):
+            anItem.sig_visible.connect (self._on_item_visible)
 
 
     def _add_message_box (self):
@@ -158,6 +160,8 @@ class Diagram (QWidget):
         self._message_vb.hide()
         nrows = gridLayout.rowCount()
         ncols = gridLayout.columnCount()
+        if ncols == 0: ncols = 1
+
         graphicsLayout.addItem (self._message_vb, nrows, 0, rowspan=1, colspan=ncols)
 
 
