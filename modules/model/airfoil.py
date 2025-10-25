@@ -125,7 +125,7 @@ class Airfoil:
                 checkPath = os.path.join(self.workingDir, pathFileName)
             if not os.path.isfile(checkPath):
                 self._name = "-- Error --"
-                raise ValueError ("Airfoil file '%s' does not exist. Couldn't create Airfoil" % checkPath)
+                raise ValueError (f"Airfoil '{checkPath}' does not exist.")
             else:
                 self._pathFileName = pathFileName
                 self._name = self.fileName_stem             # load will get the real name
@@ -768,72 +768,6 @@ class Airfoil:
         return self.pathFileName
 
 
-
-    def save_copyAs (self, 
-                     pathName : str|None = None, 
-                     fileName : str|None = None, 
-                     name :str|None = None, 
-                     te_gap : float|None = None, 
-                     flap_def  = None) -> str:
-        """
-        Write a copy of self to pathName and fileName with new name.
-        Self remains with its current values.
-        Optionally a new te_gap or an flap_def may be defined for the exported airfoil
-
-        Args: 
-            pathName:   -optional- new directory for the airfoil
-            fileName:   -optional- new file name
-            name:       -optional- new airfoil name
-            te_gap:     -optional- new TE gap in x,y coordinates
-            flap_def:   -optional- flap definition to be applied
-
-        Returns: 
-            new_pathFileName_abs  of the copied airfoil
-        """        
-
-        # (new) airfoils name  if not provided
-        if not name and fileName:
-            name = Path(fileName).stem                      # cut '.dat'
-
-        # (new) airfoils fileName if not provided
-        if fileName is None:
-            fileName = self.fileName
-
-        # create dir if not exist - build airfoil filename
-        if pathName: 
-            pathName_abs = pathName if os.path.isabs (pathName) else os.path.join (self.workingDir, pathName)
-            if not os.path.isdir (pathName_abs):
-                os.mkdir(pathName_abs)
-        else: 
-            pathName = self.pathName
-
-        # create new airfoil 
-        if not self.isLoaded: self.load()
-
-        airfoil = self.asCopy (name=name, pathFileName=os.path.join (pathName, fileName))
-
-        # apply modifications
-        if flap_def is not None or te_gap is not None: 
-
-            if te_gap is not None: 
-                airfoil.geo.set_te_gap (te_gap)
-
-            if flap_def is not None:
-                airfoil.do_flap (flap_def=flap_def)
-
-            # build new airfoil name 
-            mods = airfoil.geo.modifications_as_label
-            airfoil.set_name (f"{airfoil._name_org}{mods}")
-            # build new airfoil fileName
-            airfoil.set_fileName (airfoil._fileName_org)            # reset to original if possible
-            airfoil.set_fileName_add_suffix (mods)                  # add te_gap modification label to fileName
-
-        # save it to file 
-        airfoil.save ()
-
-        return airfoil.pathFileName_abs
-
-
     def asCopy (self, pathFileName = None, 
                 name=None, nameExt=None,
                 geometry=None) -> 'Airfoil':
@@ -981,8 +915,9 @@ class Airfoil:
             # flapping was successful - update geometry - will update self
             x,y        = self.flap_setter.airfoil_flapped.x, self.flap_setter.airfoil_flapped.y
             flap_angle = self.flap_setter.flap_angle
+            x_flap     = self.flap_setter.x_flap
 
-            self.geo.set_flapped_data (x,y, flap_angle)
+            self.geo.set_flapped_data (x,y, flap_angle, x_flap)
 
 
 #------------------------------------------------------
@@ -1029,8 +964,8 @@ class Airfoil_Bezier(Airfoil):
             else:
                 checkPath = self.pathFileName_abs
             if not os.path.isfile(checkPath):
-                raise ValueError ("Airfoil file '%s' does not exist. Couldn't create Airfoil" % checkPath)
- 
+                raise ValueError (f"Airfoil '{checkPath}' does not exist.")
+
 
     @staticmethod
     def onAirfoil (anAirfoil : Airfoil):

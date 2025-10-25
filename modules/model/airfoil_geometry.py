@@ -2112,17 +2112,19 @@ class Geometry ():
         self._curvature = Curvature_of_xy (x, y) 
 
 
-    def set_flapped_data (self, x : np.ndarray, y : np.ndarray, flap_angle : float):
+    def set_flapped_data (self, x : np.ndarray, y : np.ndarray, 
+                          flap_angle : float, x_flap : float):
         """ set flapped x,y data - update geometry 
 
         Args: 
             x,y:  coordinates of flapped airfoil 
             flap_angle: flap angle of x,y data 
+            x_flap: x position of flap
         """
 
         try: 
             self._set_xy (x, y)
-            self._changed (Geometry.MOD_FLAP, round(flap_angle, 1))   # finalize (parent) airfoil 
+            self._changed (Geometry.MOD_FLAP, f"{flap_angle:.1f}@{x_flap*100:.1f}")   # finalize (parent) airfoil 
         except GeometryException:
             self._clear_xy()
     
