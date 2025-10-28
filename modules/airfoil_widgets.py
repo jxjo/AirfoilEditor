@@ -171,6 +171,9 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
     _width  = (120, None)
 
+    sig_opened_via_button = pyqtSignal()        # emitted when airfoil opened via button
+
+
     def __init__(self, *args,
                  get = None,                # get current / initial airfoil 
                  set = None,                # will set new airfoil
@@ -288,9 +291,9 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             airfoil = create_airfoil_from_path (self, newPathFilename)
             if airfoil is not None: 
 
-                #leave button callback and refresh in a few ms 
-                timer = QTimer()                                
-                timer.singleShot(10, lambda: self.set_airfoil (airfoil))     # delayed emit 
+                self.set_airfoil (airfoil)
+
+                self.sig_opened_via_button.emit()          # signal that airfoil was opened via button
 
 
     def no_files_here (self) -> bool:

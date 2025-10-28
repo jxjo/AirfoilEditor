@@ -38,10 +38,10 @@ class Diagram (QWidget):
 
     """
 
-    _width  = (200, None)                # (min,max) 
-    _height = (100, None)                # (min,max)
+    _width  = (200, None)                   # (min,max) 
+    _height = (100, None)                   # (min,max)
 
-    name   = "My Diagram"               # will be shown in Tabs 
+    name   = "My Diagram"                   # will be shown in Tabs and used for settings
 
 
     def __init__(self, parent, 
@@ -106,6 +106,18 @@ class Diagram (QWidget):
         # overwritten to get a nice print string 
         text = '' 
         return f"<{type(self).__name__}{text}>"
+
+
+    def _settings (self) -> dict:
+        """ return dictionary of self settings"""
+        d = {}
+        return d
+
+
+    def _set_settings (self, aDict : dict) :
+        """ apply settings from a dictionary"""
+        # to be overriden
+        pass
 
 
     def data_list (self): 
@@ -222,8 +234,11 @@ class Diagram (QWidget):
 
     def _show_section_and_item (self, item_class : Type['Diagram_Item'], show = True) -> list['Diagram_Item']:
         """show view_panel section and the diagram item """
+        if not isinstance (show, bool):
+            return
         for item in self._get_items (item_class):
-            item.section_panel.set_switched_on (show)
+            if item._section_panel is not None:
+                item.section_panel.set_switched_on (show)
 
 
     def _get_artist (self, artists : Type[Artist] | list[type[Artist]]) -> list[Artist]:
@@ -391,6 +406,45 @@ class Diagram (QWidget):
         self._message_vb.hide()
 
 
+    def settings (self) -> dict:
+        """ return dictionary of self settings and all child diagram items"""
+
+        s = self._settings()
+
+        # collect diagram items settings
+        s_items = {}
+        for item in self.diagram_items:
+            s_item = item._settings()
+            if s_item:                               # avoid empty dicts
+                s_items[item.name] = s_item
+        s['items'] = s_items
+        
+        return s
+
+
+    def set_settings (self, settings : dict):
+        """ 
+        Set self settings and all child diagram items from dictionary 
+        Args:
+            settings: dictionary with settings - may also be parent with self.name as key
+        """
+
+        if not isinstance (settings, dict): return
+        
+        try:
+            s = settings[self.name]             # get section of self
+        except:
+            s = settings                        # use complete dict
+
+        self._set_settings (s)
+
+        # set diagram items settings 
+        d_items : dict = s.get ('items', {})
+        for item in self.diagram_items:
+            item._set_settings (d_items.get(item.name, {}))
+
+
+# -----------------------------------------------------------------------------------
 
 
 class Diagram_Item (pg.PlotItem):
@@ -493,6 +547,18 @@ class Diagram_Item (pg.PlotItem):
     def __repr__(self) -> str:
         text = '' 
         return f"<{type(self).__name__}{text}>"
+
+
+    def _settings (self) -> dict:
+        """ return dictionary of self settings"""
+        d = {}
+        return d
+
+
+    def _set_settings (self, aDict : dict) :
+        """ apply settings from a dictionary"""
+        # to be overriden
+        pass
 
 
     def _add_artist (self, artist : Artist):
@@ -604,9 +670,12 @@ class Diagram_Item (pg.PlotItem):
             self.viewBox.setXLink(None)
 
 
-    def set_show (self, aBool):
+    def set_show (self, aBool : bool):
         """ switch on/off artists of self"""
-        # to override
+         
+        if not isinstance (aBool, bool):
+            return 
+        
         self._show = aBool
 
         if aBool: 
@@ -882,10 +951,8 @@ class Diagram_Item (pg.PlotItem):
             self._subtitle_item = p2 
 
 
-
     @property
     def section_panel (self) -> Edit_Panel | None:
         """ small section panel representing self in view panel"""
         # overload for constructor 
         return  self._section_panel
-    

@@ -11,6 +11,7 @@ import logging
 from copy                   import deepcopy 
 from base.widgets           import * 
 from base.diagram           import * 
+from base.panels            import Edit_Panel, Toaster
 
 from model.airfoil          import Airfoil
 from model.polar_set        import *
@@ -482,6 +483,117 @@ class Panel_Polar_Defs (Edit_Panel):
 
         super().refresh(reinit_layout=True)                 # always reinit layout to reflect changed polar defs
 
+
+class Panel_Airfoil_Settings (Edit_Panel):
+    """ 
+    Little helper panel to load, save settings of current airfoil
+    """
+
+    name = "Airfoil Settings"   
+
+    def __init__(self, *args,  **kwargs):
+
+        self._loaded_for : Airfoil = None                   # airfoil for which settings are last loaded
+
+        super().__init__(*args, **kwargs)
+
+
+    @property
+    def parent (self) -> 'Diagram_Item_Airfoil':
+        """ parent diagram item"""
+        return self._app
+
+    @property
+    def airfoil (self) -> Airfoil:
+        """ the current airfoil in diagram"""
+        return self.dataObject
+    
+    @property
+    def airfoil_has_settings(self) -> bool:
+        """ does the current airfoil have individual settings"""
+        return self.airfoil.get_property ("has_settings", False) 
+    
+    @property
+    def airfoil_settings_loaded (self) -> bool:
+        """ are settings loaded for current airfoil"""
+        return self.airfoil == self._loaded_for and self.airfoil_has_settings
+
+
+    def set_settings_loaded_for (self, airfoil : Airfoil):
+        """ set that settings are loaded for airfoil"""
+        self._loaded_for = airfoil
+        self.refresh() 
+
+        if isinstance (airfoil, Airfoil):
+            msg = f"Settings loaded for {airfoil.fileName}" 
+            # during startup UI may not be ready
+            QTimer.singleShot (200, lambda: self._toast_message (msg, toast_style=style.GOOD, duration=1500))
+ 
+
+    def _init_layout(self):
+
+        l = QGridLayout()
+        r,c = 0, 0
+        ToolButton (l,r,c, icon=Icon.OPEN, width=(22,None),
+                text=lambda: f"Load Settings of {self.airfoil.fileName_stem}", 
+                set=self._settings_load,
+                hide=lambda: not self.airfoil_has_settings or self.airfoil_settings_loaded,
+                style=style.HINT,
+                toolTip=lambda: f"Load the individual settings of {self.airfoil.fileName}")
+        ToolButton (l,r,c, icon=Icon.SAVE, width=(22,None),
+                text=lambda: f"Save as individual Settings", 
+                set=self._settings_save,
+                hide=lambda: self.airfoil_has_settings,
+                toolTip=lambda: f"Save these settings being individual for {self.airfoil.fileName} to be reloaded later")
+        Label (l,r,c, get=lambda: f"Settings of {self.airfoil.fileName_stem}", 
+               hide=lambda: not self.airfoil_settings_loaded)  
+        c += 1
+        l.setColumnStretch (c,1)
+        c += 1
+        ToolButton (l,r,c, icon=Icon.SAVE, 
+                set=self._settings_save,
+                hide=lambda: not self.airfoil_settings_loaded,
+                toolTip=lambda: f"Overwrite current settings of {self.airfoil.fileName} with these settings")
+        c += 1
+        ToolButton (l,r,c, icon=Icon.DELETE,
+                set=self._settings_delete,
+                hide=lambda: not self.airfoil_has_settings,
+                toolTip=lambda: f"Delete the individual settings of {self.airfoil.fileName}")
+        return l
+
+
+    def _toast_message (self, msg: str, toast_style : style = style.GOOD, duration: int = 400, alpha: int = 255):
+        """ toast message for action on settings"""
+        Toaster.showMessage (self, msg, 
+                             margin=QMargins(20,10,10,5), contentsMargins=QMargins(15,3,15,3), 
+                             toast_style=toast_style, duration=duration, alpha=alpha)
+
+
+    def _settings_load (self):
+        """ slot load settings of current airfoil"""
+
+        self.parent.sig_settings_load.emit (self.airfoil)
+
+
+    def _settings_save (self):
+        """ slot save settings of current airfoil"""
+
+        self.parent.sig_settings_save.emit (self.airfoil)
+
+        self._loaded_for = self.airfoil                     # settings now saved for this airfoil
+        self.refresh()
+
+        msg = f"Settings saved for {self.airfoil.fileName}"
+        self._toast_message (msg, toast_style=style.GOOD, duration=1000)    
+
+
+    def _settings_delete (self):
+        """ slot delete settings of current airfoil"""
+
+        self.parent.sig_settings_delete.emit (self.airfoil)
+
+        msg = f"Settings of {self.airfoil.fileName} deleted"
+        self._toast_message (msg, toast_style=style.WARNING, duration=1000)
 
 
 #-------------------------------------------------------------------------------
@@ -1040,7 +1152,7 @@ class Diagram_Item_Polars (Diagram_Item):
     Diagram (Plot) Item for polars 
     """
 
-    name        = "Polar"                               # used for link and section header 
+    name        = "View Polar"                          # used for link and section header 
     title       = None 
     subtitle    = None                                  # optional subtitle 
 
@@ -1050,22 +1162,18 @@ class Diagram_Item_Polars (Diagram_Item):
     sig_opPoint_def_dblClick     = pyqtSignal()         # opPoint definition double clicked in diagram 
 
 
-    def __init__(self, *args, xyVars=None | tuple, case_fn=None, iDesign_fn=None, **kwargs):
+    def __init__(self, *args, case_fn=None, iDesign_fn=None, **kwargs):
 
         self._case_fn   = case_fn
         self._iDesign_fn = iDesign_fn 
 
         self._xyVars    = None
         self._xyVars_show_dict = {}                     # dict of xyVars shown up to now 
-        self.set_xyVars (xyVars)                        # polar vars for x,y axis 
-
 
         self._title_item2 = None                        # a second 'title' for x-axis 
         self._autoRange_not_set = True                  # to handle initial no polars to autoRange 
         self._next_btn    = None
         self._prev_btn    = None 
-
-        self.name = f"{self.name} {self.xVar}-{self.yVar}"
 
         super().__init__(*args, **kwargs)
 
@@ -1082,6 +1190,28 @@ class Diagram_Item_Polars (Diagram_Item):
         self._next_btn.clicked.connect(self._next_btn_clicked)       
 
         self._refresh_prev_next_btn ()
+
+
+    @override
+    def _settings (self) -> dict:
+        """ return dictionary of self settings"""
+        d = {}
+
+        # axes x, y variables
+        toDict (d, "xyVars", (str(self.xVar), str(self.yVar)))
+        return d
+
+
+    @override
+    def _set_settings (self, d : dict):
+        """ set settings of self from dict """
+
+        # axes x, y variables
+        xyVars = d.get('xyVars', None)                          
+        if xyVars is not None:
+            self.set_xyVars (xyVars)
+            self._refresh_artist_xy ()
+            self.setup_viewRange ()
 
 
     @property 
@@ -1123,7 +1253,7 @@ class Diagram_Item_Polars (Diagram_Item):
                 self._xyVars = l[i]
                 viewRect = self._xyVars_show_dict [self._xyVars]
                 self.setup_viewRange (rect=viewRect)                # restore view Range
-                self._refresh_artist ()                             # draw new polar
+                self._refresh_artist_xy ()                             # draw new polar
                 self.sig_xyVars_changed.emit()                      # update view panel 
             self._refresh_prev_next_btn ()                          # update vsibility of buttons
         except :
@@ -1272,8 +1402,8 @@ class Diagram_Item_Polars (Diagram_Item):
             self._next_btn.hide()
 
 
-    def _refresh_artist (self): 
-        """ refresh plar artist with new diagram variables"""
+    def _refresh_artist_xy (self): 
+        """ refresh polar artist with new diagram variables"""
 
         for artist in self._artists:
             artist.set_xyVars (self._xyVars)
@@ -1296,7 +1426,7 @@ class Diagram_Item_Polars (Diagram_Item):
         # wait a little until user is sure for new xyVars (prev/next buttons)
         QTimer.singleShot (3000, self._add_xyVars_to_show_dict)
 
-        self._refresh_artist ()
+        self._refresh_artist_xy ()
         self.setup_viewRange ()
 
 
@@ -1315,7 +1445,7 @@ class Diagram_Item_Polars (Diagram_Item):
         # wait a little until user is sure for new xyVars (prev/next buttons)
         QTimer.singleShot (3000, self._add_xyVars_to_show_dict)
 
-        self._refresh_artist ()
+        self._refresh_artist_xy ()
         self.setup_viewRange ()
 
 
@@ -1427,6 +1557,8 @@ class Diagram_Airfoil_Polar (Diagram):
     Diagram view to show/plot airfoil diagrams - Container for diagram items 
     """
 
+    name        = "Airfoil Diagram"                                 # used for settings
+
     sig_airfoil_changed             = pyqtSignal()                  # airfoil data changed in a diagram 
     sig_new_airfoil_ref1            = pyqtSignal(object)            # new ref1 airfoil  
     sig_airfoil_ref_changed         = pyqtSignal(object, object)    # changed reference airfoil 
@@ -1438,19 +1570,22 @@ class Diagram_Airfoil_Polar (Diagram):
     sig_opPoint_def_changed         = pyqtSignal()                  # opPoint definition changed  
     sig_opPoint_def_dblClick        = pyqtSignal(object,object, object)     # opPoint definition double clicked
 
+    sig_settings_save               = pyqtSignal(object)            # settings of airfoil should be saved
+    sig_settings_load               = pyqtSignal(object)            # settings of airfoil should be loaded
+    sig_settings_delete             = pyqtSignal(object)            # settings of airfoil should be deleted
 
-    def __init__(self, *args, polar_defs_fn= None, airfoils_ref_scale_fn=None, case_fn=None, diagram_settings=[], **kwargs):
+    def __init__(self, *args, polar_defs_fn= None, airfoils_ref_scale_fn=None, case_fn=None,  **kwargs):
 
         self._polar_defs_fn         = polar_defs_fn
         self._airfoils_ref_scale_fn = airfoils_ref_scale_fn 
         self._case_fn               = case_fn 
-        self._diagram_settings      = diagram_settings
 
-        self._panel_polar       = None 
-        self._panel_optimization= None 
+        self._panel_polar           = None 
+        self._panel_optimization    = None 
+        self._panel_airfoil_settings= None
 
-        self._show_polar_points = False                         # show polars data points 
-        self._show_bubbles = False                              # show bubbles in polars 
+        self._show_polar_points     = False                         # show polars data points 
+        self._show_bubbles          = False                         # show bubbles in polars 
 
         super().__init__(*args, **kwargs)
 
@@ -1461,25 +1596,40 @@ class Diagram_Airfoil_Polar (Diagram):
         self.graph_layout.setVerticalSpacing (0)
 
 
-    def _as_dict_list (self) -> list:
-        """ returns a list with data dict of the parameters of diagram items """
-
-        l = []
-        item : Diagram_Item_Polars
-        for item in self._get_items (Diagram_Item_Polars):
-            item_dict = {}
-            toDict (item_dict, "xyVars", (str(item.xVar), str(item.yVar)))
-
-            l.append (item_dict)
-        return l
-
-
     def _hide_item_welcome (self):
         """ hide the Welcome Item"""
 
         item_welcome : Diagram_Item_Welcome = self._get_first_item (Diagram_Item_Welcome)
         if item_welcome and item_welcome.isVisible():
             item_welcome.hide()
+
+
+    def _settings (self) -> dict:
+        """ return dictionary of self settings"""
+        s = {}
+        toDict (s, f"{self.panel_polar.name}", self.panel_polar.switched_on)
+
+        item = self._get_first_item (Diagram_Item_Airfoil)
+        toDict (s, f"{item.name}", item.isVisible() if item else None)
+
+        item = self._get_first_item (Diagram_Item_Curvature)
+        toDict (s, f"{item.name}", item.isVisible() if item else None)
+
+        return s
+
+
+    def _set_settings (self, s : dict):
+        """ set settings of self from dict """
+
+        show = s.get(self.panel_polar.name, None)                          # axes variables
+        if show is not None:
+            self.panel_polar.set_switched_on (show)
+
+        show = s.get(Diagram_Item_Airfoil.name, None)
+        self._show_section_and_item (Diagram_Item_Airfoil, show)
+
+        show = s.get(Diagram_Item_Curvature.name, None)
+        self._show_section_and_item (Diagram_Item_Curvature, show)
 
 
     # -------------
@@ -1582,15 +1732,14 @@ class Diagram_Airfoil_Polar (Diagram):
             default_settings = [{"xyVars" : (var.CD,var.CL)}, {"xyVars" : (var.CL,var.GLIDE)}]
 
             for iItem in [0,1]:
-            # create Polar items with init values from settings 
+                # create Polar items with init values vor axes variables 
 
-                dataDict = self._diagram_settings[iItem] if len(self._diagram_settings) > iItem else default_settings[iItem]
-                xyVars = dataDict ["xyVars"]
-
-                item = Diagram_Item_Polars (self, getter=self.airfoils, xyVars=xyVars, 
+                item = Diagram_Item_Polars (self, getter=self.airfoils, 
                                             case_fn=self._case_fn, 
                                             iDesign_fn= lambda: self.iDesign,
                                             show=False)
+                item.name = f"{Diagram_Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
+                item._set_settings (default_settings[iItem])                           # set default settings first
 
                 item.sig_xyVars_changed.connect       (self._on_xyVars_changed)
                 item.sig_opPoint_def_changed.connect  (self._on_opPoint_def_changed)
@@ -1628,6 +1777,9 @@ class Diagram_Airfoil_Polar (Diagram):
         
         # stretch add end 
         l.addStretch (3)
+
+        # settings panel
+        l.addWidget (self.panel_airfoil_settings, stretch=0)
 
         self._viewPanel = Container_Panel(layout=l,width=250)
  
@@ -1675,6 +1827,17 @@ class Diagram_Airfoil_Polar (Diagram):
                                                    hide=lambda: not self.mode_optimize)
 
         return self._panel_optimization 
+
+
+    @property
+    def panel_airfoil_settings (self) -> Panel_Airfoil_Settings:
+        """ little panel to save, load individual airfoil settings """
+
+        if self._panel_airfoil_settings is None:
+            self._panel_airfoil_settings = Panel_Airfoil_Settings (self, getter=lambda:self.all_airfoils()[0], 
+                                                   auto_height=True, has_head=False,
+                                                   hide=lambda: self.case)      # dont show in optimize and modifiy mode
+        return self._panel_airfoil_settings
 
 
     @property 
@@ -1788,8 +1951,8 @@ class Diagram_Airfoil_Polar (Diagram):
                 r += 1
                 SpaceR (l,r, height=5) 
 
-            self._panel_polar = Edit_Panel (title="View Polars", layout=l, auto_height=True,
-                                              switchable=True, switched_on=False, on_switched=self._on_polars_switched)
+            self._panel_polar = Edit_Panel (title=Diagram_Item_Polars.name, layout=l, auto_height=True,
+                                            switchable=True, switched_on=False, on_switched=self._on_polars_switched)
             
             # patch Worker version into head of panel 
             if Worker.ready:
@@ -1801,6 +1964,25 @@ class Diagram_Airfoil_Polar (Diagram):
 
 
     # --- public slots ---------------------------------------------------
+
+    @override
+    def set_settings (self, d : dict, settings_for : Airfoil|None = None, refresh=False):
+        """ 
+        Set self settings and all child diagram items from dictionary 
+
+        Args:
+            d (dict): settings dictionary
+            settings_for (Airfoil|None): airfoil for which the settings are valid (None = all)
+        """
+
+        super().set_settings (d)
+
+        # update panel_settings with actual loaded airfoil
+        self.panel_airfoil_settings.set_settings_loaded_for (settings_for)
+
+        if refresh:
+            self.refresh()
+
 
     @override
     def refresh(self, also_viewRange=True): 

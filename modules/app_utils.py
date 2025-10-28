@@ -28,14 +28,14 @@ logger.setLevel(logging.DEBUG)
 class Settings (Parameters):
     """ Singleton: Handles a named app setting file with a json structure""" 
 
-    settingsFilePath = None                     # the filePath of the settings
+    _pathFileName = None                     # the filePath of the settings
 
     def __init__ (self):
 
-        if not self.__class__.is_initialized():
+        if self._pathFileName is None:
             raise RuntimeError ("Settings are not initialized")
         
-        super().__init__(self.settingsFilePath)
+        super().__init__(self._pathFileName)
 
 
     @staticmethod
@@ -51,7 +51,7 @@ class Settings (Parameters):
 
 
     @classmethod
-    def set_path (cls, app_name, app_author = 'jxjo', name_suffix=None, file_extension= '.json'):
+    def set_file (cls, app_name, app_author = 'jxjo', name_suffix=None, file_extension= '.json'):
         """ static set of the file the settings will belong to 
         
         Args:
@@ -66,47 +66,10 @@ class Settings (Parameters):
         # get directory where self is located
         settings_dir  = user_config_dir (app_name, app_author, ensure_exists=True)
 
-        cls.settingsFilePath = os.path.join(settings_dir, fileName)
+        cls._pathFileName = os.path.join(settings_dir, fileName)
 
-        logger.info (f"Reading settings from {cls.settingsFilePath}")
+        logger.info (f"Reading settings from {cls._pathFileName}")
 
-
-    @classmethod
-    def is_initialized (cls) -> True:
-        """ True if Settings user path is set"""
-        return cls.settingsFilePath is not None 
-
-
-
-    def get(self, key, default='no default'):
-        """
-        returns the value of 'key' from settings
-
-        Args:
-            :key: the key to look for       \n
-            :default: the value if key is missing
-        """
-        dataDict = self.get_dataDict ()
-        return fromDict(dataDict, key, default=default)
-
-    def set(self, key, value):
-        """
-        sets 'key' with 'value' into settings
-
-        Args:
-            :key: the key to look for       
-            :value: the value to set 
-        """
-        dataDict = self.get_dataDict ()
-
-        toDict(dataDict, key, value)
-        self.write_dataDict (dataDict)
-
-
-    def write_dataDict (self, aDict, dataName='Settings'):
-        """ writes data dict to file """
- 
-        super().write_dataDict (aDict, dataName=dataName)
 
 
 
@@ -124,6 +87,7 @@ class Update_Checker:
         self._current_version = current_version
 
         self._latest_version = None
+        self._settings = Settings()             # app settings 
 
 
     @property
@@ -150,11 +114,10 @@ class Update_Checker:
             else:
                 logger.error (f"Error {response.status_code} on accessing PyPI for package {package_name}")
 
-            # get settings dict to avoid a lot of read/write
-            settings = Settings().get_dataDict ()
-            toDict (settings, "update_last_check", str(date.today()) )
-            toDict (settings, "update_latest_version", latest_version) 
-            Settings().write_dataDict (settings)
+            # save check date and latest version in settings
+            self._settings.set("update_last_check", str(date.today()))
+            self._settings.set("update_latest_version", latest_version)
+            self._settings.save()
 
         except: 
             pass
@@ -166,13 +129,13 @@ class Update_Checker:
         """ returns if there is a newer version on PyPI"""
 
         # get date of last check from settings 
-        last_check_date_str = Settings().get ("update_last_check", None)
+        last_check_date_str = self._settings.get ("update_last_check", None)
         if last_check_date_str:
 
             last_check_date = datetime.strptime(last_check_date_str, '%Y-%m-%d').date()
             if last_check_date  == date.today():
                 # if already checked today - get version from settings
-                self._latest_version = Settings().get ("update_latest_version", "")
+                self._latest_version = self._settings.get ("update_latest_version", "")
                 logger.debug (f"Version check on PyPI already made for today (latest version: {self._latest_version})")
             else:
                 logger.debug (f"Version check on PyPI made on {last_check_date_str}")
@@ -197,7 +160,7 @@ class Update_Checker:
     def show_user_info (self, parent):
         """ show info dialog about a new version"""
 
-        dont_ask_for_version = Settings().get ("update_dont_ask_for_version", None)
+        dont_ask_for_version = self._settings.get ("update_dont_ask_for_version", None)
 
         if dont_ask_for_version != self._latest_version:
 
@@ -205,7 +168,8 @@ class Update_Checker:
             dialog.exec()
 
             if dialog.dont_ask_version:
-                Settings().set("update_dont_ask_for_version", self._latest_version)
+                self._settings.set("update_dont_ask_for_version", self._latest_version)
+                self._settings.save()
 
 
 

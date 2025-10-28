@@ -24,7 +24,7 @@ from PyQt6.QtWidgets    import (
                             QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
                             QLabel, QToolButton, QCheckBox,
                             QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
-                            QSizePolicy)
+                            QSizePolicy, QStyleOptionButton)
 from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon, QAction
 
 
@@ -94,7 +94,8 @@ class Icon (QIcon):
     SETTINGS   = "settings" 
     COLLAPSE   = "collapse" 
     EXPAND     = "expand" 
-    OPEN       = "open"     
+    OPEN       = "open"    
+    SAVE       = "save" 
     EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
     DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
     ADD        = "add"      
@@ -1525,11 +1526,15 @@ class ToolButton (Widget, QToolButton):
 
     def __init__(self, *args, 
                  icon : str =None, 
-                 signal = False,            # default is not to signal change 
+                 text = None, 
+                 signal = False,                        # default is not to signal change 
+                 styleRole = QPalette.ColorRole.Button, # to apply style for background
                  **kwargs):
-        super().__init__(*args, signal=signal,**kwargs)
+        super().__init__(*args, signal=signal, styleRole=styleRole, **kwargs)
 
         self._icon_name = icon                           # icon name 
+        self._text = None 
+        self._text_getter = text 
 
         self._get_properties ()
         self._layout_add ()                                 # put into layout - so it gets parent early
@@ -1547,6 +1552,13 @@ class ToolButton (Widget, QToolButton):
 
 
     @override
+    def _get_properties (self): 
+        " get all the properties like disable"
+        super()._get_properties () 
+        self._text = self._get_value (self._text_getter, default='')
+
+
+    @override
     def _set_Qwidget_static (self): 
         """ set static properties of self Qwidget like width"""
         super()._set_Qwidget_static ()
@@ -1558,9 +1570,21 @@ class ToolButton (Widget, QToolButton):
             icon_qt = Icon (self._icon_name, self.light_mode)
             if icon_qt is not None: 
                 self.setIcon (icon_qt)
-                self.setIconSize (QSize(16,16))
+                self.setIconSize (QSize(17,17))                         # seems good size not to get blurred  
             else: 
                 pass
+
+        if self._text is not None:
+            self.setToolButtonStyle (Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            self.setText (self._text)                             # text as tooltip
+
+    @override
+    def _set_Qwidget (self, **kwargs):
+        """ set value and properties of self Qwidget"""
+
+        super()._set_Qwidget (**kwargs)
+        self.setText (self._text)
+
 
 
 class MenuButton (Button, QPushButton):

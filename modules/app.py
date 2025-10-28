@@ -50,7 +50,7 @@ from xo2_panels             import create_case_from_path
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 # print ("\n".join(sys.path))
 
@@ -110,7 +110,7 @@ class Main (QMainWindow):
         self._airfoils_ref_scale= None                  # indexed list of re scale factors of ref airfoils
         self._airfoil_2         = None                  # 2nd airfoil for blend    
 
-        self._polar_definitions = None                  # current polar definitions  
+        self._polar_definitions = []                    # current polar definitions  
         self._watchdog          = None                  # polling thread for new polars
 
         self._mode_modify       = False                 # modify/view mode of app 
@@ -135,7 +135,8 @@ class Main (QMainWindow):
 
         # set user settings path, load settings 
 
-        Settings.set_path (APP_NAME, file_extension= '.settings')
+        Settings.set_file (APP_NAME, file_extension= '.settings')
+        app_settings = Settings()                      # load app settings
 
         # check for newer version on PyPi 
 
@@ -144,20 +145,19 @@ class Main (QMainWindow):
             QTimer.singleShot (1000, lambda: update.show_user_info (self))        
 
 
-        # --- init Model ---------------
-
-        self._load_model_settings ()
-        Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 
+        # --- init Airfoil Model ---------------
 
         # if no initial airfoil file, try to get last opened airfoil file 
 
         if not initial_file: 
-            initial_file = Settings().get('last_opened', default=None) 
+            initial_file = app_settings.get('last_opened', default=None) 
             logger.info (f"Starting on 'last opened' airfoil file: {initial_file}")
         else:
             logger.info (f"Starting on initial file: {initial_file}")
 
         # either airfoil or Xoptfoil2 input file 
+
+        Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 
 
         if Input_File.is_xo2_input (initial_file):
 
@@ -173,6 +173,10 @@ class Main (QMainWindow):
 
             airfoil = create_airfoil_from_path(self, initial_file, example_if_none=True, message_delayed=True)
             self.set_airfoil (airfoil, silent=True)
+
+        # load settings like polar definitions either from airfoil or app settings
+
+        settings, settings_for = self._load_airfoil_settings (self.airfoil, silent=True)
 
         # Worker for polar generation and Xoptfoil2 for optimization ready? 
 
@@ -195,20 +199,18 @@ class Main (QMainWindow):
 
         # Qt color scheme, initial window size from settings      
 
-        scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)           # either unknown (from System), Dark, Light
+        scheme_name = app_settings.get('color_scheme', Qt.ColorScheme.Unknown.name)         # either unknown (from System), Dark, Light
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])            # set scheme of QT
         Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)                   # set mode for Widgets 
 
-        geometry = Settings().get('window_geometry', [])
-        maximize = Settings().get('window_maximize', False)
+        geometry = app_settings.get('window_geometry', [])
+        maximize = app_settings.get('window_maximize', False)
         Win_Util.set_initialWindowSize (self, size_frac= (0.85, 0.80), pos_frac=(0.1, 0.1),
                                         geometry=geometry, maximize=maximize)
 
         # main layout of app
 
         l = QGridLayout () 
-
-        self._panel_view_minimized = Settings().get('panel_view_minimized', False)
 
         l.addWidget (self.diagram,          0,0)
         l.addWidget (self.panel_view,       1,0)
@@ -224,6 +226,11 @@ class Main (QMainWindow):
         main = QWidget()
         main.setLayout (l) 
         self.setCentralWidget (main)
+
+        # apply settings to UI
+
+        self._panel_view_minimized = app_settings.get('panel_view_minimized', False)
+        self.diagram.set_settings (settings, settings_for=settings_for)
 
         # ---- signals and slots ------------ 
 
@@ -247,6 +254,9 @@ class Main (QMainWindow):
         self.diagram.sig_opPoint_def_changed.connect       (self._on_xo2_opPoint_def_changed)      # inform dialog 
         self.diagram.sig_opPoint_def_changed.connect       (self._on_xo2_input_changed)            # save to nml
         self.diagram.sig_opPoint_def_dblClick.connect      (self.edit_opPoint_def)
+        self.diagram.sig_settings_save.connect             (self._save_airfoil_settings)           # save airfoil settings
+        self.diagram.sig_settings_load.connect             (self._load_airfoil_settings)           # load airfoil settings
+        self.diagram.sig_settings_delete.connect           (self._delete_airfoil_settings)         # delete airfoil settings
 
         # connect self signals to slots of diagram
 
@@ -398,8 +408,7 @@ class Main (QMainWindow):
             self._diagram       = Diagram_Airfoil_Polar (self, lambda: self.airfoils, 
                                                         polar_defs_fn = lambda: self.polar_definitions,
                                                         airfoils_ref_scale_fn = lambda: self.airfoils_ref_scale,
-                                                        case_fn = lambda: self.case, 
-                                                        diagram_settings= Settings().get('diagram_settings', []))
+                                                        case_fn = lambda: self.case)
         return self._diagram
 
 
@@ -473,9 +482,12 @@ class Main (QMainWindow):
         self._airfoil = aNew
 
         if aNew is not None: 
+
+            has_settings = Airfoil_Settings.exists_for (aNew)
+            self._airfoil.set_property ('has_settings', has_settings)
             self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions, only_active=True))
 
-            logger.debug (f"Set new airfoil {aNew.fileName} including polarSet")
+            logger.debug (f"Set new {aNew} {'having settings' if has_settings else ''}")
 
         if not silent: 
             self.refresh()
@@ -1276,34 +1288,47 @@ class Main (QMainWindow):
                              toast_style=toast_style)
 
 
-    def _save_settings (self):
-        """ save settings to file """
+    def _save_app_settings (self):
+        """ save application settings to file """
 
-        # get settings dict to avoid a lot of read/write
-        settings = Settings().get_dataDict ()
+        s = Settings()
 
         # save Window size and position 
-        toDict (settings,'window_maximize', self.isMaximized())
-        toDict (settings,'window_geometry', self.normalGeometry().getRect())
-        toDict (settings,'panel_view_minimized', self._panel_view_minimized)
+        s.set ('window_maximize', self.isMaximized())
+        s.set ('window_geometry', self.normalGeometry().getRect())
+        s.set ('panel_view_minimized', self._panel_view_minimized)
 
-        # save panelling values 
-        toDict (settings,'spline_nPanels',  Panelling_Spline().nPanels)
-        toDict (settings,'spline_le_bunch', Panelling_Spline().le_bunch)
-        toDict (settings,'spline_te_bunch', Panelling_Spline().te_bunch)
-
-        toDict (settings,'bezier_nPanels',  Panelling_Bezier().nPanels)
-        toDict (settings,'bezier_le_bunch', Panelling_Bezier().le_bunch)
-        toDict (settings,'bezier_te_bunch', Panelling_Bezier().te_bunch)
-
-        # save airfoils
+        # save last opnened airfoil
         airfoil : Airfoil = self.airfoil_seed if (self.airfoil and self.airfoil.usedAsDesign) else self.airfoil
-
         if airfoil: 
             if airfoil.isExample:
-                toDict (settings,'last_opened', None)
+                s.set ('last_opened', None)
             else:
-                toDict (settings,'last_opened', airfoil.pathFileName_abs)
+                s.set ('last_opened', airfoil.pathFileName_abs)
+
+        s.save()
+
+
+    def _save_airfoil_settings (self, of_airfoil : Airfoil = None):
+        """ save settings either to default settings or of_airfoil settings """
+
+        if isinstance (of_airfoil, Airfoil):
+            s = Airfoil_Settings (of_airfoil)
+
+            of_airfoil.set_property ("has_settings", True)                      # attach has settings property
+            logger.info (f"Settings of {of_airfoil} saved to {s.pathFileName}")
+
+        else:
+            s = Settings()
+
+        # save panelling values 
+        s.set ('spline_nPanels',  Panelling_Spline().nPanels)
+        s.set ('spline_le_bunch', Panelling_Spline().le_bunch)
+        s.set ('spline_te_bunch', Panelling_Spline().te_bunch)
+
+        s.set ('bezier_nPanels',  Panelling_Bezier().nPanels)
+        s.set ('bezier_le_bunch', Panelling_Bezier().le_bunch)
+        s.set ('bezier_te_bunch', Panelling_Bezier().te_bunch)
 
         # reference airfoils 
         ref_list = []
@@ -1311,54 +1336,68 @@ class Main (QMainWindow):
             ref_entry = {}
             ref_entry ["path"]  = airfoil.pathFileName_abs
             ref_entry ["show"]  = airfoil.get_property ("show", True)
-            ref_entry ["scale"] = self.airfoils_ref_scale [iRef]
+            if self.airfoils_ref_scale [iRef]:
+                ref_entry ["scale"] = self.airfoils_ref_scale [iRef]
             ref_list.append (ref_entry)
-        toDict (settings,'reference_airfoils', ref_list)
+        s.set ('reference_airfoils', ref_list)
 
         # save polar definitions 
         def_list = []
         for polar_def in self.polar_definitions:
             def_list.append (polar_def._as_dict())
-        toDict (settings,'polar_definitions', def_list)
+        s.set ('polar_definitions', def_list)
 
-        # save polar diagram settings 
-        toDict (settings,'diagram_settings', self.diagram._as_dict_list())
+        # save current diagram settings 
+        s.set (self.diagram.name, self.diagram.settings())
 
-        Settings().write_dataDict (settings)
+        s.save ()
 
 
-    def _load_model_settings (self):
-        """ load default settings of model from file """
+    def _load_airfoil_settings (self, airfoil : Airfoil = None, silent=False) -> tuple[dict, Airfoil |None]:
+        """ 
+        Load either default or individual settings for airfoil like view, polars, ...
+            Returns settings dict and settings_for with is either of_airfoil or None
+        """
+
+        if Airfoil_Settings.exists_for (airfoil):
+            s = Airfoil_Settings (airfoil)
+            settings_for = airfoil
+            logger.info (f"Settings of {airfoil} loaded from {s.pathFileName}")
+
+        else:
+            s = Settings()
+            settings_for = None
+            logger.info (f"Application settings loaded from {s.pathFileName}")
 
         # panelling 
+        nPanels  = s.get ('spline_nPanels', None)
+        le_bunch = s.get ('spline_le_bunch', None)
+        te_bunch = s.get ('spline_te_bunch', None)
 
-        nPanels  = Settings().get('spline_nPanels', None)
-        le_bunch = Settings().get('spline_le_bunch', None)
-        te_bunch = Settings().get('spline_te_bunch', None)
-
-        if nPanels:     Panelling_Spline._nPanels = nPanels
+        if nPanels:                 Panelling_Spline._nPanels  = nPanels
         if le_bunch is not None:    Panelling_Spline._le_bunch = le_bunch
         if te_bunch is not None:    Panelling_Spline._te_bunch = te_bunch
 
-        nPanels  = Settings().get('bezier_nPanels', None)
-        le_bunch = Settings().get('bezier_le_bunch', None)
-        te_bunch = Settings().get('bezier_te_bunch', None)
+        nPanels  = s.get ('bezier_nPanels', None)
+        le_bunch = s.get ('bezier_le_bunch', None)
+        te_bunch = s.get ('bezier_te_bunch', None)
 
-        if nPanels:     Panelling_Bezier._nPanels = nPanels
+        if nPanels:                 Panelling_Bezier._nPanels  = nPanels
         if le_bunch is not None:    Panelling_Bezier._le_bunch = le_bunch
         if te_bunch is not None:    Panelling_Bezier._te_bunch = te_bunch
 
         # polar definitions 
-
         self._polar_definitions : list [Polar_Definition] = []
-        for def_dict in Settings().get('polar_definitions', []):
+        for def_dict in s.get('polar_definitions', []):
             self._polar_definitions.append(Polar_Definition(dataDict=def_dict))
         self._polar_definitions.sort (key=lambda aDef : aDef.re)
 
-
         # reference airfoils including initial re scale 
 
-        ref_entries = Settings().get('reference_airfoils', [])
+        self._airfoils_ref : list [Airfoil] = []
+        self._airfoils_ref_scale : list [float|None] = []
+
+        ref_entries = s.get('reference_airfoils', [])
 
         for ref_entry in ref_entries:
             if isinstance (ref_entry, str):                             # compatible with older version
@@ -1377,9 +1416,30 @@ class Main (QMainWindow):
                     airfoil = Airfoil.onFileType (pathFileName=pathFileName)
                     airfoil.load ()
                     airfoil.set_property ("show", show)
-                    self.set_airfoil_ref (None, airfoil, scale=scale)
+                    self.set_airfoil_ref (None, airfoil, scale=scale, silent=True)
                 except Exception as e: 
                     logger.warning (f"Reference airfoil {pathFileName} could not be loaded: {e}")
+
+        # update polar sets and diagram  
+        self.refresh_polar_sets (silent=silent)
+
+        # set diagram settings
+        if not silent:
+            self.diagram.set_settings (s, settings_for=settings_for, refresh=True)
+
+        return s, settings_for
+
+
+    def _delete_airfoil_settings (self, of_airfoil : Airfoil):
+        """ delete individual settings file of airfoil """
+
+        if Airfoil_Settings.exists_for (of_airfoil):
+
+            Airfoil_Settings (of_airfoil).delete_file()
+            of_airfoil.set_property ("has_settings", None)                 # reset has settings property
+
+            # load the default settings again
+            self._load_airfoil_settings (silent=False)
 
 
     def _save_xo2_nml (self, ask = False, toast=True): 
@@ -1418,8 +1478,10 @@ class Main (QMainWindow):
             self._watchdog.requestInterruption ()
             self._watchdog.wait()
 
-        # save e..g diagram options 
-        self._save_settings ()
+        # save e.g. diagram options 
+        self._save_app_settings () 
+        self._save_airfoil_settings (None)          # save to default settings
+        logger.info (f"Application settings saved to {Settings().pathFileName}")
 
         # inform parent (PlanformCreator) 
         if self.airfoil: 
@@ -1574,6 +1636,39 @@ class Watchdog (QThread):
             self.msleep (500)
 
         return 
+
+
+#--------------------------------
+
+class Airfoil_Settings (Parameters):
+    """ 
+    Settings for an airfoil which are stored with the airfoil
+    in an individual settings file with airfoil fileName + '.ae'
+    """
+
+    FILE_EXTENSION = ".ae"
+
+    @classmethod
+    def settings_pathFileName (cls, airfoil : Airfoil) -> str:
+        """ get settings file pathFileName for airfoil """
+        return os.path.join (airfoil.pathName_abs, airfoil.fileName_stem + cls.FILE_EXTENSION)
+
+
+    @classmethod
+    def exists_for (cls, airfoil : Airfoil) -> bool:
+        """ check if settings file exists for airfoil """
+
+        if isinstance (airfoil, Airfoil):
+            return os.path.isfile (cls.settings_pathFileName(airfoil))
+        return False
+
+
+    def __init__ (self, airfoil : Airfoil):
+
+        if not isinstance (airfoil, Airfoil):
+            raise ValueError (f"Airfoil_Settings: airfoil must be of type Airfoil")
+        
+        super().__init__(self.settings_pathFileName (airfoil))
 
 
 #--------------------------------

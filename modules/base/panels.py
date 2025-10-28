@@ -845,7 +845,9 @@ class Toaster (QFrame):
         # set_background (self, color="red")
         # self.setFrameShape(self.Box)
 
-        self.timer = QTimer(singleShot=True, timeout=self.hide)
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.hide)
 
         if self.parent():
             self.opacityEffect = QGraphicsOpacityEffect(opacity=0)
@@ -917,8 +919,12 @@ class Toaster (QFrame):
             self.timer.start()
         return super(Toaster, self).eventFilter(source, event)
 
-    def enterEvent(self, event):
-        self.restore()
+    # def enterEvent(self, event):
+    #     deactivated - when the mouse is by accident over the notification, 
+    #           the toaster would wouldn't close
+    #     self.restore()
+    #     super().enterEvent(event)
+
 
     def leaveEvent(self, event):
         self.timer.start()
@@ -940,10 +946,13 @@ class Toaster (QFrame):
 
     @staticmethod
     def showMessage(parent, message, 
-                    corner=Qt.Corner.BottomLeftCorner, 
-                    margin=QMargins(10, 10, 10, 10), 
+                    corner = Qt.Corner.BottomLeftCorner, 
+                    margin =          QMargins(10,10,10,10), 
+                    contentsMargins = QMargins(30, 7,30, 7),
                     toast_style = style.HINT,
-                    duration=1500, parentWindow=False):
+                    duration = 1500,
+                    alpha :int = 255,
+                    parentWindow = False):
         """
         show a toaster for a while
 
@@ -973,7 +982,7 @@ class Toaster (QFrame):
 
         self.label = QLabel(message)
         self.layout().addWidget(self.label)
-        self.layout().setContentsMargins (QMargins(30, 7, 30, 7))
+        self.layout().setContentsMargins (contentsMargins)
 
         # set background color style 
 
@@ -986,6 +995,7 @@ class Toaster (QFrame):
             # adapt color 
 
             h,s,l,a = color.getHsl()
+            a = alpha if isinstance(alpha,int) else a
             if Widget.light_mode:
                 s = int(s*0.8)                                  # less saturation (more gray) 
                 l = int(l*1.4)                                  # lighter 

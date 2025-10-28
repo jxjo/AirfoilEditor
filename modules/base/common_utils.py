@@ -8,12 +8,13 @@ Common Utility functions for convinience - no dependencies from other moduls
 import os
 import json
 from pathlib                import Path
+from typing                 import override
 from termcolor              import colored
+from collections.abc        import Iterable
 
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.INFO)
-
 
 
 #------------------------------------------------------------------------------
@@ -128,54 +129,109 @@ def toDict(aDict : dict, key, value):
 #------------------------------------------------------------------------------
 
 
-class Parameters ():
+class Parameters (dict):
     """ Handles a parameter file with a json structure representing a dictionary of paramteres""" 
 
-    def __init__ (self, paramFilePath):
+    def __init__ (self, pathFileName : str):
+        super().__init__()
 
-        self._paramFilePath = paramFilePath
+        self._pathFileName = pathFileName
 
-    def get_dataDict (self):
+        self.load()
+        
+
+    @property
+    def pathFileName (self) -> str:
+        """ returns the path file name of the parameter file """
+        return self._pathFileName
+
+
+    @override
+    def get(self, key, default=None):
         """
-        returns the complete dataDict of self
+        Returns value of 'key' 
+        If a default is given, the returned value will be cast to the type of default
+        """
+
+        val = super().get(key, default)
+
+        if default is not None and val is not None:
+            if isinstance (default, float):
+                val = float(val)
+            elif isinstance (default, bool):
+                val = bool(val)
+            elif isinstance (default, int):
+                val = int(val)
+            elif isinstance (default, str):
+                val = str(val)
+        return val
+
+
+    def set(self, key, value):
+        """
+        Sets 'key' with 'value'. If value is ... 
+        - float, it will be rounded to 6 decimals
+        - None or [] or {} or '' the key will be removed from the dictionary 
+        """
+        # avoid empty entries in settings
+        if value is None or (isinstance(value, Iterable) and len(value) == 0):
+            self.pop(key, None)
+        else:
+            # limit decimals in file
+            if isinstance(value, float):
+                value = round(value, 6)
+
+            self[key] = value
+
+
+    def load (self):
+        """
+        load self from json file
         """
         dataDict = {}
-        if self._paramFilePath:
+        if self.pathFileName:
             try:
-                paramFile = open(self._paramFilePath)
+                fs = open(self.pathFileName)
                 try:
-                    dataDict = json.load(paramFile)
-                    paramFile.close()
+                    dataDict = json.load(fs)
+                    fs.close()
                 except ValueError as e:
-                    logger.error ("Invalid json expression '%s' in parameter file '%s'" % (e, self._paramFilePath))
-                    paramFile.close()
+                    logger.error (f"Invalid json expression '{e}' in parameter file '{self.pathFileName}'")
+                    fs.close()
                     dataDict = {}
             except:
-                logger.debug (f"Paramter file {self._paramFilePath} not found")
+                logger.debug (f"Paramter file {self.pathFileName} not found")
 
-        return dataDict
+        self.clear()
+        self.update(dataDict)
 
 
-    def write_dataDict (self, aDict, dataName='Parameters'):
-        """ writes data dict to file - returns True if succeded"""
+    def save (self):
+        """ writes self to json file"""
 
-        ok = False
+        with open(self.pathFileName, 'w+') as fs:
 
-        with open(self._paramFilePath, 'w+') as file:
-
-            # save parameter dictionary to .json-file
             try:
-                json.dump(aDict, file, indent=2, separators=(',', ':'))
-                logger.info (f"{dataName} saved to {self._paramFilePath}" )
-                ok =  True
+                json.dump(self, fs, indent=2, separators=(',', ':'))
+                logger.debug (f"{type(self).__name__} saved to {self.pathFileName}" )
 
             except ValueError as e:
-                logger.error (f"Invalid json expression '{e}'. Failed to save data to '{self._paramFilePath}'")
+                logger.error (f"Invalid json expression '{e}'. Failed to save data to '{self.pathFileName}'")
+            except Exception as e:
+                logger.error (f"{e}. Failed to save data to '{self.pathFileName}'")
 
-            except TypeError as e:
-                logger.error (f"{e}. Failed to save data to '{self._paramFilePath}'")
+        return
 
-        return ok 
+
+    def delete_file (self):
+        """ deletes the parameter file of self """
+        try:
+            os.remove (self.pathFileName)
+            self.clear()
+            logger.debug (f"Parameter file '{self.pathFileName}' deleted")
+        except Exception as e:
+            logger.error (f"Failed to delete parameter file '{self.pathFileName}': {e}")
+
 
 
 #------------------------------------------------------------------------------

@@ -132,9 +132,11 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
-                                    textOpen="&Open", widthOpen=90, 
+        w =Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
+                                    textOpen="&Open", widthOpen=100, 
                                     get=lambda: self.airfoil, set=self.app.set_airfoil)
+        w.sig_opened_via_button.connect (self._on_openend_via_button)
+
         r += 1
         Button (l,r,c, text="&Modify", width=100, 
                 set=self.app.modify_airfoil, toolTip="Modify geometry, Normalize, Repanel, Set Flap",
@@ -182,6 +184,13 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menue.setToolTipsVisible(True)
 
         return menue
+
+    def _on_openend_via_button (self):
+        """ slot: airfoil opened via open button """
+
+        # if the new airfoil has individual settings - load them now 
+        if self.airfoil.get_property ('has_settings', False):
+            self.app._load_airfoil_settings (self.airfoil)
 
 
     def _open_releases_url (self):
@@ -883,9 +892,9 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
                 text.append("- Leading edge is not at 0,0")
         if not self.airfoil.isFlapped:
             if self.geo.te[0] != 1.0 or self.geo.te[2] != 1.0 : 
-                text.append("- Trailing edge is not at x=1.0")
+                text.append("- Trailing edge x is not at 1.0")
             if self.geo.te[1] != -self.geo.te[3]: 
-                text.append("- Trailing edge is not at y=0.0")
+                text.append("- Trailing edge y is not symmetrical")
 
         if not text:
             if self.geo.isSymmetrical: 
