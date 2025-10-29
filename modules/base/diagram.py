@@ -417,7 +417,8 @@ class Diagram (QWidget):
             s_item = item._settings()
             if s_item:                               # avoid empty dicts
                 s_items[item.name] = s_item
-        s['items'] = s_items
+        if s_items:
+            s['items'] = s_items
         
         return s
 
@@ -443,6 +444,9 @@ class Diagram (QWidget):
         for item in self.diagram_items:
             item._set_settings (d_items.get(item.name, {}))
 
+        # ensure at least view panel is refreshed
+        if self._viewPanel:
+            self._viewPanel.refresh()
 
 # -----------------------------------------------------------------------------------
 

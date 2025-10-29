@@ -1379,9 +1379,10 @@ class Tab_Panel (QTabWidget):
     def set_tab (self, class_name : str):
         """ set the current tab to tab with widgets class name"""
 
-        for itab in range (self.count()):
-            if self.widget(itab).__class__.__name__ == class_name:
-                self.setCurrentIndex (itab)
-                return
-
-
+        if class_name:
+            for itab in range (self.count()):
+                if self.widget(itab).__class__.__name__ == class_name:
+                    self.setCurrentIndex (itab)
+                    return
+        else:
+            self.setCurrentIndex (0)

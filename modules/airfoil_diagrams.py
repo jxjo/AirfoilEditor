@@ -1405,6 +1405,7 @@ class Diagram_Item_Polars (Diagram_Item):
     def _refresh_artist_xy (self): 
         """ refresh polar artist with new diagram variables"""
 
+        artist : Polar_Artist
         for artist in self._artists:
             artist.set_xyVars (self._xyVars)
 
@@ -1975,13 +1976,14 @@ class Diagram_Airfoil_Polar (Diagram):
             settings_for (Airfoil|None): airfoil for which the settings are valid (None = all)
         """
 
-        super().set_settings (d)
-
         # update panel_settings with actual loaded airfoil
         self.panel_airfoil_settings.set_settings_loaded_for (settings_for)
 
+        super().set_settings (d)
+
         if refresh:
             self.refresh()
+
 
 
     @override

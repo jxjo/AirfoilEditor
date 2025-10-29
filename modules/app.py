@@ -155,6 +155,12 @@ class Main (QMainWindow):
         else:
             logger.info (f"Starting on initial file: {initial_file}")
 
+        if initial_file and not os.path.isfile (initial_file):
+            logger.error (f"File '{initial_file}' doesn't exist")
+            app_settings.set('last_opened', None)
+            app_settings.save()
+            initial_file = None
+
         # either airfoil or Xoptfoil2 input file 
 
         Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 

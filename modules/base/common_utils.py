@@ -206,6 +206,12 @@ class Parameters (dict):
         self.update(dataDict)
 
 
+    def replace_all (self, newParams : dict):
+        """ replaces all parameters of self with newParams """
+        self.clear()
+        self.update(newParams)
+
+
     def save (self):
         """ writes self to json file"""
 
