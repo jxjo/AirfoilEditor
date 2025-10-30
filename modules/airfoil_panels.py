@@ -1111,7 +1111,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         match_bezier = Match_Bezier_Dialog (self, aSide, aTarget_line,
                                     target_curv_le = target_curv_le,
                                     max_curv_te = max_curv_te,
-                                    parentPos=(0.1, 0.1), dialogPos=(0,1))
+                                    parentPos=(0.1, 0.05), dialogPos=(0.5,1))
 
         match_bezier.sig_new_bezier.connect     (self.app.sig_bezier_changed.emit)
         match_bezier.sig_pass_finished.connect  (self.app.sig_geometry_changed.emit)

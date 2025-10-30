@@ -489,8 +489,8 @@ class Flap_Airfoil_Dialog (Dialog):
 class Match_Bezier_Dialog (Dialog):
     """ Main handler represented as little tool window"""
 
-    _width  = 350
-    _height = 240
+    _width  = 420
+    _height = 260
 
     name = "Match Bezier"
 
@@ -518,8 +518,11 @@ class Match_Bezier_Dialog (Dialog):
 
 
     @staticmethod
-    def style_curv_le (target_curv_le: float, aCurv: Line | float) -> style:
+    def style_curv_le (target_curv_le: float, aCurv: Line | float, is_active=True) -> style:
         """ returns color style depending if curvature at LE is too different from target"""
+        if not is_active:
+            return style.NORMAL
+        
         result = Matcher.result_curv_le (target_curv_le, aCurv)
         if result == Matcher.result_quality.GOOD:
             st = style.GOOD
@@ -531,8 +534,11 @@ class Match_Bezier_Dialog (Dialog):
 
 
     @staticmethod
-    def style_curv_te (max_curv_te : float, aCurv: Line | float)  -> style:
+    def style_curv_te (max_curv_te : float, aCurv: Line | float, is_active=True)  -> style:
         """ returns color style depending if curvature at TE is to high"""
+        if not is_active:
+            return style.NORMAL
+
         result = Matcher.result_curv_te (max_curv_te, aCurv)
         if result == Matcher.result_quality.GOOD:
             st = style.GOOD
@@ -554,6 +560,9 @@ class Match_Bezier_Dialog (Dialog):
         self._target_line = target_line
         self._curv_le = abs(side_bezier.curvature.max_xy[1]) 
         self._curv_te = side_bezier.curvature.te[1] 
+
+        self._is_curv_le_target  = True 
+        self._is_curv_te_limited = True
 
         self._target_curv_le = target_curv_le
         self._max_curv_te = max_curv_te
@@ -592,6 +601,44 @@ class Match_Bezier_Dialog (Dialog):
         self._palette_normal = self._panel.palette()
 
 
+    def _titletext (self) -> str: 
+        """ headertext dpending on state """
+        if self._matcher.isRunning():
+            return f"Match running ... Pass: {self._ipass}  Iterations: {self._nevals}"
+        elif self._matcher.isFinished():
+            return f"Match {self._side_bezier.name} side finished"
+        else: 
+            return f"Match {self._side_bezier.name} side"
+
+
+    @property
+    def is_curv_le_target(self):
+        return self._is_curv_le_target
+    def set_is_curv_le_target(self, aBool: bool):
+        self._is_curv_le_target = aBool
+
+    @property
+    def is_curv_te_limited(self):
+        return self._is_curv_te_limited
+    def set_is_curv_te_limited(self, aBool: bool):
+        self._is_curv_te_limited = aBool
+
+    @property
+    def target_curv_le (self) -> float:
+        return self._target_curv_le if self.is_curv_le_target else None
+    def set_target_curv_le (self, aVal : float):
+        self._target_curv_le = aVal
+
+    def set_target_curv_le_weighting (self, aVal : float):
+        self._target_curv_le_weighting = aVal
+
+    @property
+    def max_curv_te (self) -> float:
+        return self._max_curv_te if self.is_curv_te_limited else None
+    def set_max_curv_te (self, aVal : float):
+        self._max_curv_te = aVal
+
+    
     def _start_matcher (self): 
         """ start matcher thread"""
 
@@ -604,12 +651,17 @@ class Match_Bezier_Dialog (Dialog):
         self.set_background_color (color='steelblue', alpha=0.3)        
 
         self._matcher.set_match (self._side_bezier, self._target_line,
-                                self._target_curv_le, self._target_curv_le_weighting,
-                                self._max_curv_te)
+                                self.target_curv_le, self._target_curv_le_weighting,
+                                self.max_curv_te)
         self._matcher.start()
 
         self._set_button_visibility ()              # after to get running state 
         self.setWindowTitle (self._titletext())
+
+
+    def _on_widget_changed (self,*_):
+        """ slot for change of widgets"""
+        self.refresh()  
 
 
     def _on_results (self, nevals, norm2, curv_le, curv_te):
@@ -647,8 +699,8 @@ class Match_Bezier_Dialog (Dialog):
             # user stop request - no more loops 
             finished = True
 
-        elif self._ipass < self.MAX_PASS: 
-            # further passes to go?
+        elif self._ipass < self.MAX_PASS and self.target_curv_le is not None: 
+            # further passes to go if target_curv_le is defined?
             finished = self._result_is_good_enough ()
             if not finished:
                 self.sig_pass_finished.emit ()                          # intermediate update
@@ -683,64 +735,43 @@ class Match_Bezier_Dialog (Dialog):
 
         l = QGridLayout()
         r = 0
-        # SpaceR (l, r, stretch=0, height=5) 
-        # r += 1 
-        # Label (l,r,c, colSpan=6, fontSize=size.HEADER, get=self._headertext)
-        # r += 1
-        Label  (l,r,0, colSpan=5, height=40, get="Run an optimization for a best fit of the Bezier curve."+
-                                      "\nYou may adapt LE and/or TE curvature.")
+        Label  (l,r,0, colSpan=5, height=50, style=style.COMMENT,
+                get=f"Run an optimization for a best fit of <b>{self._side_bezier.name} side</b> Bezier curve.<br>" +\
+                     "The initial target values are derived from target airfoil.")
         r += 1
-        SpaceR (l, r, stretch=0, height=5) 
+        SpaceR (l, r, stretch=0, height=10) 
         r += 1
-        Label  (l,r,1, get="Deviation")
-        SpaceC (l,2, width=15)
-        Label  (l,r,3, get="LE   curvature   TE", colSpan=2)
-        SpaceC (l,5, width=5, stretch=2)
-
+        Label  (l,r,0, get="Targets of Match")
+        Label  (l,r,3, get="Actual Values")
         r += 1
-        Label  (l,r,0, get="Target side")
-        FieldF (l,r,3, width=50,  dec=0, step=10.0, lim=(10, 1000),
-                        get=lambda: self._target_curv_le, set=self.set_target_curv_le )
-        FieldF (l,r,4, width=50,  dec=1, step=0.1, lim=(-9.9, 9.9),
-                        get=lambda: self._max_curv_te, set=self.set_max_curv_te )
-
-        # r += 1
-        # Label  (l,r,0, get="Weight")
-        # FieldF (l,r,3, width=50,  dec=1, step=0.5, lim=(0.1,10),
-        #                 get=lambda: self._target_curv_le_weighting, set=self.set_target_curv_le_weighting )
-
+        CheckBox (l,r,0, text="Achieve Curvature at LE",
+                  obj=self, prop=Match_Bezier_Dialog.is_curv_le_target)
+        FieldF (l,r,1, width=55,  dec=0, step=10.0, lim=(10, 1000),
+                       obj=self, prop=Match_Bezier_Dialog.target_curv_le, 
+                       hide=lambda: not self.is_curv_le_target)
+        FieldF (l,r,3, width=60, dec=0, get=lambda: self._curv_le,
+                       style=lambda: Match_Bezier_Dialog.style_curv_le(
+                           self._target_curv_le, self._curv_le, is_active=self.is_curv_le_target))
         r += 1
-        Label  (l,r,0, get=f"{self._side_bezier.name} side", width=80)
-        FieldF (l,r,1, width=60, dec=3, unit='%', get=lambda: self._norm2, 
+        CheckBox (l,r,0, text="Limit Curvature at TE",
+                  obj=self, prop=Match_Bezier_Dialog.is_curv_te_limited)
+        FieldF (l,r,1, width=55,  dec=1, step=0.1, lim=(-9.9, 9.9),
+                       obj=self, prop=Match_Bezier_Dialog.max_curv_te, 
+                       hide=lambda: not self.is_curv_te_limited)
+        FieldF (l,r,3, width=60, dec=1, get=lambda: self._curv_te,
+                       style=lambda: Match_Bezier_Dialog.style_curv_te(
+                           self._max_curv_te, self._curv_te, is_active=self.is_curv_te_limited))
+        r += 1
+        CheckBox (l,r,0, text="Minimize Deviation to Target Line", get=True)
+        FieldF (l,r,3, width=60, dec=3, unit='%', get=lambda: self._norm2, 
                        style=lambda: Match_Bezier_Dialog.style_deviation (self._norm2 ))
-        FieldF (l,r,3, width=50, dec=0, get=lambda: self._curv_le,
-                       style=lambda: Match_Bezier_Dialog.style_curv_le(self._target_curv_le, self._curv_le))
-        FieldF (l,r,4, width=50, dec=1, get=lambda: self._curv_te,
-                       style=lambda: Match_Bezier_Dialog.style_curv_te(self._max_curv_te, self._curv_te))
         r += 1
         SpaceR (l, r) 
 
+        l.setColumnMinimumWidth (1,55)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnStretch (3,1)
         return l
-
-
-    def set_target_curv_le (self, aVal : float):
-        self._target_curv_le = aVal
-
-    def set_target_curv_le_weighting (self, aVal : float):
-        self._target_curv_le_weighting = aVal
-
-    def set_max_curv_te (self, aVal : float):
-        self._max_curv_te = aVal
-
-
-    def _titletext (self) -> str: 
-        """ headertext dpending on state """
-        if self._matcher.isRunning():
-            return f"Match running ... Pass: {self._ipass}  Iterations: {self._nevals}"
-        elif self._matcher.isFinished():
-            return f"Match {self._side_bezier.name} side finished"
-        else: 
-            return f"Match {self._side_bezier.name} side"
 
 
     def _button_box (self):
@@ -886,9 +917,9 @@ class Matcher (QThread):
 
     def set_match (self,  side : Side_Airfoil_Bezier, 
                             target_line: Line,
-                            target_curv_le : float = None,
+                            target_curv_le : float|None = None,
                             target_curv_le_weighting : float = 1.0,
-                            max_curv_te : float = 10.0):
+                            max_curv_te : float|None = None):
         """ set initial data for match"""
 
         self._side    = side 
@@ -903,14 +934,11 @@ class Matcher (QThread):
         self._target_line  = Line._reduce_target_points (target_line)
         self._target_y_te = target_line.y[-1]        
 
-        # curvature targets  
+        # curvature targets - may be None (is not a target)
 
         self._target_curv_le = target_curv_le       # also take curvature at le into account
-        if target_curv_le_weighting is None: target_curv_le_weighting = 1.0
         self._target_curv_le_weighting = target_curv_le_weighting   
-        if max_curv_te is None: max_curv_te = 1.0
         self._max_curv_te    = max_curv_te          # also take curvature at te into account
-
 
         # re-arrange initial Bezier as start bezier 
         #    ensure a standard (start) position of control points 
@@ -918,9 +946,7 @@ class Matcher (QThread):
         controlPoints = Side_Airfoil_Bezier.estimated_controlPoints (target_line, self._ncp) 
         self._bezier.set_points (controlPoints)      # a new Bezier curve 
  
-
     # --------------------
-
 
     def run (self) :
         # Note: This is never called directly. It is called by Qt once the
@@ -937,14 +963,12 @@ class Matcher (QThread):
 
         f = lambda variables : self._objectiveFn (variables) 
 
-
         # -- initial step size 
 
         step = 0.16                      # big enough to explore solution space 
                                          #  ... but not too much ... 
 
         # ----- nelder mead find minimum --------
-
 
         res, niter = nelder_mead (f, variables_start,
                     step=step, no_improve_thr=1e-5,             
@@ -973,10 +997,7 @@ class Matcher (QThread):
         """ True if thread has finished and was interrupted"""
         return self._is_interrupted
 
-
     # --------------------
-
-
 
     def _map_bezier_to_variables (self): 
         """ 
@@ -1075,34 +1096,32 @@ class Matcher (QThread):
         # difference to target le curvature 
 
         obj_le = 0.0 
-        diff = 0 
         if self._target_curv_le:
             target  = abs(self._target_curv_le)
             diff = abs(target - curv_le)                        # 1% is like 1 
-        obj_le += (diff / 30) * self._target_curv_le_weighting  # #40 #80 apply optional weighting      
+            obj_le += (diff / 30) * self._target_curv_le_weighting  # #40 #80 apply optional weighting      
 
         # --- TE curvature 
-        # limit max te curvature 
+
+        # limit max te curvature - ! curvature on bezier side_upper is negative !
 
         obj_te = 0  
-        if self._isLower:                                       # ! curvature on bezier side_upper is negative !
-            curv_te   =  self._bezier.curvature(1.0)
-        else:
-            curv_te   = -self._bezier.curvature(1.0)
+        curv_te =  self._bezier.curvature(1.0) if self._isLower else -self._bezier.curvature(1.0)
 
-        # current should be between 0.0 and target te curvature 
-        if self._max_curv_te >= 0.0: 
-            if curv_te >= 0.0: 
-                delta = curv_te - self._max_curv_te
-            else:
-                delta = - curv_te * 3.0                 # te curvature shouldn't result in reversal
-        else: 
-            if curv_te < 0.0:  
-                delta = - (curv_te - self._max_curv_te)
-            else:
-                delta = curv_te * 3.0                   # te curvature shouldn't result in reversal
-        if delta > 0.1:                                     # delta < 0.3 is ok,  0
-            obj_te = delta - 0.1   
+        if self._max_curv_te is not None:
+            # current should be between 0.0 and target te curvature 
+            if self._max_curv_te >= 0.0: 
+                if curv_te >= 0.0: 
+                    delta = curv_te - self._max_curv_te 
+                else:
+                    delta = - curv_te * 3.0                 # te curvature shouldn't result in reversal
+            else: 
+                if curv_te < 0.0:  
+                    delta = - (curv_te - self._max_curv_te)
+                else:
+                    delta = curv_te * 3.0                   # te curvature shouldn't result in reversal
+            if delta > 0.1:                                     # delta < 0.3 is ok,  0
+                obj_te = delta - 0.1   
 
         # calculate derivative of curvature for detection of curvature artefacts 
 
@@ -1117,13 +1136,16 @@ class Matcher (QThread):
             # is getting closer to TE 
 
         obj_te_deriv = 0 
+        lim_curv_deriv_te = 0
+        max_curv_deriv_te = np.max (abs(deriv1[-10:]))              # check the last 10 points  
 
-        max_curv_deriv_te = np.max (abs(deriv1[-10:]))              # check the last 10 points                   
-        lim_curv_deriv_te = 10 * (abs(self._max_curv_te) if self._max_curv_te else 0.1)
-        lim_curv_deriv_te = max (lim_curv_deriv_te, 1)             # derivative limit depending on curv at te
+        if self._max_curv_te is not None:
+            # if max_curv_te is 0.0 take a not too low value for derivative at te                 
+            lim_curv_deriv_te = 20 * (abs(self._max_curv_te) if self._max_curv_te else 0.1)
+            lim_curv_deriv_te = max (lim_curv_deriv_te, 2)             # derivative limit depending on curv at te
 
-        if max_curv_deriv_te > lim_curv_deriv_te: 
-            obj_te_deriv = (max_curv_deriv_te - lim_curv_deriv_te) / 20  # 0 is good, > 0 ..50 is bad 
+            if max_curv_deriv_te > lim_curv_deriv_te: 
+                obj_te_deriv = (max_curv_deriv_te - lim_curv_deriv_te) / 20  # 0 is good, > 0 ..50 is bad 
 
         # ---- penalty for reversals in derivative of curvature - avoid bumps 
 
@@ -1141,7 +1163,6 @@ class Matcher (QThread):
 
         # take norm2 of deviation and le curvature to get balanced result 
         obj = np.linalg.norm ([obj_norm2, obj_le]) + obj_le_hp + obj_te + obj_revers + obj_te_deriv
-        # obj = obj_norm2 + obj_le + obj_le_hp + obj_te + obj_revers + obj_te_deriv
 
         # counter of objective evaluations (for entertainment)
         self._nevals += 1
@@ -1149,14 +1170,12 @@ class Matcher (QThread):
         # if self._nevals%100 == 0:           
         #     print (f"{self._nevals:4} " +
         #                    f" obj:{obj:5.2f}   norm2:{obj_norm2:5.2f}" +
-        #                    f"  le:{obj_le:5.2f}   le_hp:{obj_le_hp:4.1f}   te:{obj_te:4.1f}" +
-        #                    f"  rev:{obj_revers:4.1f}  te_der:{obj_te_deriv:4.1f}")
+        #                    f"  le:{obj_le:5.2f}   le_hp:{obj_le_hp:5.2f}   te:{obj_te:5.2f}" +
+        #                    f"  rev:{obj_revers:5.2f}  te_der:{obj_te_deriv:5.2f}")
+        #     print (f"{lim_curv_deriv_te}, {max_curv_deriv_te}")
 
         # signal parent with new results 
         if self._nevals%10 == 0:  
-
-            # print ("ohooo", self._nevals, curv_le, curv_after_le)
-            # print ("     ", abs(self._bezier.curvature(0.00)) , abs(self._bezier.curvature(0.001)) , abs(self._bezier.curvature(0.01)) )
 
             self.sig_new_results.emit (self._nevals, norm2, curv_le, curv_te)
             self.msleep(2)                      # give parent some time to do updates
