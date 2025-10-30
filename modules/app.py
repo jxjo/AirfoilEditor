@@ -76,10 +76,8 @@ class Main (QMainWindow):
     # Qt Signals 
 
     sig_new_airfoil             = pyqtSignal()          # new airfoil selected 
-
     sig_geometry_changed        = pyqtSignal()          # airfoil geometry changed 
-    sig_airfoil_2_changed       = pyqtSignal()          # 2nd airfoil data changed 
-    sig_airfoils_ref_changed    = pyqtSignal()          # list of reference airfoils changed
+    sig_etc_changed             = pyqtSignal()          # reference airfoils etc changed
 
     sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
     sig_panelling_changed       = pyqtSignal()          # new panelling
@@ -267,10 +265,9 @@ class Main (QMainWindow):
 
         self.sig_new_airfoil.connect            (self.diagram.on_new_airfoil)
         self.sig_geometry_changed.connect       (self.diagram.on_geometry_changed)
-        self.sig_airfoil_2_changed.connect      (self.diagram.on_etc_changed)
+        self.sig_etc_changed.connect            (self.diagram.on_etc_changed)
         self.sig_bezier_changed.connect         (self.diagram.on_bezier_changed)
         self.sig_polar_set_changed.connect      (self.diagram.on_polar_set_changed)
-        self.sig_airfoils_ref_changed.connect   (self.diagram.on_etc_changed)
 
         self.sig_mode_optimize.connect          (self.diagram.on_mode_optimize)
         self.sig_xo2_about_to_run.connect       (self.diagram.on_xo2_about_to_run)
@@ -602,7 +599,7 @@ class Main (QMainWindow):
 
 
         if not silent: 
-            self.sig_airfoils_ref_changed.emit()
+            self.sig_etc_changed.emit()
 
         if self.mode_optimize:                                      # reference airfoils are in input file
             self._on_xo2_input_changed (silent=True)                # silent - we already signaled
@@ -619,7 +616,7 @@ class Main (QMainWindow):
         if airfoil: 
             airfoil.set_usedAs (usedAs.SECOND)
         self._airfoil_2 = airfoil
-        self.sig_airfoil_2_changed.emit()             
+        self.sig_etc_changed.emit()             
 
 
     @property
@@ -1244,7 +1241,7 @@ class Main (QMainWindow):
 
         self.refresh_polar_sets (silent=True)
 
-        self.sig_airfoils_ref_changed.emit()                    # will refresh diagram airfoils and polars 
+        self.sig_etc_changed.emit()                    # will refresh diagram airfoils and polars 
 
 
 
