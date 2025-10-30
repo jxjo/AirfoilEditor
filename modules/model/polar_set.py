@@ -682,6 +682,9 @@ class Polar_Set:
     def is_equal_to (self, polar_set: 'Polar_Set'):
         """ True if polar_set has the same polars (defs) """
 
+        if polar_set is None:
+            return False
+        
         if self.re_scale != polar_set.re_scale: 
             return False 
         

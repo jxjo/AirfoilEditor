@@ -76,9 +76,8 @@ class Main (QMainWindow):
     # Qt Signals 
 
     sig_new_airfoil             = pyqtSignal()          # new airfoil selected 
-    sig_new_design              = pyqtSignal()          # new airfoil design created 
 
-    sig_airfoil_changed         = pyqtSignal()          # airfoil data changed 
+    sig_geometry_changed        = pyqtSignal()          # airfoil geometry changed 
     sig_airfoil_2_changed       = pyqtSignal()          # 2nd airfoil data changed 
     sig_airfoils_ref_changed    = pyqtSignal()          # list of reference airfoils changed
 
@@ -251,7 +250,7 @@ class Main (QMainWindow):
 
         # connect diagram signals to slots of self
 
-        self.diagram.sig_airfoil_changed.connect           (self._on_airfoil_changed)
+        self.diagram.sig_geometry_changed.connect           (self._on_airfoil_changed)
         self.diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
         self.diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
         self.diagram.sig_airfoils_ref_scale_changed.connect(self._on_airfoils_ref_scale_changed)
@@ -266,13 +265,12 @@ class Main (QMainWindow):
 
         # connect self signals to slots of diagram
 
-        self.sig_new_airfoil.connect            (self.diagram.on_airfoil_changed)
-        self.sig_new_design.connect             (self.diagram.on_new_design)
-        self.sig_airfoil_changed.connect        (self.diagram.on_airfoil_changed)
-        self.sig_airfoil_2_changed.connect      (self.diagram.on_airfoil_2_changed)
+        self.sig_new_airfoil.connect            (self.diagram.on_new_airfoil)
+        self.sig_geometry_changed.connect       (self.diagram.on_geometry_changed)
+        self.sig_airfoil_2_changed.connect      (self.diagram.on_etc_changed)
         self.sig_bezier_changed.connect         (self.diagram.on_bezier_changed)
         self.sig_polar_set_changed.connect      (self.diagram.on_polar_set_changed)
-        self.sig_airfoils_ref_changed.connect   (self.diagram.on_airfoils_ref_changed)
+        self.sig_airfoils_ref_changed.connect   (self.diagram.on_etc_changed)
 
         self.sig_mode_optimize.connect          (self.diagram.on_mode_optimize)
         self.sig_xo2_about_to_run.connect       (self.diagram.on_xo2_about_to_run)
@@ -497,10 +495,7 @@ class Main (QMainWindow):
 
         if not silent: 
             self.refresh()
-            if aNew is not None and self._airfoil.usedAsDesign:
-                self.sig_new_design.emit ()                    # new DESIGN - inform diagram
-            else:
-                self.sig_new_airfoil.emit ()
+            self.sig_new_airfoil.emit ()
 
 
     @property
@@ -1284,7 +1279,7 @@ class Main (QMainWindow):
         # remove polar set of design airfoil (during optimization) - so no polar creation 
         airfoil_design.set_polarSet (Polar_Set (airfoil_design, polar_def=[]))
 
-        self.sig_new_design.emit()                                          # refresh diagram 
+        self.sig_new_airfoil.emit()                                          # refresh diagram 
 
 
     def _toast_message (self, msg, toast_style = style.HINT):

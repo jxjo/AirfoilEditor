@@ -1560,7 +1560,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
     name        = "Airfoil Diagram"                                 # used for settings
 
-    sig_airfoil_changed             = pyqtSignal()                  # airfoil data changed in a diagram 
+    sig_geometry_changed             = pyqtSignal()                 # airfoil geometry changed in a diagram 
     sig_new_airfoil_ref1            = pyqtSignal(object)            # new ref1 airfoil  
     sig_airfoil_ref_changed         = pyqtSignal(object, object)    # changed reference airfoil 
     sig_airfoil_design_selected     = pyqtSignal(int)               # a airfoil design iDesign was selected in ComboBox 
@@ -1999,17 +1999,24 @@ class Diagram_Airfoil_Polar (Diagram):
         super().refresh(also_viewRange=also_viewRange) 
 
 
-    def on_airfoil_changed (self):
-        """ slot to handle airfoil changed signal """
+    def on_new_airfoil (self):
+        """ slot to handle new airfoil signal """
+
+        logger.debug (f"{str(self)} on new airfoil")
+        self.refresh(also_viewRange=False)
+
+
+    def on_geometry_changed (self):
+        """ slot to handle airfoil geometry changed signal """
 
         logger.debug (f"{str(self)} on airfoil changed")
         self.refresh(also_viewRange=False)
 
 
-    def on_new_design (self):
-        """ slot to handle new airfoil design signal """
+    def on_etc_changed (self):
+        """ slot to handle change of ref airfoils  etc. signal """
 
-        logger.debug (f"{str(self)} on new design")
+        logger.debug (f"{str(self)} on change of ref airfoils")
         self.refresh(also_viewRange=False)
 
 
@@ -2030,13 +2037,6 @@ class Diagram_Airfoil_Polar (Diagram):
         item.bezier_artist.refresh_from_side (aSide_type)
 
 
-    def on_airfoil_2_changed (self):
-        """ slot to handle airfoil target changed signal """
-
-        logger.debug (f"{str(self)} on airfoil target changed")
-        self.refresh(also_viewRange=False)
-
-
     def on_polar_set_changed (self):
         """ slot to handle changed polar set signal """
         logger.debug (f"{str(self)} on polar set changed")
@@ -2044,13 +2044,6 @@ class Diagram_Airfoil_Polar (Diagram):
         self.panel_polar.refresh()                     # refresh polar panel
         for artist in self._get_artist (Polar_Artist):
             artist.refresh ()
-
-
-    def on_airfoils_ref_changed (self):
-        """ slot to handle new list of reference airfoils"""
-
-        logger.debug (f"{str(self)} on airfoils ref changed")
-        self.refresh(also_viewRange=False)
 
 
     def on_xo2_about_to_run (self): 
@@ -2069,7 +2062,6 @@ class Diagram_Airfoil_Polar (Diagram):
         """ slot to handle new status or result of Xoptfoil2"""
 
         logger.debug (f"{str(self)} on Xoptfoil2 new state")
-
 
         # airfoils (final) could have changed
         self.refresh (also_viewRange=False)
@@ -2164,7 +2156,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on geometry changed in diagram")
     
-        self.sig_airfoil_changed.emit()             # refresh app
+        self.sig_geometry_changed.emit()             # refresh app
 
 
 

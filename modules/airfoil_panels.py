@@ -1114,7 +1114,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
                                     parentPos=(0.1, 0.1), dialogPos=(0,1))
 
         match_bezier.sig_new_bezier.connect     (self.app.sig_bezier_changed.emit)
-        match_bezier.sig_pass_finished.connect  (self.app.sig_airfoil_changed.emit)
+        match_bezier.sig_pass_finished.connect  (self.app.sig_geometry_changed.emit)
         match_bezier.sig_match_finished.connect (self._on_match_finished)
 
         # leave button press callback 
