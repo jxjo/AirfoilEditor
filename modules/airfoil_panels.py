@@ -420,7 +420,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         # blend with airfoil - currently Bezier is not supported
         Button (l_head, text="&Blend", width=80,
                 set=self.do_blend_with, 
-                hide=lambda: not self.airfoil.isEdited or self.airfoil.isBezierBased,
+                hide=lambda: not self.mode_modify or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
 
 

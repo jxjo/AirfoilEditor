@@ -2450,7 +2450,7 @@ class Geometry ():
             self._blend (geo1, geo2, blendBy, moving=moving)   
 
             if not moving:      
-                self._reset()
+                self._set_xy (self._x, self._y)
                 self._changed (Geometry.MOD_BLEND, f"{blendBy*100:.0f}")
 
 
