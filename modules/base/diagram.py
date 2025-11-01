@@ -21,7 +21,7 @@ import pyqtgraph as pg                          # import PyQtGraph after PyQt6
 from .common_utils      import *
 from .panels            import Edit_Panel, Container_Panel
 from .widgets           import Icon, Widget
-from .artist            import Artist
+from .artist            import Artist, Text_Button
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -496,23 +496,39 @@ class Diagram_Item (pg.PlotItem):
         self._help_messages_shown   = {}                # all help messages shown up to now 
         self._help_message_items    = {}
 
+        # Replace PlotItem auto icon button with our own Text_Button
+
+        self._reset_btn = None
+        self._auto_btn  = None
+        self._coordItem = None
+
+        self.hideButtons ()
+
+        p = Text_Button ("Fit", parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
+                        itemPos=(0,0), parentPos=(0.0,1), offset=(5,-20), frame_pad=-2)
+        p.setToolTip ("Set View Range to show all data")
+        p.clicked.connect (self._auto_btn_clicked)   
+        self._auto_btn = p         
+
         # setup additional, optional button to reset view range 
 
         self._vb_state_changed = False 
-        self._resetBtn = None
         if self.has_reset_button:
-            ico = Icon (Icon.RESETVIEW,light_mode = False)
-            self._resetBtn = pg.ButtonItem(pixmap=ico.pixmap(QSize(52,52)), width=16, parentItem=self)
-            self._resetBtn.mode = 'auto'
-            self._resetBtn.clicked.connect(self._resetBtn_clicked)
-            timer = QTimer()                                
-            timer.singleShot(50, self._reset_prepare)           # delayed when all initial drawing done 
+            p = Text_Button ("Reset", parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
+                            itemPos=(0,0), parentPos=(0,1), offset=(30,-20), frame_pad=-2)
+            p.setToolTip ("Reset to initial View Range")
+            p.clicked.connect (self._reset_btn_clicked)            
+            self._reset_btn = p
+
+            QTimer().singleShot(50, self._reset_prepare)           # delayed when all initial drawing done 
+
+
 
         # setup item to print coordinates 
 
         self._coordItem = pg.LabelItem("", color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt", justify="left")  
         self._coordItem.setParentItem(self)  
-        self._coordItem.anchor(parentPos=(0,1), itemPos=(0.0,0.0), offset=(45, -20))                       
+        self._coordItem.anchor(parentPos=(0,1), itemPos=(0.0,0.0), offset=(75, -20))                       
 
         # set margins (inset) of self - ensure some space for coordinates
 
@@ -693,9 +709,12 @@ class Diagram_Item (pg.PlotItem):
     @override
     def close (self):
         # PlotItem override to remove button
-        if self._resetBtn is not None:
-            self._resetBtn.setParent (None) 
-            self._resetBtn = None
+        if self._reset_btn is not None:
+            self._reset_btn.setParent (None) 
+            self._reset_btn = None
+        if self._auto_btn is not None:
+            self._auto_btn.setParent (None) 
+            self._reset_btn = None
         super().close()
 
 
@@ -704,7 +723,7 @@ class Diagram_Item (pg.PlotItem):
         """ overridden to show coordinates of mouse cursor"""
         super().hoverEvent (ev)
 
-        if self.mouseHovering and not self.buttonsHidden:
+        if self.mouseHovering:
             pos : pg.Point = self.viewBox.mapSceneToView(ev.scenePos())
 
             if self.viewBox.viewRect().contains(pos):
@@ -742,18 +761,6 @@ class Diagram_Item (pg.PlotItem):
         return f"{coord:#.{dec}f}"
 
 
-    @override
-    def resizeEvent(self, ev):
-
-        # update position reset button 
-        if self._resetBtn is not None:                  # item could be already closed 
-            btnRect = self.mapRectFromItem(self._resetBtn, self._resetBtn.boundingRect())
-            y = self.size().height() - btnRect.height()
-            self._resetBtn.setPos(20, y+3)              # right aside autoBtn
-
-        super().resizeEvent (ev)
-
-
     @property 
     def has_reset_button (self) -> bool:
         """ reset view button in the lower left corner"""
@@ -766,24 +773,34 @@ class Diagram_Item (pg.PlotItem):
         # PlotItem override to show/hide reset button
         super().updateButtons ()
         try:
-            if self.mouseHovering and not self.buttonsHidden and self._vb_state_changed: #  and not all(self.vb.autoRangeEnabled()):
-                if self._resetBtn is not None: 
-                    self._resetBtn.show()
-                self._coordItem.show()
+            if self.mouseHovering: 
+                if self._vb_state_changed and self._reset_btn is not None:  
+                    self._reset_btn.show()
+                if not all(self.vb.autoRangeEnabled()) and self._auto_btn is not None:
+                    self._auto_btn.show()
             else:
-                if self._resetBtn is not None: 
-                    self._resetBtn.hide()
-                self._coordItem.hide()
+                if self._reset_btn is not None:  
+                    self._reset_btn.hide()
+                if self._auto_btn  is not None:  
+                    self._auto_btn.hide()
+                if self._coordItem is not None: 
+                    self._coordItem.hide()
         except RuntimeError:
             pass  # this can happen if the plot has been deleted.
 
 
-    def _resetBtn_clicked(self):
+    def _reset_btn_clicked(self):
         """ reset button was clicked - set initial view range"""
-
         if self._vb_state_changed:
             self.setup_viewRange ()
             self._vb_state_changed = False
+
+
+    def _auto_btn_clicked(self):
+        """ auto button was clicked - set view range to show all data"""
+        self.viewBox.enableAutoRange()
+        self._auto_btn.hide()
+        self._vb_state_changed = False
 
 
     def _reset_prepare (self):
@@ -793,6 +810,7 @@ class Diagram_Item (pg.PlotItem):
 
     def _viewRangeChanged (self): 
         """ slot - view Range changed"""
+        print (f"{self} viewRange changed")
         self._vb_state_changed = True 
     
 

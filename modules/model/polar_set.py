@@ -67,6 +67,15 @@ class StrEnum_Extended (StrEnum):
 
 class var (StrEnum_Extended):
 
+    @classmethod
+    def list_small (cls):
+        """ returns a small list of main polar variables"""
+        l = list (cls) [:]
+        l.remove(var.CDF)
+        l.remove(var.XTR)
+        return l
+
+
     @override
     @classmethod
     def values (cls):

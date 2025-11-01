@@ -116,7 +116,7 @@ class Panel_Xo2_Abstract (Edit_Panel):
 
 
 
-class Panel_File_Optimize (Panel_Xo2_Abstract):
+class Panel_Xo2_File (Panel_Xo2_Abstract):
     """ File panel with open / save / ... """
 
     name = 'Optimize Mode'
@@ -143,9 +143,12 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
+        l_head.addStretch(1)
         if Xoptfoil2.ready:
             Label  (l_head, get=f"{Xoptfoil2.NAME} {Xoptfoil2.version}", 
                     style=style.COMMENT, fontSize=size.SMALL, align=Qt.AlignmentFlag.AlignBottom)
+        ToolButton   (l_head, icon=Icon.EXPAND, set=self.app.toggle_panel_size,
+                      toolTip='Minimize lower panel -<br>Alternatively, you can double click on the lower panels')
 
 
     def _init_layout (self): 
@@ -211,18 +214,49 @@ class Panel_File_Optimize (Panel_Xo2_Abstract):
 
 
 
+class Panel_Xo2_File_Small (Panel_Xo2_Abstract):
+    """ File panel in small mode """
+
+    name = 'Optimize Mode'
+
+    @override
+    @property
+    def _isDisabled (self) -> bool:
+        """ overloaded: disable when optimize run dialog is open"""
+        return self.app._xo2_run_dialog is not None
+
+
+    @property
+    def workingDir (self) -> str:
+        #todo 
+        return self.app.workingDir
+
+
+    def _init_layout (self): 
+
+        self.set_background_color (**mode_color.OPTIMIZE)
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        Button      (l,r,c, width=100, text="&Run Xoptfoil2", button_style = button_style.PRIMARY,
+                        set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
+        ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.app.toggle_panel_size,
+                        toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
+        r += 1
+        Button      (l,r,c,  text="&Finish",  width=100, 
+                        set=lambda : self.app.mode_optimize_finished(),
+                        toolTip="Leave optimization mode")
+
+        l.setColumnStretch (2,2)
+        return l
+
+
+
 class Panel_Xo2_Case (Panel_Xo2_Abstract):
-    """ Main panel of optimization"""
+    """ Case data"""
 
     name = 'Case'
     _width  = (320, 400)
-
-    # @override
-    # def _add_to_header_layout(self, l_head: QHBoxLayout):
-    #     """ add Widgets to header layout"""
-
-    #     Button (l_head, text="Run Xoptfoil2", width=120, button_style = button_style.PRIMARY,
-    #             set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
 
     @property
     def optimization_options (self) -> Nml_optimization_options:
@@ -243,12 +277,6 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
                         set=self._edit_description)
         r += 1
         SpaceR (l,r, stretch=0)
-        # r += 1
-        # Label  (l,r,c,  style=style.COMMENT, get='Author',
-        #                 hide=lambda: not self.input_file.nml_info.author)
-        # Label  (l,r,c+1,style=style.COMMENT,
-        #                 get=lambda: self.input_file.nml_info.author,
-        #                 hide=lambda: not self.input_file.nml_info.author)
         r += 1
         Field       (l,r,c, lab="Final Airfoil", 
                      get=lambda: self.input_file.airfoil_final_fileName,
@@ -327,8 +355,58 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             text = f"Seed airfoil <b>{airfoil_seed.fileName}</b> copied to working directory."
             MessageBox.info(self, "Copy seed airfoil", text)
 
-            # QTimer.singleShot (10, self.refresh)
 
+
+class Panel_Xo2_Case_Small (Panel_Xo2_Abstract):
+    """ Case Info - small mode"""
+
+    name = 'Case'
+    _width  = 320
+
+    @property
+    def optimization_options (self) -> Nml_optimization_options:
+        return self.case.input_file.nml_optimization_options
+
+    @property
+    def info (self) -> Nml_info:
+        return self.case.input_file.nml_info
+
+
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        r += 1
+        Field       (l,r,c, lab="Final Airfoil", 
+                     get=lambda: self.input_file.airfoil_final_fileName,
+                     style=lambda: style.GOOD if self.case.airfoil_final else style.NORMAL,
+                     toolTip=lambda: (self.case.airfoil_final.info_as_html if self.case.airfoil_final else "it does not yet exist"))
+        r += 1
+        Label       (l,r,c, get="Seed Airfoil", lab_disable=True)
+        w = Airfoil_Select_Open_Widget (l,r,c+1, colSpan=2, textOpen="&Open", widthOpen=90, 
+                                    obj=lambda: self.input_file, prop=Input_File.airfoil_seed)
+        w.sig_changed.connect (self._airfoil_seed_changed)                  # check working dir 
+
+        l.setColumnMinimumWidth (0,90)
+        l.setColumnMinimumWidth (2,22)
+        l.setColumnStretch (1,3)
+        return l 
+
+
+    def _airfoil_seed_changed (self, *_):
+        """ slot seed airfoil changed - check if still in working dir"""
+
+        airfoil_seed = self.input_file.airfoil_seed
+        # the airfoil may not have a directory as it should be relative to its working dir 
+        if airfoil_seed.pathName:
+
+            # copy seed airfoil to working dir 
+            airfoil_seed.saveAs (dir=self.input_file.workingDir, isWorkingDir=True)
+
+            self.input_file.set_airfoil_seed (airfoil_seed)   # make sure new path is written to namelist
+
+            text = f"Seed airfoil <b>{airfoil_seed.fileName}</b> copied to working directory."
+            MessageBox.info(self, "Copy seed airfoil", text)
 
 
 
@@ -400,6 +478,83 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
 
 
 
+class Panel_Xo2_Operating_Small (Panel_Xo2_Abstract):
+    """ Define operating conditions - small mode"""
+
+    name = 'Operating Conditions'
+    _width  = 350
+
+    @property
+    def operating_conditions (self) -> Nml_operating_conditions:
+        return self.input_file.nml_operating_conditions
+    
+    @property
+    def opPoint_defs (self) -> OpPoint_Definitions:
+        return self.input_file.opPoint_defs
+
+    @property
+    def cur_opPoint_def (self) -> OpPoint_Definition:
+        """ current, selected opPoint def"""
+        return self.opPoint_defs.current_opPoint_def
+    
+
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        Label       (l,r,c, get="Default Polar", lab_disable=True)
+        Field       (l,r,c+1, width=None, 
+                    get=lambda: self.opPoint_defs.polar_def_default.name)
+        ToolButton  (l,r,c+2, icon=Icon.EDIT,   set=self._edit_polar_def)
+        r += 1
+        Label       (l,r,c, get="Current Op Point", lab_disable=True)
+        ComboBox    (l,r,c+1, 
+                    get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
+                    set=self.set_cur_opPoint_def_from_label,
+                    options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, 
+                     set=self._edit_opPoint_def,
+                     disable=lambda: not self.cur_opPoint_def)
+
+        l.setColumnMinimumWidth (0,100)
+        l.setColumnStretch (1,1)
+
+        return l
+
+
+    def _edit_polar_def (self):
+        """ edit default polar definition"""
+
+        polar_def = self.opPoint_defs.polar_def_default
+        diag = Polar_Definition_Dialog (self, polar_def, small_mode=True, parentPos=(0.9,0.1), dialogPos=(0,1))
+
+        diag.setWindowTitle ("Default Polar of Op Points")
+        diag.exec()
+
+        self.opPoint_defs.set_polar_def_default (polar_def)
+        self.app._on_xo2_input_changed()
+
+
+    def set_cur_opPoint_def_from_label (self, aStr: str):
+        """ set from labelLong - for ComboBox"""
+        for opPoint_def in self.opPoint_defs:
+            if opPoint_def.labelLong == aStr:
+                self.opPoint_defs.set_current_opPoint_def (opPoint_def) 
+                self.app._on_xo2_opPoint_def_selected()
+                break
+
+
+    def _edit_opPoint_def (self):
+        """ open dialog to edit current opPoint def"""
+
+        parentPos=(0.9, 0.2) 
+        dialogPos=(0,1)
+
+        self.app.edit_opPoint_def (self, parentPos, dialogPos)
+
+
+
+
 class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
     """ Define op Points of namelist operating_conditions"""
 
@@ -450,7 +605,6 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
         l.setColumnMinimumWidth (c,30)
 
         return l
-
 
  
     def set_cur_opPoint_def_from_label (self, aStr: str):
@@ -553,6 +707,49 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
         l.setColumnMinimumWidth (3,50)
         l.setColumnStretch (4,2)
 
+        return l
+
+
+
+
+class Panel_Xo2_Geometry_Targets_Small (Panel_Xo2_Abstract):
+    """ Edit geometry targets - small mode """
+
+    name = 'Geometry Targets'
+    _width  = 200
+
+    @property
+    def geometry_targets (self) -> Nml_geometry_targets:
+        return self.case.input_file.nml_geometry_targets
+
+    @property
+    def thickness (self) -> GeoTarget_Definition | None: 
+        return self.geometry_targets.thickness
+
+    @property
+    def camber (self) -> GeoTarget_Definition | None: 
+        return self.geometry_targets.camber
+
+    def _init_layout (self) -> QGridLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0
+        CheckBox    (l,r,c, text="Thickness", 
+                     get=lambda: self.thickness is not None, 
+                     set=lambda x: self.geometry_targets.activate_thickness(x))
+        FieldF      (l,r,c+1, width=70, unit="%", step=0.01,
+                     obj=lambda: self.thickness, prop=GeoTarget_Definition.optValue,
+                     hide=lambda: not self.thickness)
+
+        r += 1
+        CheckBox    (l,r,c, text="Camber", 
+                     get=lambda: self.camber is not None, 
+                     set=lambda x: self.geometry_targets.activate_camber(x))
+        FieldF      (l,r,c+1, width=70, unit="%", step=0.01,
+                     obj=lambda: self.camber, prop=GeoTarget_Definition.optValue,
+                     hide=lambda: not self.camber)
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnStretch (2,2)
         return l
 
 

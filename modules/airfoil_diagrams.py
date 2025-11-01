@@ -1179,15 +1179,13 @@ class Diagram_Item_Polars (Diagram_Item):
 
         # buttons for prev/next diagram 
 
-        ico = Icon (Icon.COLLAPSE,light_mode = False)
-        self._prev_btn = pg.ButtonItem(pixmap=ico.pixmap(QSize(52,52)), width=26, parentItem=self)
-        self._prev_btn.mode = 'auto'
-        self._prev_btn.clicked.connect(self._prev_btn_clicked)  
+        p = Icon_Button (Icon.COLLAPSE, parent=self, itemPos=(0.5,0), parentPos=(0.5,0), offset=(0,0) )
+        p.clicked.connect(self._btn_prev_next_clicked)  
+        self._prev_btn = p
 
-        ico = Icon (Icon.EXPAND,light_mode = False)
-        self._next_btn = pg.ButtonItem(pixmap=ico.pixmap(QSize(52,52)), width=26, parentItem=self)
-        self._next_btn.mode = 'auto'
-        self._next_btn.clicked.connect(self._next_btn_clicked)       
+        p = Icon_Button (Icon.EXPAND, parent=self, itemPos=(0.5,1), parentPos=(0.5,1), offset=(0,5) )
+        p.clicked.connect(self._btn_prev_next_clicked)
+        self._next_btn = p
 
         self._refresh_prev_next_btn ()
 
@@ -1220,27 +1218,15 @@ class Diagram_Item_Polars (Diagram_Item):
         # to be overridden
         return False 
 
-    @override
-    def resizeEvent(self, ev):
-
-        # update position next/prev button 
-        if self._next_btn is not None:  
-            item_height = self.size().height()
-            item_width  = self.size().width()
-
-            btn_rect = self.mapRectFromItem(self._next_btn, self._next_btn.boundingRect())
-            x = item_width / 2
-            y = item_height - btn_rect.height() + 3
-            self._next_btn.setPos(x, y)             
-
-            y = 5
-            self._prev_btn.setPos(x, y)             
-
-        super().resizeEvent (ev)
 
 
-    def _handle_prev_next (self, step = 0):
-        """ activates prev or next xy view defined by step"""
+    def _btn_prev_next_clicked (self, button : Icon_Button):
+        """ prev or next buttons clicked"""
+
+        if button.icon_name == Icon.COLLAPSE:
+            step = -1
+        else:
+            step = 1
 
         try:
             # save current view Range
@@ -1260,18 +1246,6 @@ class Diagram_Item_Polars (Diagram_Item):
             pass
 
 
-    def _prev_btn_clicked (self):
-        """ previous diagram button clicked"""
-        # leave scene clicked event as plot items will be removed with new xy vars 
-        QTimer.singleShot (10, lambda: self._handle_prev_next (step=-1))
-
-
-    def _next_btn_clicked (self):
-        """ next diagram button clicked"""
-        # leave scene clicked event as plot items will be removed with new xy vars 
-        QTimer.singleShot (10, lambda: self._handle_prev_next (step=1))
-
-
     @override
     def plot_title (self):
         """ override to have 'title' at x,y axis"""
@@ -1283,20 +1257,36 @@ class Diagram_Item_Polars (Diagram_Item):
             self.scene().removeItem (self._title_item2)         # was added directly to the scene via setParentItem
        
         # y-axis
-        p = pg.LabelItem(self.yVar, color=QColor(Artist.COLOR_HEADER), size=f"{Artist.SIZE_HEADER}pt")    
-
-        p.setParentItem(self)                              # add to self (Diagram Item) for absolute position 
-        p.anchor(itemPos=(0,0), parentPos=(0,0), offset=(50,5))
-        p.setZValue(5)
+        p = Text_Button (self.yVar, parent=self, color=QColor(Artist.COLOR_HEADER), size=f"{Artist.SIZE_HEADER}pt",
+                         itemPos=(0,0), parentPos=(0,0), offset=(60,5))
+        p.clicked.connect (lambda pos: self._btn_var_clicked("y",pos)) 
+        p.setToolTip (f"Select polar variable for y axis")           
         self._title_item = p
 
         # x-axis
-        p = pg.LabelItem(self.xVar, color=QColor(Artist.COLOR_HEADER), size=f"{Artist.SIZE_HEADER}pt")    
-
-        p.setParentItem(self)                              # add to self (Diagram Item) for absolute position 
-        p.anchor(itemPos=(1.0,1), parentPos=(0.98,1.0), offset=(0,-40))
-        p.setZValue(5)
+        p = Text_Button (self.xVar, parent=self, color=QColor(Artist.COLOR_HEADER), size=f"{Artist.SIZE_HEADER}pt",
+                         itemPos=(1,1), parentPos=(1,1), offset=(-15,-50))
+        p.setToolTip (f"Select polar variable for x axis")           
+        p.clicked.connect (lambda pos: self._btn_var_clicked("x",pos))            
         self._title_item2 = p
+
+
+    def _btn_var_clicked (self, axis, pos : QPoint):
+        """ slot - polar var button in diagram clicked - show menu list of variables"""
+        menu = QMenu()
+       
+        # Build popup menu 
+        for v in var.list_small():
+            action = QAction (v.value, menu)
+            action.setCheckable (True)
+            if axis == "y":
+                action.setChecked (v == self.yVar)
+                action.triggered.connect (lambda  checked, v=v: self.set_yVar (v))
+            else:
+                action.setChecked (v == self.xVar)
+                action.triggered.connect (lambda  checked, v=v: self.set_xVar (v))
+            menu.addAction (action)
+        menu.exec (pos)
 
 
     @property 
@@ -1898,7 +1888,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
             if Worker.ready:
 
-                Label (l,r,c, colSpan=5, get="Polar definitions") 
+                Label (l,r,c, colSpan=2, get="Polar definitions") 
                 r += 1
 
                 # helper panel for polar definitions 
@@ -1907,31 +1897,34 @@ class Diagram_Airfoil_Polar (Diagram):
 
                 p.sig_polar_def_changed.connect (self.sig_polar_def_changed.emit)
 
-                l.addWidget (p, r, c, 1, 6)
+                l.addWidget (p, r, c, 1, 2)
 
                 # polar diagrams variables setting 
 
+                # r += 1
+                # Label (l,r,c, colSpan=2, get="Polar variables") 
                 r += 1
-                Label (l,r,c, colSpan=4, get="Diagram variables") 
+                Label (l,r,c, colSpan=2, style=style.COMMENT, height=40,
+                       get="To change polar variables, <br>click the axis labels in the diagram.")
                 r += 1
-                for i, item in enumerate(self._get_items (Diagram_Item_Polars)):
+                # for i, item in enumerate(self._get_items (Diagram_Item_Polars)):
 
-                    Label       (l,r,c,   width=20, get="y")
-                    ComboBox    (l,r,c+1, width=60, obj=item, prop=Diagram_Item_Polars.yVar, options=var.values,
-                                    toolTip=f"Select the polar variable of the y axis for diagram {i+1}")
-                    SpaceC      (l,c+2,   width=15, stretch=0)
-                    Label       (l,r,c+3, width=20, get="x")
-                    ComboBox    (l,r,c+4, width=60, obj=item, prop=Diagram_Item_Polars.xVar, options=var.values,
-                                    toolTip=f"Select the polar variable of the x axis for diagram {i+1}")
-                    SpaceC      (l,c+5)
-                    r += 1
+                #     Label       (l,r,c,   width=20, get="y")
+                #     ComboBox    (l,r,c+1, width=60, obj=item, prop=Diagram_Item_Polars.yVar, options=var.values,
+                #                     toolTip=f"Select the polar variable of the y axis for diagram {i+1}")
+                #     SpaceC      (l,c+2,   width=15, stretch=0)
+                #     Label       (l,r,c+3, width=20, get="x")
+                #     ComboBox    (l,r,c+4, width=60, obj=item, prop=Diagram_Item_Polars.xVar, options=var.values,
+                #                     toolTip=f"Select the polar variable of the x axis for diagram {i+1}")
+                #     SpaceC      (l,c+5)
+                #     r += 1
 
                 r += 1
-                CheckBox (l,r,c, text="Polar points", colSpan=4,
+                CheckBox (l,r,c, text="Polar points", colSpan=2,
                             get=lambda: self.show_polar_points, set=self.set_show_polar_points,
                             toolTip="Show the polar data points")
                 r += 1
-                CheckBox (l,r,c, text="Bubbles - see xtr diagram", colSpan=6,
+                CheckBox (l,r,c, text="Bubbles - see xtr diagram", colSpan=2,
                             get=lambda: self.show_bubbles, set=self.set_show_bubbles,
                             disable=not Worker.can_detect_bubbles(),
                             toolTip=("Show bubbles in the polar diagram - see xtr transition diagram for details.<br>" + \
@@ -1939,18 +1932,22 @@ class Diagram_Airfoil_Polar (Diagram):
                                     "along the airfoil surface.") if Worker.can_detect_bubbles()\
                                         else f"Worker version {Worker.version} cannot detect bubbles")
 
+                l.setColumnMinimumWidth (0,18)
+                l.setColumnStretch (1,1)
+
             else: 
                 SpaceR (l,r, height=10, stretch=0) 
                 r += 1
-                Label (l,r,c, colSpan=4, get="No polars available", fontSize=size.HEADER_SMALL, style=style.COMMENT) 
+                Label (l,r,c, colSpan=2, get="No polars available", fontSize=size.HEADER_SMALL, style=style.COMMENT) 
                 r += 1
                 SpaceR (l,r, height=10, stretch=0) 
                 r += 1
-                Label (l,r,c, colSpan=4, get=f"{Worker.NAME} not ready", style=style.ERROR) 
+                Label (l,r,c, colSpan=2, get=f"{Worker.NAME} not ready", style=style.ERROR) 
                 r += 1
-                Label (l,r,c, colSpan=6, get=f"{Worker.ready_msg}", style=style.COMMENT, height=(None,100), wordWrap=True) 
+                Label (l,r,c, colSpan=2, get=f"{Worker.ready_msg}", style=style.COMMENT, height=(None,100), wordWrap=True) 
                 r += 1
                 SpaceR (l,r, height=5) 
+                l.setColumnStretch (1,1)
 
             self._panel_polar = Edit_Panel (title=Diagram_Item_Polars.name, layout=l, auto_height=True,
                                             switchable=True, switched_on=False, on_switched=self._on_polars_switched)

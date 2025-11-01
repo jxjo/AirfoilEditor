@@ -15,26 +15,23 @@ see: https://pyqtgraph.readthedocs.io/en/latest/getting_started/plotting.html
 
 """
 
-from typing             import override
+from typing             import override, Callable
 
 import numpy as np
 
-import pyqtgraph as pg
-from pyqtgraph.Qt       import QtCore
-from PyQt6.QtCore       import pyqtSignal
-from PyQt6.QtWidgets    import QGraphicsGridLayout
+from PyQt6.QtCore       import Qt, QTimer, QObject, QPoint, QSize, pyqtSignal
+from PyQt6.QtGui        import QColor, QPen, QPainterPath
+from PyQt6.QtWidgets    import QGraphicsGridLayout, QGraphicsPathItem
 
+import pyqtgraph as pg
 from pyqtgraph.graphicsItems.ScatterPlotItem    import Symbols
 from pyqtgraph.graphicsItems.GraphicsObject     import GraphicsObject
 from pyqtgraph.GraphicsScene.mouseEvents        import MouseClickEvent, MouseDragEvent
 
-
-from PyQt6.QtCore       import Qt, QTimer, QObject
-from PyQt6.QtGui        import QColor
-
 from .common_utils      import *
 from .math_util         import JPoint 
 from .spline            import Bezier 
+from .widgets           import Icon
 
 import logging
 logger = logging.getLogger(__name__)
@@ -352,7 +349,7 @@ class Movable_Point (pg.TargetItem):
     def mouseClickEvent(self, ev : MouseClickEvent):
         """ pg overloaded - handle shift_click """
         if self.movable :
-            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier: 
+            if ev.modifiers() & Qt.KeyboardModifier.ShiftModifier: 
                 ev.accept()
                 self.sigShiftClick.emit(self) 
         return super().mouseClickEvent(ev)
@@ -401,7 +398,7 @@ class Movable_Point (pg.TargetItem):
     @override
     def hoverEvent(self, ev):
         # overridden to allow mouse hover also for points which are not movable
-        if (not ev.isExit()) and ev.acceptDrags(QtCore.Qt.MouseButton.LeftButton):
+        if (not ev.isExit()) and ev.acceptDrags(Qt.MouseButton.LeftButton):
             self.setMouseHover(True)
         else:
             self.setMouseHover(False)
@@ -591,7 +588,7 @@ class Movable_Bezier (pg.PlotCurveItem):
     def mouseClickEvent(self, ev : MouseClickEvent):
         """ pg override - handle ctrl_click """
         if self.movable :
-            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier: 
+            if ev.modifiers() & Qt.KeyboardModifier.ControlModifier: 
                 x = round (ev.pos().x(),6)
                 y = round (ev.pos().y(),6)
                 added = self._add_point ((x,y))
@@ -666,6 +663,176 @@ class Movable_Bezier (pg.PlotCurveItem):
 
 
 
+class Text_Button (pg.LabelItem):
+    """
+    Text Button within a PlotItem 
+    
+    It's a LabelItem reacting on mouse click and supports hovering.
+    The position is defined relative within a PlotItem
+
+    Emit clicked signal or use on_clicked callback on click with scene position
+
+    See pg.LabelItem for all arguments 
+
+    """
+
+    name = 'Button'                                         # name of self - shown in 'label'
+
+    clicked = pyqtSignal(object)                            # signal when button is clicked with scene position 
+
+    def __init__ (self, 
+                  text : str,                               # button text
+                  parent = None,                            # to attach self to parent (PlotItem)
+                  color : str = 'lightgray',                # text color
+                  size : str = "10pt",                      # text size in pt
+                  parentPos : tuple = (0.0, 0.0),           # relative position within parent PlotItem
+                  itemPos : tuple = (0.0, 0.1),             # relative position of anchor with self
+                  offset : tuple = (10,10),                 # pixel offset
+                  zValue : int = 10,                        # z value of self
+                  frame_color : str = '#505050',          # frame color
+                  frame_radius : int = 3,                   # frame corner radius
+                  frame_pad : int = 4,                      # frame padding
+                  brush_color :str="#212121",             # background color static
+                  brush_color_hover :str="#484747",       # background color hover
+                  on_clicked : Callable = None,             # callback on click with scene position
+                  **kwargs):
+        super().__init__(text, color=color, size=size,**kwargs)
+
+        self._on_clicked = on_clicked if callable(on_clicked) else None
+        self._brush_color_hover = brush_color_hover
+        self._brush_color = brush_color
+
+        # frame around text with background (hover) color
+        rect = self.boundingRect()
+        height_correction = int(rect.height() / 8 )                         # to better fit text vertically
+        rect.adjust(0,height_correction+1,0,-height_correction)
+
+        rect.adjust(-frame_pad, -frame_pad, frame_pad, frame_pad)
+
+        # create rounded rectangle path for text background
+        path = QPainterPath()
+        path.addRoundedRect(rect, frame_radius, frame_radius)
+
+        # Create frame around text - QGraphicsRectItem based on rect
+        frame = QGraphicsPathItem(path, parent=self)
+        pen = QPen(QColor(frame_color))
+        pen.setWidthF (1)
+        frame.setPen(pen)
+        frame.setBrush(QColor(self._brush_color))
+        frame.setZValue(self.zValue() - 2)
+
+        self._button_frame = frame
+
+        # set self (LabelItem) - attach to parent PlotItem
+
+        if parent is not None:
+            self.setParentItem (parent)
+            self.anchor (itemPos=itemPos, parentPos=parentPos, offset=offset)
+            self.setZValue (zValue)
+
+        if brush_color_hover:
+            self.setAcceptHoverEvents(True)
+        if self._on_clicked: 
+            self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+
+
+    def mousePressEvent(self, event):
+        """ handle click event to call on_clicked callback """
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos : QPoint = event.screenPos()
+            if self._on_clicked:
+                # leave click event scope before calling callback 
+                QTimer.singleShot (10, lambda: self._on_clicked(pos))
+            else:
+                QTimer.singleShot (10, lambda: self.clicked.emit(pos))
+        super().mousePressEvent(event)
+
+    @override
+    def hideEvent(self, event):
+        """ handle hide event to reset background color """
+        if self._button_frame is not None:
+            self._button_frame.setBrush(QColor(self._brush_color))
+        return super().hideEvent(event)
+    
+
+    def hoverEnterEvent(self, event):
+        """ handle hover enter event to change background color """
+        if self._button_frame:
+            self._button_frame.setBrush(QColor(self._brush_color_hover))
+        return super().hoverEnterEvent(event)
+
+
+    def hoverLeaveEvent(self, event):
+        """ handle hover leave event to change background color """
+        if self._button_frame is not None:
+            self._button_frame.setBrush(QColor(self._brush_color))
+        return super().hoverLeaveEvent(event)
+
+
+class Icon_Button (pg.GraphicsWidgetAnchor, pg.ButtonItem):
+
+    """
+    Tool Button within a PlotItem 
+    
+    It's a ButtonItem anchored within a PlotItem
+
+    Emit clicked signal or use on_clicked callback on click with scene position
+
+    See pg.ButtonItem for all arguments 
+
+    """
+
+    name = 'Icon_Button'                                    # name of self - shown in 'label'
+
+    clicked = pyqtSignal(object)                            # signal when button is clicked with self as argument
+
+    def __init__ (self, 
+                  icon_name : str,                          # button Icon name
+                  parent = None,                            # to attach self to parent (PlotItem)
+                  width : int = 26,                         # button width in pixel
+                  parentPos : tuple = (1.0, 0.0),           # relative position within parent PlotItem
+                  itemPos : tuple = (1.0, 0.0),             # relative position of anchor with self
+                  offset : tuple = (-10,10),                # pixel offset
+                  zValue : int = 10,                        # z value of self
+                  on_clicked : Callable = None,             # callback on click with scene position
+                  **kwargs):
+
+        self.icon_name = icon_name
+
+        icon   = Icon (icon_name,light_mode = False)
+        pixmap = icon.pixmap(QSize(52,52))
+
+        pg.ButtonItem.__init__(self, pixmap=pixmap, width=width, parentItem=parent, **kwargs)
+        pg.GraphicsWidgetAnchor.__init__(self)
+
+        self._on_clicked = on_clicked if callable(on_clicked) else None
+
+        # set self (ButtonItem) - attach to parent PlotItem
+
+        if parent is not None:
+            self.anchor (itemPos=itemPos, parentPos=parentPos, offset=offset)
+            self.setZValue (zValue)
+
+
+    @override
+    def mouseClickEvent(self, ev):
+
+        # bug? mouseClickEvent of ButtonItem is not called to first click, when Menu Action is selected
+        #  - so we ignore mouseClickEvent and use mousePressEvent instead
+        pass
+
+
+    @override
+    def mousePressEvent(self, event):
+        """ handle click event to call on_clicked callback """
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._on_clicked:
+                # leave click event scope before calling callback 
+                QTimer.singleShot (10, lambda: self._on_clicked(self))
+            else:
+                QTimer.singleShot (10, lambda: self.clicked.emit(self))
+            event.accept()
+        super().mousePressEvent(event)
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------

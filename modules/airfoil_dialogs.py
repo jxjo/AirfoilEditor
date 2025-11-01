@@ -1205,7 +1205,7 @@ class Polar_Definition_Dialog (Dialog):
         self._fixed_chord       = fixed_chord
 
         if small_mode:
-            self._height = 160
+            self._height = 140
             self._width  = 480
 
         # init layout etc 
@@ -1236,7 +1236,7 @@ class Polar_Definition_Dialog (Dialog):
         l = QGridLayout()
         l.setVerticalSpacing(2)                                     # strange - otherwise vertcial spacing is too large
         r,c = 0,0 
-        SpaceR (l, r, stretch=1) 
+        SpaceR (l, r, height=5,stretch=1) 
         r += 1 
         Label  (l,r,c, get="Polar type")
         ComboBox (l,r,c+1,  width=55, options=polarType.values(),
