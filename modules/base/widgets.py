@@ -1856,8 +1856,10 @@ class ComboSpinBox (Field_With_Label, QComboBox):
         l_helper.setContentsMargins (QMargins(0, 0, 0, 0))
         l_helper.addWidget (self,stretch=2) 
 
-        self._wButton_prev = ToolButton (l_helper, icon=Icon.PREVIOUS,  set=self._on_pressed_prev, disable=self._prev_disabled)
-        self._wButton_next = ToolButton (l_helper, icon=Icon.NEXT, set=self._on_pressed_next, disable=self._next_disabled)
+        self._wButton_prev = ToolButton (l_helper, icon=Icon.PREVIOUS,  set=self._on_pressed_prev, disable=self._prev_disabled,
+                                         toolTip='Previous item')
+        self._wButton_next = ToolButton (l_helper, icon=Icon.NEXT, set=self._on_pressed_next, disable=self._next_disabled,
+                                         toolTip='Next item')
         helper.setLayout (l_helper) 
 
         self._wButton_prev.setAutoRepeat(True)

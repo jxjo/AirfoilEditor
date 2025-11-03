@@ -744,6 +744,7 @@ class Diagram_Item (pg.PlotItem):
 
         return f"x {self._format_coord(pos.x(),x_size)}&nbsp;&nbsp;y {self._format_coord(pos.y(),y_size)}"
 
+
     def _format_coord (self, coord: float, range : float) -> str:
         """ format a coordinate number depending on view range size"""
         if range < 0.01:
@@ -810,7 +811,6 @@ class Diagram_Item (pg.PlotItem):
 
     def _viewRangeChanged (self): 
         """ slot - view Range changed"""
-        print (f"{self} viewRange changed")
         self._vb_state_changed = True 
     
 

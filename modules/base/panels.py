@@ -270,7 +270,8 @@ class Container_Panel (Panel_Abstract):
     def __init__(self, *args, 
                  layout : QLayout | None = None,
                  margins  : tuple = (0,0,0,0), 
-                 spacing : int = 5,            
+                 spacing : int = 5, 
+                 hint : str|None = None,                     # hint for double click at the end of box layout
                  **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -279,10 +280,15 @@ class Container_Panel (Panel_Abstract):
             layout.setSpacing (spacing) 
             self.setLayout (layout)
 
+        # add hint for double click at the end of box layout
+
+        if hint is not None:
+            self.add_hint (hint)
+
         # initial visibility 
 
         if not self.shouldBe_visible:         
-            self.setVisible (False)             # setVisible(True) results in a dummy window on startup 
+            self.setVisible (False)                     # setVisible(True) results in a dummy window on startup 
 
 
     @override
@@ -295,7 +301,7 @@ class Container_Panel (Panel_Abstract):
             super().mouseDoubleClickEvent(event)
 
 
-    def add_doubleClick_hint (self, hint : str):
+    def add_hint (self, hint : str):
         """ add stretchable hint for double click at the end of layout """
 
         self._doubleClick_hint = hint
@@ -377,18 +383,22 @@ class Edit_Panel (Panel_Abstract):
 
     _height = (None, None) 
 
+    _main_margins  = (10, 5,10, 5)             
+    _head_margins  = ( 0, 0, 0, 5)             
+    _panel_margins = (10, 0, 0, 0)           
+
     def __init__(self, *args, 
                  layout : QLayout | None = None,
-                 lazy_layout = False, 
+                 lazy = False, 
                  switchable : bool = False,
                  switched_on : bool = True, 
                  on_switched = None, 
                  hide_switched : bool = True,
                  has_head : bool = True,
                  auto_height : bool = False,                # if True fix min height after layout init
-                 main_margins  : tuple = (10, 5,10, 5),             
-                 head_margins  : tuple = ( 0, 0, 0, 5),             
-                 panel_margins : tuple = (10, 0, 0, 0),           
+                 main_margins  : tuple = None,             
+                 head_margins  : tuple = None,             
+                 panel_margins : tuple = None,          
                  **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -401,9 +411,9 @@ class Edit_Panel (Panel_Abstract):
         self._head  = None
         self._panel = None
 
-        self._main_margins  = main_margins
-        self._head_margins  = head_margins
-        self._panel_margins = panel_margins
+        self._main_margins  = main_margins  if isinstance(main_margins, tuple)  else self._main_margins
+        self._head_margins  = head_margins  if isinstance(head_margins, tuple)  else self._head_margins   
+        self._panel_margins = panel_margins if isinstance(panel_margins, tuple) else self._panel_margins
 
         # set background color depending light/dark mode
 
@@ -435,7 +445,7 @@ class Edit_Panel (Panel_Abstract):
         self._panel  = QWidget() 
         self._initial_layout = layout 
 
-        if not lazy_layout: 
+        if not lazy: 
             self._set_panel_layout () 
 
         # main layout with title and panel 

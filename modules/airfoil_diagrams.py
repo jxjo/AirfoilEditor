@@ -1219,14 +1219,10 @@ class Diagram_Item_Polars (Diagram_Item):
         return False 
 
 
-
     def _btn_prev_next_clicked (self, button : Icon_Button):
         """ prev or next buttons clicked"""
 
-        if button.icon_name == Icon.COLLAPSE:
-            step = -1
-        else:
-            step = 1
+        step = -1 if button.icon_name == Icon.COLLAPSE else 1
 
         try:
             # save current view Range
@@ -1901,8 +1897,6 @@ class Diagram_Airfoil_Polar (Diagram):
 
                 # polar diagrams variables setting 
 
-                # r += 1
-                # Label (l,r,c, colSpan=2, get="Polar variables") 
                 r += 1
                 Label (l,r,c, colSpan=2, style=style.COMMENT, height=40,
                        get="To change polar variables, <br>click the axis labels in the diagram.")

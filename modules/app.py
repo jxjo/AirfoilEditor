@@ -43,10 +43,11 @@ from base.widgets           import *
 
 from app_utils              import *
 from airfoil_widgets        import * 
+from airfoil_panels         import *
 from airfoil_dialogs        import Airfoil_Save_Dialog
 from airfoil_diagrams       import Diagram_Airfoil_Polar            
 from xo2_dialogs            import (Xo2_Run_Dialog, Xo2_Select_Dialog, Xo2_OpPoint_Def_Dialog, Xo2_New_Dialog)
-from xo2_panels             import create_case_from_path
+from xo2_panels             import *
 
 import logging
 logger = logging.getLogger(__name__)
@@ -115,11 +116,14 @@ class Main (QMainWindow):
         self._case              = None                  # design Case holding all designs 
 
         self._panel_view        = None                  # main UI panels
-        self._panel_view_small  = None                  # 
-        self._panel_view_minimized  = False             # is lower panel minimized
+        self._panel_view_small  = None                   
         self._panel_modify      = None
-        self._panel_optimize    = None
+        self._panel_modify_small= None
+        self._panel_xo2         = None
+        self._panel_xo2_small   = None
         self._diagram           = None
+
+        self._is_lower_minimized= False                 # is lower panel minimized
 
         self._xo2_opPoint_def_dialog = None             # singleton for this dialog 
         self._xo2_run_dialog    = None                  # singleton for this dialog 
@@ -215,11 +219,14 @@ class Main (QMainWindow):
 
         l = QGridLayout () 
 
-        l.addWidget (self.diagram,          0,0)
-        l.addWidget (self.panel_view,       1,0)
-        l.addWidget (self.panel_view_small, 2,0)
-        l.addWidget (self.panel_modify,     3,0)
-        l.addWidget (self.panel_optimize,   4,0)
+        l.addWidget (self.diagram,              0,0)
+
+        l.addWidget (self.panel_view,           1,0)
+        l.addWidget (self.panel_view_small,     2,0)
+        l.addWidget (self.panel_modify,         3,0)
+        l.addWidget (self.panel_modify_small,   4,0)
+        l.addWidget (self.panel_xo2,            5,0)
+        l.addWidget (self.panel_xo2_small,      6,0)
 
         l.setRowStretch (0,1)
         l.setRowMinimumHeight (0,400)
@@ -232,7 +239,7 @@ class Main (QMainWindow):
 
         # apply settings to UI
 
-        self._panel_view_minimized = app_settings.get('panel_view_minimized', False)
+        self._is_lower_minimized = app_settings.get('lower_panel_minimzed', False)
         self.diagram.set_settings (settings, settings_for=settings_for)
 
         # ---- signals and slots ------------ 
@@ -248,7 +255,7 @@ class Main (QMainWindow):
 
         # connect diagram signals to slots of self
 
-        self.diagram.sig_geometry_changed.connect           (self._on_airfoil_changed)
+        self.diagram.sig_geometry_changed.connect          (self._on_airfoil_changed)
         self.diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
         self.diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
         self.diagram.sig_airfoils_ref_scale_changed.connect(self._on_airfoils_ref_scale_changed)
@@ -299,35 +306,31 @@ class Main (QMainWindow):
         return f"<{type(self).__name__}>"
 
 
-    def toggle_panel_view_size (self):
+    def toggle_panel_size (self):
         """ toggle between full and small data panel"""
 
-        self._panel_view_minimized = not self._panel_view_minimized
+        self._is_lower_minimized = not self._is_lower_minimized
         self.refresh()
 
 
     @property
     def panel_view (self) -> Container_Panel:
         """ lower UI main panel - view mode """
+
         if self._panel_view is None: 
 
-            # lazy import to avoid circular references 
-            from airfoil_panels      import (Panel_File_View, Panel_Geometry, Panel_LE_TE, Panel_Panels, 
-                                             Panel_Bezier, Panel_Flap) 
             l = QHBoxLayout()
-            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, lazy_layout=True))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
+            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, lazy=True))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy=True))
 
             self._panel_view = Container_Panel (layout = l, height=180,
-                                                hide=lambda: not self.mode_view or self._panel_view_minimized,
-                                                doubleClick= self.toggle_panel_view_size)
-           # hint will add stretch to layout
-            self._panel_view.add_doubleClick_hint ("Double click to minimize")
-
+                                                hide=lambda: not self.mode_view or self._is_lower_minimized,
+                                                doubleClick= self.toggle_panel_size,
+                                                hint="Double click to minimize")
         return self._panel_view 
 
 
@@ -337,68 +340,104 @@ class Main (QMainWindow):
 
         if self._panel_view_small is None: 
 
-            # lazy import to avoid circular references 
-            from airfoil_panels      import (Panel_File_Small, Panel_Geometry_Small)
-
             l = QHBoxLayout()
-            l.addWidget (Panel_File_Small       (self, lambda: self.airfoil, width=250, height=65, has_head=False))
-            l.addWidget (Panel_Geometry_Small   (self, lambda: self.airfoil, has_head=False, height=65))
+            l.addWidget (Panel_File_View_Small  (self, lambda: self.airfoil, width=250, has_head=False, lazy=True))
+            l.addWidget (Panel_Geometry_Small   (self, lambda: self.airfoil, has_head=False, lazy=True))
+            l.addWidget (Panel_Panels_Small     (self, lambda: self.airfoil, has_head=False, lazy=True))
+            l.addWidget (Panel_LE_TE_Small      (self, lambda: self.airfoil, has_head=False, lazy=True))
+            l.addWidget (Panel_Bezier_Small     (self, lambda: self.airfoil, has_head=False, lazy=True))
+            l.addWidget (Panel_Flap_Small       (self, lambda: self.airfoil, has_head=False, lazy=True))
 
             self._panel_view_small = Container_Panel (layout=l, height=65,
-                                                      hide=lambda: not self._panel_view_minimized,
-                                                      doubleClick= self.toggle_panel_view_size)
-            # hint will add stretch to layout
-            self._panel_view_small.add_doubleClick_hint ("Double click to maximize")
-
+                                                      hide=lambda: not self.mode_view or not self._is_lower_minimized,
+                                                      doubleClick= self.toggle_panel_size,
+                                                      hint="Double click to maximize")
         return self._panel_view_small
 
 
     @property
     def panel_modify (self) -> Container_Panel:
         """ lower UI main panel - modify mode """
+
         if self._panel_modify is None: 
 
-            # lazy import to avoid circular references 
-            from airfoil_panels      import (Panel_File_Modify, Panel_Geometry, Panel_LE_TE, Panel_Panels, 
-                                             Panel_Flap, Panel_Bezier, Panel_Bezier_Match) 
-
             l = QHBoxLayout()
-            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, lazy_layout=True))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy_layout=True))
-            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy_layout=True))
-            l.addStretch (1)
+            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, lazy=True))
+            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy=True))
+            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy=True))
 
-            self._panel_modify    = Container_Panel (layout = l,  height=180, hide=lambda: not self.mode_modify)
-
+            self._panel_modify    = Container_Panel (layout = l,  height=180, 
+                                                     hide=lambda: not self.mode_modify or self._is_lower_minimized,
+                                                     doubleClick= self.toggle_panel_size,
+                                                     hint="Double click to minimize")
         return self._panel_modify 
 
 
     @property
-    def panel_optimize (self) -> Container_Panel:
-        """ lower UI main panel - optimize mode """
-        if self._panel_optimize is None: 
+    def panel_modify_small (self) -> Container_Panel:
+        """ lower UI view panel - small version"""
 
-            # lazy import to avoid circular references 
-            from xo2_panels             import (Panel_File_Optimize, Panel_Xo2_Advanced, Panel_Xo2_Case, Panel_Xo2_Curvature,
-                                                Panel_Xo2_Geometry_Targets, Panel_Xo2_Operating_Conditions, Panel_Xo2_Operating_Points)
+        if self._panel_modify_small is None: 
+
+            l = QHBoxLayout()
+            l.addWidget (Panel_File_Modify_Small    (self, lambda: self.airfoil, lazy=True, width=250, has_head=False))
+            l.addWidget (Panel_Geometry_Small       (self, lambda: self.airfoil, lazy=True, has_head=False))
+            l.addWidget (Panel_Panels_Small         (self, lambda: self.airfoil, lazy=True, has_head=False))
+            l.addWidget (Panel_LE_TE_Small          (self, lambda: self.airfoil, lazy=True, has_head=False))
+            l.addWidget (Panel_Bezier_Small         (self, lambda: self.airfoil, lazy=True, has_head=False))
+            l.addWidget (Panel_Bezier_Match_Small   (self, lambda: self.airfoil, lazy=True, has_head=False))
+            l.addWidget (Panel_Flap_Small           (self, lambda: self.airfoil, lazy=True, has_head=False))
+
+            self._panel_modify_small = Container_Panel (layout=l, height=65,
+                                                      hide=lambda: not self.mode_modify or not self._is_lower_minimized,
+                                                      doubleClick= self.toggle_panel_size,
+                                                      hint="Double click to maximize")
+        return self._panel_modify_small
+
+
+    @property
+    def panel_xo2 (self) -> Container_Panel:
+        """ lower UI main panel - optimize mode """
+
+        if self._panel_xo2 is None: 
 
             l = QHBoxLayout()        
-            l.addWidget (Panel_File_Optimize               (self, lambda: self.case, width=250, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy_layout=True))
-            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy_layout=True))
-            l.addStretch (1)
+            l.addWidget (Panel_Xo2_File                    (self, lambda: self.case, width=250, lazy=True))
+            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy=True))
+            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy=True))
+            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy=True))
+            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy=True))
+            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy=True))
+            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy=True))
 
-            self._panel_optimize = Container_Panel (layout = l,  height=180, hide=lambda: not self.mode_optimize or self._xo2_run_dialog)
+            self._panel_xo2 = Container_Panel (layout = l,  height=180, 
+                                                hide=lambda: not self.mode_optimize  or self._is_lower_minimized,
+                                                doubleClick= self.toggle_panel_size,
+                                                hint="Double click to minimize")
+        return self._panel_xo2 
 
-        return self._panel_optimize 
+
+    @property
+    def panel_xo2_small (self) -> Container_Panel:
+        """ lower UI main panel - optimize mode """
+
+        if self._panel_xo2_small is None: 
+
+            l = QHBoxLayout()        
+            l.addWidget (Panel_Xo2_File_Small               (self, lambda: self.case, width=250, has_head=False))
+            l.addWidget (Panel_Xo2_Case_Small               (self, lambda: self.case, lazy=True, has_head=False))
+            l.addWidget (Panel_Xo2_Operating_Small          (self, lambda: self.case, lazy=True, has_head=False))
+            l.addWidget (Panel_Xo2_Geometry_Targets_Small   (self, lambda: self.case, lazy=True, has_head=False))
+
+            self._panel_xo2_small = Container_Panel (layout = l,  height=65, 
+                                                hide=lambda: not self.mode_optimize or not self._is_lower_minimized,
+                                                doubleClick= self.toggle_panel_size,
+                                                hint="Double click to maximize")
+        return self._panel_xo2_small 
 
 
     @property
@@ -795,10 +834,12 @@ class Main (QMainWindow):
 
         logger.debug (f"{self} refresh main panels")
 
-        if self._panel_view:        self.panel_view.refresh()               # refresh panels - if UI is visible   
-        if self._panel_view_small:  self.panel_view_small.refresh()               
-        if self._panel_modify:      self.panel_modify.refresh()
-        if self._panel_optimize:    self.panel_optimize.refresh()
+        if self._panel_view:            self.panel_view.refresh()               # refresh panels - if UI is visible   
+        if self._panel_view_small:      self.panel_view_small.refresh()               
+        if self._panel_modify:          self.panel_modify.refresh()
+        if self._panel_modify_small:    self.panel_modify_small.refresh()
+        if self._panel_xo2:             self.panel_xo2.refresh()
+        if self._panel_xo2_small:       self.panel_xo2_small.refresh()
 
         # set window title
 
@@ -1075,7 +1116,7 @@ class Main (QMainWindow):
 
         # open dialog 
 
-        diag = Xo2_Run_Dialog (self.panel_optimize, self.case, parentPos=(0.02,0.8), dialogPos=(0,1))
+        diag = Xo2_Run_Dialog (self.panel_xo2, self.case, parentPos=(0.02,0.8), dialogPos=(0,1))
 
         self._xo2_run_dialog = diag
 
@@ -1090,7 +1131,7 @@ class Main (QMainWindow):
 
         self._watchdog.set_case_optimize (lambda: self.case)
 
-        self._watchdog.sig_xo2_new_state.connect        (self.panel_optimize.refresh)
+        self._watchdog.sig_xo2_new_state.connect        (self.panel_xo2.refresh)
         self._watchdog.sig_xo2_new_state.connect        (diag.on_results) 
         self._watchdog.sig_xo2_new_step.connect         (diag.on_new_step)
         self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
@@ -1112,7 +1153,7 @@ class Main (QMainWindow):
 
         diag = self._xo2_run_dialog
 
-        self._watchdog.sig_xo2_new_state.disconnect     (self.panel_optimize.refresh)
+        self._watchdog.sig_xo2_new_state.disconnect     (self.panel_xo2.refresh)
 
         self._watchdog.sig_xo2_new_state.disconnect     (diag.on_results)
         self._watchdog.sig_xo2_new_step.disconnect      (diag.on_new_step)
@@ -1125,7 +1166,7 @@ class Main (QMainWindow):
 
         # show again lower panel 
          
-        self.panel_optimize.refresh()                   # show final airfoil 
+        self.refresh()                  # show final airfoil 
 
 
     def optimize_run (self): 
@@ -1294,7 +1335,7 @@ class Main (QMainWindow):
         # save Window size and position 
         s.set ('window_maximize', self.isMaximized())
         s.set ('window_geometry', self.normalGeometry().getRect())
-        s.set ('panel_view_minimized', self._panel_view_minimized)
+        s.set ('lower_panel_minimzed', self._is_lower_minimized)
 
         # save last opnened airfoil
         airfoil : Airfoil = self.airfoil_seed if (self.airfoil and self.airfoil.usedAsDesign) else self.airfoil

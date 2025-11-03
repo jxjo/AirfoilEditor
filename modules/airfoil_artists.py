@@ -401,7 +401,7 @@ class Movable_Side_Bezier (Movable_Bezier):
         """ 
 
         # handle on ctrl-click
-        if not (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier): return  
+        if not (ev.modifiers() & Qt.KeyboardModifier.ControlModifier): return  
        
         # get scene coordinates of click pos and map to view box 
         vb : pg.ViewBox = self.getViewBox()

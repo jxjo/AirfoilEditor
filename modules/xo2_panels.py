@@ -7,7 +7,7 @@ UI panels
 
 """
 
-from shutil                 import copyfile
+from typing                 import TYPE_CHECKING                        # to handle circular imports
 
 from PyQt6.QtWidgets        import QDialog, QFileDialog
 from PyQt6.QtCore           import Qt
@@ -16,17 +16,14 @@ from PyQt6.QtCore           import Qt
 from base.widgets           import * 
 from base.panels            import Edit_Panel, MessageBox
 
-from airfoil_dialogs        import Airfoil_Info_Dialog, Polar_Definition_Dialog, Flap_Airfoil_Dialog
+from model.case             import Case_Optimize
+from model.xo2_input        import *
+from model.xo2_driver       import Xoptfoil2
+
+from airfoil_dialogs        import Polar_Definition_Dialog
 from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
 
 from xo2_dialogs            import *
-from model.xo2_driver       import Xoptfoil2
-
-
-from model.polar_set        import Polar_Definition
-from model.case             import Case_Optimize
-from model.xo2_input        import *
-
 
 import logging
 logger = logging.getLogger(__name__)
@@ -64,10 +61,12 @@ class Panel_Xo2_Abstract (Edit_Panel):
         - has semantics of App
         - connect / handle signals 
     """
-    from app import Main
+
+    if TYPE_CHECKING:                                   # handle circular imports for type checking only
+        from app import Main
 
     @property
-    def app (self) -> Main:
+    def app (self) -> 'Main':
         return self._app 
     
     @property
@@ -214,23 +213,10 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
 
 
 
-class Panel_Xo2_File_Small (Panel_Xo2_Abstract):
+class Panel_Xo2_File_Small (Panel_Xo2_File):
     """ File panel in small mode """
 
     name = 'Optimize Mode'
-
-    @override
-    @property
-    def _isDisabled (self) -> bool:
-        """ overloaded: disable when optimize run dialog is open"""
-        return self.app._xo2_run_dialog is not None
-
-
-    @property
-    def workingDir (self) -> str:
-        #todo 
-        return self.app.workingDir
-
 
     def _init_layout (self): 
 
@@ -357,20 +343,11 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
 
 
 
-class Panel_Xo2_Case_Small (Panel_Xo2_Abstract):
+class Panel_Xo2_Case_Small (Panel_Xo2_Case):
     """ Case Info - small mode"""
 
     name = 'Case'
-    _width  = 320
-
-    @property
-    def optimization_options (self) -> Nml_optimization_options:
-        return self.case.input_file.nml_optimization_options
-
-    @property
-    def info (self) -> Nml_info:
-        return self.case.input_file.nml_info
-
+    _panel_margins = (0, 0, 0, 0)
 
     def _init_layout (self): 
 
@@ -391,23 +368,6 @@ class Panel_Xo2_Case_Small (Panel_Xo2_Abstract):
         l.setColumnMinimumWidth (2,22)
         l.setColumnStretch (1,3)
         return l 
-
-
-    def _airfoil_seed_changed (self, *_):
-        """ slot seed airfoil changed - check if still in working dir"""
-
-        airfoil_seed = self.input_file.airfoil_seed
-        # the airfoil may not have a directory as it should be relative to its working dir 
-        if airfoil_seed.pathName:
-
-            # copy seed airfoil to working dir 
-            airfoil_seed.saveAs (dir=self.input_file.workingDir, isWorkingDir=True)
-
-            self.input_file.set_airfoil_seed (airfoil_seed)   # make sure new path is written to namelist
-
-            text = f"Seed airfoil <b>{airfoil_seed.fileName}</b> copied to working directory."
-            MessageBox.info(self, "Copy seed airfoil", text)
-
 
 
 class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
@@ -475,84 +435,6 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         diag.exec()     
 
         self.app._on_xo2_input_changed()
-
-
-
-class Panel_Xo2_Operating_Small (Panel_Xo2_Abstract):
-    """ Define operating conditions - small mode"""
-
-    name = 'Operating Conditions'
-    _width  = 350
-
-    @property
-    def operating_conditions (self) -> Nml_operating_conditions:
-        return self.input_file.nml_operating_conditions
-    
-    @property
-    def opPoint_defs (self) -> OpPoint_Definitions:
-        return self.input_file.opPoint_defs
-
-    @property
-    def cur_opPoint_def (self) -> OpPoint_Definition:
-        """ current, selected opPoint def"""
-        return self.opPoint_defs.current_opPoint_def
-    
-
-    def _init_layout (self): 
-
-        l = QGridLayout()
-        r,c = 0, 0 
-        Label       (l,r,c, get="Default Polar", lab_disable=True)
-        Field       (l,r,c+1, width=None, 
-                    get=lambda: self.opPoint_defs.polar_def_default.name)
-        ToolButton  (l,r,c+2, icon=Icon.EDIT,   set=self._edit_polar_def)
-        r += 1
-        Label       (l,r,c, get="Current Op Point", lab_disable=True)
-        ComboBox    (l,r,c+1, 
-                    get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
-                    set=self.set_cur_opPoint_def_from_label,
-                    options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
-        ToolButton  (l,r,c+2, icon=Icon.EDIT, 
-                     set=self._edit_opPoint_def,
-                     disable=lambda: not self.cur_opPoint_def)
-
-        l.setColumnMinimumWidth (0,100)
-        l.setColumnStretch (1,1)
-
-        return l
-
-
-    def _edit_polar_def (self):
-        """ edit default polar definition"""
-
-        polar_def = self.opPoint_defs.polar_def_default
-        diag = Polar_Definition_Dialog (self, polar_def, small_mode=True, parentPos=(0.9,0.1), dialogPos=(0,1))
-
-        diag.setWindowTitle ("Default Polar of Op Points")
-        diag.exec()
-
-        self.opPoint_defs.set_polar_def_default (polar_def)
-        self.app._on_xo2_input_changed()
-
-
-    def set_cur_opPoint_def_from_label (self, aStr: str):
-        """ set from labelLong - for ComboBox"""
-        for opPoint_def in self.opPoint_defs:
-            if opPoint_def.labelLong == aStr:
-                self.opPoint_defs.set_current_opPoint_def (opPoint_def) 
-                self.app._on_xo2_opPoint_def_selected()
-                break
-
-
-    def _edit_opPoint_def (self):
-        """ open dialog to edit current opPoint def"""
-
-        parentPos=(0.9, 0.2) 
-        dialogPos=(0,1)
-
-        self.app.edit_opPoint_def (self, parentPos, dialogPos)
-
-
 
 
 class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
@@ -644,11 +526,57 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
 
 
 
+class Panel_Xo2_Operating_Small (Panel_Xo2_Operating_Points):
+    """ Define operating conditions - small mode"""
+
+    _panel_margins = (0, 0, 0, 0)
+
+    @property
+    def operating_conditions (self) -> Nml_operating_conditions:
+        return self.input_file.nml_operating_conditions    
+
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        Label       (l,r,c, get="Default Polar", lab_disable=True)
+        Field       (l,r,c+1, width=None, 
+                    get=lambda: self.opPoint_defs.polar_def_default.name)
+        ToolButton  (l,r,c+2, icon=Icon.EDIT,   set=self._edit_polar_def)
+        r += 1
+        Label       (l,r,c, get="Current Op Point", lab_disable=True)
+        ComboBox    (l,r,c+1, 
+                    get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
+                    set=self.set_cur_opPoint_def_from_label,
+                    options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, 
+                     set=self._edit_opPoint_def,
+                     disable=lambda: not self.cur_opPoint_def)
+
+        l.setColumnMinimumWidth (0,100)
+        l.setColumnStretch (1,1)
+
+        return l
+
+
+    def _edit_polar_def (self):
+        """ edit default polar definition"""
+
+        polar_def = self.opPoint_defs.polar_def_default
+        diag = Polar_Definition_Dialog (self, polar_def, small_mode=True, parentPos=(0.9,0.1), dialogPos=(0,1))
+
+        diag.setWindowTitle ("Default Polar of Op Points")
+        diag.exec()
+
+        self.opPoint_defs.set_polar_def_default (polar_def)
+        self.app._on_xo2_input_changed()
+
+
+
 class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
     """ Edit geometry target """
 
     name = 'Geometry Targets'
-    _width  = 250
 
     @property
     def geometry_targets (self) -> Nml_geometry_targets:
@@ -712,23 +640,10 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
 
 
 
-class Panel_Xo2_Geometry_Targets_Small (Panel_Xo2_Abstract):
+class Panel_Xo2_Geometry_Targets_Small (Panel_Xo2_Geometry_Targets):
     """ Edit geometry targets - small mode """
 
-    name = 'Geometry Targets'
-    _width  = 200
-
-    @property
-    def geometry_targets (self) -> Nml_geometry_targets:
-        return self.case.input_file.nml_geometry_targets
-
-    @property
-    def thickness (self) -> GeoTarget_Definition | None: 
-        return self.geometry_targets.thickness
-
-    @property
-    def camber (self) -> GeoTarget_Definition | None: 
-        return self.geometry_targets.camber
+    _panel_margins = (0, 0, 0, 0)
 
     def _init_layout (self) -> QGridLayout:
 

@@ -21,7 +21,7 @@ from model.xo2_results          import OpPoint_Result, Xo2_Results, Optimization
 from airfoil_artists            import _color_airfoil
 
 from PyQt6.QtGui                import QColor, QBrush, QPen, QPainterPath, QTransform
-from PyQt6.QtCore               import pyqtSignal
+from PyQt6.QtCore               import Qt, pyqtSignal, QRectF
 
 
 import logging
@@ -62,7 +62,7 @@ class Movable_OpPoint_Def (Movable_Point):
     def _symbol_opt_up (width=1.0, height1=0.3, height2=0.5):
         path = QPainterPath()
 
-        path.addRect(QtCore.QRectF(-width / 2, -height1 / 2, width, height1))
+        path.addRect(QRectF(-width / 2, -height1 / 2, width, height1))
         # vertcial line
         path.moveTo(0.0, -height1 / 2)
         path.lineTo(0.0, -height2 * 2)
@@ -188,8 +188,8 @@ class Movable_OpPoint_Def (Movable_Point):
     def mouseClickEvent(self, ev):
         """ handle callback to parent when clicked with left button to select self """
 
-        if not self.moving and ev.button() == QtCore.Qt.MouseButton.LeftButton  \
-                           and not (ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier): # shift is handled in super
+        if not self.moving and ev.button() == Qt.MouseButton.LeftButton  \
+                           and not (ev.modifiers() & Qt.KeyboardModifier.ShiftModifier): # shift is handled in super
             if callable(self._callback_selected):
                 ev.accept()
 
@@ -361,7 +361,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
         """ 
 
         # handle only ctrl-click
-        if not (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier): return  
+        if not (ev.modifiers() & Qt.KeyboardModifier.ControlModifier): return  
        
         # was the scene click in my viewbox?
         if isinstance(ev.currentItem, pg.ViewBox):
