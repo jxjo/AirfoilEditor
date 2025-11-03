@@ -132,12 +132,13 @@ def toDict(aDict : dict, key, value):
 class Parameters (dict):
     """ Handles a parameter file with a json structure representing a dictionary of paramteres""" 
 
-    def __init__ (self, pathFileName : str):
+    def __init__ (self, pathFileName : str = None):
         super().__init__()
 
         self._pathFileName = pathFileName
 
-        self.load()
+        if pathFileName is not None:
+            self.load()
         
 
     @property
@@ -145,6 +146,10 @@ class Parameters (dict):
         """ returns the path file name of the parameter file """
         return self._pathFileName
 
+    def set_pathFileName (self, pathFileName : str):
+        """ sets the path file name of the parameter file """
+        self._pathFileName = pathFileName
+        
 
     @override
     def get(self, key, default=None):
