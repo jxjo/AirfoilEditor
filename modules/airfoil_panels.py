@@ -6,6 +6,7 @@
 UI panels 
 
 """
+from typing                 import TYPE_CHECKING                        # to handle circular imports
 
 import logging
 
@@ -26,7 +27,6 @@ from airfoil_widgets        import *
 from airfoil_dialogs        import (Match_Bezier_Dialog, Matcher, LE_Radius_Dialog, TE_Gap_Dialog,
                                    Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
 
-
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.WARNING)
 
@@ -38,10 +38,11 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         - connect / handle signals 
     """
 
-    from app  import Main
+    if TYPE_CHECKING:                                   # handle circular imports for type checking only
+        from app import Main
 
     @property
-    def app (self) -> Main:
+    def app (self) -> 'Main':
         return self._app 
 
     @property
@@ -122,9 +123,8 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
-
         l_head.addStretch(1)
-        ToolButton   (l_head, icon=Icon.EXPAND, set=self.app.toggle_panel_view_size,
+        ToolButton   (l_head, icon=Icon.EXPAND, set=self.app.toggle_panel_size,
                       toolTip='Minimize lower panel -<br>Alternatively, you can double click on the lower panels')
 
 
@@ -217,17 +217,9 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
 
 
-class Panel_File_Small (Panel_Airfoil_Abstract):
-    """ File panel with open / save / ... """
+class Panel_File_View_Small (Panel_File_View):
+    """ View File panel in small version """
 
-    name = 'View Mode'
-
-    @override
-    @property
-    def _isDisabled (self) -> bool:
-        """ override: enabled (as parent data panel is disabled)"""
-        return False
-    
     def _init_layout (self): 
 
         l = QGridLayout()
@@ -236,14 +228,28 @@ class Panel_File_Small (Panel_Airfoil_Abstract):
                                     textOpen="&Open", widthOpen=100, 
                                     get=lambda: self.airfoil, set=self.app.set_airfoil)
         r += 1
-        Button (l,r,c, text="&Exit", width=100, set=self.app.close)
-        ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.app.toggle_panel_view_size,
-            toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
+        Button      (l,r,c, text="&Exit", width=100, set=self.app.close)
+        MenuButton  (l,r,c+2, text="More...", width=80, 
+                        menu=self._more_menu(), 
+                        toolTip="Choose further actions for this airfoil")
+        ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.app.toggle_panel_size,
+                        toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
 
+        l.setColumnMinimumWidth (1,12)
         l.setColumnStretch (2,2)
-
         return l 
  
+
+    def _more_menu (self) -> QMenu:
+        """ create and return sub menu for 'more' actions"""
+
+        menue = super()._more_menu ()
+        menue.insertAction (menue.actions()[0], MenuAction ("&Optimize", self, set=self.app.optimize_select,   
+                                    toolTip="Modify geometry, Normalize, Repanel, Set Flap"))
+        menue.insertAction (menue.actions()[0], MenuAction ("&Modify", self, set=self.app.modify_airfoil,   
+                                    toolTip=self._tooltip_optimize(), disable=lambda: not Xoptfoil2.ready))
+        return menue
+
 
 
 class Panel_File_Modify (Panel_Airfoil_Abstract):
@@ -258,7 +264,15 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
              return 'Bezier Mode'
         else: 
             return self.name
-    
+
+    @override
+    def _add_to_header_layout(self, l_head: QHBoxLayout):
+        """ add Widgets to header layout"""
+        l_head.addStretch(1)
+        ToolButton   (l_head, icon=Icon.EXPAND, set=self.app.toggle_panel_size,
+                      toolTip='Minimize lower panel -<br>Alternatively, you can double click on the lower panels')
+
+
     @property
     def _isDisabled (self) -> bool:
         """ override: always enabled """
@@ -275,14 +289,16 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Field (l,r,c, colSpan=3, width=190, get=lambda: self.case.airfoil_seed.fileName)
+        Field (l,r,c, colSpan=5,  get=lambda: self.case.airfoil_seed.fileName,
+                        toolTip="File name of seed airfoil for design airfoils")
         r += 1
-        ComboSpinBox (l,r,c, colSpan=2, width=145, get=self.airfoil_fileName, 
-                             set=self.set_airfoil_by_fileName,
-                             options=self.airfoil_fileNames,
-                             signal=False)
-        ToolButton   (l,r,c+2, icon=Icon.DELETE, set=self.remove_current_airfoil,
-                      hide=lambda: self.case.get_iDesign (self.airfoil) == 0) # hide Design 0 
+        ComboSpinBox (l,r,c, colSpan=3, width=146, get=self.airfoil_fileName, 
+                        set=self.set_airfoil_by_fileName,
+                        options=self.airfoil_fileNames, signal=False,
+                        toolTip="Select current design airfoil to modify")
+        ToolButton   (l,r,c+3, icon=Icon.DELETE, set=self.remove_current_airfoil,
+                        hide=lambda: self.case.get_iDesign (self.airfoil) == 0,  # hide Design 0 
+                        toolTip="Remove current design airfoil")
         r += 1
         l.setRowStretch (r,2)
         r += 1
@@ -293,7 +309,8 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
         Button (l,r,c,  text="&Cancel",  width=100, 
                         set=lambda : self.app.mode_modify_finished(ok=False),
                         toolTip="Cancel modifications of airfoil and leave edit mode")
-        l.setColumnStretch (3,2)
+        l.setColumnMinimumWidth (1,12)
+        l.setColumnStretch (4,2)
 
         return l
 
@@ -307,8 +324,9 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
         """ list of design airfoil fileNames without extension"""
 
         fileNames = []
-        for airfoil in self.case.airfoil_designs:
-            fileNames.append (os.path.splitext(airfoil.fileName)[0])
+        if self.case:
+            for airfoil in self.case.airfoil_designs:
+                fileNames.append (os.path.splitext(airfoil.fileName)[0])
         return fileNames
 
 
@@ -329,96 +347,49 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
 
 
 
-class Panel_Geometry_Small (Panel_Airfoil_Abstract):
-    """ Main geometry data of airfoil in small version"""
-
-    name = 'Geometry Small'
-    _width  = 710
+class Panel_File_Modify_Small (Panel_File_Modify):
+    """ Modify File panel in small version """
 
     def _init_layout (self): 
 
+        self.set_background_color (**mode_color.MODIFY)
+
         l = QGridLayout()
         r,c = 0, 0 
-        FieldF (l,r,c, lab="Thickness", width=60, unit="%", step=0.1,
-                obj=lambda: self.geo, prop=Geometry.max_thick,
-                disable=lambda: self.airfoil.isBezierBased)
+        ComboSpinBox (l,r,c, colSpan=3, width=146, get=self.airfoil_fileName, 
+                        set=self.set_airfoil_by_fileName,
+                        options=self.airfoil_fileNames, signal=False,
+                        toolTip="Select current design airfoil to modify")
+        ToolButton   (l,r,c+3, icon=Icon.DELETE, set=self.remove_current_airfoil,
+                        hide=lambda: self.case.get_iDesign (self.airfoil) == 0,
+                        toolTip="Remove current design airfoil")  
+        ToolButton  (l,r,c+5, icon=Icon.COLLAPSE, set=self.app.toggle_panel_size,
+                        toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
         r += 1
-        FieldF (l,r,c, lab="Camber", width=60, unit="%", step=0.1,
-                obj=lambda: self.geo, prop=Geometry.max_camb,
-                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
-        r,c = 0, 2 
-        SpaceC (l,c, stretch=0)
-        c += 1 
-        FieldF (l,r,c, lab="at", width=60, unit="%", step=0.2,
-                obj=lambda: self.geo, prop=Geometry.max_thick_x,
-                disable=lambda: self.airfoil.isBezierBased)
-        r += 1
-        FieldF (l,r,c, lab="at", width=60, unit="%", step=0.2,
-                obj=lambda: self.geo, prop=Geometry.max_camb_x,
-                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
+        Button (l,r,c,  text="&Finish ...", width=100, 
+                        set=lambda : self.app.mode_modify_finished(ok=True), 
+                        toolTip="Save current airfoil, optionally modifiy name and leave edit mode")
+        Button (l,r,c+2,text="&Cancel",  width=80, colSpan=3,
+                        set=lambda : self.app.mode_modify_finished(ok=False),
+                        toolTip="Cancel modifications of airfoil and leave edit mode")
+        l.setColumnMinimumWidth (1,12)
+        l.setColumnStretch (4,2)
+        return l
 
-        r,c = 0, 5 
-        SpaceC (l,c, stretch=0)
-        c += 1
-        FieldF (l,r,c, lab="LE curv", width=60, dec=0, disable=True,
-                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_around_le)
-        r += 1
-        FieldF (l,r,c, lab="TE gap", width=60, unit="%", step=0.1,
-                obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
-
-        r,c = 0, 8 
-        SpaceC (l,c, stretch=0)
-        c += 1
-        FieldI (l,r,c, lab="Panels", disable=True, width=70, style=self._style_panel,
-                get=lambda: self.geo.nPanels, )
-        r += 1
-        FieldF (l,r,c, lab="LE x,y", get=lambda: self.geo.le[0], width=70, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
-        c += 1 
-        FieldF (l,r,c+1,get=lambda: self.geo.le[1], width=70, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
-
-        l.setColumnMinimumWidth (0,80)
-        l.setColumnMinimumWidth (2,10)
-        l.setColumnMinimumWidth (3,20)
-
-        l.setColumnMinimumWidth (5,40)
-        l.setColumnMinimumWidth (6,60)
-
-        l.setColumnMinimumWidth (8,40)
-        l.setColumnMinimumWidth (9,60)
-
-        l.setColumnStretch (12,2)
-        return l 
-
-    def _style (self, val, target_val):
-        """ returns style.WARNING if val isn't target_val"""
-        if val != target_val and not self.airfoil.isFlapped: 
-            return style.WARNING
-        else: 
-            return style.NORMAL
-
-    def _style_panel (self):
-        """ returns style.WARNING if panels not in range"""
-        if self.geo.nPanels < 120 or self.geo.nPanels > 260: 
-            return style.WARNING
-        else: 
-            return style.NORMAL
-
-    def refresh(self, reinit_layout=False):
-        return super().refresh(reinit_layout)
 
 
 class Panel_Geometry (Panel_Airfoil_Abstract):
     """ Main geometry data of airfoil"""
 
     name = 'Geometry'
-    _width  = 380
-
+#    _width  = 380
+    print ("geo !!")
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
         # blend with airfoil - currently Bezier is not supported
-        Button (l_head, text="&Blend", width=80,
+        Button (l_head, text="&Blend", width=75,
                 set=self.do_blend_with, 
                 hide=lambda: not self.mode_modify or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
@@ -447,15 +418,15 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
                 hide=lambda: not self.mode_modify or self.mode_bezier,
                 toolTip="Set trailing edge gap with a flexible blending range")
-
         r += 1
         SpaceR (l,r, height=5)
         r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
+        Label  (l,r,0,colSpan=5, get=self._messageText, style=style.COMMENT, height=(None,None))
+        l.setColumnMinimumWidth (c,80)
+        l.setColumnMinimumWidth (c+2,30)
+        l.setColumnStretch (c+3,2)
 
-        r,c = 0, 2 
-        SpaceC (l,c, stretch=0)
-        c += 1 
+        r,c = 0,4 
         FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
                 obj=lambda: self.geo, prop=Geometry.max_thick_x,
                 disable=lambda: self.airfoil.isBezierBased)
@@ -471,10 +442,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_te,
                 style=lambda: style.NORMAL if self.geo.curvature.max_te <2 else style.WARNING)
 
-        l.setColumnMinimumWidth (0,80)
-        l.setColumnMinimumWidth (2,30)
-        l.setColumnMinimumWidth (3,60)
-        l.setColumnStretch (5,2)
+        l.setColumnMinimumWidth (4,60)
         return l 
 
 
@@ -552,17 +520,65 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
 
 
+
+class Panel_Geometry_Small (Panel_Geometry):
+    """ Main geometry data of airfoil - small version"""
+
+    _panel_margins = (0, 0, 0, 0)
+
+    def _init_layout (self): 
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_thick,
+                disable=lambda: self.airfoil.isBezierBased)
+        r += 1
+        FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.max_camb,
+                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
+        l.setColumnMinimumWidth (c,80)
+        l.setColumnMinimumWidth (c+2,15)
+        r,c = 0, 3 
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_thick_x,
+                disable=lambda: self.airfoil.isBezierBased)
+        r += 1
+        FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
+                obj=lambda: self.geo, prop=Geometry.max_camb_x,
+                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
+        l.setColumnMinimumWidth (c,20)
+        c += 2
+        l.setColumnMinimumWidth (c,15)
+        c += 1
+        r = 0
+        FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.02,
+                obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_le_radius, 
+                hide=lambda: not self.mode_modify or self.mode_bezier,
+                toolTip="Set leading edge radius with a flexible blending range")
+        r += 1
+        FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
+                obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
+                hide=lambda: not self.mode_modify or self.mode_bezier,
+                toolTip="Set trailing edge gap with a flexible blending range")
+        l.setColumnMinimumWidth (c,80)
+        l.setColumnStretch (c+3,2)
+        return l 
+
+
+
 class Panel_Panels (Panel_Airfoil_Abstract):
     """ Panelling information """
 
     name = 'Panels'
-    _width  =  (290, None)
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
         # repanel airfoil - currently Bezier is not supported
-        Button (l_head, text="&Repanel", width=80,
+        Button (l_head, text="&Repanel", width=75,
                 set=self.do_repanel, 
                 hide=lambda: not self.mode_modify,
                 disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
@@ -572,31 +588,27 @@ class Panel_Panels (Panel_Airfoil_Abstract):
     def _init_layout (self):
 
         l = QGridLayout()
-
         r,c = 0, 0 
-        FieldI (l,r,c, lab="No of panels", disable=True, width=70, style=self._style_panel,
+        FieldI (l,r,c, lab="No of panels", disable=True, width=75, style=self._style_panel,
                 get=lambda: self.geo.nPanels, )
         r += 1
-        FieldF (l,r,c, lab="Angle at LE", width=70, dec=1, unit="°", style=self._style_angle,
+        FieldF (l,r,c, lab="Angle at LE", width=75, dec=1, unit="°", style=self._style_angle,
                 get=lambda: self.geo.panelAngle_le)
         SpaceC (l,c+2, width=10, stretch=0)
         Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo.iLe}", style=style.COMMENT)
         r += 1
-        FieldF (l,r,c, lab="Angle min", width=70, dec=1, unit="°",
+        FieldF (l,r,c, lab="Angle min", width=75, dec=1, unit="°",
                 get=lambda: self.geo.panelAngle_min[0])
-        Label  (l,r,c+3,width=70, get=lambda: f"at index {self.geo.panelAngle_min[1]}", style=style.COMMENT)
+        Label  (l,r,c+3, get=lambda: f"at index {self.geo.panelAngle_min[1]}", style=style.COMMENT)
         r += 1
         SpaceR (l,r,height=5)
         r += 1
         Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
 
         l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (c+4,1)
-        l.setRowStretch    (r-1,2)
-        
+        l.setColumnStretch (c+4,1)    
         return l
  
-
 
     def do_repanel (self): 
         """ repanel airfoil - open repanel dialog""" 
@@ -660,6 +672,28 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
 
 
+class Panel_Panels_Small (Panel_Panels):
+    """ Panelling information - small version"""
+
+    _panel_margins = (0, 0, 0, 0)
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        FieldI (l,r,c, lab="No of panels", disable=True, width=75, style=self._style_panel,
+                get=lambda: self.geo.nPanels, )
+        r += 1
+        Button (l,r,c+1, text="&Repanel", width=75,
+                set=self.do_repanel, hide=lambda: not self.mode_modify,
+                disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
+                toolTip="Repanel airfoil with a new number of panels" ) 
+        r += 1
+        l.setRowStretch (r,2)
+        l.setColumnMinimumWidth (0,80)
+        return l
+ 
+
 
 class Panel_Flap (Panel_Airfoil_Abstract):
     """ Flap information and set flap"""
@@ -678,7 +712,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
-        Button (l_head, text="Set F&lap", width=80,
+        Button (l_head, text="Set F&lap", width=75,
                 set=self.do_flap, hide=lambda: not self.mode_modify,
                 disable=self._set_flap_disabled,
                 toolTip="Set flap at airfoil" ) 
@@ -804,13 +838,68 @@ class Panel_Flap (Panel_Airfoil_Abstract):
         return super().refresh(reinit_layout=True)
 
 
+class Panel_Flap_Small (Panel_Flap):
+    """ Flap information and set flap"""
+
+    _width  = None
+    _panel_margins = (0, 0, 0, 0)
+
+    def _init_layout (self):
+
+        geo             = self.airfoil.geo
+
+        l = QGridLayout()
+        r,c = 0, 0 
+
+        if self.mode_modify:
+
+            flap_setter         = self.airfoil.flap_setter
+            airfoil_flapped = flap_setter.airfoil_flapped if flap_setter else None
+
+            if airfoil_flapped:
+                FieldF (l,r,c, lab="Flap Angle", width=75, dec=1, unit='°', get=lambda: flap_setter.flap_angle)
+
+            elif flap_setter:
+                l.setRowStretch (c,1)
+
+            elif self.airfoil.isFlapped:
+                FieldF (l,r,c, lab="Flap Angle", width=75, dec=1, unit='°', get=lambda: geo.flap_angle_estimated)
+ 
+            r += 1
+            Button (l,r,c+1, text="Set F&lap", width=75,
+                    set=self.do_flap, hide=lambda: not self.mode_modify,
+                    disable=self._set_flap_disabled,
+                    toolTip="Set flap at airfoil" ) 
+            l.setColumnMinimumWidth (0,80)
+
+        else: 
+            # mode not modify - info about a flap which is (could be) set
+            
+            if geo.isFlapped:
+                
+                FieldF (l,r,c, lab="Flap Angle", width=50, dec=1, unit='°', get=lambda: geo.flap_angle_estimated)
+                r += 1
+                FieldF (l,r,c, lab="Hinge x", width=50, get=lambda: geo.curvature.flap_kink_at, dec=1, unit="%")
+                l.setColumnMinimumWidth (0,80)
+                                
+            elif geo.isProbablyFlapped:
+
+                Label  (l,r,c, width=None, colSpan=2, style=style.COMMENT, 
+                             get="The airfoil is probably flapped")
+                l.setColumnMinimumWidth (0,80)
+                l.setColumnMinimumWidth (1,50)
+                l.setRowStretch (1,1)
+
+        return l
+
+
 
 class Panel_LE_TE  (Panel_Airfoil_Abstract):
     """ info about LE and TE coordinates"""
 
     name = 'LE, TE'
 
-    _width  = 320
+    _width  = None
 
     @override
     @property
@@ -822,28 +911,28 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
-        Button (l_head, text="&Normalize", width=80,
+        Button (l_head, text="&Normalize", width=75,
                 set=lambda : self.airfoil.normalize(), signal=True, 
                 hide=lambda: not self.mode_modify,
-                toolTip="Normalize airfoil to get leading edge at 0,0")
+                toolTip="Normalize airfoil to get leading edge at 0,0 and trailing edge at x=1.0")
 
 
     def _init_layout (self): 
 
         l = QGridLayout()     
         r,c = 0, 0 
-        FieldF (l,r,c, lab="Leading edge", get=lambda: self.geo.le[0], width=75, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
+        FieldF (l,r,c, lab="Leading edge x,y", get=lambda: self.geo.le[0], width=75, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
         r += 1
-        FieldF (l,r,c, lab=" ... of spline", get=lambda: self.geo.le_real[0], width=75, dec=7, style=self._style_le_real,
+        FieldF (l,r,c, lab="  ... of spline", get=lambda: self.geo.le_real[0], width=75, dec=7, style=self._style_le_real,
                 hide=lambda: not self.mode_modify)
         r += 1
-        FieldF (l,r,c, lab="Trailing edge", get=lambda: self.geo.te[0], width=75, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
+        FieldF (l,r,c, lab="Trailing edge x,y", get=lambda: self.geo.te[0], width=75, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
         r += 1
-        FieldF (l,r,c+1,get=lambda: self.geo.te[2], width=75, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
-
-        r,c = 0, 2 
-        SpaceC (l,c, width=10, stretch=0)
-        c += 1 
+        FieldF (l,r,c,lab="  ... lower", get=lambda: self.geo.te[2], width=75, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
+        l.setColumnMinimumWidth (0,95)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnStretch (2,1)
+        r,c = 0, 3 
         FieldF (l,r,c+1,get=lambda: self.geo.le[1], width=75, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo.le_real[1], width=75, dec=7, style=self._style_le_real,
@@ -852,14 +941,10 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         FieldF (l,r,c+1,get=lambda: self.geo.te[1], width=75, dec=7, style=lambda: self._style (self.geo.te[1], -self.geo.te[3]))
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo.te[3], width=75, dec=7, style=lambda: self._style (self.geo.te[3], -self.geo.te[1]))
-
         r += 1
         SpaceR (l,r, height=5)
         r += 1
         Label  (l,r,0,colSpan=5, get=self._messageText, style=style.COMMENT, height=(None,None))
-
-        l.setColumnMinimumWidth (0,80)
-        l.setColumnStretch (c+3,1)
         return l
 
 
@@ -907,20 +992,46 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
 
 
 
+class Panel_LE_TE_Small  (Panel_LE_TE):
+    """ info about LE and TE coordinates - small version"""
+
+    _panel_margins = (0, 0, 0, 0)
+
+    def _init_layout (self): 
+
+        l = QGridLayout()     
+        r,c = 0, 0 
+        FieldF (l,r,c, lab="LE x,y", get=lambda: self.geo.le[0], width=75, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
+        r += 1
+        FieldF (l,r,c, lab="TE xm,ym",  width=75, dec=7, 
+                get=lambda: (self.geo.te[0] + self.geo.te[2]) / 2, style=lambda: self._style (self.geo.te[0], 1.0))
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,10)
+        r,c = 0, 3 
+        FieldF (l,r,c+1,get=lambda: self.geo.le[1], width=75, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
+        r += 1
+        FieldF (l,r,c+1,get=lambda: (self.geo.te[1] + self.geo.te[3])/2, width=75, dec=7, style=lambda: self._style (self.geo.te[1], -self.geo.te[3]))
+
+        r,c = 1, 5 
+        l.setColumnMinimumWidth (c,15)
+        Button (l,r,c+1, text="&Normalize", width=75,
+                set=lambda : self.airfoil.normalize(), signal=True, 
+                hide=lambda: not self.mode_modify,
+                toolTip="Normalize airfoil to get leading edge at 0,0 and trailing edge at x=1.0")
+        return l
+
+
+
 class Panel_Bezier (Panel_Airfoil_Abstract):
     """ Info about Bezier curves upper and lower  """
 
     name = 'Bezier'
-    _width  = (180, None)
-
 
     @override
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         return self.mode_bezier
-    
-    # ----
 
     @override
     @property
@@ -941,40 +1052,49 @@ class Panel_Bezier (Panel_Airfoil_Abstract):
     def _init_layout (self):
 
         l = QGridLayout()
-
         r,c = 0, 0 
         Label (l,r,c, get="Bezier control Points", colSpan=4)
-
         r += 1
         FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.nControlPoints,  width=50, step=1, lim=(3,10),
                          set=lambda n : self.geo.set_nControlPoints_of (self.upper, n))
         r += 1
         FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.nControlPoints,  width=50, step=1, lim=(3,10),
                          set=lambda n : self.geo.set_nControlPoints_of (self.lower, n))
-
         r += 1
-        SpaceR (l,r, height=10, stretch=2)
-        l.setColumnMinimumWidth (0,70)
-        l.setColumnStretch (c+2,4)
-        
+        l.setRowStretch (r,2)
+        l.setColumnMinimumWidth (0,80)
         return l
  
+
+class Panel_Bezier_Small (Panel_Bezier):
+    """ Info about Bezier curves upper and lower - small version """
+
+    _panel_margins = (0, 0, 0, 0)
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        FieldI (l,r,c,   lab="Bezier Upper", get=lambda: self.upper.nControlPoints,  width=50, step=1, lim=(3,10),
+                         set=lambda n : self.geo.set_nControlPoints_of (self.upper, n))
+        r += 1
+        FieldI (l,r,c,   lab="Bezier Lower",  get=lambda: self.lower.nControlPoints,  width=50, step=1, lim=(3,10),
+                         set=lambda n : self.geo.set_nControlPoints_of (self.lower, n))
+        l.setColumnMinimumWidth (0,80)
+        return l
+
 
 
 class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     """ Match Bezier functions  """
 
     name = 'Bezier Match'
-    _width  = (370, None)
-
 
     @override
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         return self.mode_bezier
-
-    # ----
 
     @property
     def upper (self) -> Side_Airfoil_Bezier:
@@ -1050,8 +1170,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
             self._target_curv_le = self.target_airfoil.geo.curvature.best_around_le 
 
             r,c = 0, 0 
-            Label  (l,r,c+1, get="Deviation", width=70)
-
+            Label  (l,r,c+1, get="Deviation", width=70, colSpan=2)
             r += 1
             Label  (l,r,c,   get="Upper Side")
             FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_upper,
@@ -1060,12 +1179,11 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
             Label  (l,r,c,   get="Lower Side")
             FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_lower,
                              style=lambda: Match_Bezier_Dialog.style_deviation (self.norm2_lower()))
+            l.setColumnMinimumWidth (c,80)
+            l.setColumnMinimumWidth (c+2,20)
 
-            r,c = 0, 2 
-            SpaceC(l,  c, width=5)
-            c += 1
-            Label (l,r,c, colSpan=2, get="LE curvature TE")
-    
+            r,c = 0, 3 
+            Label (l,r,c, colSpan=3, get="LE curvature TE")
             r += 1
             FieldF (l,r,c  , get=lambda: self.curv_upper.max_xy[1], width=40, dec=0, 
                     style=lambda: Match_Bezier_Dialog.style_curv_le(self._target_curv_le, self.curv_upper))
@@ -1077,10 +1195,9 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
                     style=lambda: Match_Bezier_Dialog.style_curv_le(self._target_curv_le, self.curv_lower))
             FieldF (l,r,c+1, get=lambda: self.curv_lower.te[1],     width=40, dec=1, 
                     style=lambda: Match_Bezier_Dialog.style_curv_te(self.max_curv_te_lower, self.curv_lower))
+            l.setColumnMinimumWidth (c+2,20)
 
-            r,c = 0, 5 
-            SpaceC (l,  c, width=10)
-            c += 1
+            r,c = 0, 6 
             r += 1
             Button (l,r,c  , text="Match...", width=70,
                             set=lambda: self._match_bezier (self.upper, self.target_upper, 
@@ -1094,13 +1211,6 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
             SpaceR (l,r, height=5, stretch=2)
             r += 1
             Label  (l,r,0, get=self._messageText, colSpan=7, height=(40, None), style=style.COMMENT)
-            l.setColumnMinimumWidth (0,70)
-            l.setColumnStretch (c+6,2)
-
-        else: 
-            SpaceR (l,0)
-            Label  (l,1,0, get="Select a target airfoil to match...", style=style.COMMENT)
-            SpaceR (l,2, stretch=2)
         return l
  
 
@@ -1162,3 +1272,42 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
         text = '\n'.join(text)
         return text 
 
+
+
+class Panel_Bezier_Match_Small (Panel_Bezier_Match):
+    """ Match Bezier functions - small version """
+
+    _panel_margins = (0, 0, 0, 0)
+
+    def _init_layout (self):
+
+        self._norm2_upper = None                                # cached value of norm2 deviation 
+        self._norm2_lower = None                                # cached value of norm2 deviation 
+        self._target_curv_le = None 
+        self._target_curv_le_weighting = None
+
+        l = QGridLayout()
+
+        if self.target_airfoil is not None: 
+
+            self._target_curv_le = self.target_airfoil.geo.curvature.best_around_le 
+
+            r,c = 0, 0 
+            Label  (l,r,c,   get="Deviation Upper")
+            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_upper,
+                             style=lambda: Match_Bezier_Dialog.style_deviation (self.norm2_upper()))
+            r += 1
+            Label  (l,r,c,   get="Deviation Lower")
+            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_lower,
+                             style=lambda: Match_Bezier_Dialog.style_deviation (self.norm2_lower()))
+            l.setColumnMinimumWidth (c,90)
+            l.setColumnMinimumWidth (c+2,20)
+            r,c = 0, 3
+            Button (l,r,c  , text="Match...", width=70,
+                            set=lambda: self._match_bezier (self.upper, self.target_upper, 
+                                                            self.target_curv_le, self.max_curv_te_upper))
+            r += 1
+            Button (l,r,c  , text="Match...", width=70,
+                            set=lambda: self._match_bezier (self.lower, self.target_lower, 
+                                                            self.target_curv_le, self.max_curv_te_lower))
+            return l
