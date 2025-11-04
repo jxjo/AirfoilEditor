@@ -40,8 +40,8 @@ from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstr
 from base.common_utils      import * 
 from base.panels            import Container_Panel, Win_Util, Toaster
 from base.widgets           import *
+from base.app_utils         import *
 
-from app_utils              import *
 from airfoil_widgets        import * 
 from airfoil_panels         import *
 from airfoil_dialogs        import Airfoil_Save_Dialog
