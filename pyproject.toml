@@ -44,7 +44,7 @@ airfoileditor = "airfoileditor.app:start"
 path = "modules/app.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ae_pkg"]
+packages = ["airfoileditor"]
 only-include = [
   "modules", 
   "assets",
@@ -53,18 +53,16 @@ only-include = [
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-  "path_test.py",
   "doc",
-  "ae.py",
-  "airfoilEditor.py"
 ]
 include = [
-  "modules",
-  "examples_optimize",
-  "assets"
+  "airfoileditor",
+  "examples/optimize",
+  "assets",
+  "README.md",
+  "LICENSE"
 ]
 
 [tool.hatch.build.targets.wheel.sources]
-"modules" = "airfoileditor"
-"examples_optimize" = "airfoileditor/examples_optimize"
+"examples/optimize" = "airfoileditor/examples/optimize"
 "assets" = "airfoileditor/assets"

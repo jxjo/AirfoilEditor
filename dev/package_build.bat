@@ -18,7 +18,7 @@ rem ---- run Pytest  for *-test.py
 echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
 echo.
 
-Pytest modules\
+rem Pytest modules\
 
 rem ---- build package - wheel and sdist 
 

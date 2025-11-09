@@ -7,8 +7,8 @@
             "request": "launch",
             "program": "${file}",
             "justMyCode": true,
-            "cwd": "${fileDirname}",
-            "env": { "PYTHONPATH": "${fileDirname}/.." }  // to start modules and find 'base' subDir
+            "cwd": "${fileDirname}"
+            // "env": { "PYTHONPATH": "${fileDirname}/.." }  // to start modules and find 'base' subDir
         }
     ]
 }
