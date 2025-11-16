@@ -124,16 +124,24 @@ class Xo2_Controller:
 
         self._state = state 
 
-        # update steps and designs
+        return self._state
 
-        if state == xo2_state.RUNNING:
-            self._nSteps, self._nDesigns, self._objective = self.xoptfoil2.get_progress()
+
+    def refresh_progress (self) -> bool:
+        """ refresh progress data from Xoptfoil2. Returns True if there is a change in progress"""
+
+        if self.isRunning:
+            new_nSteps, new_nDesigns, new_objective = self.xoptfoil2.get_progress()
+            if new_nSteps != self._nSteps or new_nDesigns != self._nDesigns or new_objective != self._objective:
+                self._nSteps    = new_nSteps
+                self._nDesigns  = new_nDesigns
+                self._objective = new_objective
+                return True
         else: 
             self._nSteps = 0                             # no of steps up to now when running
             self._nDesigns = 0                           # no of designs up to now when running
             self._objective = 1.0                        # objective function when running
-
-        return self._state
+        return False
 
 
     @property 

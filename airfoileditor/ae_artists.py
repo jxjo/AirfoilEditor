@@ -459,7 +459,6 @@ class Airfoil_Artist (Artist):
 
 
     def __init__ (self, *args, 
-                  airfoils_ref_scale_fn = None,
                   show_points = False,
                   **kwargs):
 
@@ -575,7 +574,7 @@ class Airfoil_Artist (Artist):
                 # apply optional scale value for reference airfoils 
 
                 if self.show_airfoils_refs_scaled and airfoil.usedAs == usedAs.REF:
-                    scale = airfoil.get_property ("scale", 1.0)
+                    scale = airfoil.scale_factor
                     x,y = x * scale, y * scale
 
                 # plot contour and fill airfoil if it's only one 
@@ -742,6 +741,7 @@ class TE_Gap_Artist (Artist):
     def set_xBlend (self, xBlend):
         """ set blend range for LE circle """
         self._xBlend = xBlend 
+        self.set_show (xBlend is not None)
 
 
     def _plot (self): 
@@ -805,6 +805,7 @@ class LE_Radius_Artist (Artist):
     def set_xBlend (self, xBlend):
         """ set blend range for LE circle """
         self._xBlend = xBlend 
+        self.set_show (xBlend is not None)
 
 
     def _plot (self): 

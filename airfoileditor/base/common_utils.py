@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Common Utility functions for convinience - no dependencies from other moduls  
+Common Utility functions for convenience - no dependencies from other modules  
 """
 
 import os
@@ -67,7 +67,7 @@ class CustomFormatter(logging.Formatter):
     
 
 #------------------------------------------------------------------------------
-# Dictonary handling
+# Dictionary handling
 #------------------------------------------------------------------------------
 
 def fromDict(aDict : dict, key, default='no default'):
@@ -76,27 +76,27 @@ def fromDict(aDict : dict, key, default='no default'):
     will be raised 
 
     Args:
-        dict: the dictonary to look in 
+        dict: the dictionary to look in 
         key: the key to look for       
         default: the value if key is missing
     """
-    preferedType = None
+    preferred_type = None
 
     if default != 'no default':
         if isinstance (default, float):
-           preferedType = float
+           preferred_type = float
         elif isinstance (default, bool):
-            preferedType = bool
+            preferred_type = bool
         elif isinstance (default, int):
-            preferedType = int
+            preferred_type = int
 
     if aDict and key in aDict:
         value = aDict[key]
-        if preferedType == float:
+        if preferred_type == float:
             value = float(value)
-        elif preferedType == int:
+        elif preferred_type == int:
             value = int(value)
-        elif preferedType == bool:
+        elif preferred_type == bool:
             value = bool(value)
     else:
         if default == 'no default':
@@ -125,12 +125,12 @@ def toDict(aDict : dict, key, value):
 
         
 #------------------------------------------------------------------------------
-# Settings and Paramter file 
+# Settings and Parameter file 
 #------------------------------------------------------------------------------
 
 
 class Parameters (dict):
-    """ Handles a parameter file with a json structure representing a dictionary of paramteres""" 
+    """ Handles a parameter file with a json structure representing a dictionary of parameters""" 
 
     def __init__ (self, pathFileName : str = None):
         super().__init__()
@@ -217,7 +217,7 @@ class Parameters (dict):
                     fs.close()
                     dataDict = {}
             except:
-                logger.debug (f"Paramter file {self.pathFileName} not found")
+                logger.debug (f"Parameter file {self.pathFileName} not found")
 
         self.clear()
         self.update(dataDict)
@@ -265,7 +265,7 @@ class PathHandler():
     """ handles relative Path of actual files to a workingDir """
 
     def __init__ (self, workingDir=None, onFile=None): 
-        """  Pathhandler for working directory either from 'workinfDir' directly or based 'onFile' """
+        """  PathHandler for working directory either from 'workingDir' directly or based 'onFile' """
         self._workingDir = None
 
         if workingDir is not None: 

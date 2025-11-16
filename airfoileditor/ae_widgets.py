@@ -135,6 +135,12 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
             next_file = airfoil_files [iair + 1]
     elif iair is not None and len(airfoil_files) == 1: 
         next_file = None
+    elif iair is None and len(airfoil_files) > 1:               # find next which is greater than current
+        next_file = None
+        for air_file in airfoil_files:
+            if air_file.lower() > anAirfoil.fileName.lower():
+                next_file = air_file
+                break
     else: 
         next_file = airfoil_files [0] if airfoil_files else None 
 

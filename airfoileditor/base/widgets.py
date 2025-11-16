@@ -16,7 +16,7 @@ import types
 from typing             import override
 from enum               import Enum, StrEnum
 
-from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QEvent
+from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QObject
 
 from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
 from PyQt6.QtWidgets    import (
@@ -239,7 +239,7 @@ class Widget:
     """
 
 
-    # Signals
+    # Signals - ! pyqtSignal will be active in subclass which is inherited from QWidget ! 
 
     sig_changed  = pyqtSignal(object)                   # (Object class name, Method as string, new value)
 
@@ -1471,12 +1471,23 @@ class Button (Widget, QPushButton):
         self._set_Qwidget ()
 
         # connect signals 
-        self.pressed.connect(lambda: self._set_value(None))
+        self.clicked.connect(lambda: self._set_value(None))
 
 
     def __repr__(self) -> str:
         text = f" '{str(self._text)}'" if self._text is not None else ''
         return f"<{type(self).__name__}{text}>"
+
+
+    # def _on_pressed(self):
+    #     """ signal slot pressed"""
+
+    #     # QT strange - sometimes it happens when the parent widget is closed that the button is still pressed
+    #     if not self.isVisible():
+    #         return
+
+    #     self._set_value (None)
+
 
     @override
     def _initial_palette(self) -> QPalette | None:
@@ -1972,7 +1983,7 @@ class ListBox (Field_With_Label, QListWidget):
     def __init__(self, *args, 
                  options = [],
                  doubleClick = None,  
-                 autoHeight = False,                    # height dependend on n items, height must be tuple
+                 autoHeight = False,                    # height dependent on n items, height must be tuple
                  **kwargs):
         super().__init__(*args, **kwargs)
 

@@ -20,10 +20,12 @@ from model.case             import Case_Optimize
 from model.xo2_input        import *
 from model.xo2_driver       import Xoptfoil2
 
-from airfoil_dialogs        import Polar_Definition_Dialog
-from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
+from ae_dialogs             import Polar_Definition_Dialog
+from ae_widgets             import Airfoil_Select_Open_Widget, mode_color
 
 from xo2_dialogs            import *
+
+from ae_app_model              import App_Model
 
 import logging
 logger = logging.getLogger(__name__)
@@ -62,39 +64,44 @@ class Panel_Xo2_Abstract (Edit_Panel):
         - connect / handle signals 
     """
 
-    if TYPE_CHECKING:                                   # handle circular imports for type checking only
-        from app import Main
+    sig_toggle_panel_size = pyqtSignal()                        # wants to toggle panel size
+
+    MAIN_MARGINS        = (10, 5,20, 5)
+    MAIN_MARGINS_MINI   = ( 0, 5,10, 5)
+    MAIN_MARGINS_FILE   = (10, 5,10, 5)
+
+    _main_margins = MAIN_MARGINS
+
+    def __init__ (self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.app_model.sig_xo2_run_started.connect  (self.refresh)      # disable panel when xo2 run started
+        self.app_model.sig_xo2_run_finished.connect (self.refresh)      # enable panel when xo2 run finished
+
 
     @property
-    def app (self) -> 'Main':
-        return self._app 
-    
+    def app_model (self) -> App_Model:
+        return self.dataObject
+        
     @property
     def case (self) -> Case_Optimize:
-        return self.dataObject
+        return self.app_model.case
 
     @property
     def input_file (self) -> Input_File:
         return self.case.input_file
 
     @property
-    def mode_optimize (self) -> bool:
+    def is_mode_optimize (self) -> bool:
         """ panel in optimize_mode or disabled ? - from App """
-        return isinstance (self.case, Case_Optimize) 
+        return self.app_model.is_mode_optimize
 
 
     @override
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: only enabled when not running """
-        return self.case.isRunning if self.mode_optimize else False
-
-
-    @override
-    @property
-    def shouldBe_visible (self) -> bool:
-        """ overloaded: only visible if mode optimize """
-        return self.mode_optimize
+        return self.case.isRunning if self.is_mode_optimize else False
     
 
     @override
@@ -103,16 +110,23 @@ class Panel_Xo2_Abstract (Edit_Panel):
         # overridden to connect to widgets changed signal
 
         super()._set_panel_layout ()
+        w : Widget
         for w in self.widgets:
-            w.sig_changed.connect (self._on_widget_changed)   
+            w.sig_changed.connect (self._on_widget_changed)
+        for w in self.header_widgets:
+            w.sig_changed.connect (self._on_widget_changed)
 
 
     def _on_widget_changed (self, widget):
         """ user changed data in widget"""
         logger.debug (f"{self} {widget} widget changed slot")
-        self.app._on_xo2_input_changed ()
+        self.app_model.notify_xo2_input_changed()
 
-
+    @override
+    def refresh (self,**kwargs):
+        """ refresh data in panel from model"""
+        logger.debug (f"{self} refresh - is visible: {self.isVisible()} - should be visible: {self.shouldBe_visible}")
+        super().refresh(**kwargs)
 
 
 class Panel_Xo2_File (Panel_Xo2_Abstract):
@@ -120,11 +134,31 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
 
     name = 'Optimize Mode'
 
+    sig_finish      = pyqtSignal()                              # wants to finish optimize mode - ok / cancel
+    sig_open_next   = pyqtSignal(str)                           # wants to open next xo2 input file
+    sig_new         = pyqtSignal()                              # wants to create new xo2 input file
+    sig_new_version = pyqtSignal()                              # wants to create new version of xo2 input file
+    sig_run_xo2     = pyqtSignal()                              # wants to run xo2 optimizer
+
+    def __init__(self, *args, 
+                 **kwargs):
+        
+        self._run_dialog_open = False
+
+        super().__init__(*args, **kwargs)
+
+
+    def _set_run_dialog_open(self, value: bool):
+        """ set if run dialog is open - to avoid multiple instances """
+
+        self._run_dialog_open = value
+
     @override
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: disable when optimize run dialog is open"""
-        return self.app._xo2_run_dialog is not None
+        return super()._isDisabled or self._run_dialog_open
+
 
     @override
     def _on_widget_changed (self, *_):
@@ -132,11 +166,15 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
         # no automatic change handling 
         pass
 
+    def _on_run_dialog_closed (self):
+        """ slot run dialog closed"""
+        self._set_run_dialog_open(False)
+        self.refresh()
+
 
     @property
     def workingDir (self) -> str:
-        #todo 
-        return self.app.workingDir
+        return self.input_file.workingDir
 
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
@@ -146,7 +184,7 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
         if Xoptfoil2.ready:
             Label  (l_head, get=f"{Xoptfoil2.NAME} {Xoptfoil2.version}", 
                     style=style.COMMENT, fontSize=size.SMALL, align=Qt.AlignmentFlag.AlignBottom)
-        ToolButton   (l_head, icon=Icon.EXPAND, set=self.app.toggle_panel_size,
+        ToolButton   (l_head, icon=Icon.EXPAND, set=self.sig_toggle_panel_size.emit,
                       toolTip='Minimize lower panel -<br>Alternatively, you can double click on the lower panels')
 
 
@@ -162,19 +200,18 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
                         toolTip="The Xoptfoil2 input file")
         ToolButton  (l,r,c+3, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
         r += 1
-        Button      (l,r,c, width=100, text="New Version", set=self.app.case_optimize_new_version,
+        Button      (l,r,c, width=100, text="New Version", set=self.sig_new_version.emit,
                         toolTip="Create a new version of the existing input file")
-        Button      (l,r,c+2, width=80, text="New ...", set=self.app.optimize_new,
+        Button      (l,r,c+2, width=80, text="New ...", set=self.sig_new.emit,
                         toolTip="Create a new input file")
         r += 1
         Button      (l,r,c, width=100, text="&Run Xoptfoil2", button_style = button_style.PRIMARY,
-                        set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
+                        set=self._open_run_dialog, toolTip="Run Optimizer Xoptfoil2")        
         r += 1
         l.setRowStretch (r,2)
         r += 1
-        Button      (l,r,c,  text="&Finish",  width=100, 
-                        set=lambda : self.app.mode_optimize_finished(),
-                        toolTip="Leave optimization mode")
+        Button      (l,r,c,  text="&Finish",  width=100,
+                        set=self.sig_finish.emit, toolTip="Leave optimization mode")
 
         l.setColumnMinimumWidth (1,12)
         l.setColumnStretch (1,2)
@@ -190,13 +227,13 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
         if workingDir is None: 
             workingDir = self.workingDir
 
-        self.app.optimize_change_case (aFileName, workingDir)
+        self.sig_open_next.emit (os.path.join (workingDir, aFileName))
 
 
     def _open_input_file (self):
         """ open a new airfoil and load it"""
 
-        # build somethinglike "*.inp *.xo2" as filter for the dialog
+        # build something like "*.inp *.xo2" as filter for the dialog
         filter_string = ""
         for extension in Input_File.INPUT_FILE_EXT:
             filter_string += f" *{extension}" if filter_string else f"*{extension}"
@@ -206,17 +243,26 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
         newPathFileName, *_ = QFileDialog.getOpenFileName(self, filter=filters, directory=self.workingDir)
 
         if newPathFileName:                         # user pressed open
+            self.sig_open_next.emit (newPathFileName)
 
-            self._set_input_fileName (os.path.basename (newPathFileName), workingDir=os.path.dirname (newPathFileName))
 
-            self.refresh()
+    def _open_run_dialog (self):
+        """ open optimize run dialog"""
 
+        if self._run_dialog_open:
+            return                                                  # do nothing if already open
+
+        diag = Xo2_Run_Dialog (self, self.app_model, parentPos=(0.02,0.8), dialogPos=(0,1))
+        diag.finished.connect (self._on_run_dialog_closed)          # activate self again when dialog closed
+
+        self._set_run_dialog_open(True)
+        QTimer.singleShot(0, self.refresh)                          # disable self - after button callback to disable
+        
+        diag.show()                            
 
 
 class Panel_Xo2_File_Small (Panel_Xo2_File):
     """ File panel in small mode """
-
-    name = 'Optimize Mode'
 
     def _init_layout (self): 
 
@@ -225,13 +271,12 @@ class Panel_Xo2_File_Small (Panel_Xo2_File):
         l = QGridLayout()
         r,c = 0, 0 
         Button      (l,r,c, width=100, text="&Run Xoptfoil2", button_style = button_style.PRIMARY,
-                        set=self.app.optimize_open_run, toolTip="Run Optimizer Xoptfoil2")        
-        ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.app.toggle_panel_size,
+                        set=self.sig_run_xo2.emit, toolTip="Run Optimizer Xoptfoil2")        
+        ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
                         toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
         r += 1
         Button      (l,r,c,  text="&Finish",  width=100, 
-                        set=lambda : self.app.mode_optimize_finished(),
-                        toolTip="Leave optimization mode")
+                        set=self.sig_finish.emit, toolTip="Leave optimization mode")
 
         l.setColumnStretch (2,2)
         return l
@@ -242,7 +287,6 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
     """ Case data"""
 
     name = 'Case'
-    _width  = (320, 400)
 
     @property
     def optimization_options (self) -> Nml_optimization_options:
@@ -276,7 +320,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
 
         r += 1
         ComboBox    (l,r,c, lab="Shape functions", lab_disable=True,
-                     obj=self.optimization_options, prop=Nml_optimization_options.shape_functions_label_long,
+                     obj=lambda:self.optimization_options, prop=Nml_optimization_options.shape_functions_label_long,
                      options=lambda: self.optimization_options.shape_functions_list,
                      disable=lambda: self.input_file.airfoil_seed.isBezierBased,
                      toolTip=lambda: "Bezier based seed airfoil is master of shape functions" if self.input_file.airfoil_seed.isBezierBased \
@@ -287,7 +331,8 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         r += 1
         l.setRowStretch (r,1)
         l.setColumnMinimumWidth (0,90)
-        l.setColumnStretch (1,3)
+        l.setColumnMinimumWidth (1,140)     # the widest shape_functions_label_long defnies the width
+        l.setColumnStretch (1,1)
         return l 
 
 
@@ -302,11 +347,11 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
             descriptions = dialog.new_text.split ("\n")
             self.input_file.nml_info.set_descriptions (descriptions)
             
-            self.app._on_xo2_input_changed ()
+            self.app_model.notify_xo2_input_changed ()
 
 
     def _edit_shape_functions (self):
-        """ open editor to change the paramters of the shape functions"""
+        """ open editor to change the parameters of the shape functions"""
         diag = None 
         parentPos=(0.8, 0.0)
         dialogPos=(0.2,1.1)
@@ -323,7 +368,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         if diag:
             diag.exec()
             self.refresh ()
-            self.app._on_xo2_input_changed()
+            self.app_model.notify_xo2_input_changed ()
 
 
     def _airfoil_seed_changed (self, *_):
@@ -365,8 +410,8 @@ class Panel_Xo2_Case_Small (Panel_Xo2_Case):
         w.sig_changed.connect (self._airfoil_seed_changed)                  # check working dir 
 
         l.setColumnMinimumWidth (0,90)
+        l.setColumnMinimumWidth (1,130)
         l.setColumnMinimumWidth (2,22)
-        l.setColumnStretch (1,3)
         return l 
 
 
@@ -374,8 +419,6 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
     """ Define operating conditions"""
 
     name = 'Operating Conditions'
-    _width  = (230,350)
-
 
     @property
     def operating_conditions (self) -> Nml_operating_conditions:
@@ -404,11 +447,11 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
                     obj=lambda:  self.operating_conditions, prop=Nml_operating_conditions.use_flap)
         ToolButton  (l,r,c+1, icon=Icon.EDIT, set=self._edit_flap_def,
                      hide= lambda: not self.operating_conditions.use_flap,
-                     toolTip="Edit flap deinition")
+                     toolTip="Edit flap definition")
         
         r += 1
         l.setRowStretch (r,3)
-        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (0,180)
         l.setColumnStretch (0,1)
 
         return l
@@ -424,7 +467,7 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         diag.exec()
 
         self.opPoint_defs.set_polar_def_default (polar_def)
-        self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed()
 
 
     def _edit_flap_def (self):
@@ -434,20 +477,24 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
                                          parentPos=(0.9, 0.1), dialogPos=(0,1))        
         diag.exec()     
 
-        self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed()
 
 
-class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
+
+class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
     """ Define op Points of namelist operating_conditions"""
 
     name = 'Operating Points'
-    _width  = 270
 
     def __init__ (self, *args, **kwargs):
 
-        self._cur_opPoint_def = None 
+        self._opPoint_def_dialog : Xo2_OpPoint_Def_Dialog = None        # instance of dialog to edit opPoint def
 
         super().__init__ (*args, **kwargs)
+
+        self.app_model.sig_xo2_input_changed.connect        (self.refresh)              # refresh list
+        self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh)              # refresh list
+        self.app_model.sig_xo2_opPoint_def_selected.connect (self.edit_opPoint_def)     # open edit dialog
 
     
     @property
@@ -457,22 +504,25 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
     @property
     def cur_opPoint_def (self) -> OpPoint_Definition:
         """ current, selected opPoint def"""
-        return self.opPoint_defs.current_opPoint_def
+        return self.app_model.cur_opPoint_def
+
+    def set_cur_opPoint_def (self, opPoint_def: OpPoint_Definition):
+        self.app_model.set_cur_opPoint_def (opPoint_def)                # will signal selected changed
 
 
     def _init_layout (self): 
 
         l = QGridLayout()
         r,c = 0, 0 
-        ListBox    (l,r,c, width=None, rowSpan=4, height=140,
+        ListBox    (l,r,c, rowSpan=4, height=140, 
                     get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
                     set=self.set_cur_opPoint_def_from_label,
                     signal=False,                                               # do not signal xo2_input changed
-                    doubleClick=self._edit_opPoint_def,
+                    doubleClick=self.edit_opPoint_def,
                     options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
         c += 1
         ToolButton  (l,r,c, icon=Icon.EDIT, align=ALIGN_RIGHT, 
-                     set=self._edit_opPoint_def,
+                     set=self.edit_opPoint_def,
                      disable=lambda: not self.cur_opPoint_def)
         r += 1
         ToolButton  (l,r,c, icon=Icon.DELETE, align=ALIGN_RIGHT,
@@ -483,8 +533,8 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
                      set=self._add_opPoint_def)
         r += 1
         l.setRowStretch (r,3)
-        l.setColumnStretch (0,2)
-        l.setColumnMinimumWidth (c,30)
+        l.setColumnMinimumWidth (0,150)
+        l.setColumnStretch (1,1)
 
         return l
 
@@ -493,43 +543,74 @@ class Panel_Xo2_Operating_Points (Panel_Xo2_Abstract):
         """ set from labelLong - for ComboBox"""
         for opPoint_def in self.opPoint_defs:
             if opPoint_def.labelLong == aStr:
-                self.opPoint_defs.set_current_opPoint_def (opPoint_def) 
-                self.app._on_xo2_opPoint_def_selected()
+                self.set_cur_opPoint_def (opPoint_def)
                 break
 
 
     def _delete_opPoint_def (self):
         """ delete me opPoint_dev"""
 
-        self.opPoint_defs.delete (self.cur_opPoint_def)
+        next_opPoint_def = self.opPoint_defs.delete (self.cur_opPoint_def)
 
-        self.refresh ()
-        self.app._on_xo2_input_changed()
+        self.set_cur_opPoint_def (next_opPoint_def)
+        self.app_model.notify_xo2_input_changed()
 
 
     def _add_opPoint_def (self):
         """ add a new opPoint_dev after current """
 
-        self.opPoint_defs.create_after (self.cur_opPoint_def)
+        next_opPoint_def = self.opPoint_defs.create_after (self.cur_opPoint_def)
 
-        self.refresh ()
-        self.app._on_xo2_input_changed()
-
-
-    def _edit_opPoint_def (self):
-        """ open dialog to edit current opPoint def"""
-
-        parentPos=(0.9, 0.2) 
-        dialogPos=(0,1)
-
-        self.app.edit_opPoint_def (self, parentPos, dialogPos)
+        self.set_cur_opPoint_def (next_opPoint_def)
+        self.app_model.notify_xo2_input_changed()
 
 
+    @override
+    def hideEvent(self, event):
+        """ self is hidden - close edit dialog if open"""
 
-class Panel_Xo2_Operating_Small (Panel_Xo2_Operating_Points):
+        if self._opPoint_def_dialog is not None:
+            self._opPoint_def_dialog.close()
+
+        super().hideEvent(event)
+
+
+    def edit_opPoint_def (self):
+        """ slot user action - open floating dialog to edit current xo2 opPoint def """
+
+        if not self.isVisible():
+            return                                  # do nothing if panel not visible (normal/small panel)
+
+         # open dialog if not yet existing
+
+        if self._opPoint_def_dialog is None:
+            parentPos=(0.95, 0.5) 
+            dialogPos=(0,1)
+            self._opPoint_def_dialog = Xo2_OpPoint_Def_Dialog (self, self.app_model, parentPos=parentPos, dialogPos=dialogPos)
+            self._opPoint_def_dialog.finished.connect (self._on_opPoint_dialog_closed)
+        else: 
+            self._opPoint_def_dialog.activateWindow ()
+
+        self._opPoint_def_dialog.show () 
+
+
+    def _on_opPoint_dialog_closed (self, *_):
+        """ slot - dialog to edit current opPoint def finished"""
+
+        if self._opPoint_def_dialog is not None:
+            self._opPoint_def_dialog.finished.disconnect (self._on_opPoint_dialog_closed)
+            self._opPoint_def_dialog.deleteLater()
+            self._opPoint_def_dialog = None     
+
+
+
+
+class Panel_Xo2_Operating_Small (Panel_Xo2_OpPoint_Defs):
     """ Define operating conditions - small mode"""
 
     _panel_margins = (0, 0, 0, 0)
+
+    _width = 320
 
     @property
     def operating_conditions (self) -> Nml_operating_conditions:
@@ -550,12 +631,11 @@ class Panel_Xo2_Operating_Small (Panel_Xo2_Operating_Points):
                     set=self.set_cur_opPoint_def_from_label,
                     options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
         ToolButton  (l,r,c+2, icon=Icon.EDIT, 
-                     set=self._edit_opPoint_def,
+                     set=self.edit_opPoint_def,
                      disable=lambda: not self.cur_opPoint_def)
 
         l.setColumnMinimumWidth (0,100)
         l.setColumnStretch (1,1)
-
         return l
 
 
@@ -569,7 +649,7 @@ class Panel_Xo2_Operating_Small (Panel_Xo2_Operating_Points):
         diag.exec()
 
         self.opPoint_defs.set_polar_def_default (polar_def)
-        self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed ()
 
 
 
@@ -670,7 +750,7 @@ class Panel_Xo2_Geometry_Targets_Small (Panel_Xo2_Geometry_Targets):
 
 
 class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
-    """ Edit curvature paramters """
+    """ Edit curvature parameters """
 
     name = 'Curvature'
     _width  = 200
@@ -680,7 +760,8 @@ class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if mode optimize and not camb_thick """
-        return super().shouldBe_visible and self.shape_functions != Nml_optimization_options.CAMB_THICK
+        return super().shouldBe_visible and self.is_mode_optimize and \
+               self.shape_functions != Nml_optimization_options.CAMB_THICK
 
 
     @property
@@ -730,7 +811,7 @@ class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
                                      parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
         diag.exec()
         self.refresh ()
-        self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed()
 
 
 
@@ -740,13 +821,15 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
     name = 'Advanced'
     _width  = 210
 
+    sig_edit_input_file = pyqtSignal()              # wants to edit input file directly
+
 
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
         Button (l_head, text="Input File", width=70, button_style = button_style.SUPTLE,
-                set=self._edit_input_file, toolTip="Direct editing of the Xoptfoil2 input file")        
+                set=self.sig_edit_input_file.emit, toolTip="Direct editing of the Xoptfoil2 input file")
 
 
     def _init_layout (self) -> QGridLayout:
@@ -794,7 +877,7 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
                                             parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
         diag.exec()
         self.refresh ()
-        self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed()
 
 
     def _edit_xfoil_run_options (self): 
@@ -803,7 +886,7 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
                                             parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
         diag.exec()
         self.refresh ()
-        self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed()
 
 
     def _edit_paneling_options (self): 
@@ -812,7 +895,7 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
                                             parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
         diag.exec()
         self.refresh ()
-        self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed()
 
 
     def _edit_constraints (self): 
@@ -821,21 +904,4 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
                                             parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
         diag.exec()
         self.refresh ()
-        self.app._on_xo2_input_changed()
-
-
-    def _edit_input_file (self):
-
-        saved = self.input_file.save_nml ()
-
-        if saved: 
-            self.app._toast_message ("Options saved to Input file", toast_style=style.HINT)
-
-        dialog = Xo2_Input_File_Dialog (self,self.input_file, parentPos=(0.8,0,9), dialogPos=(1,1))
-        dialog.exec () 
-
-        if dialog.result() == QDialog.DialogCode.Accepted:
-            msg = "Input file successfully checked and saved"
-            self.app._toast_message (msg, toast_style=style.GOOD)
-            
-            self.app._on_xo2_input_changed()
+        self.app_model.notify_xo2_input_changed()

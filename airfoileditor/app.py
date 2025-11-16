@@ -22,38 +22,30 @@
 import os
 import sys
 import argparse
-from shutil                 import copyfile
-from typing                 import Tuple
 
-from PyQt6.QtCore           import QMargins, QThread
-from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget, QDialog 
-from PyQt6.QtWidgets        import QHBoxLayout, QMessageBox
+from PyQt6.QtCore           import pyqtSignal, QMargins, Qt
+from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget 
+from PyQt6.QtWidgets        import QGridLayout
 from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 
-from model.airfoil          import Airfoil, usedAs
-from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
-from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
-from model.xo2_driver       import Worker, Xoptfoil2
 from model.xo2_input        import Input_File
-from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
+from model.case             import Case_Optimize
 
 from base.common_utils      import * 
-from base.panels            import Container_Panel, Win_Util, Toaster
-from base.widgets           import *
-from base.app_utils         import *
+from base.panels            import Win_Util
+from base.widgets           import Icon, Widget
+from base.app_utils         import Settings, Update_Checker
 
-from airfoil_widgets        import * 
-from airfoil_panels         import *
-from airfoil_dialogs        import Airfoil_Save_Dialog
-from airfoil_diagrams       import Diagram_Airfoil_Polar            
-from xo2_dialogs            import (Xo2_Run_Dialog, Xo2_Select_Dialog, Xo2_OpPoint_Def_Dialog, Xo2_New_Dialog)
-from xo2_panels             import *
+from ae_widgets             import create_airfoil_from_path
+from ae_diagrams            import Diagram_Airfoil_Polar
+from ae_app_model              import App_Model
+from app_modes              import (Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_Id, 
+                                    Mode_As_Bezier)
 
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# print ("\n".join(sys.path))
 
 #-------------------------------------------------------------------------------
 # The App   
@@ -70,165 +62,85 @@ class Main (QMainWindow):
         App - Main Window 
     '''
 
-    WORKER_MIN_VERSION         = '1.0.10'
-    XOPTFOIL2_MIN_VERSION      = '1.0.10'
-
     # Qt Signals 
 
-    sig_new_airfoil             = pyqtSignal()          # new airfoil selected 
-    sig_geometry_changed        = pyqtSignal()          # airfoil geometry changed 
-    sig_etc_changed             = pyqtSignal()          # reference airfoils etc changed
-
-    sig_bezier_changed          = pyqtSignal(Line.Type) # new bezier during match bezier 
-    sig_panelling_changed       = pyqtSignal()          # new panelling
-    sig_blend_changed           = pyqtSignal()          # new (intermediate) blend 
-    sig_polar_set_changed       = pyqtSignal()          # new polar sets attached to airfoil
-    sig_enter_panelling         = pyqtSignal()          # starting panelling dialog
-    sig_flap_changed            = pyqtSignal(bool)      # flap setting (Flapper) changed 
-
-    sig_te_gap_changed          = pyqtSignal(object, object)  # te gap changed 
-    sig_le_radius_changed       = pyqtSignal(object, object)  # le radius changed 
-
-    sig_mode_optimize           = pyqtSignal(bool)      # enter / leave mode optimize
-    sig_new_case_optimize       = pyqtSignal()          # new case optimize selected
     sig_xo2_about_to_run        = pyqtSignal()          # short before optimization starts
     sig_xo2_new_state           = pyqtSignal()          # Xoptfoil2 new info/state
-    sig_xo2_input_changed       = pyqtSignal()          # data of Xoptfoil2 input changed
-    sig_xo2_opPoint_def_selected= pyqtSignal()          # new opPoint definition selected somewhere 
 
     sig_closing                 = pyqtSignal(str)       # the app is closing with an airfoils pathFilename
 
 
-    def __init__(self, initial_file, parent=None):
-        super().__init__(parent)
-
-        self._airfoil           = None                  # current airfoil 
-        self._airfoils_ref      = []                    # reference airfoils 
-        self._airfoils_ref_scale= None                  # indexed list of re scale factors of ref airfoils
-        self._airfoil_2         = None                  # 2nd airfoil for blend    
-
-        self._polar_definitions = []                    # current polar definitions  
-        self._watchdog          = None                  # polling thread for new polars
-
-        self._mode_modify       = False                 # modify/view mode of app 
-        self._mode_optimize     = False                 # optimize mode of app 
-        self._case              = None                  # design Case holding all designs 
-
-        self._panel_view        = None                  # main UI panels
-        self._panel_view_small  = None                   
-        self._panel_modify      = None
-        self._panel_modify_small= None
-        self._panel_xo2         = None
-        self._panel_xo2_small   = None
-        self._diagram           = None
-
-        self._is_lower_minimized= False                 # is lower panel minimized
-
-        self._xo2_opPoint_def_dialog = None             # singleton for this dialog 
-        self._xo2_run_dialog    = None                  # singleton for this dialog 
+    def __init__(self, initial_file, parent_app=None):
+        super().__init__(parent_app)
 
 
-        # if called from other application (PlanformCreator) make it modal to this 
-
-        if parent is not None:
-            self.setWindowModality(Qt.WindowModality.ApplicationModal)  
-
-        # set user settings path, load settings 
+        # --- init Settings, check for newer app version ---------------
 
         Settings.set_file (APP_NAME, file_extension= '.settings')
-        app_settings = Settings()                      # load app settings
 
-        # check for newer version on PyPi 
-
-        update = Update_Checker (APP_NAME, PACKAGE_NAME,  __version__)   
-        if update.is_newer_version_available():
-            QTimer.singleShot (1000, lambda: update.show_user_info (self))        
+        Update_Checker (self, APP_NAME, PACKAGE_NAME,  __version__)   
 
 
-        # --- init Airfoil Model ---------------
+        # --- init App Model ---------------
 
-        # if no initial airfoil file, try to get last opened airfoil file 
+        app_model = App_Model (workingDir_default=Settings.user_data_dir (APP_NAME))
 
-        if not initial_file: 
-            initial_file = app_settings.get('last_opened', default=None) 
-            logger.info (f"Starting on 'last opened' airfoil file: {initial_file}")
-        else:
-            logger.info (f"Starting on initial file: {initial_file}")
+        # either airfoil file or Xoptfoil2 input file
 
-        if initial_file and not os.path.isfile (initial_file):
-            logger.error (f"File '{initial_file}' doesn't exist")
-            app_settings.set('last_opened', None)
-            app_settings.save()
-            initial_file = None
-
-        # either airfoil or Xoptfoil2 input file 
-
-        Example.workingDir_default = Settings.user_data_dir (APP_NAME)    # example airfoil workingDir 
+        initial_file = self._check_or_get_initial_file(initial_file)
 
         if Input_File.is_xo2_input (initial_file):
-
-            case = create_case_from_path (self, initial_file, message_delayed=True)
-            if case: 
-                self.set_case_optimize (case, silent=True)    
-                self.set_airfoil (case.initial_airfoil_design(), silent=True)                
-                self.set_mode_optimize (True)  
-            else:                              
-                self.set_airfoil (Example(), silent=True)                   # just show example airfoil
-
+            initial = initial_file
+            mode_to_start = Mode_Id.OPTIMIZE
         else:
+            airfoil = create_airfoil_from_path (self, initial_file, example_if_none=True, message_delayed=True)
+            initial = airfoil
+            mode_to_start = Mode_Id.VIEW
 
-            airfoil = create_airfoil_from_path(self, initial_file, example_if_none=True, message_delayed=True)
-            self.set_airfoil (airfoil, silent=True)
+        # load initial settings like polar definitions 
 
-        # load settings like polar definitions either from airfoil or app settings
+        app_model.load_settings ()                                          # either global or airfoil specific settings
+        app_model.sig_new_airfoil.connect (self._set_win_title)             # update title on new airfoil
+        app_model.sig_new_case.connect    (self._set_win_title)             # update title on new case
 
-        settings, settings_for = self._load_airfoil_settings (self.airfoil, silent=True)
+        self._app_model     = app_model                                     # keep for close 
 
-        # Worker for polar generation and Xoptfoil2 for optimization ready? 
 
-        workingDir = Settings.user_data_dir (APP_NAME)                      # temp working dir for Worker and Xoptfoil2  
-        modulesDir = os.path.dirname(os.path.abspath(__file__))                
-        projectDir = os.path.dirname(modulesDir)
+        # --- App Modes and Manager ---------------
+        
+        modes_manager = Modes_Manager (app_model)
+        modes_manager.add_mode (Mode_View       (app_model))
+        modes_manager.add_mode (Mode_Modify     (app_model))
+        modes_manager.add_mode (Mode_Optimize   (app_model))
+        modes_manager.add_mode (Mode_As_Bezier  (app_model))
 
-        Worker    (workingDir=workingDir).isReady (projectDir, min_version=self.WORKER_MIN_VERSION)
-        Xoptfoil2 (workingDir=workingDir).isReady (projectDir, min_version=self.XOPTFOIL2_MIN_VERSION)
+        modes_manager.sig_close_requested.connect (self.close)              # app close requested from mode view
+        modes_manager.set_mode (mode_to_start, initial)                     # either in view mode or optimize mode
 
-        if Worker.ready and self.airfoil:
-            Worker().clean_workingDir (self.airfoil.pathName)
+        self._modes_manager = modes_manager                                 # keep as it hosts slots
 
 
         # --- init UI ---------------
         
         logger.info (f"Initialize UI")
 
-        self.setWindowIcon (Icon ('AE_ico.ico'))                                            # get icon either in modules or in icons 
+        self._set_win_title ()
+        self._set_win_style (parent=parent_app)
+        self._set_win_geometry ()
 
-        # Qt color scheme, initial window size from settings      
+        # main widgets and layout of app
 
-        scheme_name = app_settings.get('color_scheme', Qt.ColorScheme.Unknown.name)         # either unknown (from System), Dark, Light
-        QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])            # set scheme of QT
-        Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)                   # set mode for Widgets 
-
-        geometry = app_settings.get('window_geometry', [])
-        maximize = app_settings.get('window_maximize', False)
-        Win_Util.set_initialWindowSize (self, size_frac= (0.85, 0.80), pos_frac=(0.1, 0.1),
-                                        geometry=geometry, maximize=maximize)
-
-        # main layout of app
+        diagram     = Diagram_Airfoil_Polar (app_model)                     # big diagram widget
+        modes_panel = modes_manager.stacked_modes_panel()                   # stacked widget with mode data panels
 
         l = QGridLayout () 
-
-        l.addWidget (self.diagram,              0,0)
-
-        l.addWidget (self.panel_view,           1,0)
-        l.addWidget (self.panel_view_small,     2,0)
-        l.addWidget (self.panel_modify,         3,0)
-        l.addWidget (self.panel_modify_small,   4,0)
-        l.addWidget (self.panel_xo2,            5,0)
-        l.addWidget (self.panel_xo2_small,      6,0)
+        l.addWidget (diagram,     0,0)
+        l.addWidget (modes_panel, 1,0)
 
         l.setRowStretch (0,1)
         l.setRowMinimumHeight (0,400)
+        modes_manager.set_height (180, minimized=65)
+        
         l.setSpacing (5)
         l.setContentsMargins (QMargins(5, 5, 5, 5))
 
@@ -236,1094 +148,81 @@ class Main (QMainWindow):
         main.setLayout (l) 
         self.setCentralWidget (main)
 
-        # apply settings to UI
-
-        self._is_lower_minimized = app_settings.get('lower_panel_minimzed', False)
-        self.diagram.set_settings (settings, settings_for=settings_for)
-
-        # ---- signals and slots ------------ 
-
-        # install watchdog for polars generated by Worker 
-
-        if Worker.ready:
-             self._watchdog = Watchdog (self) 
-             self._watchdog.sig_new_polars.connect       (self.diagram.on_new_polars)
-             self._watchdog.sig_xo2_new_state.connect    (self._on_new_xo2_state)            
-             self._watchdog.sig_xo2_new_design.connect   (self._on_new_xo2_design)                   # new current, update diagram  
-             self._watchdog.start()
-
-        # connect diagram signals to slots of self
-
-        self.diagram.sig_geometry_changed.connect          (self._on_airfoil_changed)
-        self.diagram.sig_polar_def_changed.connect         (self.refresh_polar_sets)
-        self.diagram.sig_airfoil_ref_changed.connect       (self.set_airfoil_ref)
-        self.diagram.sig_airfoils_ref_scale_changed.connect(self._on_airfoils_ref_scale_changed)
-        self.diagram.sig_airfoil_design_selected.connect   (self._on_airfoil_design_selected)
-        self.diagram.sig_opPoint_def_selected.connect      (self._on_xo2_opPoint_def_selected)     # inform dialog 
-        self.diagram.sig_opPoint_def_changed.connect       (self._on_xo2_opPoint_def_changed)      # inform dialog 
-        self.diagram.sig_opPoint_def_changed.connect       (self._on_xo2_input_changed)            # save to nml
-        self.diagram.sig_opPoint_def_dblClick.connect      (self.edit_opPoint_def)
-        self.diagram.sig_settings_save.connect             (self._save_airfoil_settings)           # save airfoil settings
-        self.diagram.sig_settings_load.connect             (self._load_airfoil_settings)           # load airfoil settings
-        self.diagram.sig_settings_delete.connect           (self._delete_airfoil_settings)         # delete airfoil settings
-
-        # connect self signals to slots of diagram
-
-        self.sig_new_airfoil.connect            (self.diagram.on_new_airfoil)
-        self.sig_geometry_changed.connect       (self.diagram.on_geometry_changed)
-        self.sig_etc_changed.connect            (self.diagram.on_etc_changed)
-        self.sig_bezier_changed.connect         (self.diagram.on_bezier_changed)
-        self.sig_polar_set_changed.connect      (self.diagram.on_polar_set_changed)
-
-        self.sig_mode_optimize.connect          (self.diagram.on_mode_optimize)
-        self.sig_xo2_about_to_run.connect       (self.diagram.on_xo2_about_to_run)
-        self.sig_xo2_new_state.connect          (self.diagram.on_xo2_new_state)
-        self.sig_xo2_input_changed.connect      (self.diagram.on_xo2_new_state)
-        self.sig_new_case_optimize.connect      (self.diagram.on_new_case_optimize)
-        self.sig_xo2_opPoint_def_selected.connect (self.diagram.on_xo2_opPoint_def_selected)
-
-        self.sig_panelling_changed.connect      (self.diagram.on_panelling_changed)
-        self.sig_blend_changed.connect          (self.diagram.on_blend_changed)
-        self.sig_flap_changed.connect           (self.diagram.on_flap_changed)
-        self.sig_te_gap_changed.connect         (self.diagram.on_te_gap_changed)
-        self.sig_le_radius_changed.connect      (self.diagram.on_le_radius_changed)
-
-        # --- final set of UI depending on mode View or Optimize ---------------
-
-        self.refresh()                                                  # show lazy loaded active panels  
-
-        if self.mode_optimize:
-            self.sig_mode_optimize.emit(True)                           # signal enter / leave mode optimize for diagram
-
-        logger.info (f"Ready for action ...")
+        self._diagram = diagram                                             # keep for closedown
 
 
-    # ----------- end __init__ -------------------------------------------
+        # --- Enter event loop ---------------
+
+        logger.info (f"{modes_manager.current_mode} ready")
+
+
 
     @override
     def __repr__(self) -> str:
         return f"<{type(self).__name__}>"
 
 
-    def toggle_panel_size (self):
-        """ toggle between full and small data panel"""
+    def _check_or_get_initial_file (self, initial_file : str) -> str:
+        """ check if initial file exists - otherwise get last opened file from settings """
 
-        self._is_lower_minimized = not self._is_lower_minimized
-        self.refresh()
+        if initial_file and os.path.isfile (initial_file):
+            return initial_file
 
+        app_settings = Settings()                                           # load app settings
 
-    @property
-    def panel_view (self) -> Container_Panel:
-        """ lower UI main panel - view mode """
-
-        if self._panel_view is None: 
-
-            l = QHBoxLayout()
-            l.addWidget (Panel_File_View       (self, lambda: self.airfoil, width=250, lazy=True))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy=True))
-
-            self._panel_view = Container_Panel (layout = l, height=180,
-                                                hide=lambda: not self.mode_view or self._is_lower_minimized,
-                                                doubleClick= self.toggle_panel_size,
-                                                hint="Double click to minimize")
-        return self._panel_view 
-
-
-    @property
-    def panel_view_small (self) -> Container_Panel:
-        """ lower UI view panel - small version with only smlaa panels"""
-
-        if self._panel_view_small is None: 
-
-            l = QHBoxLayout()
-            l.addWidget (Panel_File_View_Small  (self, lambda: self.airfoil, width=250, has_head=False, lazy=True))
-            l.addWidget (Panel_Geometry_Small   (self, lambda: self.airfoil, has_head=False, lazy=True))
-            l.addWidget (Panel_Panels_Small     (self, lambda: self.airfoil, has_head=False, lazy=True))
-            l.addWidget (Panel_LE_TE_Small      (self, lambda: self.airfoil, has_head=False, lazy=True))
-            l.addWidget (Panel_Bezier_Small     (self, lambda: self.airfoil, has_head=False, lazy=True))
-            l.addWidget (Panel_Flap_Small       (self, lambda: self.airfoil, has_head=False, lazy=True))
-
-            self._panel_view_small = Container_Panel (layout=l, height=65,
-                                                      hide=lambda: not self.mode_view or not self._is_lower_minimized,
-                                                      doubleClick= self.toggle_panel_size,
-                                                      hint="Double click to maximize")
-        return self._panel_view_small
-
-
-    @property
-    def panel_modify (self) -> Container_Panel:
-        """ lower UI main panel - modify mode """
-
-        if self._panel_modify is None: 
-
-            l = QHBoxLayout()
-            l.addWidget (Panel_File_Modify     (self, lambda: self.airfoil, width=250, lazy=True))
-            l.addWidget (Panel_Geometry        (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_Panels          (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_LE_TE           (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_Flap            (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_Bezier          (self, lambda: self.airfoil, lazy=True))
-            l.addWidget (Panel_Bezier_Match    (self, lambda: self.airfoil, lazy=True))
-
-            self._panel_modify    = Container_Panel (layout = l,  height=180, 
-                                                     hide=lambda: not self.mode_modify or self._is_lower_minimized,
-                                                     doubleClick= self.toggle_panel_size,
-                                                     hint="Double click to minimize")
-        return self._panel_modify 
-
-
-    @property
-    def panel_modify_small (self) -> Container_Panel:
-        """ lower UI view panel - small version"""
-
-        if self._panel_modify_small is None: 
-
-            l = QHBoxLayout()
-            l.addWidget (Panel_File_Modify_Small    (self, lambda: self.airfoil, lazy=True, width=250, has_head=False))
-            l.addWidget (Panel_Geometry_Small       (self, lambda: self.airfoil, lazy=True, has_head=False))
-            l.addWidget (Panel_Panels_Small         (self, lambda: self.airfoil, lazy=True, has_head=False))
-            l.addWidget (Panel_LE_TE_Small          (self, lambda: self.airfoil, lazy=True, has_head=False))
-            l.addWidget (Panel_Bezier_Small         (self, lambda: self.airfoil, lazy=True, has_head=False))
-            l.addWidget (Panel_Bezier_Match_Small   (self, lambda: self.airfoil, lazy=True, has_head=False))
-            l.addWidget (Panel_Flap_Small           (self, lambda: self.airfoil, lazy=True, has_head=False))
-
-            self._panel_modify_small = Container_Panel (layout=l, height=65,
-                                                      hide=lambda: not self.mode_modify or not self._is_lower_minimized,
-                                                      doubleClick= self.toggle_panel_size,
-                                                      hint="Double click to maximize")
-        return self._panel_modify_small
-
-
-    @property
-    def panel_xo2 (self) -> Container_Panel:
-        """ lower UI main panel - optimize mode """
-
-        if self._panel_xo2 is None: 
-
-            l = QHBoxLayout()        
-            l.addWidget (Panel_Xo2_File                    (self, lambda: self.case, width=250, lazy=True))
-            l.addWidget (Panel_Xo2_Case                    (self, lambda: self.case, lazy=True))
-            l.addWidget (Panel_Xo2_Operating_Conditions    (self, lambda: self.case, lazy=True))
-            l.addWidget (Panel_Xo2_Operating_Points        (self, lambda: self.case, lazy=True))
-            l.addWidget (Panel_Xo2_Geometry_Targets        (self, lambda: self.case, lazy=True))
-            l.addWidget (Panel_Xo2_Curvature               (self, lambda: self.case, lazy=True))
-            l.addWidget (Panel_Xo2_Advanced                (self, lambda: self.case, lazy=True))
-
-            self._panel_xo2 = Container_Panel (layout = l,  height=180, 
-                                                hide=lambda: not self.mode_optimize  or self._is_lower_minimized,
-                                                doubleClick= self.toggle_panel_size,
-                                                hint="Double click to minimize")
-        return self._panel_xo2 
-
-
-    @property
-    def panel_xo2_small (self) -> Container_Panel:
-        """ lower UI main panel - optimize mode """
-
-        if self._panel_xo2_small is None: 
-
-            l = QHBoxLayout()        
-            l.addWidget (Panel_Xo2_File_Small               (self, lambda: self.case, width=250, has_head=False))
-            l.addWidget (Panel_Xo2_Case_Small               (self, lambda: self.case, lazy=True, has_head=False))
-            l.addWidget (Panel_Xo2_Operating_Small          (self, lambda: self.case, lazy=True, has_head=False))
-            l.addWidget (Panel_Xo2_Geometry_Targets_Small   (self, lambda: self.case, lazy=True, has_head=False))
-
-            self._panel_xo2_small = Container_Panel (layout = l,  height=65, 
-                                                hide=lambda: not self.mode_optimize or not self._is_lower_minimized,
-                                                doubleClick= self.toggle_panel_size,
-                                                hint="Double click to maximize")
-        return self._panel_xo2_small 
-
-
-    @property
-    def diagram (self) -> Diagram_Airfoil_Polar:
-        """ the upper diagram area"""
-        if self._diagram is None: 
-
-            self._diagram       = Diagram_Airfoil_Polar (self, lambda: self.airfoils, 
-                                                        polar_defs_fn = lambda: self.polar_definitions,
-                                                        airfoils_ref_scale_fn = lambda: self.airfoils_ref_scale,
-                                                        case_fn = lambda: self.case)
-        return self._diagram
-
-
-    @property
-    def case (self) -> Case_Abstract:
-        """ design or optimize case holding all design airfoils"""
-        return self._case 
-
-
-    def set_case (self, case : Case_Abstract | None):
-        """ set new design or optimize case"""
-
-        if isinstance (case, Case_Direct_Design) or isinstance (case, Case_Optimize):
-            self._case = case
-        else: 
-            self._case = None 
-
-
-    def set_case_optimize (self, case : Case_Abstract | None, silent=False):
-        """ set new optimize case"""
-
-        logger.debug (f"Set new case optimize: {case}")
-
-        self.set_case (case)
-
-        self._airfoils_ref_scale = None                 # re-init scales for new airfoil ref 
-
-        if not silent: 
-            self.refresh ()
-            self.sig_new_case_optimize.emit()
-
-
-    @property
-    def airfoil (self) -> Airfoil:
-        """ current airfoil """
-
-        return self._airfoil 
-
-
-    @property
-    def airfoils (self) -> list [Airfoil]:
-        """ list of airfoils (current, ref1 and ref2) """
-        airfoils = []
-
-        if self.airfoil_final:      airfoils.append (self.airfoil_final)
-        if self.airfoil:            airfoils.append (self.airfoil)
-        if self.airfoil_seed:       airfoils.append (self.airfoil_seed)
-        if self.airfoil_2:          airfoils.append (self.airfoil_2)
-        if self.airfoils_ref:       airfoils.extend (self.airfoils_ref)
-
-        # remove duplicates 
-
-        path_dict = {}
-        airfoil : Airfoil 
-        for airfoil in airfoils [:]:
-            if path_dict.get (airfoil.pathFileName_abs, False):
-                airfoils.remove (airfoil)
-                if airfoil.usedAs == usedAs.REF:                    # sanity: also remove from ref airfoils 
-                    self.set_airfoil_ref (airfoil, None, silent=True)
-            else: 
-                path_dict [airfoil.pathFileName_abs] = True
-
-        return airfoils
-
-
-    def set_airfoil (self, aNew : Airfoil , silent=False):
-        """ set new current airfoil """
-
-        # set airfoil and polarSets
-
-        self._airfoil = aNew
-
-        if aNew is not None: 
-
-            has_settings = Airfoil_Settings.exists_for (aNew)
-            self._airfoil.set_property ('has_settings', has_settings)
-            self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions, only_active=True))
-
-            logger.debug (f"Set new {aNew} {'having settings' if has_settings else ''}")
-
-        if not silent: 
-            self.refresh()
-            self.sig_new_airfoil.emit ()
-
-
-    @property
-    def workingDir (self) -> str: 
-        """ directory we are currently in (equals dir of airfoil)"""
-        if self.case:                                         # case working dir has priority 
-            return self.case.workingDir
-        elif self.airfoil:                                     
-            return self.airfoil.pathName
+        last_opened = app_settings.get('last_opened', default=None) 
+        if last_opened and os.path.isfile (last_opened):
+            logger.info (f"Starting on 'last opened' airfoil file: {last_opened}")
+            return last_opened
         else:
-            ""
-
-
-    @property
-    def polar_definitions (self) -> list [Polar_Definition]:
-        """ list of current polar definitions """
-
-        # take polar_defs defined by case optimize 
-
-        if self.mode_optimize and self._case:
-            polar_defs = self._case.input_file.opPoint_defs.polar_defs [:]
-        else: 
-            polar_defs = []
-
-        # append existing, without duplicates and old mandatory (from old case optimize)
-
-        polar_def : Polar_Definition
-        for polar_def in self._polar_definitions:
-            if not polar_def.is_in (polar_defs) and not (self.mode_optimize and polar_def.is_mandatory):
-                polar_def.set_is_mandatory (False)
-                polar_defs.append (polar_def) 
-
-        # ensure at least one polar 
-
-        if not polar_defs: 
-            polar_defs = [Polar_Definition()]
-
-        self._polar_definitions = polar_defs    
-
-        return self._polar_definitions
-
-
-    @property
-    def airfoils_ref_scale (self) -> list:
-        """ chord/re scale factor of ref airfoils"""
-
-        if self._airfoils_ref_scale is None: 
-            self._airfoils_ref_scale = [None] * len(self.airfoils_ref)
-        return self._airfoils_ref_scale
-
-
-    @property
-    def airfoils_ref (self) -> list[Airfoil]:
-        """ reference airfoils"""
-
-        if self.mode_optimize:
-            # take individual reference airfoils of case optimize
-            airfoils_ref = self.case.airfoils_ref if self.case else []                         
-        else:
-            airfoils_ref = self._airfoils_ref                               # normal handling
- 
-        # ensure scale property is set for airfoil artist 
-        if self._airfoils_ref_scale is None:                                # first time not initialized
-            self._airfoils_ref_scale = [None] * len(airfoils_ref)
-        airfoil : Airfoil
-        for iRef, airfoil in enumerate(airfoils_ref):
-            airfoil.set_property ("scale", self._airfoils_ref_scale[iRef])  # used in airfoil_artist to scale airfoil
-
-        return airfoils_ref
-    
-    
-    def set_airfoil_ref (self, cur_airfoil_ref: Airfoil | None,
-                               new_airfoil_ref: Airfoil | None,
-                               scale : float|None = None,
-                               silent = False):
-        """ adds, replace, delete airfoil to the list of reference airfoils"""
-
-        # sanity - check if already in list 
-        if new_airfoil_ref in self.airfoils_ref: return 
-
-        # replace or delete existing ref airfoil
-        if cur_airfoil_ref:
-            i = self.airfoils_ref.index (cur_airfoil_ref)
-            if new_airfoil_ref:
-                self.airfoils_ref[i] = new_airfoil_ref
-            else: 
-                del self.airfoils_ref [i]
-                del self.airfoils_ref_scale [i]
-
-        # add new ref airfoil
-        elif new_airfoil_ref:
-            self.airfoils_ref.append(new_airfoil_ref)
-            self.airfoils_ref_scale.append(scale)
-
-        # prepare new airfoil with polar_set 
-        if new_airfoil_ref:
-            if scale is None:                                   # get current scale at i 
-                i = self.airfoils_ref.index (new_airfoil_ref)
-                scale = self.airfoils_ref_scale [i]
-
-            new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions, 
-                                                     re_scale=scale, only_active=True))
-            new_airfoil_ref.set_usedAs (usedAs.REF) 
-
-
-        if not silent: 
-            self.sig_etc_changed.emit()
-
-        if self.mode_optimize:                                      # reference airfoils are in input file
-            self._on_xo2_input_changed (silent=True)                # silent - we already signaled
-
-
-    @property
-    def airfoil_2 (self) -> Airfoil:
-        """ 2nd airfoil for blend etc"""
-        return self._airfoil_2
-
-    def set_airfoil_2 (self, airfoil: Airfoil | None = None) -> Airfoil:
-        if self._airfoil_2:                                         # reset eventual current
-            self._airfoil_2.set_usedAs (usedAs.NORMAL)
-        if airfoil: 
-            airfoil.set_usedAs (usedAs.SECOND)
-        self._airfoil_2 = airfoil
-        self.sig_etc_changed.emit()             
-
-
-    @property
-    def airfoil_seed (self) -> Airfoil | None:
-        """ seed airfoil of optimization or original airfoil during modify mode"""
-        if self.case:
-            seed =  self.case.airfoil_seed
-            if not seed.polarSet:
-               seed.set_polarSet (Polar_Set (seed, polar_def=self.polar_definitions, only_active=True))
-            return seed
-        else:
-            return None
-        
-
-    @property
-    def airfoil_final (self) -> Airfoil | None:
-        """ final airfoil of optimization"""
-        if self.mode_optimize and self.case:
-            final =  self.case.airfoil_final
-            if final and not final.polarSet:
-               final.set_polarSet (Polar_Set (final, polar_def=self.polar_definitions, only_active=True))
-            return final
-
-
-    @property
-    def mode_view (self) -> bool: 
-        """ True if self is in view mode"""
-        return not (self.mode_modify or self.mode_bezier or self.mode_optimize)
-
-
-    @property
-    def mode_modify (self) -> bool: 
-        """ True if self is modify mode"""
-        return self._mode_modify
-
-
-    def set_mode_modify (self, aBool : bool):
-        """ switch modify / view mode """
-
-        if self._mode_modify != aBool: 
-            self._mode_modify = aBool
-            
-            if self._mode_modify:
-                # save possible example to file to ease consistent further handling in widgets
-                if self._airfoil.isExample: self._airfoil.save()
-        
-
-    @property
-    def mode_bezier (self) -> bool:
-        """ True if self is in mode_modify and geo is Bezier """
-        return self.mode_modify and self.airfoil.isBezierBased
-
-
-    @property
-    def mode_optimize (self) -> bool: 
-        """ True if self is optimize mode"""
-        return self._mode_optimize
-
-
-    def set_mode_optimize (self, aBool : bool):
-        """ switch optimize / view mode """
-
-        if self._mode_optimize != aBool: 
-            self._mode_optimize = aBool   
-
-
-    def mode_modify_finished (self, ok=False):
-        """ 
-        modify airfoil finished - switch to view mode 
-            - ok == False: modify mode was cancelled 
-            - ok == True:  user wants to finish 
-        """
-
-        remove_designs  = None                              # let case.close decide to remove design dir 
-
-        # sanity
-        if not self.mode_modify: return 
-
-        if ok:
-            # create new, final airfoil based on actual design and path from airfoil org 
-            case : Case_Direct_Design = self.case
-            new_airfoil = case.get_final_from_design (self.airfoil)
-
-            # dialog to edit name, choose path, ..
-
-            dlg = Airfoil_Save_Dialog (parent=self, getter=new_airfoil)
-            ok_save = dlg.exec()
-
-            if not ok_save: 
-                return                                          # save was cancelled - return to modify mode 
-            else: 
-                remove_designs = dlg.remove_designs
-                self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
-                logger.info (f"New airfoil {new_airfoil.fileName} created from {self.airfoil.fileName}")
-
-        # leave mode_modify  
-
-        if not ok:
-            new_airfoil = self.airfoil_seed                     # restore original airfoil 
-
-        # close case 
-
-        self.case.close (remove_designs=remove_designs)         # shut down case
-        self.set_case (None)                                
-
-        self.set_mode_modify (False)  
-        self.set_airfoil (new_airfoil, silent=False)
-
-
-
-    def mode_optimize_finished (self):
-        """ 
-        optimize airfoil finished - switch back to view mode 
-        """
-
-        if not self.mode_optimize: return 
-
-        # close open opPoint_def dialog 
-        if self._xo2_opPoint_def_dialog:
-             self._xo2_opPoint_def_dialog.close()
-
-        # be sure input file data is written to file 
-        self._save_xo2_nml (ask=True)
-
-        # set next airfoil to show when finsihing optimize mode
-        if  self.case.airfoil_final:
-            next_airfoil = self.case.airfoil_final
-        elif self.case.airfoil_seed:
-            next_airfoil = self.case.airfoil_seed
-        else:
-            next_airfoil = Example()                            # should not happen
-        next_airfoil.set_usedAs (usedAs.NORMAL)                 # normal AE color 
-        
-        self.set_case_optimize (None, silent=True)    
-        self.set_mode_optimize (False) 
-
-        self.set_airfoil (next_airfoil, silent=True)            # set next airfoil to show      
-
-        self.refresh()  
-        self.sig_mode_optimize.emit(False)                      # signal leave mode optimize for diagram
-
-
-    def optimize_change_case (self, input_fileName : str, workingDir):
-        """ change current optimization case to new input file """
-
-        # check if changes were made in current case 
-        self._save_xo2_nml (ask=True)
-
-        # close open opPoint_def dialog 
-        if self._xo2_opPoint_def_dialog:
-             self._xo2_opPoint_def_dialog.close()
-
-        self.optimize_airfoil (input_fileName=input_fileName, workingDir=workingDir)
-
-
-    def case_optimize_new_version (self): 
-        """ create new version of an existing optimization case self.input_file"""
-
-        cur_case : Case_Optimize = self.case 
-        cur_fileName = cur_case.input_file.fileName
-        new_fileName = Input_File.new_fileName_version (cur_fileName, self.workingDir)
-
-        if new_fileName:
-
-            copyfile (os.path.join (self.workingDir,cur_fileName), os.path.join (self.workingDir,new_fileName))
-            self.optimize_change_case (new_fileName, self.workingDir)
-
-            self._toast_message (f"New version {new_fileName} created", toast_style=style.GOOD) 
-        else: 
-            MessageBox.error   (self,'Create new version', f"New Version of {cur_fileName} could not be created.",
-                                min_width=350)
-
-
-    def refresh(self):
-        """ refreshes all child panels of edit_panel """
-
-        logger.debug (f"{self} refresh main panels")
-
-        if self._panel_view:            self.panel_view.refresh()               # refresh panels - if UI is visible   
-        if self._panel_view_small:      self.panel_view_small.refresh()               
-        if self._panel_modify:          self.panel_modify.refresh()
-        if self._panel_modify_small:    self.panel_modify_small.refresh()
-        if self._panel_xo2:             self.panel_xo2.refresh()
-        if self._panel_xo2_small:       self.panel_xo2_small.refresh()
-
-        # set window title
-
-        if self.mode_optimize:
-            ext = f"[Case {self.case.name if self.case else '?'}]"
-        else: 
-            ext = f"[{self.airfoil.fileName if self.airfoil else '?'}]"
-        self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
-
-
-    def refresh_polar_sets (self, silent=False):
-        """ refresh polar sets of all airfoils"""
-
-        changed = False 
-
-        for airfoil in self.airfoils:
-
-            # get re scale for reference airfoils
-            if airfoil.usedAs == usedAs.REF:
-                iRef, _ = airfoil.usedAs_i_Ref (self.airfoils)
-                re_scale = self.airfoils_ref_scale [iRef] if self.airfoils_ref_scale [iRef] else 1.0
-            else:
-                re_scale = 1.0 
-
-            # assign new polarset if it changed
-
-            new_polarSet = Polar_Set (airfoil, polar_def=self.polar_definitions, re_scale=re_scale, only_active=True)
-
-            # check changes to avoid unnecessary refresh
-            if not new_polarSet.is_equal_to (airfoil.polarSet):
-                changed = True 
-                airfoil.set_polarSet (new_polarSet)
-
-        if not silent and changed: 
-            self.refresh()
-            self.sig_polar_set_changed.emit()
-
-
-
-
-    # --- airfoil functions -----------------------------------------------
-
-
-    def modify_airfoil (self):
-        """ modify airfoil - switch to modify mode - create Case """
-        if self.mode_modify: return 
-
-        # info if airfoil is flapped 
-
-        if self.airfoil.geo.isProbablyFlapped:
-
-            text = "The airfoil is probably flapped and will be normalized.\n\n" + \
-                   "Modifying the geometry can lead to strange results."
-            button = MessageBox.confirm (self, "Modify Airfoil", text)
-            if button == QMessageBox.StandardButton.Cancel:
-                return
-
-        # create new Design Case and get/create first design 
-
-        self.set_case (Case_Direct_Design (self._airfoil))
-
-        self.set_mode_modify (True)       
-        self.set_airfoil (self.case.initial_airfoil_design(), silent=False)
-
-
-    def optimize_airfoil (self, input_fileName : str =None, workingDir : str = None ):
-        """ 
-        optimize current airfoil with Xoptfoil2 - switch to optimize mode - create Case
-            There must be an existing Xoptfoil2 input file for the airfoil
-        """
-        
-        if self.mode_optimize: 
-            is_change_case = True                                           # change between cases
-        else: 
-            is_change_case = False                                          # enter optimization
-
-        if input_fileName is None: 
-            input_fileName = Input_File.fileName_of (self.airfoil)
-        if workingDir is None: 
-            workingDir = self.workingDir
-
-        if input_fileName:
-
-            case = Case_Optimize (input_fileName, workingDir=workingDir)
-
-            self.set_case_optimize (case, silent=True)    
-        
-            self.set_mode_optimize (True)                                   # switch UI 
-            self.set_airfoil (case.initial_airfoil_design(), silent=True)   # maybe there is already an existing design              
-            self.refresh_polar_sets (silent=True)                           # replace polar definitions with the ones from Xo2 input file
-
-            self.refresh()  
-
-            if is_change_case:
-                self.sig_new_case_optimize.emit()                           # signal change case                         
-            else:
-                self.sig_mode_optimize.emit(True)                           # signal enter / leave mode optimize for diagram
-
-
-    def optimize_select (self):
-        """ 
-        open selection dialog to choose what to optimize
-        """
-        
-        if not Xoptfoil2.ready : return 
-
-        diag = Xo2_Select_Dialog (self, None, self.airfoil, parentPos=(0.2,0.5), dialogPos=(0,1))
-        rc = diag.exec()
-
-        if rc == QDialog.DialogCode.Accepted:
-
-            if diag.input_fileName:
-                self.optimize_airfoil (input_fileName=diag.input_fileName, workingDir=diag.workingDir)
-            else: 
-                self.optimize_new ()
-
-
-    def optimize_new (self): 
-        """ 
-        open new optimization case dialog based on current airfoil"""
-        
-        if not Xoptfoil2.ready : return 
-
-        seed_airfoil = self.airfoil_seed if self.mode_optimize else self.airfoil
-        workingDir   = seed_airfoil.pathName_abs
-
-        diag = Xo2_New_Dialog (self, workingDir, seed_airfoil, parentPos=(0.2,0.5), dialogPos=(0,0.5))
-        
-        self._watchdog.sig_new_polars.connect  (diag.refresh)           # we'll need polars
-
-        rc = diag.exec()
-
-        self._watchdog.sig_new_polars.disconnect  (diag.refresh)
-
-        if rc == QDialog.DialogCode.Accepted:
-            self.optimize_airfoil (input_fileName=diag.input_fileName, workingDir=diag.workingDir)
-
-
-
-    def new_as_Bezier (self):
-        """ create new Bezier airfoil based on current airfoil, create Case, switch to modify mode """
-
-        # current airfoil should be normalized to achieve good results 
-
-        if not self.airfoil.isNormalized:
-
-            text = "The airfoil is not normalized.\n\n" + \
-                   "Match Bezier will not lead to the best results."
-            button = MessageBox.confirm (self, "New As Bezier", text)
-            if button == QMessageBox.StandardButton.Cancel:
-                return
-
-        # create new Design Case and get/create first design 
-
-        self.set_case (Case_As_Bezier (self._airfoil))
-
-        self.set_mode_modify (True)  
-        self.set_airfoil (self.case.initial_airfoil_design() , silent=False)
-  
-
-    def do_save_as (self): 
-        """ save current airfoil as ..."""
-
-        dlg = Airfoil_Save_Dialog (parent=self, getter=self.airfoil)
-        ok_save = dlg.exec()
-
-        if ok_save: 
-            self.set_airfoil (self.airfoil)
-            self._toast_message (f"New airfoil {self.airfoil.fileName} saved", toast_style=style.GOOD)
-            logger.info (f"Airfoil saved as {self.airfoil.fileName}")
-
-
-    def do_rename (self): 
-        """ rename current airfoil as ..."""
-
-        old_pathFileName = self.airfoil.pathFileName_abs
-
-        dlg = Airfoil_Save_Dialog (parent=self, getter=self.airfoil, rename_mode=True, remove_designs=True)
-        ok_save = dlg.exec()
-
-        if ok_save: 
-
-            # delete old one 
-            if os.path.isfile (old_pathFileName):  
-                os.remove (old_pathFileName)
-
-            # a copy with new name was created 
-            self.set_airfoil (self.airfoil)                                 # refresh with new 
-            self._toast_message (f"Airfoil renamed to {self.airfoil.fileName}", toast_style=style.GOOD)
-            logger.info (f"Airfoil renamed to {self.airfoil.fileName}")
-
-
-    def do_delete (self): 
-        """ delete current airfoil ..."""
-
-        if not os.path.isfile (self.airfoil.pathFileName_abs): return 
-
-        text = f"Airfoil <b>{self.airfoil.fileName}</b> including temporary files will be deleted."
-        button = MessageBox.warning (self, "Delete airfoil", text)
-
-        if button == QMessageBox.StandardButton.Ok:
-            
-            next_airfoil = get_next_airfoil_in_dir(self.airfoil, example_if_none=True)
-
-            self.do_delete_temp_files (silent=True)
-            os.remove (self.airfoil.pathFileName_abs)                               # remove airfoil
-
-            self._toast_message (f"Airfoil {self.airfoil.fileName} deleted", toast_style=style.GOOD)
-            logger.info (f"Airfoil {self.airfoil.fileName} deleted")
-
-            self.set_airfoil (next_airfoil)                                         # try to set on next airfoil
-
-            if next_airfoil.isExample:
-               button = MessageBox.info (self, "Delete airfoil", "This was the last airfoil in the directory.<br>" + \
-                                               "Showing Example airfoil") 
-
-
-    def do_delete_temp_files (self, silent=False): 
-        """ delete all temp files and directories of current airfoil ..."""
-
-        if not os.path.isfile (self.airfoil.pathFileName_abs): return 
-
-        delete = True 
-
-        if not silent: 
-            text = f"All temporary files and directories of Airfoil <b>{self.airfoil.fileName}</b> will be deleted."
-            button = MessageBox.warning (self, "Delete airfoil", text)
-            if button != QMessageBox.StandardButton.Ok:
-                delete = False
-        
-        if delete: 
-            Case_Direct_Design.remove_design_dir (self.airfoil.pathFileName_abs)    # remove temp design files and dir 
-            Worker.remove_polarDir (self.airfoil.pathFileName_abs)                  # remove polar dir 
-            Xoptfoil2.remove_resultDir (self.airfoil.pathFileName_abs)              # remove Xoptfoil result dir 
-
-            if not silent:
-                self._toast_message (f"Temporary files of Airfoil {self.airfoil.fileName} deleted", toast_style=style.GOOD)
-
-
-    def edit_opPoint_def (self, parent:QWidget, parentPos:Tuple, dialogPos:Tuple):
-        """ open dialog to edit current xo2 opPoint def - relative position with parent is provided"""
-
-        if self._xo2_opPoint_def_dialog is None:
-
-            diag = Xo2_OpPoint_Def_Dialog (parent, lambda: self.case, parentPos=parentPos, dialogPos=dialogPos) 
-
-            diag.sig_opPoint_def_changed.connect  (self._on_xo2_input_changed)
-            diag.sig_finished.connect             (self.edit_opPoint_def_finished)
-
-            self._xo2_opPoint_def_dialog = diag             # singleton 
-
-        else: 
-            self._xo2_opPoint_def_dialog.activateWindow ()
-
-        self._xo2_opPoint_def_dialog.show () 
-
-
-    def edit_opPoint_def_finished (self, diag : Xo2_OpPoint_Def_Dialog):
-        """ slot - dialog to edit current opPoint def finished"""
-
-        diag.sig_opPoint_def_changed.disconnect  (self._on_xo2_input_changed)
-        diag.sig_finished.disconnect             (self.edit_opPoint_def_finished)
-
-
-        self._xo2_opPoint_def_dialog = None     
-
-
-    def optimize_open_run (self):
-        """ open optimize dialog"""
-
-        if self._xo2_run_dialog: 
-            self._xo2_run_dialog.activateWindow()
-            return                                 # already opened?
-
-        # open dialog 
-
-        diag = Xo2_Run_Dialog (self.panel_xo2, self.case, parentPos=(0.02,0.8), dialogPos=(0,1))
-
-        self._xo2_run_dialog = diag
-
-        self.sig_xo2_about_to_run.connect (diag.on_about_to_run)
-
-        # connect dialog to self and self to diag
-
-        diag.sig_run.connect        (self.optimize_run)
-        diag.sig_closed.connect     (self.optimize_closed_run)
-
-        # connect watchdog of xo2 to dialog 
-
-        self._watchdog.set_case_optimize (lambda: self.case)
-
-        self._watchdog.sig_xo2_new_state.connect        (self.panel_xo2.refresh)
-        self._watchdog.sig_xo2_new_state.connect        (diag.on_results) 
-        self._watchdog.sig_xo2_new_step.connect         (diag.on_new_step)
-        self._watchdog.sig_xo2_still_running.connect    (diag.refresh)
-
-        # run immediately if ready and not finished (a re-run) 
-        
-        case: Case_Optimize = self.case
-        # if  (case.xo2.isReady and not case.isFinished):
-        if  case.xo2.isReady:
-            self.optimize_run()                             # run xo2 
-
-        # open dialog 
-
-        diag.show()
-
-
-    def optimize_closed_run (self):
-        """ slot for Xo2_Run_Dialog finished"""
-
-        diag = self._xo2_run_dialog
-
-        self._watchdog.sig_xo2_new_state.disconnect     (self.panel_xo2.refresh)
-
-        self._watchdog.sig_xo2_new_state.disconnect     (diag.on_results)
-        self._watchdog.sig_xo2_new_step.disconnect      (diag.on_new_step)
-        self._watchdog.sig_xo2_still_running.disconnect (diag.refresh)
-        self._watchdog.set_case_optimize (None)
-
-        self._xo2_run_dialog.sig_run.disconnect         (self.optimize_run)
-        self._xo2_run_dialog.sig_closed.disconnect      (self.optimize_closed_run)
-        self._xo2_run_dialog = None
-
-        # show again lower panel 
-         
-        self.refresh()                  # show final airfoil 
-
-
-    def optimize_run (self): 
-        """ run optimizer"""
-
-        case : Case_Optimize = self.case
-
-        # reset current xo2 controller if there was an error 
-        if case.xo2.isRun_failed:
-            case.xo2_reset()
-
-        if case.xo2.isReady:
-
-            # be sure input file data is written to file 
-
-            self._save_xo2_nml (ask=False, toast=False)
-
-            # clear previous results - prepare UI 
-
-            case.clear_results ()
-            self._watchdog.reset_watch_optimize ()
-            self.set_airfoil (None, silent=True)
-            self.sig_xo2_about_to_run.emit()
-            
-            # close other dialogs
-
-            if self._xo2_opPoint_def_dialog:
-                self._xo2_opPoint_def_dialog.close()
-
-            # let's go
-
-            case.run()
+            if last_opened:
+                logger.error (f"File '{last_opened}' doesn't exist")
+                app_settings.delete ('last_opened', purge=True)              # remove invalid entry
+
+        return None
 
 
     # --- private ---------------------------------------------------------
 
 
-    def _on_airfoil_changed (self):
-        """ slot handle airfoil changed signal - save new design"""
+    def _set_win_title (self):
+        """ set window title with airfoil or case name """
 
-        if self.mode_modify and self.airfoil.usedAsDesign: 
+        case    = self._app_model.case
+        airfoil = self._app_model.airfoil
+        if isinstance (case, Case_Optimize):
+            ext = f"[Case {case.name if case else '?'}]"
+        else: 
+            ext = f"[{airfoil.fileName if airfoil else '?'}]"
 
-            case : Case_Direct_Design = self.case
-            case.add_design(self.airfoil)
-
-            self.set_airfoil (self.airfoil)                # new DESIGN - inform diagram   
-
-            self._toast_message (f"New {self.airfoil.fileName} added")    
-
-        self.refresh () 
+        self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
 
 
-    def _on_xo2_input_changed (self, silent=False):
-        """ slot handle change of xo2 input data"""
+    def _set_win_style (self, parent : QWidget = None):
+        """ 
+        Set window style according to settings
+            - if app has parent, self will be modal
+        """
 
-        logger.debug (f"{self} on_xo2_input_changed")
+        self.setWindowIcon (Icon ('AE_ico.ico'))                                    # get icon either in modules or in icons 
 
-        # write back opPoint definitions and ref airfoils to namelist for change detection (save)
-        case : Case_Optimize = self.case
-        case.input_file.opPoint_defs.set_nml ()
-        case.input_file.airfoils_ref_set_nml ()
+        scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)   # either unknown (from System), Dark, Light
+        QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])    # set scheme of QT
+        Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)           # set mode for Widgets
 
-        # polar definitions could have changed - update polarSets of airfoils 
-        self.refresh_polar_sets (silent=True)
-
-        if not silent: 
-            # also refresh opPoint definition dialog if open 
-            if self._xo2_opPoint_def_dialog:
-                self._xo2_opPoint_def_dialog.refresh()
-
-            self.refresh()
-            self.sig_xo2_input_changed.emit()                                   # inform diagram 
+        if parent is not None:
+            self.setWindowModality(Qt.WindowModality.ApplicationModal)  
 
 
-    def _on_xo2_opPoint_def_changed (self):
-        """ slot opPoint definition changed in diagram"""
+    def _set_win_geometry (self):
+        """ set window geometry from settings """
 
-        if self._xo2_opPoint_def_dialog:
-            self._xo2_opPoint_def_dialog.refresh_current ()
-        self.refresh()            
+        app_settings = Settings()                      # load app settings
 
-
-    def _on_xo2_opPoint_def_selected (self):
-        """ slot opPoint definition selected either in panel or diagram"""
-
-        if self._xo2_opPoint_def_dialog:
-            self._xo2_opPoint_def_dialog.refresh_current ()
-        self.sig_xo2_opPoint_def_selected.emit()
-        self.refresh()            
-
-
-    def _on_airfoil_design_selected (self, iDesign):
-        """ slot to handle selection of new design airfoil in diagram """
-
-        logger.debug (f"{str(self)} on airfoil design selected")
-    
-        try: 
-            airfoil = self.case.airfoil_designs [iDesign]
-            self.set_airfoil (airfoil)
-        except: 
-            pass
-
-
-    def _on_airfoils_ref_scale_changed (self): 
-        """ slot to handle change of a reference airfoil scale """
-
-        # update airfoils temp property to plot scaled 
-
-        for iRef, airfoil in enumerate (self.airfoils_ref):
-            airfoil.set_property ("scale", self.airfoils_ref_scale[iRef])
-
-        # update polar sets with new re_scale
-
-        self.refresh_polar_sets (silent=True)
-
-        self.sig_etc_changed.emit()                    # will refresh diagram airfoils and polars 
-
-
-
-    def _on_new_xo2_state (self):
-        """ slot to handle new state during Xoptfoil2 run"""
-
-        # during run airfoil designs had no polar set - now assign to show polar 
-
-        case : Case_Optimize = self.case
-        if case.isFinished and case.airfoil_designs:
-            self.set_airfoil (self.airfoil, silent=True)                      # will assign polarSet
-
-        # now refresh panels and diagrams
-
-        self.refresh ()
-
-         # inform diagram a little delayed so refresh can take place 
-        QTimer.singleShot (100, self.sig_xo2_new_state.emit)                
-
-
-    def _on_new_xo2_design (self, iDesign):
-        """ slot to handle new design during Xoptfoil2 run"""
-
-        if not self.case.airfoil_designs: return 
-
-        logger.debug (f"{str(self)} on Xoptfoil2 new design {iDesign}")
-
-        airfoil_design = self.case.airfoil_designs [-1]
-        
-        self.set_airfoil (airfoil_design, silent=True)                      # new current airfoil
-
-        # remove polar set of design airfoil (during optimization) - so no polar creation 
-        airfoil_design.set_polarSet (Polar_Set (airfoil_design, polar_def=[]))
-
-        self.sig_new_airfoil.emit()                                          # refresh diagram 
-
-
-    def _toast_message (self, msg, toast_style = style.HINT):
-        """ show toast message """
-        
-        Toaster.showMessage (self, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(10, 10, 10, 10),
-                             toast_style=toast_style)
+        geometry = app_settings.get('window_geometry', [])
+        maximize = app_settings.get('window_maximize', False)
+        Win_Util.set_initialWindowSize (self, size_frac= (0.85, 0.80), pos_frac=(0.1, 0.1),
+                                        geometry=geometry, maximize=maximize)
 
 
     def _save_app_settings (self):
@@ -1331,382 +230,41 @@ class Main (QMainWindow):
 
         s = Settings()
 
-        # save Window size and position 
         s.set ('window_maximize', self.isMaximized())
         s.set ('window_geometry', self.normalGeometry().getRect())
-        s.set ('lower_panel_minimzed', self._is_lower_minimized)
 
-        # save last opnened airfoil
-        airfoil : Airfoil = self.airfoil_seed if (self.airfoil and self.airfoil.usedAsDesign) else self.airfoil
-        if airfoil: 
-            if airfoil.isExample:
-                s.set ('last_opened', None)
-            else:
-                s.set ('last_opened', airfoil.pathFileName_abs)
+        airfoil = self._app_model.airfoil
+        if airfoil and not airfoil.isExample: 
+            s.set ('last_opened', airfoil.pathFileName_abs)
+        else:
+            s.set ('last_opened', None)
 
         s.save()
-
-
-    def _save_airfoil_settings (self, of_airfoil : Airfoil = None):
-        """ save settings either to default settings or of_airfoil settings """
-
-        if isinstance (of_airfoil, Airfoil):
-            s = Airfoil_Settings (of_airfoil)
-
-            of_airfoil.set_property ("has_settings", True)                      # attach has settings property
-            logger.info (f"Settings of {of_airfoil} saved to {s.pathFileName}")
-
-        else:
-            s = Settings()
-
-        # save panelling values 
-        s.set ('spline_nPanels',  Panelling_Spline().nPanels)
-        s.set ('spline_le_bunch', Panelling_Spline().le_bunch)
-        s.set ('spline_te_bunch', Panelling_Spline().te_bunch)
-
-        s.set ('bezier_nPanels',  Panelling_Bezier().nPanels)
-        s.set ('bezier_le_bunch', Panelling_Bezier().le_bunch)
-        s.set ('bezier_te_bunch', Panelling_Bezier().te_bunch)
-
-        # reference airfoils 
-        ref_list = []
-        for iRef, airfoil in enumerate(self.airfoils_ref):
-            ref_entry = {}
-            ref_entry ["path"]  = airfoil.pathFileName_abs
-            ref_entry ["show"]  = airfoil.get_property ("show", True)
-            if self.airfoils_ref_scale [iRef]:
-                ref_entry ["scale"] = self.airfoils_ref_scale [iRef]
-            ref_list.append (ref_entry)
-        s.set ('reference_airfoils', ref_list)
-
-        # save polar definitions 
-        def_list = []
-        for polar_def in self.polar_definitions:
-            def_list.append (polar_def._as_dict())
-        s.set ('polar_definitions', def_list)
-
-        # save current diagram settings 
-        s.set (self.diagram.name, self.diagram.settings())
-
-        s.save ()
-
-
-    def _load_airfoil_settings (self, airfoil : Airfoil = None, silent=False) -> tuple[dict, Airfoil |None]:
-        """ 
-        Load either default or individual settings for airfoil like view, polars, ...
-            Returns settings dict and settings_for with is either of_airfoil or None
-        """
-
-        if Airfoil_Settings.exists_for (airfoil):
-            s = Airfoil_Settings (airfoil)
-            settings_for = airfoil
-            logger.info (f"Settings of {airfoil} loaded from {s.pathFileName}")
-
-        else:
-            s = Settings()
-            settings_for = None
-            logger.info (f"Application settings loaded from {s.pathFileName}")
-
-        # panelling 
-        nPanels  = s.get ('spline_nPanels', None)
-        le_bunch = s.get ('spline_le_bunch', None)
-        te_bunch = s.get ('spline_te_bunch', None)
-
-        if nPanels:                 Panelling_Spline._nPanels  = nPanels
-        if le_bunch is not None:    Panelling_Spline._le_bunch = le_bunch
-        if te_bunch is not None:    Panelling_Spline._te_bunch = te_bunch
-
-        nPanels  = s.get ('bezier_nPanels', None)
-        le_bunch = s.get ('bezier_le_bunch', None)
-        te_bunch = s.get ('bezier_te_bunch', None)
-
-        if nPanels:                 Panelling_Bezier._nPanels  = nPanels
-        if le_bunch is not None:    Panelling_Bezier._le_bunch = le_bunch
-        if te_bunch is not None:    Panelling_Bezier._te_bunch = te_bunch
-
-        # polar definitions 
-        self._polar_definitions : list [Polar_Definition] = []
-        for def_dict in s.get('polar_definitions', []):
-            self._polar_definitions.append(Polar_Definition(dataDict=def_dict))
-        self._polar_definitions.sort (key=lambda aDef : aDef.re)
-
-        # reference airfoils including initial re scale 
-
-        self._airfoils_ref : list [Airfoil] = []
-        self._airfoils_ref_scale : list [float|None] = []
-
-        ref_entries = s.get('reference_airfoils', [])
-
-        for ref_entry in ref_entries:
-            if isinstance (ref_entry, str):                             # compatible with older version
-                pathFileName = ref_entry
-                show = True
-            elif isinstance (ref_entry, dict):                          # mini dict with show boolean 
-                pathFileName = ref_entry.get ("path", None)
-                show         = ref_entry.get ("show", True)
-                scale        = ref_entry.get ("scale", None)
-                scale        = round(scale,2) if scale else None
-            else:
-                pathFileName = None 
-
-            if pathFileName is not None: 
-                try: 
-                    airfoil = Airfoil.onFileType (pathFileName=pathFileName)
-                    airfoil.load ()
-                    airfoil.set_property ("show", show)
-                    self.set_airfoil_ref (None, airfoil, scale=scale, silent=True)
-                except Exception as e: 
-                    logger.warning (f"Reference airfoil {pathFileName} could not be loaded: {e}")
-
-        # update polar sets and diagram  
-        self.refresh_polar_sets (silent=silent)
-
-        # set diagram settings
-        if not silent:
-            self.diagram.set_settings (s, settings_for=settings_for, refresh=True)
-
-        return s, settings_for
-
-
-    def _delete_airfoil_settings (self, of_airfoil : Airfoil):
-        """ delete individual settings file of airfoil """
-
-        if Airfoil_Settings.exists_for (of_airfoil):
-
-            Airfoil_Settings (of_airfoil).delete_file()
-            of_airfoil.set_property ("has_settings", None)                 # reset has settings property
-
-            # load the default settings again
-            self._load_airfoil_settings (silent=False)
-
-
-    def _save_xo2_nml (self, ask = False, toast=True): 
-        """ save xo2 input options - optionally ask user"""
-
-        case: Case_Optimize = self.case
-        if not isinstance (case, Case_Optimize): return 
-
-        # check if changes were made in current case 
-
-        if case.input_file.isChanged:
-            if ask: 
-                text = f"Save changes made for {case.name}?"
-                button = MessageBox.save (self, "Save Case", text,
-                                          buttons = QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard)
-                if button == QMessageBox.StandardButton.Discard:
-                    return 
-                
-            case.input_file.save_nml()
-
-            if toast:
-                self._toast_message (f"Parameters saved to Input file", toast_style=style.GOOD)
 
 
     @override
     def closeEvent  (self, event : QCloseEvent):
         """ main window is closed """
 
-        # remove lost worker input files 
-        if Worker.ready and self.airfoil:
-            Worker().clean_workingDir (self.airfoil.pathName)
+        # save airfoil settings in app settings
+        self._app_model.save_settings (to_app_settings=True,
+                                       add_key  = self._diagram.name, 
+                                       add_value= self._diagram.settings())
 
-        # terminate polar watchdog thread 
-
-        if self._watchdog:
-            self._watchdog.requestInterruption ()
-            self._watchdog.wait()
+        # terminate polar watchdog thread, clean up working dir 
+        self._app_model.close()                            # finish app model
 
         # save e.g. diagram options 
         self._save_app_settings () 
-        self._save_airfoil_settings (None)          # save to default settings
-        logger.info (f"Application settings saved to {Settings().pathFileName}")
+
 
         # inform parent (PlanformCreator) 
-        if self.airfoil: 
-            self.sig_closing.emit (self.airfoil.pathFileName)
+        if self._app_model.airfoil: 
+            self.sig_closing.emit (self._app_model.airfoil.pathFileName)
 
         event.accept()
 
 
-# -----------------------------------------------------------------------------
-
-
-class Watchdog (QThread):
-    """ 
-    Long running QThread to check if there is some new and signal parent
-    
-        - new polars generated - check Polar.Tasks 
-        - Xoptfoil2 state 
-
-    """
-
-    sig_new_polars          = pyqtSignal ()
-    sig_xo2_new_state       = pyqtSignal ()
-    sig_xo2_new_step        = pyqtSignal ()
-    sig_xo2_new_design      = pyqtSignal (int)
-    sig_xo2_still_running   = pyqtSignal ()
-
-
-    def __init__ (self, parent = None):
-        """ use .set_...(...) to put data into thread """
-
-        super().__init__(parent)
-
-        self._case_optimize_fn = None                           # Case_Optimize to watch      
-        self._xo2_state        = None                           # last run state of xo2
-        self._xo2_id           = None                           # instance id of xo2 for change detection
-        self._xo2_nDesigns     = 0                              # last actual design    
-        self._xo2_nSteps       = 0                              # last actual steps    
-
-
-    def __repr__(self) -> str:
-        """ nice representation of self """
-        return f"<{type(self).__name__}>"
-
-
-    def _check_case_optimize (self):
-        """ check Case_Optimize for updates """
-
-        if self._case_optimize_fn:
-
-            case : Case_Optimize = self._case_optimize_fn ()
-
-            # reset saved xo2 state for state change detection if there is new xo2 instance 
-
-            if id(case.xo2) != self._xo2_id:
-                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
-                self._xo2_id        = id(case.xo2)
-                self._xo2_state     = case.xo2.state
-                self._xo2_nDesigns  = case.xo2.nDesigns
-                self._xo2_nSteps    = case.xo2.nSteps                           # new design will also update nsteps
-                self.sig_xo2_new_state.emit()                                   # ensure, UI starts with current state 
-                return 
-
-            # get current xo2 state and nDesigns, nSteps 
-
-            xo2_state    = case.xo2.state                                       # ... will re-calc state info 
-            xo2_nDesigns = case.xo2.nDesigns
-            xo2_nSteps   = case.xo2.nSteps  
-
-            # detect state change of new design and siganl (if not first)
-
-            if xo2_state != self._xo2_state:
-
-                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
-                self._xo2_state = case.xo2.state
-                self.sig_xo2_new_state.emit()
-
-            elif xo2_nSteps != self._xo2_nSteps:
-
-                case.results._reader_optimization_history.set_results_could_be_dirty(True)
-                self._xo2_nSteps = xo2_nSteps
-                self.sig_xo2_new_step.emit()
-
-            elif xo2_nDesigns != self._xo2_nDesigns:
-
-                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
-                self._xo2_nDesigns = xo2_nDesigns
-                self.sig_xo2_new_design.emit(case.xo2.nDesigns)
- 
-            elif case.isRunning:
-
-                self.sig_xo2_still_running.emit()                             # update time elapsed etc.  
-
-
-    def set_case_optimize (self, case_fn):
-        """ set Case_Optimize to watch"""
-        if (case_fn and isinstance (case_fn(), Case_Optimize)) or case_fn is None:
-            self._case_optimize_fn = case_fn
-            self.reset_watch_optimize ()
-
-
-    def reset_watch_optimize (self):
-        """ reset local state of optimization watch"""
-        self._xo2_state        = None                           # last run state of xo2
-        self._xo2_id           = None                           # instance id of xo2 for change detection
-        self._xo2_nDesigns     = 0                              # last actual design    
-        self._xo2_nSteps       = 0                              # last actual steps    
-
-
-    @override
-    def run (self) :
-        # Note: This is never called directly. It is called by Qt once the
-        # thread environment has been set up. 
-        # Thread is started with .start()
-
-        logger.info (f"Starting Watchdog Thread")
-        self.msleep (1000)                                  # initial wait before polling begins 
-
-        while not self.isInterruptionRequested():
-
-            # check optimizer state 
-
-            if self._case_optimize_fn:
-                self._check_case_optimize ()
-
-            # check for new polars 
-
-            n_polars = 0 
-            n_new_polars = 0 
-
-            polar_tasks = Polar_Task.get_instances () 
-
-            for task in polar_tasks: 
-
-                n_polars     += task.n_polars
-                n_new_polars += task.load_polars()
-
-                if task.isCompleted():
-                    task.finalize()
-                else:
-                    # this ensures, that polars are returned in the order tasks were generated
-                    #   and not randomly by worker execution time -> more consistent diagram updates
-                    # break
-                    pass        # deactivated 
-
-            # if new polars loaded signal 
-
-            if n_new_polars:
-
-                self.sig_new_polars.emit()
-                logger.debug (f"{self} --> {n_new_polars} new in {n_polars} polars")
-
-            self.msleep (500)
-
-        return 
-
-
-#--------------------------------
-
-class Airfoil_Settings (Parameters):
-    """ 
-    Settings for an airfoil which are stored with the airfoil
-    in an individual settings file with airfoil fileName + '.ae'
-    """
-
-    FILE_EXTENSION = ".ae"
-
-    @classmethod
-    def settings_pathFileName (cls, airfoil : Airfoil) -> str:
-        """ get settings file pathFileName for airfoil """
-        return os.path.join (airfoil.pathName_abs, airfoil.fileName_stem + cls.FILE_EXTENSION)
-
-
-    @classmethod
-    def exists_for (cls, airfoil : Airfoil) -> bool:
-        """ check if settings file exists for airfoil """
-
-        if isinstance (airfoil, Airfoil):
-            return os.path.isfile (cls.settings_pathFileName(airfoil))
-        return False
-
-
-    def __init__ (self, airfoil : Airfoil):
-
-        if not isinstance (airfoil, Airfoil):
-            raise ValueError (f"Airfoil_Settings: airfoil must be of type Airfoil")
-        
-        super().__init__(self.settings_pathFileName (airfoil))
 
 
 #--------------------------------

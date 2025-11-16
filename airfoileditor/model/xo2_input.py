@@ -49,25 +49,27 @@ class Input_File:
         if workingDir is None or not os.path.isdir (workingDir): return []
 
         input_files = []
-        for extension in Input_File.INPUT_FILE_EXT:
-            input_files = input_files + fnmatch.filter(os.listdir(workingDir), f"*{extension}")
+
+        for file in os.listdir(workingDir):
+            extension = os.path.splitext(file)[1]
+            if extension.lower() in Input_File.INPUT_FILE_EXT:
+                if not file.startswith("tmp~"):                         # ignore temporary polar generation files
+                    input_files.append (file)
+
         return sorted (input_files, key=str.casefold)
 
 
     @staticmethod
-    def is_xo2_input (fileName : str, workingDir = None) -> bool:
+    def is_xo2_input (pathFileName_abs : str) -> bool:
         """ True if fileName is a Xo2 input file - if workingDir is set, also do file check"""
 
-        if not fileName: return False
-        
-        fileName_ext = os.path.splitext(fileName)[1]
+        if not pathFileName_abs: return False
+
+        fileName_ext = os.path.splitext(pathFileName_abs)[1]
         for ext in Input_File.INPUT_FILE_EXT:
             if ext.lower() == fileName_ext.lower():
-                if workingDir:
-                    return os.path.isfile (os.path.join (workingDir, fileName))
-                else: 
-                    return True
-        return False 
+                return os.path.isfile (pathFileName_abs)
+        return False
 
 
     @staticmethod
@@ -378,17 +380,15 @@ class Input_File:
             self._airfoils_ref = []
 
             # get reference file names form info namelist of input file 
-            for pathFileName in self.nml_info.ref_airfoils_pathFileName:
+            for i, pathFileName in enumerate (self.nml_info.ref_airfoils_pathFileName):
                 try: 
                     airfoil = Airfoil.onFileType (pathFileName, workingDir=self.workingDir, geometry=GEO_BASIC)
                     airfoil.load ()
                     if airfoil.isLoaded:
                         airfoil.set_property ("show", False)
                         airfoil.set_usedAs (usedAs.REF)
-
-                        polar_defs = self.opPoint_defs.polar_defs
-                        airfoil.set_polarSet (Polar_Set (airfoil, polar_def=polar_defs))
-
+                        airfoil.set_scale_factor (self.nml_info.ref_airfoils_scale[i])
+                        # polar_set in app to get complete set of polars
                         self._airfoils_ref.append (airfoil)
                 except: 
                     logger.warning (f"{self.fileName} reference airfoil {pathFileName} not found or valid. Ignored.")
@@ -403,11 +403,14 @@ class Input_File:
         """ set reference airfoils back into namelist"""
 
         pathFileNames = []
+        scales = []
         for airfoil in self.airfoils_ref: 
             # ensure relative path to working dir 
             rel_path = PathHandler (self.workingDir).relFilePath (airfoil.pathFileName_abs)
             pathFileNames.append (rel_path)
+            scales.append (airfoil.scale_factor)    
         self.nml_info.set_ref_airfoils_pathFileName (pathFileNames)
+        self.nml_info.set_ref_airfoils_scale (scales)
 
 
     @property
@@ -478,21 +481,22 @@ class Input_File:
         return str(self._nml_file_dict) != self._nml_file_str
 
 
-    def save_nml (self) -> bool:
-        """ save current namelist to file - return False if no changes, no save"""
-
-        # write back list objects to namelist dictionary
+    def update_nml (self):
+        """ update namelist dict from list objects """
 
         self.opPoint_defs.set_nml() 
         self.nml_geometry_targets.geoTarget_defs.set_nml ()
         self.airfoils_ref_set_nml ()
 
-        # check if there are changes 
 
-        if not self.isChanged: return False 
+    def save_nml (self) -> bool:
+        """ save current namelist to file - return False if no changes, no save"""
+  
+        self.update_nml ()                                              # ensure namelist dict is up to date
+
+        if not self.isChanged: return False                             # no changes - no save
 
         # write namelist dictionaries to file 
-
         with open(self.pathFileName, 'w') as nml_stream:
 
             nml_file = dict (self.nml_file)                             # make a copy 
@@ -1281,11 +1285,6 @@ class OpPoint_Definition:
         return newVar, newType
 
 
-    def set_as_current(self):
-        """ set self as the current opPOint def """
-        if self._myList:
-            self._myList.set_current_opPoint_def (self)
-
 
 
 class OpPoint_Definitions (list [OpPoint_Definition]):
@@ -1304,7 +1303,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
 
         self._nml = nml 
         self._input_file    = input_file
-        self._current_index = 0                             # index of current opPoint def 
         self._polar_defs    = [] 
 
         # read self from namelist 
@@ -1500,24 +1498,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
 
 
     @property
-    def current_index (self) -> int:
-        """ index of current opPoint def """
-
-        self._current_index = min(self._current_index, len(self) - 1)
-        return self._current_index
-    
-    @property
-    def current_opPoint_def (self) -> OpPoint_Definition: 
-        """current opPoint definition"""
-        return self[self.current_index] if self else None
-
-    def set_current_opPoint_def (self, opPoint_def : OpPoint_Definition): 
-        """current opPoint definition"""
-        if opPoint_def in self: 
-            self._current_index = self.index (opPoint_def)
-
-
-    @property
     def ncrit (self) -> float:  
         return self._input_file.nml_xfoil_run_options.ncrit
 
@@ -1584,11 +1564,11 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         self._input_file.nml_xfoil_run_options.set_ncrit (polar_def.ncrit)
         
 
-    def create_after (self, opPoint_def : OpPoint_Definition | None):
+    def create_after (self, opPoint_def : OpPoint_Definition | None) -> OpPoint_Definition | None:
         """
         Create and add a new opPoint_def after opPoint_def with
             a best fit of specVar, specVal.
-            Set new current opPoint def
+        Return new opPoint_def
         """
 
         if opPoint_def in self: 
@@ -1653,9 +1633,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specVal, optType=optType,
                                                     optVar = optVar, optValue = optValue)
         self.insert (index, new_opPoint_def)
-
-        self._current_index = index
-
+        return new_opPoint_def
 
 
     def create_in_xyVars (self, xyVars, x, y, re=None):
@@ -1701,8 +1679,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
                                                             optVar = optVar, optValue = optValue)
                 self.add (new_opPoint_def)
-
-                self.set_current_opPoint_def (new_opPoint_def)
                 return new_opPoint_def
             
             except ValueError as e:
@@ -1715,7 +1691,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         """ 
         Creates and adds new OpPoint_Definition based on a Polar_point.
             an optional factor is applied to optValue.
-            Set current to new opPoint def 
         """
 
         if not isinstance (aPoint, Polar_Point): return                 # aPoint can be None
@@ -1726,8 +1701,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         new_opPoint_def = OpPoint_Definition (self, specVar=specVar, specValue=specValue, 
                                                     optType=optType, optVar = optVar, optValue = optValue)
         self.add (new_opPoint_def)
-
-        self.set_current_opPoint_def (new_opPoint_def)
 
 
     def create_initial (self, polarSet: Polar_Set, 
@@ -1788,8 +1761,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 new_point = polar.polar_points [idx]
                 self.create_from_polar_point (new_point, optVar=var.CD)
 
-        self._current_index = 0
-
 
     def delete (self, opPoint_def : OpPoint_Definition ) -> OpPoint_Definition:
         """
@@ -1819,7 +1790,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             new_index = index - 1
         else:
             new_index = 0 
-        self._current_index = new_index
+        return self[new_index] if self else None
 
 
 
@@ -2204,6 +2175,7 @@ class Nml_info (Nml_Abstract):
         # description(1)   = 'first line'                    
         # description(2)   = 'second'                    
         # ref_airfoil(1)   = 'MH30.dat'                  ! reference airfoils 
+        # ref_airfoil_scale(1)   = 1.0                   ! reference airfoils scale
 
         descriptions = self._get('description', [])        
         for i, description in enumerate (descriptions):
@@ -2213,6 +2185,9 @@ class Nml_info (Nml_Abstract):
         for i, ref_airfoil in enumerate (ref_airfoils):
             self._write_entry (aStream, f"ref_airfoil({i+1})", ref_airfoil)
 
+        for i, ref_airfoil_scale in enumerate (self.ref_airfoils_scale):
+            self._write_entry (aStream, f"ref_airfoil_scale({i+1})", ref_airfoil_scale)
+            
 
     def _get_descriptions_from_file (self) -> list:
         """ try to read (legacy) descriptions being comments from input file directly"""
@@ -2243,10 +2218,21 @@ class Nml_info (Nml_Abstract):
         return '\n'.join(self.descriptions)
 
     @property
-    def ref_airfoils_pathFileName (self) -> list: 
+    def ref_airfoils_pathFileName (self) -> list[str]: 
         refs = self._get('ref_airfoil', default=[])
         return list(dict.fromkeys(refs))                    # sanity - remove duplicates
     def set_ref_airfoils_pathFileName (self, aList:list):   self._set ('ref_airfoil', [line for line in aList if line]) 
+
+    @property
+    def ref_airfoils_scale (self) -> list[float|None]: 
+        nref_airfoils = len (self.ref_airfoils_pathFileName)
+        scales = self._get('ref_airfoil_scale', default=[None] * nref_airfoils)
+        if len(scales) < nref_airfoils:
+            scales.extend ([None] * (nref_airfoils - len(scales)))
+        return scales
+    
+    def set_ref_airfoils_scale (self, aList:list):   
+        self._set ('ref_airfoil_scale', [scale for scale in aList if scale]) 
 
 
 class Nml_optimization_options (Nml_Abstract):

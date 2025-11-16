@@ -15,27 +15,26 @@ import pyqtgraph as pg
 
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog, QMessageBox
-from PyQt6.QtGui            import QFontMetrics, QCloseEvent
+from PyQt6.QtGui            import QFontMetrics
 
 from base.widgets           import * 
 from base.panels            import Dialog, Edit_Panel, MessageBox, Container_Panel, Panel_Abstract
-from base.diagram           import Diagram, Diagram_Item
-from base.artist            import Artist
 
-from airfoil_dialogs        import Polar_Definition_Dialog
-from airfoil_widgets        import Airfoil_Select_Open_Widget, mode_color
-from airfoil_artists        import Polar_Artist
+from ae_dialogs             import Polar_Definition_Dialog
+from ae_widgets             import Airfoil_Select_Open_Widget, mode_color
 
 from model.airfoil          import Airfoil
 from model.polar_set        import Polar_Definition
 from model.case             import Case_Optimize
 from model.xo2_controller   import xo2_state, Xo2_Controller
-from model.xo2_results      import Xo2_Results
+from model.xo2_results      import Xo2_Results, Optimization_History_Entry
 
 from model.xo2_input        import *
 
-from model.xo2_input        import SPEC_TYPES, SPEC_ALLOWED, OPT_ALLOWED, var
-from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist, Xo2_OpPoint_Defs_Artist
+from model.xo2_input        import SPEC_TYPES, var
+from xo2_diagrams           import Diagram_Xo2_Progress, Diagram_Xo2_Airfoil_and_Polar
+
+from ae_app_model              import App_Model
 
 
 import logging
@@ -45,7 +44,13 @@ logger = logging.getLogger(__name__)
 
 
 class Xo2_Select_Dialog (Dialog):
-    """ Dialog to choose what should be done"""
+    """ 
+    Dialog to choose what should be done when entering optimization mode:
+    - open existing case
+    - create new case for current airfoil
+    - select case from file system
+
+    """
 
     _width  = (480, None)
     _height = (200, None)
@@ -55,17 +60,17 @@ class Xo2_Select_Dialog (Dialog):
     EXAMPLE_DIR = "examples_optimize"
 
 
-    def __init__ (self, parent, input_fileName : str,  current_airfoil : Airfoil, **kwargs): 
+    def __init__ (self, parent, current_airfoil : Airfoil, **kwargs): 
 
-        self._input_fileName  = input_fileName
+        self._input_fileName  = None
         self._current_airfoil = current_airfoil
         self._workingDir      = None 
 
         self._info_panel = None
 
-        # is there an existung input file for airfoil
+        # is there an existing input file for airfoil
 
-        if self._input_fileName is None and self._current_airfoil is not None:
+        if self._current_airfoil is not None:
             self._input_fileName = Input_File.fileName_of (self._current_airfoil)
             self._workingDir     = self._current_airfoil.pathName_abs 
 
@@ -85,7 +90,6 @@ class Xo2_Select_Dialog (Dialog):
         return self._current_airfoil
     
 
-    
     def _init_layout(self) -> QLayout:
 
         l =  QGridLayout()
@@ -132,7 +136,7 @@ class Xo2_Select_Dialog (Dialog):
             r,c = 0, 0 
             lab = Label    (l,r,c, height=170, colSpan=3, wordWrap=True,
                     get="Airfoil optimization is based on <a href='https://github.com/jxjo/Xoptfoil2'>Xoptfoil2</a>, which will run in the background.<br><br>" +
-                        "Xoptfoil2 is controlled via the Input file, whose paramters can be edited subsequently. "
+                        "Xoptfoil2 is controlled via the Input file, whose parameters can be edited subsequently. "
                         "The Input file is equivalent to an Optimization Case in the AirfoilEditor." +
                         "<br><br>" +
                         "If you have no experience with airfoil optimization, please read the " + 
@@ -284,74 +288,17 @@ class Xo2_New_Dialog (Dialog):
 
     name = "New Optimization Case"
 
-
-    class Diagram_Airfoil_and_Polar (Diagram):
-        """ Diagram with Airfoil and Polar Item  """
-
-        width  = (None, None)               # (min,max) 
-        height = (400, None)                # (min,max)
-
-
-        def __init__(self, *args, case_fn = None, **kwargs):
-
-            self._case_fn = case_fn
-
-            super().__init__(*args, **kwargs)
-
-            self.graph_layout.setContentsMargins (5,10,5,5)  # default margins
-
-            # show opPoint definitions
-            for artist in self._get_artist (Xo2_OpPoint_Defs_Artist):
-                artist.set_show (True)
-                artist.set_show_mouse_helper (False) 
-
-            # switch off polar legend 
-            for artist in self._get_artist (Polar_Artist):
-                artist.set_show_legend (False) 
-
-
-        @property
-        def airfoil_seed (self) -> Airfoil:
-            return self._getter ()
-
-
-        def airfoils (self) -> list[Airfoil]: 
-            return [self.airfoil_seed] if self.airfoil_seed else []
-
-
-        @override
-        def create_diagram_items (self):
-            """ create all plot Items and add them to the layout """
-
-            from airfoil_diagrams       import Diagram_Item_Airfoil, Diagram_Item_Polars
-
-            r = 0
-            item = Diagram_Item_Airfoil (self, getter=self.airfoils)
-            item.setMinimumSize (300, 200)
-            self._add_item (item, r, 0, colspan=2)
-    
-            r += 1
-            for iItem, xyVars in enumerate ([(var.CD,var.CL), (var.CL,var.GLIDE)]):
-                #todo
-                item = Diagram_Item_Polars (self, getter=self.airfoils, xyVars=xyVars, case_fn=self._case_fn, show=True)
-                item.setMinimumSize (200, 200)
-                self._add_item (item, r, iItem)
-
-            self.graph_layout.setRowStretchFactor (0,2)
-            self.graph_layout.setRowStretchFactor (1,3)
-
-
-        @override
-        def create_view_panel (self):
-            """ no view_panel"""
-            pass
-
-
     # -------------------------------------------------------------------------
 
     def __init__ (self, parent, workingDir : str,  current_airfoil : Airfoil, **kwargs): 
 
-        self._case = Case_Optimize (None, workingDir=workingDir)  
+        # create new, separate app_model 
+
+        self._app_model = App_Model (workingDir_default=workingDir)
+
+        self._app_model.set_airfoil (current_airfoil)
+        self._app_model.set_case (Case_Optimize (None, workingDir=workingDir))   
+
 
         # init empty input file with current seed airfoil
 
@@ -371,7 +318,7 @@ class Xo2_New_Dialog (Dialog):
 
         self._btn_ok : QPushButton = None 
 
-        super().__init__ ( parent, **kwargs)
+        super().__init__ (parent, **kwargs)
 
         # initially disable ok button - see refresh 
         self._btn_ok.setDisabled(True)
@@ -392,7 +339,7 @@ class Xo2_New_Dialog (Dialog):
 
     @property
     def case (self) -> Case_Optimize:
-        return self._case
+        return self._app_model.case
 
     @property
     def input_file (self) -> Input_File:
@@ -543,7 +490,7 @@ class Xo2_New_Dialog (Dialog):
 
         self._edit_panel      = Edit_Panel (self, layout=l, has_head=False, main_margins= (5,0,10,5), panel_margins=(0,0,0,0), width=380) 
 
-        self._diagram         = self.Diagram_Airfoil_and_Polar (self, lambda: self.airfoil_seed, case_fn=lambda: self.case)
+        self._diagram         = Diagram_Xo2_Airfoil_and_Polar (self._app_model)
         
         l =  QHBoxLayout()
         l.addWidget (self._edit_panel)
@@ -574,7 +521,7 @@ class Xo2_New_Dialog (Dialog):
 
 
     def _change_working_dir (self): 
-        """ set a new working directoy - handle seed airfoil"""
+        """ set a new working directory - handle seed airfoil"""
 
         new_dir = QFileDialog.getExistingDirectory(self, directory=self.workingDir, caption="Select or create working directory")
 
@@ -663,7 +610,7 @@ class Xo2_New_Dialog (Dialog):
 
     @override
     def refresh (self,*_):
-        """ refesh including diagram"""
+        """ refresh including diagram"""
 
         self._create_opPoint_defs ()
 
@@ -705,146 +652,18 @@ class Xo2_Run_Dialog (Dialog):
     """ Dialog to run/watch Xoptfoil2"""
 
     _width  = (350, None)
-    _height = (350, None)
+    _height = (330, None)
 
     name = "Run"
-
-    sig_run               = pyqtSignal()
-    sig_closed            = pyqtSignal()       
-
-
-    class Diagram_Item_Design_Radius (Diagram_Item):
-        """ 
-        Diagram (Plot) Item to plot design radius during optimization
-        """
-
-        title       = "Design Radius"
-        subtitle    = None                
-
-        min_width   = 100                                       # min size needed - see below 
-        min_height  = 100 
-
-        def __init__(self, *args, **kwargs):
-
-            super().__init__(*args, **kwargs)
-
-            self.buttonsHidden = True                           # hide resize buttons
-            self.setContentsMargins ( 0,10,5,0)
-
-        def results (self) -> Xo2_Results: 
-            return self._getter ()
-
-
-        @override
-        def plot_title(self):
-            super().plot_title (title=self.title, title_size=8, title_color=Artist.COLOR_LEGEND,offset= (10,-10))
-
-
-        @override
-        def setup_artists (self):
-            """ create and setup the artists of self"""
-            self._add_artist (Xo2_Design_Radius_Artist (self, self.results))
-    
-
-        @override
-        def setup_viewRange (self):
-            """ define view range of this plotItem"""
-            axis : pg.AxisItem = self.getAxis ('left')
-            axis.setWidth (5)
-            axis : pg.AxisItem = self.getAxis ('bottom')
-            axis.setHeight (5)
-            self.viewBox.enableAutoRange (axis == 'xy')
-            self.viewBox.setDefaultPadding (0.0)
-
-
-
-    class Diagram_Item_Improvement (Diagram_Item):
-        """ 
-        Diagram (Plot) Item to plot improvement during optimization
-        """
-
-        title       = "Improvement"
-        subtitle    = None                
-
-        min_width   = 100                                    # min size needed - see below 
-        min_height  = 100 
-
-        def __init__(self, *args, **kwargs):
-
-            super().__init__(*args, **kwargs)
-
-            self.buttonsHidden = True                           # hide resize buttons
-            self.setContentsMargins ( 0,10,5,0)
-
-        def results (self) -> Xo2_Results: 
-            return self._getter ()
-
-
-        @override
-        def plot_title(self):
-            super().plot_title (title=self.title, title_size=8, title_color=Artist.COLOR_LEGEND,offset= (10,-10))
-
-
-        @override
-        def setup_artists (self):
-            """ create and setup the artists of self"""
-            self._add_artist (Xo2_Improvement_Artist (self, self.results))
-    
-
-        @override
-        def setup_viewRange (self):
-            """ define view range of this plotItem"""
-            axis : pg.AxisItem = self.getAxis ('left')
-            axis.setWidth (5)
-            axis : pg.AxisItem = self.getAxis ('bottom')
-            axis.setHeight (5)
-            self.viewBox.enableAutoRange (axis == 'xy')
-            self.viewBox.setDefaultPadding (0.0)
-
-
-
-    class Diagram_Progress (Diagram):
-        """ Diagram with design radus and improvement development  """
-
-        _width  = (None, None)               # (min,max) 
-        _height = (140, None)                # (min,max)
-
-
-        def __init__(self, *args, **kwargs):
-
-
-            super().__init__(*args, **kwargs)
-
-            self.graph_layout.setContentsMargins (5,10,5,5)  # default margins
-
-
-        def results (self) -> Xo2_Results:
-            return self._getter ()
-
-        def create_diagram_items (self):
-            """ create all plot Items and add them to the layout """
-            item = Xo2_Run_Dialog.Diagram_Item_Design_Radius (self, getter=self.results)
-            self._add_item (item, 0, 0)
-            item = Xo2_Run_Dialog.Diagram_Item_Improvement   (self, getter=self.results)
-            self._add_item (item, 0, 1)
-
-
-        @override
-        def create_view_panel (self):
-            """ no view_panel"""
-            pass
 
 
     # -------------------------------------------------------------------------
 
     def __init__ (self, parent : QWidget, 
-                  case,
+                  app_model : App_Model,
                   **kwargs): 
 
-        if not isinstance (case, Case_Optimize):
-            raise ValueError ("case isn't a Case_Optimize")
-        
-        self._case = case
+        self._app_model = app_model
 
         # init layout etc 
 
@@ -858,7 +677,8 @@ class Xo2_Run_Dialog (Dialog):
         self._panel_stopping     : Edit_Panel = None
         self._panel_finished     : Edit_Panel = None
         self._panel_error        : Edit_Panel = None
-        self._diagram            : Diagram    = None
+
+        self._diagram : Diagram_Xo2_Airfoil_and_Polar = None
         
         self._btn_stop   : QPushButton = None
         self._btn_close  : QPushButton = None 
@@ -869,19 +689,33 @@ class Xo2_Run_Dialog (Dialog):
         #self.setWindowFlags (self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint,)
         self.setWindowFlags (Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window | Qt.WindowType.WindowTitleHint)
 
-        # no border for main layout 
+        # no border for panel layout 
 
-        self._panel.layout().setContentsMargins (QMargins(0, 0, 0, 0))
+        self._panel.layout().setContentsMargins (QMargins(0, 0, 0, 0))              # no margin for main panel
+        self.layout().setContentsMargins        (QMargins(5, 0, 5, 15))             # no top margin for self
 
         # handle button (signals) 
 
         self._btn_stop.pressed.connect   (self._stop_optimize)
         self._btn_close.clicked.connect  (self.close)
-        self._btn_run.clicked.connect    (self.sig_run.emit)
+        self._btn_run.clicked.connect    (self._run_xo2)
 
         # switch panel and buttons on/off
 
         self._set_buttons ()
+
+        # connect to xo2 signals
+
+        self.app_model.sig_xo2_new_state.connect        (self.on_new_state)
+        self.app_model.sig_xo2_new_step.connect         (self.on_new_step)
+        self.app_model.sig_xo2_still_running.connect    (self.panel_running.refresh)
+
+        # run immediately if ready 
+        
+        # if self.case.xo2.isReady:
+        #     QTimer.singleShot(0, self.app_model.run_xo2)                             # run xo2 
+
+
 
     @override
     def show (self):
@@ -891,10 +725,14 @@ class Xo2_Run_Dialog (Dialog):
         # overridden to ensure the actual panel according to state when open 
         self.refresh()
 
+    @property
+    def app_model (self) -> App_Model:
+        """ application model"""
+        return self._app_model
 
     @property
     def case(self) -> Case_Optimize:
-        return self._case
+        return self._app_model.case
 
     @property
     def xo2(self) -> Xo2_Controller:
@@ -903,6 +741,14 @@ class Xo2_Run_Dialog (Dialog):
     @property
     def results(self) -> Xo2_Results:
         return self.case.results
+
+    @property
+    def steps (self) -> list ['Optimization_History_Entry']:
+        """ optimization steps imported (up to now)""" 
+        if self._about_to_run:                                      # for responsive UI
+            return []
+        return self.results.steps
+
 
     @property
     def nxfoil_calcs (self) -> int:
@@ -924,22 +770,11 @@ class Xo2_Run_Dialog (Dialog):
             self._improved = False
 
 
-    def on_about_to_run (self):
-        """ slot - just before optimiaztion starts """
-
-        self._last_improvement = 0.0
-        self._improved = False 
-        self._about_to_run = True 
-
-        self.refresh ()              # after to get running state 
-
-
-    def on_results (self):
-        """ slot to receice new results from running thread"""
+    def on_new_state (self):
+        """ slot to receive new results from running thread"""
 
         self._about_to_run = False 
 
-        self._set_improved ()
         self.refresh ()
 
         # and the diagram 
@@ -960,7 +795,7 @@ class Xo2_Run_Dialog (Dialog):
 
     @property
     def panels_state (self) -> str:
-        """ state string to select the right panel dependend on xo2 state"""
+        """ state string to select the right panel dependent on xo2 state"""
 
         if self._about_to_run:
             state = "about to run"
@@ -1004,7 +839,7 @@ class Xo2_Run_Dialog (Dialog):
                              style=lambda: style.GOOD if self._improved else style.NORMAL, 
                              styleRole=QPalette.ColorRole.Window) # background
             r += 1
-            SpaceR (l, r) 
+            l.setRowStretch (r,1)
 
             l.setColumnMinimumWidth (0,110)
             l.setColumnMinimumWidth (1,60)
@@ -1015,7 +850,6 @@ class Xo2_Run_Dialog (Dialog):
             self._panel_running.set_background_color (color='magenta', alpha=0.2)        
 
         return self._panel_running
-
 
 
     @property
@@ -1047,7 +881,7 @@ class Xo2_Run_Dialog (Dialog):
             r = 0
             Label  (l,r,0, colSpan=5, height=40, get="Ready for Optimization")
             r += 1
-            SpaceR (l, r) 
+            l.setRowStretch (r,1)
 
             self._panel_ready = Edit_Panel (title="Ready", layout=l, height=(None,None),
                         hide=lambda: self.panels_state != "ready") 
@@ -1067,7 +901,7 @@ class Xo2_Run_Dialog (Dialog):
             r += 1
             Label  (l,r,0,  get=lambda: f"Final airfoil {self.case.outName} will be created ...")
             r += 1
-            SpaceR (l, r) 
+            l.setRowStretch (r,1)
 
             self._panel_stopping = Edit_Panel (title="Stopping", layout=l, height=(None,None),
                                             hide=lambda: self.panels_state != "stopping") 
@@ -1078,7 +912,7 @@ class Xo2_Run_Dialog (Dialog):
 
     @property
     def panel_error (self) -> Edit_Panel:
-        """ error occured """
+        """ error occurred """
 
         if self._panel_error is None: 
 
@@ -1086,9 +920,9 @@ class Xo2_Run_Dialog (Dialog):
             r = 0
             Label  (l,r,0,  get=lambda: f"{self.case.xo2.run_errortext}", height=(60,None), wordWrap=True)
             r += 1
-            SpaceR (l, r) 
+            l.setRowStretch (r,1)
 
-            self._panel_error = Edit_Panel (title="Error occured", layout=l, height=(None,None),
+            self._panel_error = Edit_Panel (title="Error occurred", layout=l, height=(None,None),
                                             hide=lambda: self.panels_state != "error") 
             self._panel_error.set_background_color (color='red', alpha=0.3)
 
@@ -1114,7 +948,7 @@ class Xo2_Run_Dialog (Dialog):
             Label  (l,r,c,   get="Improvement")
             Label  (l,r,c+1, get=lambda: f" {self.results.improvement:.5%} ", fontSize=size.HEADER)
             r += 1
-            SpaceR (l, r) 
+            l.setRowStretch (r,1)
 
             l.setColumnMinimumWidth (0,110)
             l.setColumnMinimumWidth (1,60)
@@ -1138,12 +972,11 @@ class Xo2_Run_Dialog (Dialog):
         l.addWidget (self.panel_finished, 0,0,1,1)
         l.addWidget (self.panel_error, 0,0,1,1)
 
-        self._diagram = self.Diagram_Progress (self, lambda: self.case.results)
+        self._diagram = Diagram_Xo2_Progress (lambda: self.steps)
 
         l.addWidget (self._diagram, 1,0,1,1) 
 
-        l.setRowMinimumHeight (0,140)  
-        l.setRowMinimumHeight (1,140)  
+        l.setRowMinimumHeight (0,125)  
         l.setRowStretch (1,1)  
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
@@ -1215,6 +1048,19 @@ class Xo2_Run_Dialog (Dialog):
             self._btn_close.setFocus ()
 
 
+    def _run_xo2 (self):
+        """ start xo2 run"""
+
+        self._last_improvement = 0.0
+        self._improved = False 
+        self._about_to_run = True 
+
+        self.refresh ()                             # fast, responsive refresh when Button clicked
+        self._diagram.refresh()
+
+        self.app_model.run_xo2()
+
+
     def _stop_optimize (self):
         """ request thread termination"""
     
@@ -1225,7 +1071,7 @@ class Xo2_Run_Dialog (Dialog):
 
     @override
     def refresh (self, disable=None):
-        """ overidden to set panel view according to state """
+        """ overridden to set panel view according to state """
 
         self._set_buttons ()
 
@@ -1240,9 +1086,11 @@ class Xo2_Run_Dialog (Dialog):
         # stop running matcher if x-Button pressed
         if self.case.xo2.isRunning:
             self._stop_optimize()
-        
-        # tell parent including self
-        self.sig_closed.emit () 
+
+        # disconnect to xo2 signals
+        self.app_model.sig_xo2_new_state.disconnect        (self.on_new_state)
+        self.app_model.sig_xo2_new_step.disconnect         (self.on_new_step)
+        self.app_model.sig_xo2_still_running.disconnect    (self.panel_running.refresh)
 
         # normal close 
         super().reject()
@@ -1332,7 +1180,7 @@ class Xo2_Input_File_Dialog (Dialog):
                 self._qtextEdit.setFocus ()
 
         else: 
-            # no chnages made - ok is like cancel 
+            # no changes made - ok is like cancel 
             super().reject() 
 
 
@@ -1418,20 +1266,15 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
     name = "Operating Point Definition"
 
-    sig_finished            = pyqtSignal(object)          # self finished 
-    sig_opPoint_def_changed = pyqtSignal()
-
-    # -------------------------------------------------------------------------
-
     def __init__ (self, parent : QWidget, 
-                  case_fn,
+                  app_model : App_Model,
                   **kwargs): 
 
-        self._case_fn = case_fn
+        self._app_model = app_model
 
-        self._individual_weighting  = False if self.opPoint_def.has_default_weighting else True 
-        self._individual_polar      = False if self.opPoint_def.has_default_polar     else True 
-        self._individual_flap       = False if self.opPoint_def.has_default_flap      else True 
+        self._individual_weighting  = False if self.cur_opPoint_def.has_default_weighting else True 
+        self._individual_polar      = False if self.cur_opPoint_def.has_default_polar     else True 
+        self._individual_flap       = False if self.cur_opPoint_def.has_default_flap      else True 
 
         # init layout etc 
 
@@ -1454,28 +1297,28 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
             set_background (self._panel, darker_factor=110)
             set_background (self       , darker_factor=110)
 
+        # connect to changes of input file
+
+        self.app_model.sig_xo2_input_changed.connect (self.refresh_current)
+        self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh_current)
+        self.app_model.sig_xo2_run_started.connect (self.close)
+
+
     @property
-    def opPoint_def (self) ->OpPoint_Definition:
-        return self.opPoint_defs.current_opPoint_def
+    def app_model (self) -> App_Model:
+        return self._app_model
 
-    def refresh_current (self):
-        """ slot for refresh opPoint def"""
-
-        # update local settings 
-        self.set_individual_weighting (not self.opPoint_def.has_default_weighting) 
-        self.set_individual_polar     (not self.opPoint_def.has_default_polar) 
-        self.set_individual_flap      (not self.opPoint_def.has_default_flap) 
-
-        self.refresh()
- 
- 
     @property
     def case (self) -> Case_Optimize:
-        return self._case_fn()
+        return self.app_model.case
 
     @property
     def opPoint_defs (self) -> OpPoint_Definitions:
         return self.case.input_file.opPoint_defs
+
+    @property
+    def cur_opPoint_def (self) ->OpPoint_Definition:
+        return self.app_model.cur_opPoint_def
 
     @property
     def polar_defs_without_default (self) -> list [Polar_Definition]:
@@ -1489,42 +1332,50 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                 polar_defs.remove (polar_def)    
         return polar_defs
 
-    @override
-    def _button_box(self):
-        return None
+
+    def refresh_current (self):
+        """ slot for refresh opPoint def"""
+
+        # update local settings 
+        self.set_individual_weighting (not self.cur_opPoint_def.has_default_weighting) 
+        self.set_individual_polar     (not self.cur_opPoint_def.has_default_polar) 
+        self.set_individual_flap      (not self.cur_opPoint_def.has_default_flap) 
+
+        self.refresh()
+ 
 
     def _init_layout(self) -> QLayout:
 
         l =  QGridLayout()
         r,c, = 0,0
         ComboBox (l,r,c, lab="Spec", width=90, 
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.specVar,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.specVar,
                     options=SPEC_TYPES,
                     toolTip="Specification of this Operating Point is either based on cl or alpha")
         FieldF   (l,r,c+2, width=70, dec=2, lim=(-20,20), step=0.01,
-                    get=lambda: self.opPoint_def.specValue, 
-                    set=lambda aVal: self.opPoint_def.set_specValue_limited(aVal),
+                    get=lambda: self.cur_opPoint_def.specValue, 
+                    set=lambda aVal: self.cur_opPoint_def.set_specValue_limited(aVal),
                     toolTip="Specification of this Operating Point is on the polar")
         r += 1
         ComboBox (l,r,c, lab="Type", width=90, 
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.opt_asString,
-                    options=lambda:self.opPoint_def.opt_allowed_asString(),
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.opt_asString,
+                    options=lambda:self.cur_opPoint_def.opt_allowed_asString(),
                     toolTip="Type of optimization for this Operating Point")
         FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.00001, 
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue,
-                    hide=lambda: not (self.opPoint_def.isTarget_type and \
-                                      self.opPoint_def.optVar==var.CD and \
-                                      not self.opPoint_def.optValue_isFactor),
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
+                    hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
+                                      self.cur_opPoint_def.optVar==var.CD and \
+                                      not self.cur_opPoint_def.optValue_isFactor),
                     toolTip="Target value to achieve")
         FieldF   (l,r,c+2, width=70, dec=2, lim=(0.0,200), step=0.01, 
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue,
-                    hide=lambda: not (self.opPoint_def.isTarget_type and \
-                                      self.opPoint_def.optVar!=var.CD or \
-                                      self.opPoint_def.optValue_isFactor),
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
+                    hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
+                                      self.cur_opPoint_def.optVar!=var.CD or \
+                                      self.cur_opPoint_def.optValue_isFactor),
                     toolTip="Target value to achieve")
         CheckBox (l,r,c+4, text="Factor",
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.optValue_isFactor,
-                    hide=lambda: not self.opPoint_def.isTarget_type,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue_isFactor,
+                    hide=lambda: not self.cur_opPoint_def.isTarget_type,
                     toolTip="Target value should be a factor to value of seed airfoil")
         r += 1
         SpaceR   (l,r, stretch=0)
@@ -1533,11 +1384,11 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     get=lambda: self.individual_weighting, set=self.set_individual_weighting,
                     toolTip="Set an individual weighting for this Operating Point")
         FieldF   (l,r,c+2, width=70, step=0.1, lim=(0,10), dec=1,
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting_abs,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.weighting_abs,
                     hide=lambda: not self.individual_weighting,
                     toolTip="An individual weighting for this Operating Point")
         CheckBox (l,r,c+4, text="Fixed",
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.weighting_fixed,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.weighting_fixed,
                     hide=lambda: not self.individual_weighting or not self.opPoint_defs.dynamic_weighting,
                     toolTip="Fix this weighting during Dynamic Weighting")
 
@@ -1550,7 +1401,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     toolTip="Edit the individual polar definition")
 
         ComboBox (l,r,c+2, colSpan=3,
-                    get=lambda: self.opPoint_def.polar_def.name if self.opPoint_def.polar_def else None,
+                    get=lambda: self.cur_opPoint_def.polar_def.name if self.cur_opPoint_def.polar_def else None,
                     set=self.set_polar_def_by_name,
                     options=lambda: [polar_def.name for polar_def in self.polar_defs_without_default],
                     hide=lambda: not self.individual_polar,
@@ -1562,13 +1413,13 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     disable=lambda: not self.opPoint_defs.use_flap,
                     toolTip="Set an individual flap angle for this Operating Point")
         FieldF   (l,r,c+2, width=70, step=0.2, lim=(-15,15), dec=1, unit='°', colSpan=2,
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_angle,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.flap_angle,
                     hide=lambda: not self.individual_flap,
                     toolTip="An individual flap angle of this Operating Point. <br>" + \
                             "When the flap angle is optimized, this will be the start value.")
         r += 1
         CheckBox (l,r,c, text="Flap Optimize", colSpan=3,
-                    obj=lambda: self.opPoint_def, prop=OpPoint_Definition.flap_optimize,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.flap_optimize,
                     disable=lambda: not self.opPoint_defs.use_flap,
                     toolTip="Optimize flap angle at this Operating Point")
         r += 1
@@ -1581,7 +1432,13 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
 
     def _titletext (self) -> str: 
-        return f"Operating Point {self.opPoint_def.iPoint}"
+        return f"Operating Point {self.cur_opPoint_def.iPoint}"
+
+
+    @override
+    def _button_box(self):
+        """ no buttons - floating window"""
+        return None
 
 
     @override
@@ -1591,8 +1448,8 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         for w in self.widgets:
             w.refresh()
 
-        # inform parent
-        self.sig_opPoint_def_changed.emit()
+        # inform model about changes
+        self.app_model.notify_xo2_input_changed()
 
 
     @property
@@ -1603,7 +1460,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
     def set_individual_weighting (self, aBool : bool):
         self._individual_weighting = aBool 
         if not aBool:
-            self.opPoint_def.set_weighting (1.0)                    # will set to default 
+            self.cur_opPoint_def.set_weighting (1.0)                    # will set to default 
 
 
     @property
@@ -1614,9 +1471,9 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
     def set_individual_polar (self, aBool : bool):
         if not aBool:
             # switch off - remove individual polar definition
-            self.opPoint_def.set_re(None)                           # will set to default 
-            self.opPoint_def.set_ma(None)                    
-            self.opPoint_def.set_ncrit(None)  
+            self.cur_opPoint_def.set_re(None)                           # will set to default 
+            self.cur_opPoint_def.set_ma(None)                    
+            self.cur_opPoint_def.set_ncrit(None)  
         elif aBool and not self._individual_polar:    
             # switch on
             if not self.polar_defs_without_default:
@@ -1624,7 +1481,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                 self.new_polar_def ()   
             else: 
                 # take the first individual polar 
-                self.opPoint_def.set_polar_def (self.polar_defs_without_default[0])          
+                self.cur_opPoint_def.set_polar_def (self.polar_defs_without_default[0])          
         self._individual_polar = aBool 
 
 
@@ -1632,28 +1489,29 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         """ for Combobox - set new polar_def by name string """
         for polar_def in self.polar_defs_without_default:
             if polar_def.name == aStr: 
-                self.opPoint_def.set_polar_def (polar_def)
+                self.cur_opPoint_def.set_polar_def (polar_def)
 
 
     def new_polar_def (self):
         """ create new polar definition"""
 
-        if self.opPoint_def.has_default_polar:
+        if self.cur_opPoint_def.has_default_polar:
             new_polar_def  = copy (self.opPoint_defs.polar_def_default)
             new_polar_def.set_re (new_polar_def.re + 100000)
             new_polar_def.set_active(True)
         else:
-            new_polar_def = self.opPoint_def.polar_def
+            new_polar_def = self.cur_opPoint_def.polar_def
         
         diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, polar_type_fixed=True, 
                                         parentPos=(0.9, 0.5), dialogPos=(0, 0.5))
-        diag.setWindowTitle (f"Individual Polar of Op Point {self.opPoint_def.iPoint}")
+        diag.setWindowTitle (f"Individual Polar of Op Point {self.cur_opPoint_def.iPoint}")
         diag.exec()
 
-        self.opPoint_def.set_polar_def (new_polar_def)
+        self.cur_opPoint_def.set_polar_def (new_polar_def)
         self.refresh()
 
-        self.sig_opPoint_def_changed.emit()
+        # inform model about changes
+        self.app_model.notify_xo2_input_changed()
 
 
     @property
@@ -1664,7 +1522,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
     def set_individual_flap (self, aBool : bool):
         self._individual_flap = aBool 
         if not aBool:
-            self.opPoint_def.set_flap_angle (None)                    # will set to default 
+            self.cur_opPoint_def.set_flap_angle (None)                    # will set to default 
 
 
     @override
@@ -1676,12 +1534,14 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
 
     @override
-    def closeEvent  (self, event: QCloseEvent ):
-        """ window is closed - inform parent """
+    def close (self):
+        """ close dialog - inform model about changes"""
 
-        self.sig_finished.emit (self)
+        # disconnect from changes of input file
+        self.app_model.sig_xo2_input_changed.disconnect (self.refresh_current)
+        self.app_model.sig_xo2_opPoint_def_selected.disconnect (self.refresh_current)
 
-        event.accept ()
+        super().close ()
 
 
 
@@ -1830,7 +1690,7 @@ class Xo2_Xfoil_Run_Dialog (Xo2_Abstract_Options_Dialog):
         r += 1
         CheckBox   (l,r,c, text="Fix unconverged Op Point", colSpan=3,  
                     obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.fix_unconverged,
-                    toolTip="Retry an unconverged Op Point with bl initialization and slightly differen Re number") 
+                    toolTip="Retry an unconverged Op Point with bl initialization and slightly different Re number") 
         r += 1
         CheckBox   (l,r,c, text="Reinitialize boundary layer", colSpan=3, 
                     obj=self.xfoil_run_options, prop=Nml_xfoil_run_options.reinitialize,
@@ -2033,7 +1893,7 @@ class Xo2_Camb_Thick_Dialog (Xo2_Abstract_Options_Dialog):
                     toolTip="Leading edge radius of the airfoil") 
         CheckBox (l,r,c+1, text="... blend distance",
                     obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.le_radius_blend,
-                    toolTip="How much will a change of the rdius influence the whole airfoil") 
+                    toolTip="How much will a change of the radius influence the whole airfoil") 
         r += 1
         l.setRowStretch (r,2)
         r += 1

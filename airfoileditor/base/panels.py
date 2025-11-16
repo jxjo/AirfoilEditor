@@ -117,10 +117,14 @@ class Panel_Abstract (QWidget):
         - has dataObject via getter (callable) 
     """
 
-    name = "Panel"             # will be title 
+    name = "Panel"                          # will be title 
 
     _width  = None
     _height = None 
+
+    _n_doubleClick = 0                      # no of double clicks - common counter for all panels
+    _doubleClick_hint : str|None = None     # hint for double click at the end of box layout for all panels
+
 
     # ------------------------------------------------------
 
@@ -167,7 +171,8 @@ class Panel_Abstract (QWidget):
                  height : int|None = None, 
                  hide : Callable|bool|None = None,              # either callable or bool
                  doubleClick: Callable|None = None,             # callable when doubleClick event occurs
-                 title=None, **kwargs):                         # title of panel (defualt self.name)
+                 hint : str|None = None,                        # hint for double click at the end of box layout
+                 title=None, **kwargs):                         # title of panel (default self.name)
 
         super().__init__( **kwargs)
 
@@ -180,7 +185,7 @@ class Panel_Abstract (QWidget):
             self._height = height
 
         # handle visibility  
-        self._shouldBe_visible = True                               # defaulit visibilty of self 
+        self._shouldBe_visible = True                               # default visibility of self 
         self._hidden_fn = None                                      # altern. callable to set visibility
         if isinstance(hide, bool):
             self._shouldBe_visible = not hide
@@ -195,8 +200,9 @@ class Panel_Abstract (QWidget):
             self.name = title 
 
         # handle double click event
-        self._doubleClick = doubleClick
-        self._doubleClick_hint = None
+        self._doubleClick : callable|None = doubleClick
+        self._doubleClick_hint_widget : Label | None = None
+        Panel_Abstract._doubleClick_hint : str|None = hint          # class variable - common for all instances
 
 
     def __repr__(self) -> str:
@@ -208,8 +214,15 @@ class Panel_Abstract (QWidget):
     @override
     def mouseDoubleClickEvent(self, event):
         """ default double click event - call self._doubleClick if defined"""
+
         if callable(self._doubleClick):
-            self._doubleClick()
+            Panel_Abstract._n_doubleClick += 1                  # count no of double clicks
+            if Panel_Abstract._n_doubleClick == 2:              # remove hint when user learned to doubleclick
+                Panel_Abstract._doubleClick_hint = None         # class variable - common for all instances
+            if self._doubleClick_hint_widget:
+                self._doubleClick_hint_widget.refresh()
+
+            self._doubleClick()                                 # callback to parent
         else:
             super().mouseDoubleClickEvent(event)
 
@@ -276,7 +289,6 @@ class Container_Panel (Panel_Abstract):
                  layout : QLayout | None = None,
                  margins  : tuple = (0,0,0,0), 
                  spacing : int = 5, 
-                 hint : str|None = None,                     # hint for double click at the end of box layout
                  **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -287,8 +299,8 @@ class Container_Panel (Panel_Abstract):
 
         # add hint for double click at the end of box layout
 
-        if hint is not None:
-            self.add_hint (hint)
+        if self._doubleClick_hint is not None:
+            self.add_hint (self._doubleClick_hint)
 
         # initial visibility 
 
@@ -296,43 +308,23 @@ class Container_Panel (Panel_Abstract):
             self.setVisible (False)                     # setVisible(True) results in a dummy window on startup 
 
 
-    @override
-    def mouseDoubleClickEvent(self, event):
-        """ default double click event - call self._doubleClick if defined"""
-        if callable(self._doubleClick):
-            self.remove_doubleClick_hint ()
-            self._doubleClick()
-        else:
-            super().mouseDoubleClickEvent(event)
-
-
     def add_hint (self, hint : str):
         """ add stretchable hint for double click at the end of layout """
 
-        self._doubleClick_hint = hint
+        Panel_Abstract._doubleClick_hint = hint         # class variable - common for all instances
         l = self.layout()
 
-        if hint is not None and isinstance(l, (QHBoxLayout, QVBoxLayout)):
-            Label (l, get=lambda: self._doubleClick_hint, width=(1, None),
+        if self._doubleClick_hint_widget is not None:
+            self._doubleClick_hint_widget.refresh()
+
+        elif hint is not None and isinstance(l, (QHBoxLayout, QVBoxLayout)):
+            w = Label (l, get=lambda: Panel_Abstract._doubleClick_hint, width=(1, None),
                       style=style.HINT, align=Qt.AlignmentFlag.AlignCenter)
             l.setStretch (l.count()-1,2)
+            self._doubleClick_hint_widget = w
 
-            self.setToolTip (hint)
-
-
-    def remove_doubleClick_hint (self):
-        """ remove hint for double click from layout """
-
-        l = self.layout()
-        if self._doubleClick_hint is not None and isinstance(l, (QHBoxLayout, QVBoxLayout)):
-            # find and remove label with hint
-            for i in range(l.count()):
-                widget = l.itemAt(i).widget()
-                if isinstance (widget, Label):
-                    self._doubleClick_hint = None
-                    widget.refresh()                 
-                    self.setToolTip ("")
-                    break
+        self.setToolTip (hint)
+              
 
 
     @property
@@ -340,7 +332,6 @@ class Container_Panel (Panel_Abstract):
         """ list of first level Edit_Panels defined in self"""
 
         return self.panels_of_layout (self.layout())
-
 
 
     def refresh (self):
@@ -361,6 +352,11 @@ class Container_Panel (Panel_Abstract):
                 reinit = show_now or (self.shouldBe_visible and p._panel.layout() is None)
                 if p.shouldBe_visible: p.refresh (reinit_layout=reinit) 
 
+            # refresh double click hint
+            if self._doubleClick_hint_widget:
+                self._doubleClick_hint_widget.refresh()
+            if self.toolTip() != self._doubleClick_hint:
+                self.setToolTip (self._doubleClick_hint)
 
 
 class Edit_Panel (Panel_Abstract):
@@ -415,18 +411,10 @@ class Edit_Panel (Panel_Abstract):
         if has_head and self.title_text() is not None: 
 
             self._head = QWidget(self)
-            l_head = QHBoxLayout(self._head)
-            l_head.setContentsMargins (*self._head_margins)
 
-            if self._switchable:
-                CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
-                        get=lambda: self.switched_on, set=self.set_switched_on,
-                        toolTip='Show or hide -<br>Alternatively, you can double click on the panel')
-            else: 
-                Label (l_head, fontSize=size.HEADER, get=self.title_text)
-            l_head.setStretch (0,1)
+            if not lazy: 
+                self._set_header_layout ()
 
-            self._add_to_header_layout (l_head)     # optional individual widgets
  
         # inital content panel content - layout in >init  
 
@@ -500,6 +488,7 @@ class Edit_Panel (Panel_Abstract):
         if not silent and callable (self._on_switched):                                          # set by checkbox - callback to Diagram_Item 
             self._on_switched (self._switched_on)
 
+
     def toggle_switched (self):
         """ toggle switched on/off """
         self.set_switched_on (not self.switched_on)
@@ -537,7 +526,9 @@ class Edit_Panel (Panel_Abstract):
 
             # reinit layout 
             if show or reinit_layout:
-                self._set_panel_layout  () 
+                if self._head:
+                    self._set_header_layout ()
+                self._set_panel_layout () 
                 logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
 
             # refresh widgets of self only if visible 
@@ -558,6 +549,32 @@ class Edit_Panel (Panel_Abstract):
         # refresh also header 
         for w in self.header_widgets:
             w.refresh (disable=disable)
+
+
+    def _set_header_layout(self):
+        """ set layout of self._head 
+            - with title text either checkbox or label
+            - a subclass may add widgets to header layout in _add_to_header_layout
+        """
+
+        if self._head.layout(): return       # already set
+
+        l_head = QHBoxLayout()
+        l_head.setContentsMargins (*self._head_margins)
+
+        if self._switchable:
+            CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
+                    get=lambda: self.switched_on, set=self.set_switched_on,
+                    toolTip='Show or hide -<br>Alternatively, you can double click on the panel')
+        else: 
+            Label (l_head, fontSize=size.HEADER, get=self.title_text)
+        l_head.setStretch (0,1)
+
+        self._add_to_header_layout (l_head)     # optional individual widgets
+
+        # assign layout to head widget
+        self._head.setLayout (l_head)
+
 
 
     def _set_panel_layout (self):

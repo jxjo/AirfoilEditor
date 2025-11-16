@@ -578,8 +578,8 @@ class Polar_Set:
         self._airfoil = myAirfoil 
         self._polars = []                                   # list of Polars of self is holding
 
-        self._re_scale = re_scale if re_scale is not None else 1.0 
-        self._re_scale = clip (self._re_scale, 0.001, 10)
+        re_scale = re_scale if re_scale is not None else 1.0 
+        self._re_scale = clip (re_scale, 0.001, 100)
 
         self._polar_worker_tasks = []                       # polar generation tasks for worker 
         self._worker_polar_sets = {}                        # polar generation job list for worker  

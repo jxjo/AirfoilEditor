@@ -14,7 +14,9 @@
 
 import os
 import shutil
-from datetime import datetime
+from datetime               import datetime
+from timeit                 import default_timer as timer
+
 
 from base.common_utils      import * 
 from base.spline            import HicksHenne
@@ -26,7 +28,7 @@ from .xo2_input             import GEO_OPT_VARS
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.DEBUG)
 
 
 #-------------------------------------------------------------------------------
@@ -231,15 +233,15 @@ class Xo2_Results:
     # ---- Methods -------------------------------------------
 
 
-    def set_results_could_be_dirty (self): 
-        """ mark results of Reader as dirty so they will be re-read at next access"""
+    def set_results_could_be_outdated (self): 
+        """ mark results of Reader as outdated so they will be re-read at next access"""
 
-        self._reader_airfoils.set_results_could_be_dirty(True)
-        self._reader_airfoils_hh.set_results_could_be_dirty(True)
-        self._reader_airfoils_bezier.set_results_could_be_dirty(True)
-        self._reader_opPoints.set_results_could_be_dirty(True)
-        self._reader_geoTargets.set_results_could_be_dirty(True)
-        self._reader_optimization_history.set_results_could_be_dirty(True)
+        self._reader_airfoils.set_results_could_be_outdated(True)
+        self._reader_airfoils_hh.set_results_could_be_outdated(True)
+        self._reader_airfoils_bezier.set_results_could_be_outdated(True)
+        self._reader_opPoints.set_results_could_be_outdated(True)
+        self._reader_geoTargets.set_results_could_be_outdated(True)
+        self._reader_optimization_history.set_results_could_be_outdated(True)
 
 
     def remove_resultDir (self):
@@ -380,14 +382,14 @@ class Reader_Abstract:
             resultDir -- directory where designs with 'filename' can be found    
         """
 
-        self._results   = []                    # list of designs red 
-        self._resultDir = resultDir             # directory where the designs are generated
-        self._resultFile_lastDate = None        # last file modification date   
-        self._results_could_be_dirty = False    # flag that _results could be outdated 
+        self._results   = []                        # list of designs red 
+        self._resultDir = resultDir                 # directory where the designs are generated
+        self._resultFile_lastSize = -1              # last file size   
+        self._results_could_be_outdated = True      # flag that _results could be outdated 
 
         # read and load results the first time 
 
-        self.read_results()
+        self._read_results()
 
 
     def __repr__(self) -> str:
@@ -406,13 +408,14 @@ class Reader_Abstract:
     def results (self): 
         """ list of (abstract) results - could be designs or steps"""
 
-        # re-read results if dirty flag set 
-        if self._results_could_be_dirty: 
+        # re-read results if marked outdated flag set 
+        if self._results_could_be_outdated: 
 
-            n = self.read_results ()
+            n = self._read_results ()
 
-            logger.debug (f"read {n} results after dirty in {self.__class__.__name__}")
-            self._results_could_be_dirty = False
+            # logger.debug (f"{self} {n} read when was outdated")
+            self._results_could_be_outdated = False
+
         return self._results 
 
     
@@ -423,7 +426,7 @@ class Reader_Abstract:
 
     @property 
     def hasResults (self) -> bool: 
-        """ are there results? will read if dirty """
+        """ are there results? will read if marked outdated """
         return len(self.results) > 0 
 
     @property 
@@ -432,14 +435,14 @@ class Reader_Abstract:
         return len(self._results)
 
 
-    def set_results_could_be_dirty (self, aBool: bool):
-        """ set the dirty flag for self.results - will be re-read when accessed next time"""
+    def set_results_could_be_outdated (self, aBool: bool):
+        """ set the outdated flag for self.results - will be re-read when accessed next time"""
     
-        self._results_could_be_dirty = aBool
+        self._results_could_be_outdated = aBool
 
 
-    def read_results (self) -> int:
-        """ Reads new design, create objects and add them to 'designs' 
+    def _read_results (self) -> int:
+        """ Reads new results - only if file changed since last read 
 
         Returns:
             n_new -- number of new results added
@@ -447,10 +450,13 @@ class Reader_Abstract:
 
         n_new = 0                                           # n new results red
 
-        # read only if file changed since last time 
-        if self._is_younger_than_last_read (self._resultFile_lastDate, self.resultPathFile):
+        currentSize = os.path.getsize(self.resultPathFile) if os.path.isfile (self.resultPathFile) else -1
 
-            from timeit import default_timer as timer
+        # read only if file changed since last time 
+        if currentSize != self._resultFile_lastSize:
+
+            self._resultFile_lastSize = currentSize
+
             start = timer()
             # ...
             # print("Time ", timer() - start)  
@@ -468,16 +474,10 @@ class Reader_Abstract:
 
             time_read = timer() - start 
 
-            # save current file date
-
-            ts = os.path.getmtime(self.resultPathFile)                       # file modification timestamp of a file
-            self._resultFile_lastDate = datetime.fromtimestamp(ts)      # convert timestamp into DateTime object
-
-            n_before = self.nResults
-
             # parse line, create objects, add to result list 
             start = timer()
 
+            n_before = self.nResults
             n_new = self._load_results(file_lines)          # overloaded in sub classes
 
             time_load = timer() - start 
@@ -506,24 +506,6 @@ class Reader_Abstract:
         """ parse new lines and create design results """
         return 0                                           # must be over loaded 
 
-
-    def _is_younger_than_last_read (self, lastDate, aResultFile):
-        """ checks if the current file is younger than the version at last read"""
-
-        if  aResultFile is None or not os.path.isfile (aResultFile):
-            return False                                # no valid file to check
-        
-        if lastDate is None:
-            return True                                 # first time - no last date available
-
-        ts = os.path.getmtime(aResultFile)              # file modification timestamp of a file
-        current = datetime.fromtimestamp(ts)            # convert timestamp into DateTime object
-
-        if lastDate != current:
-            return True
-        else:
-            return False                                # file didn't change
-
  
 
 class Reader_Optimization_History (Reader_Abstract):
@@ -536,7 +518,7 @@ class Reader_Optimization_History (Reader_Abstract):
 
     @property
     def steps (self) -> list [Optimization_History_Entry]:
-        """ no of steps - will re-read if dirty!"""
+        """ no of steps - will re-read if markedoutdated!"""
         return self.results 
 
 
@@ -870,7 +852,7 @@ class Reader_Airfoils (Reader_Abstract):
             airfoil.set_usedAs (usedAs.DESIGN)
 
             # if airfoil file not was already created before, set modify for lazy write 
-            if os.path.isfile (airfoil.pathFileName):
+            if os.path.isfile (airfoil.pathFileName_abs):
                 airfoil.set_isModified (False)
             else: 
                 airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  

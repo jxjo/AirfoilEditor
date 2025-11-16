@@ -30,8 +30,8 @@ from model.polar_set        import (Polar_Definition, polarType, var,
                                     TEMP_DEFAULT, ALT_DEFAULT, AIR_RHO, AIR_ETA,)
 
 from model.xo2_driver       import Worker
-from airfoil_widgets        import Airfoil_Select_Open_Widget
-from app_model              import App_Model
+from ae_widgets             import Airfoil_Select_Open_Widget
+from ae_app_model              import App_Model
 
 
 
@@ -295,25 +295,28 @@ class Repanel_Airfoil_Dialog (Dialog):
 
     name = "Repanel Airfoil"
 
-    sig_new_panelling    = pyqtSignal ()
+
+    def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
 
 
-    def __init__ (self, parent : QWidget, 
-                  geo : Geometry_Splined, **kwargs): 
-
-        self._geo = geo
-        self.has_been_repaneled = False
+        self._app_model = app_model
+        self._has_been_repaneled = False
 
         # init layout etc 
 
         super().__init__ (parent, **kwargs)
 
         # do a first repanel with the actual parameters 
-        #       delayed as parent has to be connected to signal 
+        self.geo._repanel (based_on_org=True)              # repanel based on original x,y
 
-        timer = QTimer()                                
-        timer.singleShot(20, self._on_widget_changed)     # delayed emit 
+        # switch on show panels mode in diagram
+        self._app_model.notify_airfoil_geo_paneling (True)
 
+
+    @property
+    def geo (self) -> Geometry_Splined:
+        return self._app_model.airfoil.geo
+    
 
     def _init_layout(self) -> QLayout:
 
@@ -327,27 +330,27 @@ class Repanel_Airfoil_Dialog (Dialog):
         r += 1 
         Label  (l,r,1, get="Panels", align=Qt.AlignmentFlag.AlignRight)
         FieldI (l,r,2, width=60, step=10, lim=(40, 400),
-                        obj=self._geo.panelling, prop=Panelling_Spline.nPanels,
+                        obj=self.geo.panelling, prop=Panelling_Spline.nPanels,
                         style=self._le_bunch_style)
         r += 1 
         Slider (l,r,1, colSpan=3, width=150, align=Qt.AlignmentFlag.AlignHCenter,
                         lim=(40, 400), dec=0, # step=10,
-                        obj=self._geo.panelling, prop=Panelling_Spline.nPanels)
+                        obj=self.geo.panelling, prop=Panelling_Spline.nPanels)
         # r += 1
         Label  (l,r,0, get="LE bunch")
         Label  (l,r,4, get="TE bunch")
 
         r += 1
         FieldF (l,r,0, width=60, step=0.02, lim=(0, 1),
-                        obj=self._geo.panelling, prop=Panelling_Spline.le_bunch,
+                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch,
                         style=self._le_bunch_style)
         Slider (l,r,1, width=100, lim=(0, 1),
-                        obj=self._geo.panelling, prop=Panelling_Spline.le_bunch)
+                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch)
 
         Slider (l,r,3, width=100, lim=(0, 1),
-                        obj=self._geo.panelling, prop=Panelling_Spline.te_bunch)
+                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
         FieldF (l,r,4, width=60, step=0.02, lim=(0, 1),
-                        obj=self._geo.panelling, prop=Panelling_Spline.te_bunch)
+                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
         r += 1
         Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)        
         SpaceC (l,5, width=5)
@@ -357,7 +360,7 @@ class Repanel_Airfoil_Dialog (Dialog):
         return l
 
     def _le_bunch_message (self): 
-        angle = self._geo.panelAngle_le
+        angle = self.geo.panelAngle_le
         if angle > Geometry.LE_PANEL_ANGLE_TOO_BLUNT: 
             text = f"Panel angle at LE of {angle:.1f}° is too blunt. Decrease panels or LE bunch" 
         elif angle < Geometry.PANEL_ANGLE_TOO_SHARP: 
@@ -368,7 +371,7 @@ class Repanel_Airfoil_Dialog (Dialog):
     
 
     def _le_bunch_style (self): 
-        angle = self._geo.panelAngle_le
+        angle = self.geo.panelAngle_le
         if angle > Geometry.LE_PANEL_ANGLE_TOO_BLUNT or angle < Geometry.PANEL_ANGLE_TOO_SHARP: 
             return style.WARNING
         else: 
@@ -379,11 +382,23 @@ class Repanel_Airfoil_Dialog (Dialog):
     def _on_widget_changed (self):
         """ slot a input field changed - repanel and refresh"""
 
-        self._geo._repanel (based_on_org=True)              # repanel based on original x,y 
+        self.geo._repanel (based_on_org=True)              # repanel based on original x,y 
         self.refresh()
+        self._app_model.notify_airfoil_geo_paneling (True)
 
-        self.has_been_repaneled = True                      # for change detection 
-        self.sig_new_panelling.emit()                       # inform parent -> diagram update
+        self._has_been_repaneled = True                      # for change detection 
+
+
+    def close(self):
+        """ close or x-Button pressed"""
+
+        if self._has_been_repaneled:
+            # finalize modifications
+            self.geo.repanel (just_finalize=True)
+            self._app_model.notify_airfoil_geo_paneling (False)     # switch off panel mode in diagram
+            self._app_model.notify_airfoil_changed ()
+
+        return super().close()
 
 
     @override
@@ -515,8 +530,6 @@ class Match_Bezier_Dialog (Dialog):
 
     name = "Match Bezier"
 
-    sig_new_bezier      = pyqtSignal (Line.Type)
-    sig_pass_finished   = pyqtSignal ()
     sig_match_finished  = pyqtSignal (Side_Airfoil_Bezier)
 
     MAX_PASS = 4                                            # max passes for match Bezier with increased weighting
@@ -571,12 +584,13 @@ class Match_Bezier_Dialog (Dialog):
 
 
 
-    def __init__ (self, parent : QWidget, 
+    def __init__ (self, parent : QWidget, app_model : App_Model,
                   side_bezier : Side_Airfoil_Bezier, target_line: Line,
                   target_curv_le : float,
                   max_curv_te : float,
                   **kwargs): 
 
+        self._app_model   = app_model
         self._side_bezier = side_bezier
         self._target_line = target_line
         self._curv_le = abs(side_bezier.curvature.max_xy[1]) 
@@ -586,7 +600,7 @@ class Match_Bezier_Dialog (Dialog):
         self._is_curv_te_limited = True
 
         self._target_curv_le = target_curv_le
-        self._max_curv_te = max_curv_te
+        self._max_curv_te    = max_curv_te
 
         self._norm2 = Line.norm2_deviation_to (side_bezier.bezier, target_line) 
         self._nevals = 0
@@ -609,6 +623,8 @@ class Match_Bezier_Dialog (Dialog):
         super().__init__ (parent, title=self._titletext(), **kwargs)
 
         # handle button (signals) 
+
+        self.made_match = False
 
         self._stop_btn.clicked.connect (self._cancel_thread)
         self._close_btn.clicked.connect  (self.close)
@@ -695,7 +711,7 @@ class Match_Bezier_Dialog (Dialog):
         self.refresh ()
         self.setWindowTitle (self._titletext())
 
-        self.sig_new_bezier.emit (self._side_bezier.type)
+        self._app_model.notify_airfoil_bezier (self._side_bezier.type)
 
 
     def _result_is_good_enough (self) -> bool:
@@ -724,7 +740,7 @@ class Match_Bezier_Dialog (Dialog):
             # further passes to go if target_curv_le is defined?
             finished = self._result_is_good_enough ()
             if not finished:
-                self.sig_pass_finished.emit ()                          # intermediate update
+                self._app_model.notify_airfoil_geo_changed ()           # intermediate update
 
                 # start next pass after this thread has really finished 
                 timer = QTimer()                                
@@ -748,8 +764,8 @@ class Match_Bezier_Dialog (Dialog):
             self.setWindowTitle (self._titletext())
 
             self.refresh ()
-
-            self.sig_match_finished.emit(self._side_bezier)
+            self._app_model.notify_airfoil_geo_changed ()               # final update
+            self.made_match = True
 
 
     def _init_layout(self) -> QLayout:
@@ -1463,7 +1479,7 @@ class Airfoil_Scale_Dialog (Dialog):
 
     name = "Set Scale Value"
 
-    def __init__ (self, *args, title : str= None, **kwargs): 
+    def __init__ (self, *args, **kwargs): 
 
         self._close_btn  : QPushButton = None 
 
@@ -1473,10 +1489,10 @@ class Airfoil_Scale_Dialog (Dialog):
 
 
     @property
-    def scale_value (self) -> float:
+    def scale_factor (self) -> float:
         return self.dataObject_copy
 
-    def set_scale_value (self, aVal):
+    def set_scale_factor (self, aVal):
         self._dataObject_copy = aVal
 
 
@@ -1490,7 +1506,7 @@ class Airfoil_Scale_Dialog (Dialog):
                     "allowing to compare airfoils at their wing section.<br>")
         r += 1
         FieldF (l,r,c, lab="Scale to", width=60, unit="%", step=10, dec=0, lim=(5,500),
-                obj=self, prop=Airfoil_Scale_Dialog.scale_value)
+                obj=self, prop=Airfoil_Scale_Dialog.scale_factor)
         r += 1
 
         l.setRowStretch (r,1)    
@@ -1529,7 +1545,7 @@ class TE_Gap_Dialog (Dialog):
         super().__init__ (parent, **kwargs)
 
         # switch on TE gap mode in diagram
-        self.app_model.notify_airfoil_geo_te_gap (self.te_gap, self.xBlend)
+        self.app_model.notify_airfoil_geo_te_gap (self.xBlend)
 
 
     @property
@@ -1550,7 +1566,7 @@ class TE_Gap_Dialog (Dialog):
 
         self._xBlend = aVal
         self.airfoil.geo.set_te_gap (self.te_gap, xBlend=aVal, moving=True)
-        self.app_model.notify_airfoil_geo_te_gap (self.te_gap, self.xBlend)
+        self.app_model.notify_airfoil_geo_te_gap (self.xBlend)
         self.refresh()
 
 
@@ -1563,7 +1579,7 @@ class TE_Gap_Dialog (Dialog):
 
         self._te_gap = aVal
         self.airfoil.geo.set_te_gap (aVal, xBlend=self.xBlend, moving=True)
-        self.app_model.notify_airfoil_geo_te_gap (self.te_gap, self.xBlend)
+        self.app_model.notify_airfoil_geo_te_gap (self.xBlend)
         self._has_been_set = True
         self.refresh()
 
@@ -1610,7 +1626,7 @@ class TE_Gap_Dialog (Dialog):
         if self.has_been_set:
             # finalize modifications
             self.airfoil.geo.set_te_gap (self.te_gap, xBlend=self.xBlend)
-            self.app_model.notify_airfoil_geo_te_gap (None, None)   # switch off TE gap mode in diagram
+            self.app_model.notify_airfoil_geo_te_gap (None)   # switch off TE gap mode in diagram
             self.app_model.notify_airfoil_changed ()
 
         return super().close()
@@ -1648,7 +1664,7 @@ class LE_Radius_Dialog (Dialog):
         super().__init__ (parent, **kwargs)
 
         # switch on TE gap mode in diagram
-        self.app_model.notify_airfoil_geo_le_radius (self.le_radius, self.xBlend)
+        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
 
 
     @property
@@ -1669,7 +1685,7 @@ class LE_Radius_Dialog (Dialog):
 
         self._xBlend = aVal
         self.airfoil.geo.set_le_radius (self.le_radius, xBlend=aVal, moving=True)
-        self.app_model.notify_airfoil_geo_le_radius (self.le_radius, self.xBlend)
+        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
         self.refresh()
 
 
@@ -1682,7 +1698,7 @@ class LE_Radius_Dialog (Dialog):
 
         self._le_radius = aVal
         self.airfoil.geo.set_le_radius (aVal, xBlend=self.xBlend, moving=True)
-        self.app_model.notify_airfoil_geo_le_radius (self.le_radius, self.xBlend)
+        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
         self._has_been_set = True
         self.refresh()
 
@@ -1742,7 +1758,7 @@ class LE_Radius_Dialog (Dialog):
         if self.has_been_set:
             # finalize modifications
             self.airfoil.geo.set_le_radius (self.le_radius, xBlend=self.xBlend)
-            self.app_model.notify_airfoil_geo_le_radius (None, None)   # switch off LE radius mode in diagram
+            self.app_model.notify_airfoil_geo_le_radius (None)   # switch off LE radius mode in diagram
             self.app_model.notify_airfoil_changed ()
 
         return super().close()

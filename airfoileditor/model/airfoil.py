@@ -24,7 +24,7 @@ from .xo2_driver            import Worker
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 #-------------------------------------------------------------------------------
@@ -103,11 +103,8 @@ class Airfoil:
             self._geometry_class  = geometry                # geometry startegy 
         self._geo            = None                         # selfs instance of geometry
 
-        self._nPanelsNew     = None                         # repanel: no of panels - init via default
-        self._le_bunch       = None                         # repanel: panel bunch at leading edge
-        self._te_bunch       = None   	                    # repanel: panel bunch at trailing edge
-
         self._polarSet       = None                         # polarSet which is defined from outside 
+        self._scale_factor   = None                         # scale factor of airfoil e.g. for polars
 
         self._usedAs         = usedAs.NORMAL                # usage type of airfoil used by app <- AIRFOIL_TYPES
         self._propertyDict   = {}                           # multi purpose extra properties for an Airfoil
@@ -243,10 +240,20 @@ class Airfoil:
     # ----------  Properties ---------------
 
     @property
-    def x (self): return self._x
+    def x (self): 
+        """ x coordinates of self """
+
+        if not self.isLoaded:                                           # lazy load
+            self.load()
+        return self._x
 
     @property
-    def y (self): return self._y
+    def y (self): 
+        """ y coordinates of self """
+
+        if not self.isLoaded:                                           # lazy load
+            self.load()
+        return self._y
 
 
     @property
@@ -375,6 +382,22 @@ class Airfoil:
     def set_polarSet (self, aPolarSet):
         self._polarSet = aPolarSet
 
+    @property
+    def scale_factor (self):
+        """ scale factor of airfoil e.g. for polars - default is 1.0 """
+        return self._scale_factor if self._scale_factor is not None else 1.0
+    
+    def set_scale_factor (self, aScale):
+        if aScale == 1.0 or aScale is None:
+            self._scale_factor = None
+        else:
+            self._scale_factor = clip (aScale, 0.01, 100.0)
+ 
+    @property
+    def isScaled (self) -> bool:
+        """ True if airfoil is scaled (scale != 1.0)"""
+        return self._scale_factor is not None 
+
 
     @property
     def isEdited (self) -> bool: 
@@ -386,7 +409,7 @@ class Airfoil:
 
     @property
     def isModified (self) -> bool: 
-        """ True if airfoil is being modifiied, ..."""
+        """ True if airfoil is being modified, ..."""
         return self._isModified
     def set_isModified (self, aBool): 
         self._isModified = aBool 
@@ -652,15 +675,18 @@ class Airfoil:
 
             except ValueError as e:
                 logger.error (f"{self} {e}")
-                raise 
+                raise
 
             # first geometry check
             
-            try:
-                self.geo.thickness
-            except GeometryException as e:
-                logger.error (f"{self} {e}")
-                raise
+            if self.isLoaded:
+                try:
+                    self.geo.thickness
+                except GeometryException as e:
+                    logger.error (f"{self} {e}")
+                    raise
+
+            logger.debug (f"{self} loaded from {sourcePathFile} with {len(self._x)} points.")
 
 
     def _loadLines (self, file_lines : list[str]):

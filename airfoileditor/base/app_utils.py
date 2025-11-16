@@ -80,7 +80,7 @@ class Update_Checker:
     - Inform User
     """
 
-    def __init__ (self, app_name : str, package_name : str, current_version : str):
+    def __init__ (self, parent : QWidget, app_name : str, package_name : str, current_version : str):
 
         self._app_name = app_name
         self._package_name = package_name
@@ -88,6 +88,9 @@ class Update_Checker:
 
         self._latest_version = None
         self._settings = Settings()             # app settings 
+
+        if self.is_newer_version_available():
+            QTimer.singleShot (1000, lambda: self.show_user_info (parent))
 
 
     @property

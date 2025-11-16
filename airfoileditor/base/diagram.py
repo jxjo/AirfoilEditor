@@ -24,7 +24,7 @@ from .widgets           import Icon, Widget
 from .artist            import Artist, Text_Button
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 
@@ -38,21 +38,20 @@ class Diagram (QWidget):
 
     """
 
-    _width  = (200, None)                   # (min,max) 
-    _height = (100, None)                   # (min,max)
+    _width  = (200, None)                           # (min,max) 
+    _height = (100, None)                           # (min,max)
 
-    name   = "My Diagram"                   # will be shown in Tabs and used for settings
+    name   = "My Diagram"                           # will be shown in Tabs and used for settings
 
 
-    def __init__(self, parent, 
-                 getter = None, 
+    def __init__(self, 
+                 getter,                            # function or object to get data object for diagram items
                  width=None, 
                  height=None, 
                  **kwargs):
-        super().__init__(parent, **kwargs)
+        super().__init__( **kwargs)
 
         self._getter = getter
-        self._myApp  = parent
         self._section_panel = None 
         self._diagram_items_grid_dict = {}
         self._show_first_time = True
@@ -120,14 +119,14 @@ class Diagram (QWidget):
         pass
 
 
-    def data_list (self): 
+    def dataObject (self): 
         # to be overloaded - or implemented with semantic name   
 
         if callable(self._getter):
             obj = self._getter()
         else: 
             obj = self._getter     
-        return obj if isinstance (obj, list) else [obj]
+        return obj 
 
 
     def _add_item (self, anItem: 'Diagram_Item', row, col, rowspan=1, colspan=1, rowStretch=0, columnStretch=0):
@@ -261,10 +260,6 @@ class Diagram (QWidget):
         for item in self.diagram_items:
             item._show_artist (artist_class, show, refresh=refresh)
 
-
-    @property
-    def myApp (self): 
-        return self._myApp
     
     @property
     def diagram_items (self) -> list['Diagram_Item']:
@@ -292,19 +287,21 @@ class Diagram (QWidget):
            also_viewRange: also re-init viewRange     
         """
 
+        if also_viewRange:                              # also setup view range if not visible
+            for item in self.diagram_items:
+                    item.setup_viewRange() 
+                    item.refresh_artists()
+
         if self.isVisible():
 
             logger.debug (f"{str(self)} refresh")
 
             if self._viewPanel:
-                self._viewPanel.refresh()                                       # first view panel as diagram settings could change
+                self._viewPanel.refresh()               # first view panel as diagram settings could change
 
             item : Diagram_Item
             for item in self.diagram_items:
-                if item.isVisible(): 
-                    item.refresh()
-                if also_viewRange:                                              # also setup view range if not visible
-                    item.setup_viewRange()  
+                item.refresh()
 
 
     @override
@@ -423,7 +420,7 @@ class Diagram (QWidget):
         return s
 
 
-    def set_settings (self, settings : dict):
+    def set_settings (self, settings : dict, refresh=True):
         """ 
         Set self settings and all child diagram items from dictionary 
         Args:
@@ -445,7 +442,7 @@ class Diagram (QWidget):
             item._set_settings (d_items.get(item.name, {}))
 
         # ensure at least view panel is refreshed
-        if self._viewPanel:
+        if self._viewPanel and refresh:
             self._viewPanel.refresh()
 
 # -----------------------------------------------------------------------------------
@@ -471,7 +468,7 @@ class Diagram_Item (pg.PlotItem):
     sig_visible = pyqtSignal(bool, object)              # when self is set to show/hide 
 
 
-    def __init__(self, parent, 
+    def __init__(self,  
                  getter = None, 
                  show = True,                           # show initially 
                  **kwargs):
@@ -479,7 +476,6 @@ class Diagram_Item (pg.PlotItem):
         super().__init__(name=self.name,                # to link view boxes 
                          **kwargs)
 
-        self._parent : Diagram = parent 
         self._getter = getter
         self._show   = show 
 
@@ -500,35 +496,12 @@ class Diagram_Item (pg.PlotItem):
 
         self._reset_btn = None
         self._auto_btn  = None
-        self._coordItem = None
+        self._vb_state_changed = False
+        self._coords_item = None
 
-        self.hideButtons ()
-
-        p = Text_Button ("Fit", parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
-                        itemPos=(0,0), parentPos=(0.0,1), offset=(5,-20), frame_pad=-2)
-        p.setToolTip ("Set View Range to show all data")
-        p.clicked.connect (self._auto_btn_clicked)   
-        self._auto_btn = p         
-
-        # setup additional, optional button to reset view range 
-
-        self._vb_state_changed = False 
-        if self.has_reset_button:
-            p = Text_Button ("Reset", parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
-                            itemPos=(0,0), parentPos=(0,1), offset=(30,-20), frame_pad=-2)
-            p.setToolTip ("Reset to initial View Range")
-            p.clicked.connect (self._reset_btn_clicked)            
-            self._reset_btn = p
-
-            QTimer().singleShot(50, self._reset_prepare)           # delayed when all initial drawing done 
-
-
-
-        # setup item to print coordinates 
-
-        self._coordItem = pg.LabelItem("", color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt", justify="left")  
-        self._coordItem.setParentItem(self)  
-        self._coordItem.anchor(parentPos=(0,1), itemPos=(0.0,0.0), offset=(75, -20))                       
+        self.hideButtons ()                                 # hide pyqtgraph default buttons
+        self._setup_buttons ()                              # setup our own buttons
+        self._setup_coords_item ()                          # setup coordinate label item
 
         # set margins (inset) of self - ensure some space for coordinates
 
@@ -723,14 +696,14 @@ class Diagram_Item (pg.PlotItem):
         """ overridden to show coordinates of mouse cursor"""
         super().hoverEvent (ev)
 
-        if self.mouseHovering:
+        if self.mouseHovering and self._coords_item is not None:
             pos : pg.Point = self.viewBox.mapSceneToView(ev.scenePos())
 
             if self.viewBox.viewRect().contains(pos):
-                self._coordItem.show()
-                self._coordItem.setText (self._coord_as_text (pos))
+                self._coords_item.show()
+                self._coords_item.setText (self._coord_as_text (pos))
             else:
-                self._coordItem.hide()
+                self._coords_item.hide()
 
 
     def _coord_as_text (self, pos : pg.Point) -> str:
@@ -762,6 +735,38 @@ class Diagram_Item (pg.PlotItem):
         return f"{coord:#.{dec}f}"
 
 
+    def _setup_coords_item (self):
+        """ setup coordinate label item"""
+
+        self._coords_item = pg.LabelItem("", color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt", justify="left")  
+        self._coords_item.setParentItem(self)  
+        self._coords_item.anchor(parentPos=(0,1), itemPos=(0.0,0.0), offset=(75, -20))            
+
+
+    def _setup_buttons (self):
+        """ setup view tool buttons"""
+
+        # Replace PlotItem auto icon button with our own Text_Button
+
+        p = Text_Button ("Fit", parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
+                        itemPos=(0,0), parentPos=(0.0,1), offset=(5,-20), frame_pad=-2)
+        p.setToolTip ("Set View Range to show all data")
+        p.clicked.connect (self._auto_btn_clicked)   
+        self._auto_btn = p         
+
+        # setup additional, optional button to reset view range 
+
+        self._vb_state_changed = False 
+        if self.has_reset_button:
+            p = Text_Button ("Reset", parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
+                            itemPos=(0,0), parentPos=(0,1), offset=(30,-20), frame_pad=-2)
+            p.setToolTip ("Reset to initial View Range")
+            p.clicked.connect (self._reset_btn_clicked)            
+            self._reset_btn = p
+
+            QTimer().singleShot(50, self._reset_prepare)           # delayed when all initial drawing done 
+
+
     @property 
     def has_reset_button (self) -> bool:
         """ reset view button in the lower left corner"""
@@ -784,8 +789,8 @@ class Diagram_Item (pg.PlotItem):
                     self._reset_btn.hide()
                 if self._auto_btn  is not None:  
                     self._auto_btn.hide()
-                if self._coordItem is not None: 
-                    self._coordItem.hide()
+                if self._coords_item is not None: 
+                    self._coords_item.hide()
         except RuntimeError:
             pass  # this can happen if the plot has been deleted.
 
@@ -905,6 +910,9 @@ class Diagram_Item (pg.PlotItem):
 
     def refresh_artists (self):
         """ refresh all artists of self - can be overridden"""
+
+        logger.debug (f"{self} refresh artists")
+        
         for artist in self._artists:
             artist.refresh()
 

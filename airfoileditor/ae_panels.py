@@ -6,7 +6,6 @@
 UI panels 
 
 """
-from typing                 import TYPE_CHECKING                        # to handle circular imports
 
 import logging
 
@@ -23,11 +22,11 @@ from model.airfoil_geometry import Line, Side_Airfoil_Bezier
 from model.case             import Case_Abstract, Case_Direct_Design, Case_Optimize
 from model.xo2_driver       import Xoptfoil2
 
-from airfoil_widgets        import * 
-from airfoil_dialogs        import (Match_Bezier_Dialog, Matcher, LE_Radius_Dialog, TE_Gap_Dialog,
+from ae_widgets             import * 
+from ae_dialogs             import (Match_Bezier_Dialog, Matcher, LE_Radius_Dialog, TE_Gap_Dialog,
                                    Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
 
-from app_model              import App_Model
+from ae_app_model              import App_Model
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.WARNING)
@@ -65,38 +64,20 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         return self.app_model.case
 
 
-    @override
-    def _set_panel_layout (self ):
-        """ Set layout of self._panel """
-        # overridden to connect to widgets changed signal
-
-        super()._set_panel_layout ()
-        for w in self.widgets:
-            w.sig_changed.connect (self._on_airfoil_widget_changed)
-        for w in self.header_widgets:
-            w.sig_changed.connect (self._on_airfoil_widget_changed)
-
-
-    def _on_airfoil_widget_changed (self, widget):
-        """ user changed data in widget"""
-        logger.debug (f"{self} {widget} widget changed slot")
-        self.app_model.notify_airfoil_changed ()
-
-
     @property
-    def mode_modify (self) -> bool:
+    def is_mode_modify (self) -> bool:
         """ panel in mode_modify or disabled ? """ 
-        return isinstance (self.case, Case_Direct_Design)
+        return self.app_model.is_mode_modify or self.app_model.is_mode_as_bezier
 
 
     @property
-    def mode_optimize (self) -> bool:
+    def is_mode_optimize (self) -> bool:
         """ panel in mode_optimize or disabled ? """
-        return isinstance (self.case, Case_Optimize) 
+        return self.app_model.is_mode_optimize
 
 
     @property
-    def mode_bezier (self) -> bool:
+    def is_bezier (self) -> bool:
         """ True if self is in mode_modify and geo is Bezier """
         return self.airfoil.isBezierBased if self.airfoil else False
 
@@ -105,8 +86,27 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: only enabled in edit mode of App """
-        return not self.mode_modify or (self.airfoil.isFlapped if self.airfoil else False)
+        return not self.is_mode_modify or (self.airfoil.isFlapped if self.airfoil else False)
     
+    @override
+    def _set_panel_layout (self ):
+        """ Set layout of self._panel """
+        # overridden to connect to widgets changed signal
+
+        super()._set_panel_layout ()
+        for w in self.widgets:
+            w.sig_changed.connect (self._on_widget_changed)
+        for w in self.header_widgets:
+            w.sig_changed.connect (self._on_widget_changed)
+
+
+    def _on_widget_changed (self, widget):
+        """ user changed data in widget"""
+        logger.debug (f"{self} {widget} widget changed slot")
+        self.app_model.notify_airfoil_changed ()
+
+
+# --------------------------------------------------------------------------
 
 
 class Panel_File_View (Panel_Airfoil_Abstract):
@@ -133,7 +133,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         return False
     
 
-    def _on_airfoil_widget_changed (self, *_ ):
+    def _on_widget_changed (self, *_ ):
         """ user changed data in widget"""
         # overloaded - do not react on self widget changes 
         pass
@@ -155,7 +155,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
                                     textOpen="&Open", widthOpen=100, 
                                     get=lambda: self.airfoil, 
                                     set=lambda airfoil: self.app_model.set_airfoil(airfoil))
-        w.sig_opened_via_button.connect (self.sig_load_airfoil_settings.emit)
+        w.sig_opened_via_button.connect (self.sig_load_airfoil_settings.emit)       # explicitly load settings on open
 
         r += 1
         Button (l,r,c, text="&Modify", width=100, 
@@ -181,29 +181,29 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     def _more_menu (self) -> QMenu:
         """ create and return sub menu for 'more' actions"""
 
-        menue = QMenu ()
+        menu = QMenu ()
 
-        menue.addAction (MenuAction ("As Bezier based", self, set=self.sig_new_as_bezier, 
+        menu.addAction (MenuAction ("As Bezier based", self, set=self.sig_new_as_bezier, 
                                      disable=lambda: self.airfoil.isBezierBased,
                                      toolTip="Create new Bezier based airfoil of current airfoil"))
-        menue.addSeparator ()
-        menue.addAction (MenuAction ("Save as...", self, set=self.sig_save_as.emit,
+        menu.addSeparator ()
+        menu.addAction (MenuAction ("Save as...", self, set=self.sig_save_as.emit,
                                      toolTip="Create a copy of the current airfoil with new name and filename"))
-        menue.addAction (MenuAction ("Rename...", self, set=self.sig_rename.emit,
+        menu.addAction (MenuAction ("Rename...", self, set=self.sig_rename.emit,
                                      toolTip="Rename name and/or filename of current airfoil"))
-        menue.addAction (MenuAction ("Delete", self, set=self.sig_delete.emit,
+        menu.addAction (MenuAction ("Delete", self, set=self.sig_delete.emit,
                                      toolTip="Delete current airfoil including all temporary files created by the AirfoilEditor"))
-        menue.addAction (MenuAction ("Delete temp files", self, set=self.sig_delete_temp_files.emit,
-                                     toolTip="Delete all temporary files created by the AirfoilEditor just to have a clean directoy again"))
-        menue.addSeparator ()
-        menue.addAction (MenuAction ("Readme on Github", self, set=self._open_AE_url,
+        menu.addAction (MenuAction ("Delete temp files", self, set=self.sig_delete_temp_files.emit,
+                                     toolTip="Delete all temporary files created by the AirfoilEditor just to have a clean directory again"))
+        menu.addSeparator ()
+        menu.addAction (MenuAction ("Readme on Github", self, set=self._open_AE_url,
                                      toolTip="Open the Github README file of the AirfoilEditor in a browser"))
-        menue.addAction (MenuAction ("Releases on Github", self, set= self._open_releases_url,
+        menu.addAction (MenuAction ("Releases on Github", self, set= self._open_releases_url,
                                      toolTip="Open the Github page with the actual release of the AirfoilEditor"))
 
-        menue.setToolTipsVisible(True)
+        menu.setToolTipsVisible(True)
 
-        return menue
+        return menu
 
 
     def _open_releases_url (self):
@@ -257,29 +257,30 @@ class Panel_File_View_Small (Panel_File_View):
     def _more_menu (self) -> QMenu:
         """ create and return sub menu for 'more' actions"""
 
-        menue = super()._more_menu ()
-        menue.insertAction (menue.actions()[0], MenuAction ("&Optimize", self, set=self.sig_optimize.emit,   
+        menu = super()._more_menu ()
+        menu.insertAction (menu.actions()[0], MenuAction ("&Optimize", self, set=self.sig_optimize.emit,   
                                     toolTip="Modify geometry, Normalize, Repanel, Set Flap"))
-        menue.insertAction (menue.actions()[0], MenuAction ("&Modify", self, set=self.sig_modify.emit,   
+        menu.insertAction (menu.actions()[0], MenuAction ("&Modify", self, set=self.sig_modify.emit,   
                                     toolTip=self._tooltip_optimize(), disable=lambda: not Xoptfoil2.ready))
-        return menue
+        return menu
 
 
 
 class Panel_File_Modify (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
-    name = 'Modifiy Mode'
+    name = 'Modify Mode'
 
     sig_finish   = pyqtSignal()                                 # wants to finish modify mode - ok / cancel
     sig_cancel   = pyqtSignal()                                 # wants to cancel modify mode
 
     _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_FILE
 
+
     @override
     def title_text (self) -> str: 
         """ returns text of title - default self.name"""
-        if self.airfoil.isBezierBased:
+        if self.airfoil and self.airfoil.isBezierBased:
              return 'Bezier Mode'
         else: 
             return self.name
@@ -322,10 +323,10 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
         l.setRowStretch (r,2)
         r += 1
         Button (l,r,c,  text="&Finish ...", width=100, set=self.sig_finish.emit, 
-                        toolTip="Save current airfoil, optionally modifiy name and leave edit mode")
+                        toolTip="Save current airfoil, optionally modify name and leave edit mode")
         r += 1
         Button (l,r,c,  text="&Cancel",  width=100, 
-                        set=lambda : self.sig_cancel.emit(),
+                        set=self.sig_cancel.emit,
                         toolTip="Cancel modifications of airfoil and leave edit mode")
         l.setColumnMinimumWidth (1,12)
         l.setColumnStretch (4,2)
@@ -377,7 +378,7 @@ class Panel_File_Modify_Small (Panel_File_Modify):
                         toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
         r += 1
         Button (l,r,c,  text="&Finish ...", width=100, set=self.sig_finish.emit, 
-                        toolTip="Save current airfoil, optionally modifiy name and leave edit mode")
+                        toolTip="Save current airfoil, optionally modify name and leave edit mode")
         Button (l,r,c+2,text="&Cancel",  width=80, colSpan=3,
                         set=lambda : self.sig_cancel.emit(),
                         toolTip="Cancel modifications of airfoil and leave edit mode")
@@ -391,8 +392,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
     """ Main geometry data of airfoil"""
 
     name = 'Geometry'
-#    _width  = 380
-    print ("geo !!")
+
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
@@ -400,7 +400,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         # blend with airfoil - currently Bezier is not supported
         Button (l_head, text="&Blend", width=75,
                 set=self.do_blend_with, 
-                hide=lambda: not self.mode_modify or self.airfoil.isBezierBased,
+                hide=lambda: not self.is_mode_modify or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
 
 
@@ -419,13 +419,13 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.02,
                 obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_le_radius, 
-                hide=lambda: not self.mode_modify or self.mode_bezier,
+                hide=lambda: not self.is_mode_modify or self.is_bezier,
                 toolTip="Set leading edge radius with a flexible blending range")
         r += 1
         FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
-                hide=lambda: not self.mode_modify or self.mode_bezier,
+                hide=lambda: not self.is_mode_modify or self.is_bezier,
                 toolTip="Set trailing edge gap with a flexible blending range")
         r += 1
         SpaceR (l,r, height=5)
@@ -539,13 +539,13 @@ class Panel_Geometry_Small (Panel_Geometry):
         FieldF (l,r,c, lab="LE radius", width=60, unit="%", step=0.02,
                 obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_le_radius, 
-                hide=lambda: not self.mode_modify or self.mode_bezier,
+                hide=lambda: not self.is_mode_modify or self.is_bezier,
                 toolTip="Set leading edge radius with a flexible blending range")
         r += 1
         FieldF (l,r,c, lab="TE gap", width=60, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
-                hide=lambda: not self.mode_modify or self.mode_bezier,
+                hide=lambda: not self.is_mode_modify or self.is_bezier,
                 toolTip="Set trailing edge gap with a flexible blending range")
         l.setColumnMinimumWidth (c,70)
         l.setColumnStretch (c+3,2)
@@ -564,7 +564,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         # repanel airfoil - currently Bezier is not supported
         Button (l_head, text="&Repanel", width=75,
                 set=self.do_repanel, 
-                hide=lambda: not self.mode_modify,
+                hide=lambda: not self.is_mode_modify,
                 disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
                 toolTip="Repanel airfoil with a new number of panels" ) 
 
@@ -597,19 +597,9 @@ class Panel_Panels (Panel_Airfoil_Abstract):
     def do_repanel (self): 
         """ repanel airfoil - open repanel dialog""" 
 
-        dialog = Repanel_Airfoil_Dialog (self, self.airfoil.geo,
+        dialog = Repanel_Airfoil_Dialog (self, self.app_model,
                                          parentPos=(0.35, 0.75), dialogPos=(0,1))
-
-        self.app.sig_panelling_changed.emit()                 # diagram show panelling
-        dialog.sig_new_panelling.connect (self.app.sig_panelling_changed.emit)
-
         dialog.exec()     
-
-        if dialog.has_been_repaneled:
-            # finalize modifications 
-            self.airfoil.geo.repanel (just_finalize=True)                
-
-            self.app_model.notify_airfoil_changed()
 
 
     def _on_panelling_finished (self, aSide : Side_Airfoil_Bezier):
@@ -668,7 +658,7 @@ class Panel_Panels_Small (Panel_Panels):
         FieldI (l,r,c, lab="No of panels", disable=True, width=60, style=self._style_panel,
                 get=lambda: self.geo.nPanels, )
         ToolButton (l,r,c+2, icon=Icon.EDIT,
-                set=self.do_repanel, hide=lambda: not self.mode_modify,
+                set=self.do_repanel, hide=lambda: not self.is_mode_modify,
                 disable=lambda: self.geo.isBasic or self.geo.isHicksHenne,
                 toolTip="Repanel airfoil with a new number of panels" ) 
         r += 1
@@ -689,14 +679,14 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         isProbablyFlapped = self.airfoil.geo.isProbablyFlapped if self.airfoil else False
-        return (self.mode_modify or isProbablyFlapped) and not self.mode_bezier
+        return (self.is_mode_modify or isProbablyFlapped) and not self.is_bezier
 
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
 
         Button (l_head, text="Set F&lap", width=75,
-                set=self.do_flap, hide=lambda: not self.mode_modify,
+                set=self.do_flap, hide=lambda: not self.is_mode_modify,
                 disable=self._set_flap_disabled,
                 toolTip="Set flap at airfoil" ) 
 
@@ -706,7 +696,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
 
         if self.geo.isBezier or self.geo.isHicksHenne: 
             return True
-        elif self.mode_modify:
+        elif self.is_mode_modify:
             return not self.airfoil.flap_setter                       # no flapper, no set flap 
         else:
             return True
@@ -719,7 +709,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
         l = QGridLayout()
         r,c = 0, 0 
 
-        if self.mode_modify:
+        if self.is_mode_modify:
 
             flap_setter         = self.airfoil.flap_setter
             airfoil_flapped = flap_setter.airfoil_flapped if flap_setter else None
@@ -786,11 +776,10 @@ class Panel_Flap (Panel_Airfoil_Abstract):
             elif geo.isProbablyFlapped:
 
                 SpaceR (l,r, stretch=2)
-                r += 1
-                lab =Label  (l,r,c, width=None, height=(80,None), colSpan=3, style=style.COMMENT, wordWrap=True, 
+                Label  (l,r,c, width=160, height=(None,None), colSpan=3, style=style.COMMENT, wordWrap=True, 
                              get="The airfoil is probably flapped, but a kink in the contour couldn't be detected on both sides.")
-                lab.setAlignment (ALIGN_BOTTOM)
-                l.setColumnStretch (2,3)
+                r += 1
+                l.setRowStretch (r,1)
 
         return l
 
@@ -805,7 +794,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     @override
     def refresh(self, reinit_layout=False):
 
-        # force new layout to show different flpa states 
+        # force new layout to show different flap states 
         return super().refresh(reinit_layout=True)
 
 
@@ -822,7 +811,7 @@ class Panel_Flap_Small (Panel_Flap):
         l = QGridLayout()
         r,c = 0, 0 
 
-        if self.mode_modify:
+        if self.is_mode_modify:
 
             flap_setter         = self.airfoil.flap_setter
             airfoil_flapped = flap_setter.airfoil_flapped if flap_setter else None
@@ -842,7 +831,7 @@ class Panel_Flap_Small (Panel_Flap):
                              get="The airfoil is already flapped.")
  
             ToolButton (l,0,c+2, icon=Icon.EDIT,
-                    set=self.do_flap, hide=lambda: not self.mode_modify,
+                    set=self.do_flap, hide=lambda: not self.is_mode_modify,
                     disable=self._set_flap_disabled,
                     toolTip="Set flap at airfoil" ) 
             l.setRowStretch (r+1,1)
@@ -862,8 +851,6 @@ class Panel_Flap_Small (Panel_Flap):
 
                 Label  (l,r,c, width=None, colSpan=2, style=style.COMMENT, 
                              get="The airfoil is probably flapped")
-                l.setColumnMinimumWidth (0,80)
-                l.setColumnMinimumWidth (1,50)
                 l.setRowStretch (1,1)
 
         return l
@@ -881,7 +868,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is not Bezier """
-        return not self.mode_bezier 
+        return not self.is_bezier 
 
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
@@ -889,7 +876,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
 
         Button (l_head, text="&Normalize", width=75,
                 set=lambda : self.airfoil.normalize(), signal=True, 
-                hide=lambda: not self.mode_modify,
+                hide=lambda: not self.is_mode_modify,
                 toolTip="Normalize airfoil to get leading edge at 0,0 and trailing edge at x=1.0")
 
 
@@ -900,7 +887,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         FieldF (l,r,c, lab="Leading edge x,y", get=lambda: self.geo.le[0], width=75, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
         r += 1
         FieldF (l,r,c, lab="  ... of spline", get=lambda: self.geo.le_real[0], width=75, dec=7, style=self._style_le_real,
-                hide=lambda: not self.mode_modify)
+                hide=lambda: not self.is_mode_modify)
         r += 1
         FieldF (l,r,c, lab="Trailing edge x,y", get=lambda: self.geo.te[0], width=75, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
         r += 1
@@ -912,7 +899,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         FieldF (l,r,c+1,get=lambda: self.geo.le[1], width=75, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo.le_real[1], width=75, dec=7, style=self._style_le_real,
-                hide=lambda: not self.mode_modify)
+                hide=lambda: not self.is_mode_modify)
         r += 1
         FieldF (l,r,c+1,get=lambda: self.geo.te[1], width=75, dec=7, style=lambda: self._style (self.geo.te[1], -self.geo.te[3]))
         r += 1
@@ -946,16 +933,25 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     def _messageText (self): 
 
         text = []
+        te_not_at_1 = ""
+        te_not_sym  = ""
         if not self.geo.isNormalized:
             if self.geo.isSplined and not self.geo.isLe_closeTo_le_real:
-                text.append("- Leading edge of spline is not at 0,0")
+                text.append("- LE of spline is not at 0,0")
             elif self.geo.le[0] != 0.0 or self.geo.le[1] != 1.0 : 
-                text.append("- Leading edge is not at 0,0")
+                text.append("- LE is not at 0,0")
         if not self.airfoil.isFlapped:
             if self.geo.te[0] != 1.0 or self.geo.te[2] != 1.0 : 
-                text.append("- Trailing edge x is not at 1.0")
+                te_not_at_1 = "- TE x is not at 1.0"
             if self.geo.te[1] != -self.geo.te[3]: 
-                text.append("- Trailing edge y is not symmetrical")
+                if te_not_at_1:
+                    te_not_at_1 += " and y is not symmetrical"
+                else:   
+                    te_not_sym = "- TE y is not symmetrical"
+            if te_not_at_1:
+                text.append (te_not_at_1)
+            if te_not_sym:
+                text.append (te_not_sym)
 
         if not text:
             if self.geo.isSymmetrical: 
@@ -991,7 +987,7 @@ class Panel_LE_TE_Small  (Panel_LE_TE):
         r,c = 0, 5 
         ToolButton (l,r,c+1, icon=Icon.EDIT,
                 set=lambda : self.airfoil.normalize(), signal=True, 
-                hide=lambda: not self.mode_modify,
+                hide=lambda: not self.is_mode_modify,
                 toolTip="Normalize airfoil to get leading edge at 0,0 and trailing edge at x=1.0")
         return l
 
@@ -1006,7 +1002,7 @@ class Panel_Bezier (Panel_Airfoil_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
-        return self.mode_bezier
+        return self.is_bezier
 
     @override
     @property
@@ -1069,7 +1065,7 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
-        return self.mode_bezier
+        return self.is_bezier
 
     @property
     def upper (self) -> Side_Airfoil_Bezier:
@@ -1193,28 +1189,20 @@ class Panel_Bezier_Match (Panel_Airfoil_Abstract):
                             target_curv_le: float, max_curv_te : float  ): 
         """ run match bezier (dialog) """ 
 
-        match_bezier = Match_Bezier_Dialog (self, aSide, aTarget_line,
+        diag = Match_Bezier_Dialog (self, self.app_model,
+                                    aSide, aTarget_line,
                                     target_curv_le = target_curv_le,
                                     max_curv_te = max_curv_te,
                                     parentPos=(0.1, 0.05), dialogPos=(0.5,1))
+        diag.exec()
 
-        match_bezier.sig_new_bezier.connect     (self.app.sig_bezier_changed.emit)
-        match_bezier.sig_pass_finished.connect  (self.app.sig_geometry_changed.emit)
-        match_bezier.sig_match_finished.connect (self._on_match_finished)
+        if diag.made_match:
 
-        # leave button press callback 
-        timer = QTimer()                                
-        timer.singleShot(10, lambda: match_bezier.exec())     # delayed emit 
+            geo : Geometry_Bezier = self.geo
+            geo.finished_change_of (aSide)              # will reset and handle changed  
+
+            self.app_model.notify_airfoil_changed()     # notify change of airfoil - new design
        
-
-    def _on_match_finished (self, aSide : Side_Airfoil_Bezier):
-        """ slot for match Bezier finished - reset airfoil"""
-
-        geo : Geometry_Bezier = self.geo
-        geo.finished_change_of (aSide)              # will reset and handle changed  
-
-        self.app_model.notify_airfoil_changed()
-
 
     @override
     def refresh (self, reinit_layout=False):

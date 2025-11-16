@@ -8,5 +8,10 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "debugpy.debugJustMyCode": true,
-    "python.REPL.enableREPLSmartSend": false
+    "python.REPL.enableREPLSmartSend": false,
+    "cSpell.words": [
+        "iair",
+        "improv",
+        "qtext"
+    ]
 }

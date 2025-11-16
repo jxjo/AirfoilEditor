@@ -3,33 +3,51 @@
 
 """
 
-Application state management for the airfoil editor.
+App model and state management for the airfoil editor.
 
-Holding stateful model data like current airfoil, case, polar definitions, etc.
+- holding stateful data like current airfoil, case, polar definitions, etc.
+- signals for changes in data to inform the UI
+- loading and saving of airfoil specific settings
+- watchdog thread for monitoring polar generation and optimization state
+- can be notfied of changes in airfoil geometry and other parameters
+
+The App Model is needed as the 'real' model is QObject agnostic and stateless. 
 
 """
 
 import os
+from enum                   import Enum, auto
 from typing                 import override
 from PyQt6.QtCore           import pyqtSignal, QObject, QThread
 
-from base.common_utils      import Parameters
+from base.common_utils      import Parameters, clip
 from base.app_utils         import Settings
 
+# --- the real model imports
 from model.airfoil          import Airfoil, usedAs
 from model.airfoil_examples import Example
 from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
 from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from model.xo2_driver       import Worker, Xoptfoil2
-from model.xo2_input        import Input_File
-from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
-
-
-
+from model.xo2_input        import OpPoint_Definition
+from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract
 
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+# -----------------------------------------------------------------------------
+
+class Mode_Id(Enum):
+    """ Application Mode Identifiers """
+    VIEW      = auto()
+    MODIFY    = auto()
+    OPTIMIZE  = auto()
+    AS_BEZIER = auto()
+
+
+# -----------------------------------------------------------------------------
 
 
 class Airfoil_Settings (Parameters):
@@ -70,10 +88,15 @@ class Airfoil_Settings (Parameters):
         return f"<{type(self).__name__} for Airfoil '{self._airfoil}'>"
 
 
+
+# -----------------------------------------------------------------------------
+
+
+
 class App_Model (QObject):
 
     """
-    The App Mode is a shell around the Model enriched whith App speficic objects
+    The App Mode is a shell around the Model enriched with App specific objects
     having a state of the current Airfoil
     and provides Signals when data is changed
 
@@ -82,8 +105,10 @@ class App_Model (QObject):
     WORKER_MIN_VERSION         = '1.0.10'
     XOPTFOIL2_MIN_VERSION      = '1.0.10'
 
+    sig_new_mode                = pyqtSignal()          # new mode selected
+    sig_new_case                = pyqtSignal()          # new case selected
+    sig_new_airfoil             = pyqtSignal()          # new airfoil selected
 
-    sig_new_airfoil             = pyqtSignal()          # new airfoil selected 
     sig_airfoil_changed         = pyqtSignal()          # current airfoil changed (geometry etc)
     sig_etc_changed             = pyqtSignal()          # reference airfoils etc changed
     sig_settings_loaded         = pyqtSignal()          # settings loaded for current airfoil
@@ -92,12 +117,20 @@ class App_Model (QObject):
     sig_new_polars              = pyqtSignal()          # new polars generated (Watchdog)
 
     sig_airfoil_geo_changed     = pyqtSignal()          # airfoil geometry is fast changing / moving 
-    sig_airfoil_geo_te_gap      = pyqtSignal(object, object)  # te gap is fast changing / moving
-    sig_airfoil_geo_le_radius   = pyqtSignal(object, object)  # le radius is fast changing / moving
+    sig_airfoil_geo_te_gap      = pyqtSignal(object)    # te gap is fast changing / moving
+    sig_airfoil_geo_le_radius   = pyqtSignal(object)    # le radius is fast changing / moving
+    sig_airfoil_geo_paneling    = pyqtSignal(bool)      # airfoil panelling is fast changing / moving
     sig_airfoil_flap_set        = pyqtSignal(bool)      # flap setting (Flapper) changed / moving
+    sig_airfoil_bezier          = pyqtSignal(Line.Type) # new bezier curve during match bezier 
 
+    sig_xo2_run_started         = pyqtSignal()          # optimization run started
+    sig_xo2_run_finished        = pyqtSignal()          # optimization run finished
     sig_xo2_new_state           = pyqtSignal()          # Xoptfoil2 new info/state (Watchdog)
-    sig_xo2_new_design          = pyqtSignal(int)       # Xoptfoil2 new current design index (Watchdog)
+    sig_xo2_new_design          = pyqtSignal()          # Xoptfoil2 new current design index (Watchdog)
+    sig_xo2_new_step            = pyqtSignal()          # Xoptfoil2 new step (Watchdog)
+    sig_xo2_still_running       = pyqtSignal()          # Xoptfoil2 still running (Watchdog)
+    sig_xo2_input_changed       = pyqtSignal()          # xo2 input data changed (opPoints, ref airfoils, ...)
+    sig_xo2_opPoint_def_selected= pyqtSignal()          # xo2 opPoint definition selected
 
 
     def __init__(self, workingDir_default: str = None):
@@ -107,11 +140,16 @@ class App_Model (QObject):
 
         self._airfoil           = None                  # current airfoil 
         self._airfoils_ref      = []                    # reference airfoils 
-        self._airfoils_ref_scale= None                  # indexed list of re scale factors of ref airfoils
-        self._airfoil_2         = None                  # 2nd airfoil for blend    
+        self._airfoil_2         = None                  # 2nd airfoil for blend  
+        self._show_airfoil_design = True                # show design airfoil by default
+
+        self._xo2_pathFileName  = None                  # current xo2 input path file name (rel or abs)
+        self._xo2_iopPoint_def  = 0                     # current xo2 opPoint definition index
+        self._xo2_run_started   = False                 # has xo2 run started
 
         self._polar_definitions = []                    # current polar definitions  
         self._case : Case_Abstract = None               # design Case holding all designs 
+        self._mode_id : Mode_Id = None                  # current app mode
 
         self._settings = {}                             # actual loaded settings dict
         self._airfoil_settings_loaded = False           # have settings been loaded for current airfoil
@@ -132,13 +170,29 @@ class App_Model (QObject):
         self._init_watchdog()
 
 
+    def __repr__(self):
+        """ nice representation of self """
+        if self.case:
+            on_str = f"on {self.case}"
+        else:
+            on_str = f"on {self.airfoil}" if self.airfoil else "no airfoil"
+        return f"<App_Model {on_str}>"
+
+
     def _init_watchdog (self):
         """ initialize watchdog thread to check for new polars and xo2 state changes """
 
         self._watchdog = Watchdog (self) 
+
+        # watch for new polars
         self._watchdog.sig_new_polars.connect       (self.sig_new_polars.emit)
-        self._watchdog.sig_xo2_new_state.connect    (self.sig_xo2_new_state.emit)            
-        self._watchdog.sig_xo2_new_design.connect   (self.sig_xo2_new_design.emit)  
+
+        # watch xo2 state changes
+        self._watchdog.sig_xo2_new_state.connect    (self._on_xo2_new_state)            
+        self._watchdog.sig_xo2_new_design.connect   (self._on_xo2_new_design)  
+        self._watchdog.sig_xo2_new_step.connect     (self.sig_xo2_new_step.emit)
+        self._watchdog.sig_xo2_still_running.connect(self.sig_xo2_still_running.emit)
+
         self._watchdog.start()
 
 
@@ -159,14 +213,9 @@ class App_Model (QObject):
         for airfoil in self.airfoils:
 
             # get re scale for reference airfoils
-            if airfoil.usedAs == usedAs.REF:
-                iRef, _ = airfoil.usedAs_i_Ref (self.airfoils)
-                re_scale = self.airfoils_ref_scale [iRef] if self.airfoils_ref_scale [iRef] else 1.0
-            else:
-                re_scale = 1.0 
+            re_scale = airfoil.scale_factor if airfoil.usedAs == usedAs.REF else 1.0
 
             # assign new polarset if it changed
-
             new_polarSet = Polar_Set (airfoil, polar_def=self.polar_definitions, re_scale=re_scale, only_active=True)
 
             # check changes to avoid unnecessary refresh
@@ -178,6 +227,82 @@ class App_Model (QObject):
             self.sig_polar_set_changed.emit()
 
 
+    def _on_xo2_new_design (self):
+        """ slot to handle new design during Xoptfoil2 run signaled by watchdog """
+
+        case : Case_Optimize = self.case
+
+        if not case.airfoil_designs: return 
+
+        logger.debug (f"{str(self)} on Xoptfoil2 new design {case.xo2.nDesigns}")
+
+        airfoil_design = case.airfoil_designs [-1]        
+        self.set_airfoil (airfoil_design, silent=True)                      # new current airfoil
+
+        # remove polar set of design airfoil (during optimization) - so no polar creation 
+        airfoil_design.set_polarSet (Polar_Set (airfoil_design, polar_def=[]))
+
+        self.sig_xo2_new_design.emit ()                                     # inform diagram
+
+
+    def _on_xo2_new_state (self):
+        """ slot to handle new state - will end watchdog if Xoptfoil2 doesn't run anymore """
+
+        case : Case_Optimize = self.case
+
+        logger.debug (f"{str(self)} on Xoptfoil2 new state {case.xo2.state}")
+
+        # signal start and end of an optimization run
+        if case.xo2.isRunning and not self._xo2_run_started:
+            self._xo2_run_started = True
+            self.sig_xo2_run_started.emit()
+
+        elif not case.xo2.isRunning and self._xo2_run_started:
+            self._xo2_run_started = False
+            self._watchdog.set_case_optimize (None)                         # stop watching
+            self.sig_xo2_run_finished.emit()
+
+        self.sig_xo2_new_state.emit()
+
+
+    # --- properties
+
+    @property
+    def mode_id (self) -> Mode_Id:
+        """ current application mode id """
+        return self._mode_id
+    
+    def set_mode_id (self, mode_id : Mode_Id):
+        """ set new application mode id """
+        if isinstance (mode_id, Mode_Id) :
+            self._mode_id = mode_id
+            self.sig_new_mode.emit()
+
+    @property
+    def is_ready (self) -> bool:
+        """ is app model ready to work"""
+        return self.airfoil or self.case 
+
+    @property
+    def is_mode_view (self) -> bool:
+        """ is current mode view """
+        return self.mode_id == Mode_Id.VIEW
+
+    @property
+    def is_mode_modify (self) -> bool:
+        """ is current mode modify """
+        return self.mode_id == Mode_Id.MODIFY
+
+    @property
+    def is_mode_optimize (self) -> bool:
+        """ is current mode optimize """
+        return self.mode_id == Mode_Id.OPTIMIZE
+
+    @property
+    def is_mode_as_bezier (self) -> bool:
+        """ is current mode as bezier """
+        return self.mode_id == Mode_Id.AS_BEZIER
+
 
     @property
     def case (self) -> Case_Abstract:
@@ -187,13 +312,14 @@ class App_Model (QObject):
     def set_case (self, case : Case_Abstract | None):
         """ set new case (design or optimize) - will also set new airfoil"""
 
+        logger.debug (f"{self} Set new {case} ")
+
         if isinstance (case, Case_Abstract) :
             self._case = case
-            self.set_airfoil (case.initial_airfoil_design())
+            self.set_airfoil (case.initial_airfoil_design(), silent=True)   # set initial design airfoil silently
+            self.sig_new_case.emit()
         else: 
             self._case = None 
-
-
 
     @property
     def is_case_optimize (self) -> bool:
@@ -206,8 +332,15 @@ class App_Model (QObject):
         """ current airfoil with current polar definitions"""
         return self._airfoil 
     
-    def set_airfoil (self, aNew : Airfoil):
+    def set_airfoil (self, aNew : Airfoil, silent: bool = False ):
 
+        logger.debug (f"{self} Set new {aNew} {'having settings' if self.airfoil_settings_exist else ''}")
+
+        # sanity cleanup Worker working dir of previous airfoil
+        if self.airfoil:
+            Worker().clean_workingDir (self.airfoil.pathName_abs)
+
+        # set new airfoil 
         self._airfoil = aNew
 
         if aNew is not None: 
@@ -215,12 +348,8 @@ class App_Model (QObject):
 
         self._airfoil_settings_loaded = False
 
-        # cleanup Worker working dir of previous airfoil
-        Worker().clean_workingDir (self.workingDir)
-
-        logger.debug (f"Set new {aNew} {'having settings' if self.airfoil_settings_exist else ''}")
-
-        self.sig_new_airfoil.emit ()
+        if not silent: 
+            self.sig_new_airfoil.emit()
 
 
     def notify_airfoil_changed (self):
@@ -234,6 +363,16 @@ class App_Model (QObject):
             self.set_airfoil (self.airfoil)                # new DESIGN - inform diagram   
 
 
+    def notify_airfoils_scale_changed (self):
+        """ notify self that airfoil scale(s) have changed """
+        self._refresh_polar_sets (silent=True)
+
+        if self.is_case_optimize:                                   # reference airfoils are in input file
+            self.notify_xo2_input_changed (silent=True)             # silent - we will signal soon
+
+        self.sig_etc_changed.emit()
+
+
     def notify_polar_definitions_changed (self):
         """ notify self that polar definitions have changed """
         self._refresh_polar_sets (silent=False)
@@ -244,19 +383,30 @@ class App_Model (QObject):
         self.sig_airfoil_geo_changed.emit()
 
 
-    def notify_airfoil_geo_te_gap (self, new_gap: float, xBlend: float ):
+    def notify_airfoil_geo_te_gap (self, xBlend: float ):
         """ notify self that current airfoil geometry TE gap has changed rapidly """  
-        self.sig_airfoil_geo_te_gap.emit (new_gap, xBlend)
+        self.sig_airfoil_geo_te_gap.emit (xBlend)
 
 
-    def notify_airfoil_geo_le_radius (self, new_radius: float, xBlend: float ):
+    def notify_airfoil_geo_le_radius (self, xBlend: float ):
         """ notify self that current airfoil geometry LE radius has changed rapidly """  
-        self.sig_airfoil_geo_le_radius.emit (new_radius, xBlend)
+        self.sig_airfoil_geo_le_radius.emit (xBlend)
 
 
     def notify_airfoil_flap_set (self, is_set: bool):
         """ notify self that current airfoil flap setting has changed rapidly """  
         self.sig_airfoil_flap_set.emit (is_set)
+
+
+    def notify_airfoil_geo_paneling (self, is_paneling: bool = True):
+        """ notify self that current airfoil panelling has changed rapidly """  
+        self.sig_airfoil_geo_paneling.emit (is_paneling)
+
+
+    def notify_airfoil_bezier (self, line_type: Line.Type):
+        """ notify self that current airfoil bezier has changed rapidly """  
+        self.sig_airfoil_bezier.emit (line_type)
+
 
 
     @property
@@ -276,7 +426,7 @@ class App_Model (QObject):
     @property
     def airfoil_seed (self) -> Airfoil | None:
         """ seed airfoil of optimization or original airfoil during modify mode"""
-        if self.case:
+        if self.case and self.case.airfoil_seed:
             seed =  self.case.airfoil_seed
             if not seed.polarSet:
                seed.set_polarSet (Polar_Set (seed, polar_def=self.polar_definitions, only_active=True))
@@ -290,7 +440,15 @@ class App_Model (QObject):
         for airfoil in self.airfoils:
             if airfoil.usedAs == usedAs.DESIGN:
                 return airfoil
-                    
+    @property                    
+    def show_airfoil_design (self) -> bool:
+        """ should the design airfoil be shown"""
+        # here in app_model that this setting applies to all designs
+        return self._show_airfoil_design
+
+    def set_show_airfoil_design (self, show: bool):
+        self._show_airfoil_design = show
+
 
     @property
     def airfoil_final (self) -> Airfoil | None:
@@ -303,49 +461,26 @@ class App_Model (QObject):
 
 
     @property
-    def airfoils_ref_scale (self) -> list:
-        """ chord/re scale factor of ref airfoils"""
-
-        if self._airfoils_ref_scale is None: 
-            self._airfoils_ref_scale = [None] * len(self.airfoils_ref)
-        return self._airfoils_ref_scale
-
-
-    def set_airfoils_ref_scale (self, scales: list[float|None]):
-        """ set chord/re scale factor of ref airfoils"""
-
-        if len(scales) != len(self.airfoils_ref):
-            raise ValueError (f"length of ref_scales {len(scales)} does not match n airfoils ref {len(self.airfoils_ref)}")
-        
-        self._airfoils_ref_scale = scales
-
-        # update polar sets of reference airfoils
-        self._refresh_polar_sets ()
-
-
-    @property
     def airfoils_ref (self) -> list[Airfoil]:
         """ reference airfoils"""
 
         if self.is_case_optimize:
+
             # take individual reference airfoils of case optimize
-            airfoils_ref = self.case.airfoils_ref if self.case else []                         
+            airfoils_ref = self.case.airfoils_ref if self.case else [] 
+            # ensure polar sets are assigned 
+            for airfoil in airfoils_ref:
+                if not airfoil.polarSet:
+                    airfoil.set_polarSet (Polar_Set (airfoil, polar_def=self.polar_definitions, 
+                                                    re_scale=airfoil.scale_factor, only_active=True))                       
         else:
             airfoils_ref = self._airfoils_ref                               # normal handling
- 
-        # ensure scale property is set for airfoil artist 
-        if self._airfoils_ref_scale is None:                                # first time not initialized
-            self._airfoils_ref_scale = [None] * len(airfoils_ref)
-        airfoil : Airfoil
-        for iRef, airfoil in enumerate(airfoils_ref):
-            airfoil.set_property ("scale", self._airfoils_ref_scale[iRef])  # used in airfoil_artist to scale airfoil
 
         return airfoils_ref
 
 
     def set_airfoil_ref (self, cur_airfoil_ref: Airfoil | None,
                                new_airfoil_ref: Airfoil | None,
-                               scale : float|None = None,
                                silent = False):
         """ adds, replace, delete airfoil to the list of reference airfoils"""
 
@@ -359,29 +494,23 @@ class App_Model (QObject):
                 self.airfoils_ref[i] = new_airfoil_ref
             else: 
                 del self.airfoils_ref [i]
-                del self.airfoils_ref_scale [i]
 
         # add new ref airfoil
         elif new_airfoil_ref:
             self.airfoils_ref.append(new_airfoil_ref)
-            self.airfoils_ref_scale.append(scale)
 
         # prepare new airfoil with polar_set 
         if new_airfoil_ref:
-            if scale is None:                                   # get current scale at i 
-                i = self.airfoils_ref.index (new_airfoil_ref)
-                scale = self.airfoils_ref_scale [i]
 
             new_airfoil_ref.set_polarSet (Polar_Set (new_airfoil_ref, polar_def=self.polar_definitions, 
-                                                     re_scale=scale, only_active=True))
+                                                     re_scale=new_airfoil_ref.scale_factor, only_active=True))
             new_airfoil_ref.set_usedAs (usedAs.REF) 
-
 
         if not silent: 
             self.sig_etc_changed.emit()
 
         if self.is_case_optimize:                                   # reference airfoils are in input file
-            self._on_xo2_input_changed (silent=True)                # silent - we already signaled
+            self.notify_xo2_input_changed (silent=True)             # silent - we already signaled
 
 
     @property
@@ -408,6 +537,69 @@ class App_Model (QObject):
                 path_dict [airfoil.pathFileName_abs] = True
 
         return airfoils
+
+
+    @property
+    def airfoils_to_show (self) -> list[Airfoil]: 
+        """ the airfoil(s) currently to show as list (filtered)"""
+
+        # filter airfoils with 'show' property
+        airfoils = []
+        for airfoil in self.airfoils:
+
+            if airfoil.usedAs == usedAs.DESIGN:
+                if self.show_airfoil_design:                        # show design airfoil according to global setting  
+                    airfoils.append (airfoil)
+            elif airfoil.get_property("show",True):                 # individual show property
+                airfoils.append (airfoil)
+
+        # at least one airfoil should be there - take first 
+        if not airfoils and self.airfoils: 
+            first_airfoil = self.airfoils[0]
+            first_airfoil.set_property("show", True)
+            airfoils = [first_airfoil]
+
+        return  airfoils 
+
+    # --- Xoptfoil2
+    
+
+    @property
+    def cur_opPoint_def (self) -> OpPoint_Definition:
+        """ current xo2 opPoint_definition """
+        case : Case_Optimize = self.case
+        opPoint_defs = case.input_file.opPoint_defs if case else []
+         
+        # ensure current index is still valid with changed opPoint definitions
+        self._xo2_iopPoint_def = clip (self._xo2_iopPoint_def, 0, len(opPoint_defs)-1)
+        return opPoint_defs [self._xo2_iopPoint_def] if opPoint_defs else None
+
+
+    def set_cur_opPoint_def (self, opPoint_def: OpPoint_Definition):
+        """ set current xo2 opPoint_definition """
+        case : Case_Optimize = self.case
+        opPoint_defs = case.input_file.opPoint_defs if case else []
+
+        self._xo2_iopPoint_def = opPoint_defs.index (opPoint_def) if opPoint_def in opPoint_defs else 0
+        self.sig_xo2_opPoint_def_selected.emit()
+
+
+    def notify_xo2_input_changed (self, silent: bool = False):
+        """ notify self - change of xo2 input data"""
+
+        logger.debug (f"{self} xo2_input_changed")
+        
+        case : Case_Optimize = self.case
+        case.input_file.update_nml ()                                              # ensure namelist dict is up to date
+
+        # polar definitions could have changed - update polarSets of airfoils 
+        self._refresh_polar_sets (silent=True)
+
+        if not silent:
+            self.sig_xo2_input_changed.emit()                                       # inform diagram 
+
+
+    # --- polar definitions etc
 
 
     @property
@@ -443,10 +635,10 @@ class App_Model (QObject):
     @property
     def workingDir (self) -> str: 
         """ directory we are currently in (equals dir of airfoil)"""
-        if self.case:                                         # case working dir has priority 
+        if self.case and self.case.workingDir:                                         # case working dir has priority 
             return self.case.workingDir
         elif self.airfoil:                                     
-            return self.airfoil.pathName
+            return self.airfoil.pathName_abs
         else:
             return self._workingDir_default
         
@@ -512,7 +704,6 @@ class App_Model (QObject):
         # reference airfoils including initial re scale 
 
         self._airfoils_ref : list [Airfoil] = []
-        self._airfoils_ref_scale : list [float|None] = []
 
         ref_entries = s.get('reference_airfoils', [])
 
@@ -520,11 +711,11 @@ class App_Model (QObject):
             if isinstance (ref_entry, str):                             # compatible with older version
                 pathFileName = ref_entry
                 show = True
+                scale = None
             elif isinstance (ref_entry, dict):                          # mini dict with show boolean 
                 pathFileName = ref_entry.get ("path", None)
                 show         = ref_entry.get ("show", True)
                 scale        = ref_entry.get ("scale", None)
-                scale        = round(scale,2) if scale else None
             else:
                 pathFileName = None 
 
@@ -533,9 +724,10 @@ class App_Model (QObject):
                     airfoil = Airfoil.onFileType (pathFileName=pathFileName)
                     airfoil.load ()
                     airfoil.set_property ("show", show)
-                    self.set_airfoil_ref (None, airfoil, scale=scale, silent=True)
+                    airfoil.set_scale_factor (scale)
+                    self.set_airfoil_ref (None, airfoil, silent=True)
                 except Exception as e: 
-                    logger.warning (f"Reference airfoil {pathFileName} could not be loaded: {e}")
+                    logger.warning (f"{self} Reference airfoil {pathFileName} could not be loaded: {e}")
 
         # update polar sets of airfoils
         self._refresh_polar_sets (silent=True)
@@ -584,12 +776,13 @@ class App_Model (QObject):
 
         # add reference airfoils 
         ref_list = []
-        for iRef, airfoil in enumerate(self.airfoils_ref):
+        for airfoil in self.airfoils_ref:
             ref_entry = {}
             ref_entry ["path"]  = airfoil.pathFileName_abs
-            ref_entry ["show"]  = airfoil.get_property ("show", True)
-            if self.airfoils_ref_scale [iRef]:
-                ref_entry ["scale"] = self.airfoils_ref_scale [iRef]
+            if not airfoil.get_property ("show", True):             # avoid default True
+                ref_entry ["show"]  = airfoil.get_property ("show", True)
+            if airfoil.isScaled:                                    # avoid default 1.0
+                ref_entry ["scale"] = airfoil.scale_factor
             ref_list.append (ref_entry)
         s.set ('reference_airfoils', ref_list)
 
@@ -633,6 +826,34 @@ class App_Model (QObject):
             self.set_airfoil (next_airfoil)
 
 
+    def run_xo2 (self): 
+        """ run xo2 optimizer"""
+
+        case : Case_Optimize = self.case
+
+        # reset current xo2 controller if there was an error 
+        if case.xo2.isRun_failed:
+            case.xo2_reset()
+
+        if case.xo2.isReady:
+
+            # be sure input file data is written to file 
+
+            if case.input_file.isChanged:                
+                case.input_file.save_nml()
+
+            # clear previous results - prepare UI 
+
+            case.clear_results ()
+            self.set_airfoil (None, silent=True)                # clear current airfoil during optimization run
+            self.set_show_airfoil_design (True)                 # do show design airfoil initially
+
+            self._watchdog.set_case_optimize (case)             # will start watching this case
+
+            # let's go
+
+            case.run()
+
 # -----------------------------------------------------------------------------
 
 
@@ -648,7 +869,7 @@ class Watchdog (QThread):
     sig_new_polars          = pyqtSignal ()
     sig_xo2_new_state       = pyqtSignal ()
     sig_xo2_new_step        = pyqtSignal ()
-    sig_xo2_new_design      = pyqtSignal (int)
+    sig_xo2_new_design      = pyqtSignal ()
     sig_xo2_still_running   = pyqtSignal ()
 
 
@@ -657,7 +878,7 @@ class Watchdog (QThread):
 
         super().__init__(parent)
 
-        self._case_optimize_fn = None                           # Case_Optimize to watch      
+        self._case_optimize : Case_Optimize = None              # Case_Optimize to watch      
         self._xo2_state        = None                           # last run state of xo2
         self._xo2_id           = None                           # instance id of xo2 for change detection
         self._xo2_nDesigns     = 0                              # last actual design    
@@ -672,14 +893,18 @@ class Watchdog (QThread):
     def _check_case_optimize (self):
         """ check Case_Optimize for updates """
 
-        if self._case_optimize_fn:
+        if self._case_optimize:
 
-            case : Case_Optimize = self._case_optimize_fn ()
+            case : Case_Optimize = self._case_optimize
+
+            # reset cached progress and result uptodate info
+            there_is_progress = case.xo2.refresh_progress ()                    # ensure progress info is up to date
+            case.results.set_results_could_be_outdated ()                       # will check for new Xoptfoil2 results
+
 
             # reset saved xo2 state for state change detection if there is new xo2 instance 
 
             if id(case.xo2) != self._xo2_id:
-                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
                 self._xo2_id        = id(case.xo2)
                 self._xo2_state     = case.xo2.state
                 self._xo2_nDesigns  = case.xo2.nDesigns
@@ -693,35 +918,41 @@ class Watchdog (QThread):
             xo2_nDesigns = case.xo2.nDesigns
             xo2_nSteps   = case.xo2.nSteps  
 
-            # detect state change of new design and siganl (if not first)
+            if there_is_progress:
+                logger.debug (f"{self} xo2 state: {xo2_state}, designs: {xo2_nDesigns}, steps: {xo2_nSteps}")
+            else:
+                logger.debug (f"{self} xo2 state: {xo2_state}, no progress ...")
+
+            # detect state change of new design and signal (if not first)
 
             if xo2_state != self._xo2_state:
 
-                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
                 self._xo2_state = case.xo2.state
                 self.sig_xo2_new_state.emit()
 
-            elif xo2_nSteps != self._xo2_nSteps:
+            if there_is_progress:
 
-                case.results._reader_optimization_history.set_results_could_be_dirty(True)
-                self._xo2_nSteps = xo2_nSteps
-                self.sig_xo2_new_step.emit()
+                if xo2_nSteps != self._xo2_nSteps:
 
-            elif xo2_nDesigns != self._xo2_nDesigns:
+                    self._xo2_nSteps = xo2_nSteps
+                    self.sig_xo2_new_step.emit()
+    
+                if xo2_nDesigns != self._xo2_nDesigns:
 
-                case.results.set_results_could_be_dirty ()                      # ! will check for new Xoptfoil2 results
-                self._xo2_nDesigns = xo2_nDesigns
-                self.sig_xo2_new_design.emit(case.xo2.nDesigns)
- 
+                    self._xo2_nDesigns = xo2_nDesigns
+                    self.sig_xo2_new_design.emit()
+
             elif case.isRunning:
 
                 self.sig_xo2_still_running.emit()                             # update time elapsed etc.  
 
 
-    def set_case_optimize (self, case_fn):
+
+    def set_case_optimize (self, case : Case_Optimize | None):
         """ set Case_Optimize to watch"""
-        if (case_fn and isinstance (case_fn(), Case_Optimize)) or case_fn is None:
-            self._case_optimize_fn = case_fn
+
+        if (case and isinstance (case, Case_Optimize)) or case is None:
+            self._case_optimize = case
             self.reset_watch_optimize ()
 
 
@@ -739,14 +970,14 @@ class Watchdog (QThread):
         # thread environment has been set up. 
         # Thread is started with .start()
 
-        logger.info (f"Starting Watchdog Thread")
+        logger.info (f"Starting WatchdogThread")
         self.msleep (1000)                                  # initial wait before polling begins 
 
         while not self.isInterruptionRequested():
 
             # check optimizer state 
 
-            if self._case_optimize_fn:
+            if self._case_optimize:
                 self._check_case_optimize ()
 
             # check for new polars 

@@ -16,9 +16,9 @@ from base.common_utils          import *
 from model.airfoil              import Line
 from model.polar_set            import * 
 from model.xo2_input            import OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN, GeoTarget_Definitions
-from model.xo2_results          import OpPoint_Result, Xo2_Results, Optimization_History_Entry, GeoTarget_Result
+from model.xo2_results          import OpPoint_Result, Optimization_History_Entry
 
-from airfoil_artists            import _color_airfoil
+from ae_artists                 import _color_airfoil
 
 from PyQt6.QtGui                import QColor, QBrush, QPen, QPainterPath, QTransform
 from PyQt6.QtCore               import Qt, pyqtSignal, QRectF
@@ -63,7 +63,7 @@ class Movable_OpPoint_Def (Movable_Point):
         path = QPainterPath()
 
         path.addRect(QRectF(-width / 2, -height1 / 2, width, height1))
-        # vertcial line
+        # verticial line
         path.moveTo(0.0, -height1 / 2)
         path.lineTo(0.0, -height2 * 2)
         #triangle
@@ -88,7 +88,6 @@ class Movable_OpPoint_Def (Movable_Point):
                     xyVars : Tuple[var, var], 
                     movable = True, 
                     on_selected = None,
-                    on_dblClick = None,
                     on_delete   = None,
                     **kwargs):
 
@@ -97,7 +96,6 @@ class Movable_OpPoint_Def (Movable_Point):
         self._xyVars = xyVars
 
         self._callback_selected = on_selected
-        self._callback_dblClick = on_dblClick
         self._callback_delete   = on_delete
         self._highlight_item    = None                       
 
@@ -165,7 +163,7 @@ class Movable_OpPoint_Def (Movable_Point):
 
         if callable(self._callback_delete):
             # callback / emit signal delayed so we leave the scope of Graphics 
-            QTimer() .singleShot(10, lambda: self._callback_delete (self._opPoint_def))   
+            QTimer() .singleShot(0, lambda: self._callback_delete (self._opPoint_def))   
 
 
     def xy_in_xyVars (self) -> tuple: 
@@ -193,26 +191,10 @@ class Movable_OpPoint_Def (Movable_Point):
             if callable(self._callback_selected):
                 ev.accept()
 
-                self._opPoint_def.set_as_current()
-
-                # callback / emit signal delayed so we leave the scope of Graphics 
-                QTimer() .singleShot(10, lambda: self._callback_selected ())   
+                # callback / emit delayed so we leave the scope of Graphics 
+                QTimer() .singleShot(0, lambda: self._callback_selected (self._opPoint_def))   
         else:
             super().mouseClickEvent (ev)
-
-
-    @override
-    def mouseDoubleClickEvent(self, ev):
-        """ handle callback to parent when double clicked """
-        if callable(self._callback_dblClick):
-            ev.accept()
-
-            self._opPoint_def.set_as_current()
-
-            # callback / emit signal delayed so we leave the scope of Graphics 
-            QTimer() .singleShot(10, lambda: self._callback_dblClick ())   
-        else:
-            super().mouseDoubleClickEvent (ev)
 
 
     @override
@@ -241,10 +223,13 @@ class Movable_OpPoint_Def (Movable_Point):
     def _finished (self, _):
         """ slot - point moving is finished"""
 
-        self._opPoint_def.set_as_current()
+        if callable(self._callback_selected):
+            # ensure self will be selected after moving 
+            QTimer() .singleShot (0, lambda: self._callback_selected (self._opPoint_def)) 
 
-        # callback / emit signal delayed so we leave the scope of Graphics 
-        QTimer() .singleShot(10, lambda: self._callback_changed ())   
+        if callable(self._callback_changed):
+            # callback / emit  delayed so we leave the scope of Graphics 
+            QTimer() .singleShot (0, self._callback_changed )   
 
 
     def set_highlight_item (self, aItem: pg.TargetItem):
@@ -261,20 +246,22 @@ class Movable_OpPoint_Def (Movable_Point):
 
 
 class Xo2_OpPoint_Defs_Artist (Artist):
-    """ Plot / Modify Xoptfoil2 operating point defin itions """
+    """ Plot / Modify Xoptfoil2 operating point definitions """
 
-    sig_opPoint_def_changed     = pyqtSignal ()             # opPoint_def changed changed 
-    sig_opPoint_def_selected    = pyqtSignal ()
-    sig_opPoint_def_dblClick    = pyqtSignal ()
+    sig_opPoint_def_changed     = pyqtSignal ()                       # opPoint_def changed  
+    sig_opPoint_def_selected    = pyqtSignal (OpPoint_Definition)     # opPoint_def selected 
 
-    def __init__ (self, *args, 
+    def __init__ (self, *args,
+                  cur_opPoint_def_fn = None,   
                   isRunning_fn = None, 
                   xyVars = (var.CD, var.CL), 
                   **kwargs):
-        super().__init__ (*args, **kwargs)
 
-        self._xyVars = xyVars                               # definition of x,y axis
+        super().__init__(*args, **kwargs)
+
+        self._cur_opPoint_def_fn = cur_opPoint_def_fn           # method to get current opPoint definition
         self._isRunning_fn = isRunning_fn
+        self._xyVars = xyVars                                   # definition of x,y axis
 
 
     @property
@@ -288,6 +275,10 @@ class Xo2_OpPoint_Defs_Artist (Artist):
     @property
     def opPoint_defs (self) -> OpPoint_Definitions: 
         return self.data_list
+    
+    @property
+    def cur_opPoint_def (self) -> OpPoint_Definition | None: 
+        return self._cur_opPoint_def_fn() if callable (self._cur_opPoint_def_fn) else None
 
     @property
     def optimizer_isRunning (self) -> bool:
@@ -303,7 +294,6 @@ class Xo2_OpPoint_Defs_Artist (Artist):
                                             movable=self.optimizer_isRunning and self.show_mouse_helper,
                                             on_changed =self.sig_opPoint_def_changed.emit,
                                             on_delete  =self._on_delete,
-                                            on_dblClick=self.sig_opPoint_def_dblClick.emit,
                                             on_selected=self.sig_opPoint_def_selected.emit)
 
             if pt.xy_in_xyVars() != (None, None):                   # sanity - if not None, it is in the view
@@ -312,7 +302,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
                 # highlight current opPoint def for edit with a big circle 
 
-                if opPoint_def == self.opPoint_defs.current_opPoint_def and self.optimizer_isRunning:
+                if opPoint_def == self.cur_opPoint_def and self.optimizer_isRunning:
 
                     brush = QColor (Movable_OpPoint_Def.COLOR)
                     brush.setAlphaF (0.3)
@@ -330,7 +320,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
     def show_help_message (self):
         """ show mouse helper message"""
-        msg = "OpPoint: click to select,  double-click to edit,  shift-click to remove,  ctrl-click to add"
+        msg = "OpPoint: click to select, shift-click to remove,  ctrl-click to add"
         self.set_help_message (msg)
 
 
@@ -357,7 +347,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
     def _scene_clicked (self, ev : MouseClickEvent):
         """ 
-        slot - mouse click in scene of self - handle add wing section with crtl-click 
+        slot - mouse click in scene of self - handle add wing section with ctrl-click 
         """ 
 
         # handle only ctrl-click
@@ -380,6 +370,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
             if new_opPoint_def is not None:
                 self.sig_opPoint_def_changed.emit()
+                self.sig_opPoint_def_selected.emit (new_opPoint_def)
 
             else: 
                 self._plot_text ('New OpPoint Definition cannot be created in this diagram', color=COLOR_ERROR, itemPos=(0.5,0.5))
@@ -466,7 +457,7 @@ class Xo2_OpPoint_Artist (Artist):
 
             legend_name = None 
 
-        # message if dynamic weighting of opPoints occured 
+        # message if dynamic weighting of opPoints occurred 
 
         if any (op.is_new_weighting for op in opPoints):
             self._plot_text ('Dynamic weightings applied', color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
@@ -624,14 +615,11 @@ class Xo2_OpPoint_Artist (Artist):
 class Xo2_Design_Radius_Artist (Artist):
     """ Plot Xoptfoil2 design radius during optimization """
 
-    @property
-    def results (self) -> Xo2_Results: 
-        return self.data_object
     
     @property
     def steps (self) -> list[Optimization_History_Entry]: 
         """ optimization step entries up to now """
-        return self.results.steps  
+        return self.data_object
 
     def _plot (self): 
 
@@ -653,15 +641,11 @@ class Xo2_Design_Radius_Artist (Artist):
 
 class Xo2_Improvement_Artist (Artist):
     """ Plot Xoptfoil2 improvement during optimization """
-
-    @property
-    def results (self) -> Xo2_Results: 
-        return self.data_object
     
     @property
     def steps (self) -> list[Optimization_History_Entry]: 
         """ optimization step entries up to now """
-        return self.results.steps  
+        return self.data_object  
 
     def _plot (self): 
 
