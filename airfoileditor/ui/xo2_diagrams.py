@@ -58,7 +58,7 @@ class Diagram_Xo2_Airfoil_and_Polar (Diagram):
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
 
-        from ae_diagrams       import Diagram_Item_Airfoil, Diagram_Item_Polars
+        from ui.ae_diagrams       import Diagram_Item_Airfoil, Diagram_Item_Polars
 
         r = 0
         item = Diagram_Item_Airfoil (self.app_model)
@@ -165,6 +165,7 @@ class Diagram_Item_Improvement (Diagram_Item):
         """ no buttons"""
         pass
 
+    @override
     def _setup_coords_item(self):
         """ no coords item """
         pass

@@ -8,9 +8,7 @@ build-backend = "hatchling.build"
 [project]
 name = "airfoileditor"
 dynamic = ["version"]               
-authors = [
-  { name="Jochen Guenzel", email="jochen@jxjo.de" },
-]
+authors = [{ name="Jochen Guenzel", email="jochen@jxjo.de" }]
 description = "View, Modify, Optimize Airfoils"
 readme = "doc/README_PyPi.md"
 requires-python = ">=3.12"

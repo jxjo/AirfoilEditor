@@ -4,13 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## 4.2.0-beta 
 
-This is a maintenance release with some smaller features
+This is a maintenance release with major refactorings adding some smaller features
 
 ### Added
 
 - Individual settings for an airfoil like polars and reference airfoils (thanks to Christian!)
 - Change polar diagram variables directly in the diagram
 - Maximize / minimize lower data panel
+- Revised Match Bezier UI
 
 #### More ...
 

@@ -297,7 +297,7 @@ class Panel_Airfoils (Edit_Panel):
     def edit_airfoil_scale_value (self, id : int):
         """ the scale value of (ref) airfoil"""
 
-        from ae_dialogs import Airfoil_Scale_Dialog
+        from ui.ae_dialogs import Airfoil_Scale_Dialog
 
         airfoil = self.airfoils[id]
 
@@ -400,7 +400,7 @@ class Panel_Polar_Defs (Edit_Panel):
     def edit_polar_def (self, id : int = None, polar_def : Polar_Definition = None):
         """ edit polar definition with index idef"""
 
-        from ae_dialogs import Polar_Definition_Dialog
+        from ui.ae_dialogs import Polar_Definition_Dialog
 
         if isinstance (id, int):
             polar_def = self.polar_defs[id]
@@ -1082,8 +1082,6 @@ class Diagram_Item_Welcome (Diagram_Item):
 
         super().__init__(*args, **kwargs)
 
-        self.buttonsHidden      = True                          # don't show buttons and coordinates
-
         # set margins (inset) of self 
         self.setContentsMargins ( 0,40,0,0)
         self.setFixedHeight(280)
@@ -1095,48 +1093,83 @@ class Diagram_Item_Welcome (Diagram_Item):
         p1.setZValue(5)
         self._title_item = p1
 
+    @override
+    def _setup_buttons(self):
+        """ no buttons"""
+        pass
 
+    @override
+    def _setup_coords_item(self):
+        """ no coords item """
+        pass
+
+
+    @property
+    def app_model (self) -> App_Model:
+        """ the app model"""
+        return self._getter
+    
     def _welcome_message (self) -> str: 
         # use Notepad++ or https://froala.com/online-html-editor/ to edit 
 
-        # ... can't get column width working ...
-         
-        message = """
-<span style="font-size: 18pt; color: whitesmoke">Welcome to the <strong>Airfoil<span style="color:deeppink">Editor</span></strong></span>
-<br>
+        version = self.app_model._version
 
+        if self.app_model.airfoil.isExample:
+            example = f"""
+<p>
+This is an example airfoil as no airfoil was provided on startup.<br>
+Try out the functionality with this example or <strong><span style="color: silver;">Open&nbsp;</span></strong>an existing airfoil.
+</p> """
+        else:
+            example = ""
+
+        new =   "- Save / Load individual airfoil settings<br>" + \
+                "- Change polar diagram variables directly in diagram<br>" + \
+                "- Maximize / minimize lower data panel<br>" + \
+                "- Revised Match Bezier UI<br>"
+        
+        # ... can't get column width working ...
+
+        message = f"""
+<span style="font-size: 18pt; color: whitesmoke">Welcome to the <strong>Airfoil<span style="color:deeppink">Editor</span></strong></span>
+    <span style="font-size: 10pt">{version}</span>  <br>
 <span style="font-size: 10pt; color: darkgray">
 <table style="width:100%">
   <tr>
     <td style="width:40%">
+        {example} 
         <p>
-        This is an example airfoil as no airfoil was provided on startup.<br>
-        Try out the functionality with this example airfoil or <strong><span style="color: silver;">Open&nbsp;</span></strong>an existing airfoil.
-        </p> 
-        <p>
-        You can view the properties of an airfoil like thickness distribution or camber,<br> 
+        You can view the properties of an airfoil like thickness distribution,<br> 
         analyze with <strong><span style="color: silver;">View Curvature</span></strong> the upper and lower surface or <br>
         examine the polars created by Worker & Xfoil with <strong><span style="color: silver;">View Polar</span></strong>. 
         </p> 
         <p>
-        <span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the AirfoilEditor to open an airfoil <br>
-        with a double click in the file Explorer.
+        <span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the AirfoilEditor to open <br>
+         an airfoil with a double click in the file Explorer.
         </p>
     </td>
-    <td style="width:20%">
-        <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
-    </td>
+    <td><p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p></td>
     <td style="width:40%">
         <p>
         <strong><span style="color: silver;">Modify</span></strong> lets you change the geometry of the airfoil<br> 
         creating a new design for each change.
         </p> 
         <p>
-        <strong><span style="color: silver;">As Bezier based</span></strong> allows to convert the airfoil into a new airfoil<br> 
-        based on two Bezier curves. Use the 'Match Bezier' optimization algorithm. 
+        <strong><span style="color: silver;">As Bezier based</span></strong> allows to convert the airfoil into <br> 
+         a new airfoil based on two Bezier curves. 
         </p> 
         <p>
-        <strong><span style="color: silver;">Optimize</span></strong> switches to airfoil optimization based on Xoptfoil2. 
+        <strong><span style="color: silver;">Optimize</span></strong> switches to airfoil optimization mode <br>
+        which uses Xoptfoil2 as the optimization engine. 
+        </p> 
+    </td>
+    <td><p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p></td>
+    <td>
+        <p>
+        <strong><span style="color: springgreen;">New</span></strong><span style="color: whitesmoke"> in {version}</span>:
+        </p> 
+        <p>
+        {new}
         </p> 
     </td>
   </tr>
@@ -1706,10 +1739,10 @@ class Diagram_Airfoil_Polar (Diagram):
         """ create all plot Items and add them to the layout """
 
         r = 0 
-        if self.app_model.airfoils and self.app_model.airfoils[0].isExample:
+        if self.app_model._is_first_run:
 
-            # show Welcome text if Airfoil is the Example airfoil 
-            item = Diagram_Item_Welcome ()
+            # show Welcome text if App runs the first time
+            item = Diagram_Item_Welcome (self.app_model)
             self._add_item (item, r, 0, colspan=2)                          # item has fixed height
             r += 1
 
@@ -1992,7 +2025,8 @@ class Diagram_Airfoil_Polar (Diagram):
 
         logger.debug (f"{str(self)} on polars switched")
 
-        self._hide_item_welcome ()
+        if aBool:
+            self._hide_item_welcome ()
     
         for item in self._get_items (Diagram_Item_Polars):
             if item.isVisible() != aBool:   

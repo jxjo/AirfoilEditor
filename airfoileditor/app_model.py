@@ -136,7 +136,11 @@ class App_Model (QObject):
     def __init__(self, workingDir_default: str = None):
         super().__init__()
 
-        self._workingDir_default = workingDir_default if workingDir_default else os.getcwd()
+        self._workingDir_default= workingDir_default if workingDir_default else os.getcwd()
+
+        self._version           = ""                    # application version
+        self._change_text       = ""                    # change text for this version
+        self._is_first_run      = False                 # is first run of this version
 
         self._airfoil           = None                  # current airfoil 
         self._airfoils_ref      = []                    # reference airfoils 
@@ -266,6 +270,13 @@ class App_Model (QObject):
 
 
     # --- properties
+
+    def set_app_info (self, version: str, change_text: str, is_first_run: bool):
+        """ set application info """
+        self._version        = version
+        self._change_text    = change_text
+        self._is_first_run   = is_first_run
+
 
     @property
     def mode_id (self) -> Mode_Id:
@@ -762,8 +773,7 @@ class App_Model (QObject):
             s = Settings()
         else:
             s = Airfoil_Settings (self.airfoil)
-
-        s.clear()                                       # new rebuild of settings
+            s.clear()                                       # new rebuild of settings
 
         # save panelling values 
         s.set ('spline_nPanels',  Panelling_Spline().nPanels)

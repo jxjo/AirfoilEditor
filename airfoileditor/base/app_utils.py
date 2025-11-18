@@ -71,7 +71,27 @@ class Settings (Parameters):
         logger.info (f"Reading settings from {cls._pathFileName}")
 
 
+class Run_Checker:
+    """
+    - Check if App runs the first time in this version 
+    """
 
+    @staticmethod
+    def is_first_run (current_version : str) -> bool:
+        """ returns if this is the first run of this version """
+
+        settings = Settings()             # app settings 
+
+        last_run_version = settings.get ("last_run_version", None)
+        
+        if last_run_version != current_version:
+            # save current version as last run version 
+            settings.set("last_run_version", current_version)
+            settings.save()
+            logger.info (f"First run of version {current_version}")
+            return True
+        else:
+            return False
 
 
 class Update_Checker:
@@ -95,13 +115,13 @@ class Update_Checker:
 
     @property
     def latest_version (self) -> str:
-        """ lastest available version - None if not accessible"""
+        """ latest available version - None if not accessible"""
         return self._latest_version if self._latest_version else None
 
 
     def _get_pypi_latest_version (self, package_name : str) -> str:
         """ 
-        API request to PYPI to get lastest version as string.
+        API request to PYPI to get latest version as string.
             return "" if failed or not available  
         """
         latest_version = ""

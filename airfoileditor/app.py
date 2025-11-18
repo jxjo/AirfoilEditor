@@ -29,12 +29,12 @@ from PyQt6.QtWidgets        import QGridLayout
 from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 
 from model.xo2_input        import Input_File
-from model.case             import Case_Optimize
+from model.case             import Case_Optimize, Case_Direct_Design
 
 from base.common_utils      import * 
 from base.panels            import Win_Util
 from base.widgets           import Icon, Widget
-from base.app_utils         import Settings, Update_Checker
+from base.app_utils         import Settings, Update_Checker, Run_Checker
 
 from ui.ae_widgets          import create_airfoil_from_path
 from ui.ae_diagrams         import Diagram_Airfoil_Polar
@@ -56,6 +56,11 @@ logger.setLevel(logging.DEBUG)
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
 __version__      = "4.2.0-beta.1"                       # hatch "version dynamic" reads this version for build
+
+CHANGE_TEXT      = "- Save / Load individual airfoil settings<br>" + \
+                   "- Change polar diagram variables directly in diagram<br>" + \
+                   "- Maximize / minimize lower data panel<br>" + \
+                   "- Revised Match Bezier UI<br>"
 
 
 class Main (QMainWindow):
@@ -79,12 +84,16 @@ class Main (QMainWindow):
 
         Settings.set_file (APP_NAME, file_extension= '.settings')
 
-        Update_Checker (self, APP_NAME, PACKAGE_NAME,  __version__)   
+        is_first_run = Run_Checker.is_first_run (__version__)                 # to show Welcome message
+        
+        Update_Checker (self, APP_NAME, PACKAGE_NAME,  __version__) 
 
 
         # --- init App Model ---------------
 
         app_model = App_Model (workingDir_default=Settings.user_data_dir (APP_NAME))
+
+        app_model.set_app_info (__version__, CHANGE_TEXT, is_first_run)
 
         # either airfoil file or Xoptfoil2 input file
 
@@ -102,12 +111,22 @@ class Main (QMainWindow):
 
         app_model.load_settings ()                                          # either global or airfoil specific settings
         app_model.sig_new_airfoil.connect (self._set_win_title)             # update title on new airfoil
-        app_model.sig_new_case.connect    (self._set_win_title)             # update title on new case
+        app_model.sig_new_mode.connect    (self._set_win_title)             # update title on new case
 
         self._app_model     = app_model                                     # keep for close 
 
+        # --- init UI ---------------
 
-        # --- App Modes and Manager ---------------
+        # main window style - dark or light mode
+
+        logger.info (f"Initialize UI")
+
+        self._set_win_title ()
+        self._set_win_style (parent=parent_app)
+        self._set_win_geometry ()
+
+
+        # app Modes and manager ---------------
         
         modes_manager = Modes_Manager (app_model)
         modes_manager.add_mode (Mode_View       (app_model))
@@ -115,20 +134,12 @@ class Main (QMainWindow):
         modes_manager.add_mode (Mode_Optimize   (app_model))
         modes_manager.add_mode (Mode_As_Bezier  (app_model))
 
+        modes_manager.set_mode (mode_to_start, initial)                     # set initial object in app_model
         modes_manager.sig_close_requested.connect (self.close)              # app close requested from mode view
-        modes_manager.set_mode (mode_to_start, initial)                     # either in view mode or optimize mode
 
         self._modes_manager = modes_manager                                 # keep as it hosts slots
 
-
-        # --- init UI ---------------
         
-        logger.info (f"Initialize UI")
-
-        self._set_win_title ()
-        self._set_win_style (parent=parent_app)
-        self._set_win_geometry ()
-
         # main widgets and layout of app
 
         diagram     = Diagram_Airfoil_Polar (app_model)                     # big diagram widget
@@ -193,6 +204,10 @@ class Main (QMainWindow):
         airfoil = self._app_model.airfoil
         if isinstance (case, Case_Optimize):
             ext = f"[Case {case.name if case else '?'}]"
+        elif isinstance (case, Case_Direct_Design):
+            seed   = case.airfoil_seed.fileName  
+            design = airfoil.name_to_show
+            ext = f"[{design} on {seed}]"
         else: 
             ext = f"[{airfoil.fileName if airfoil else '?'}]"
 
