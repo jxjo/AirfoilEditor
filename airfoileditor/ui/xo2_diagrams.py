@@ -9,17 +9,17 @@ Diagram (items) for xo2
 
 from typing                 import override
 
-import pyqtgraph as pg                                  # import PyQtGraph after PyQt6
+import pyqtgraph as pg                                
 
 from base.artist            import Artist
 from base.diagram           import Diagram, Diagram_Item 
 from model.polar_set        import var
-from model.xo2_results      import Xo2_Results, Optimization_History_Entry
+from model.xo2_results      import Optimization_History_Entry
 
-from xo2_artists            import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist, Xo2_OpPoint_Defs_Artist
-from ae_artists             import Polar_Artist
+from ui.xo2_artists         import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist, Xo2_OpPoint_Defs_Artist
+from ui.ae_artists          import Polar_Artist
 
-from ae_app_model              import App_Model
+from app_model              import App_Model
 
 
 import logging

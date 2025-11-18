@@ -8,11 +8,8 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 """
 import html 
 
-from typing                     import Callable
-
 from base.math_util             import derivative1
 from base.artist                import *
-from base.common_utils          import *
 from base.spline                import Bezier, HicksHenne
 
 from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flap_Setter
@@ -896,8 +893,6 @@ class Bezier_Deviation_Artist (Artist):
 
     def _plot (self): 
     
-        from airfoil_dialogs    import Matcher
-
         # check - is there a design airfoil and a target (normal) airfoil 
 
         geo_from   : Geometry = None 

@@ -136,7 +136,7 @@ class Case_Abstract:
         return self._remove_designs_on_close
     
     def set_remove_designs_on_close (self, remove : bool):
-        self._remove_designs_on_close = remove
+        self._remove_designs_on_close = bool (remove)
 
 
     def initial_airfoil_design (self) -> Airfoil:
@@ -354,8 +354,8 @@ class Case_Direct_Design (Case_Abstract):
         """ shut down activities - remove design dir if requested """
 
         # remove design dir if requested or only one (initial) design there
-        if self.remove_designs_on_close is None or len(self.airfoil_designs) < 2:
-            shutil.rmtree (self.design_dir, ignore_errors=True) 
+        if self.remove_designs_on_close or len(self.airfoil_designs) < 2:
+            shutil.rmtree (self.design_dir_abs, ignore_errors=True) 
 
         super().close()
 

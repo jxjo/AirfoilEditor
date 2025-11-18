@@ -6,10 +6,13 @@
 
 """
 
-import pytest
 import numpy as np 
 
-from .spline import *
+# -> pyproject.toml
+# pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
+
+from base.spline import *
+
 
 class Test_Spline:
 

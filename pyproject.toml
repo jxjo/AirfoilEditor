@@ -41,12 +41,12 @@ Issues = "https://github.com/jxjo/AirfoilEditor/issues"
 airfoileditor = "airfoileditor.app:start"
 
 [tool.hatch.version]
-path = "modules/app.py"
+path = "airfoileditor/app.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["airfoileditor"]
 only-include = [
-  "modules", 
+  "airfoileditor", 
   "assets",
   "examples_optimize"
 ]
@@ -66,3 +66,10 @@ include = [
 [tool.hatch.build.targets.wheel.sources]
 "examples/optimize" = "airfoileditor/examples/optimize"
 "assets" = "airfoileditor/assets"
+
+[tool.pytest.ini_options]
+pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

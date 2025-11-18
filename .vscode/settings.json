@@ -1,10 +1,8 @@
 {
-    "python.analysis.extraPaths": ["./modules"],
+    "python.analysis.extraPaths": ["./airfoileditor"],
     "python.analysis.typeCheckingMode": "off",
-    "markdown.preview.fontSize": 20,
-    "python.testing.pytestArgs": [
-        "modules"
-    ],
+    "markdown.preview.fontSize": 10,
+    "python.testing.pytestArgs": ["-m", "not slow"],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "debugpy.debugJustMyCode": true,
@@ -12,6 +10,7 @@
     "cSpell.words": [
         "iair",
         "improv",
+        "nsteps",
         "qtext"
     ]
 }

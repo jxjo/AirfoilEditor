@@ -17,16 +17,16 @@ from base.widgets           import *
 from base.panels            import Edit_Panel
 
 from model.airfoil          import Airfoil
-from model.airfoil_geometry import Geometry, Geometry_Bezier, Curvature_Abstract
-from model.airfoil_geometry import Line, Side_Airfoil_Bezier
-from model.case             import Case_Abstract, Case_Direct_Design, Case_Optimize
+from model.airfoil_geometry import (Geometry, Geometry_Bezier, Curvature_Abstract,
+                                    Line, Side_Airfoil_Bezier)
+from model.case             import Case_Abstract, Case_Direct_Design
 from model.xo2_driver       import Xoptfoil2
 
-from ae_widgets             import * 
-from ae_dialogs             import (Match_Bezier_Dialog, Matcher, LE_Radius_Dialog, TE_Gap_Dialog,
+from ui.ae_widgets          import * 
+from ui.ae_dialogs          import (Match_Bezier_Dialog, Matcher, LE_Radius_Dialog, TE_Gap_Dialog,
                                    Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
 
-from ae_app_model              import App_Model
+from app_model              import App_Model
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.WARNING)

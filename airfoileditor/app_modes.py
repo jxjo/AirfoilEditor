@@ -18,17 +18,18 @@ from base.app_utils         import Settings
 from model.xo2_driver       import Worker, Xoptfoil2
 from model.case             import Case_Direct_Design, Case_As_Bezier
 
-from ae_app_model              import App_Model, Mode_Id
-from ae_dialogs             import Airfoil_Save_Dialog
-from ae_panels              import *
+from ui.ae_dialogs          import Airfoil_Save_Dialog
+from ui.ae_panels           import *
 
-from xo2_dialogs            import Xo2_Select_Dialog, Xo2_New_Dialog
-from xo2_panels             import *
+from ui.xo2_dialogs         import Xo2_Select_Dialog, Xo2_New_Dialog
+from ui.xo2_panels          import *
+
+from app_model              import App_Model, Mode_Id
 
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 # ------------------------------------------------------------------------------
@@ -744,7 +745,7 @@ class Mode_Optimize (Mode_Abstract):
 
         if not Xoptfoil2.ready : return False
 
-        # an input file is already set - check iexistence
+        # an input file is already set - check existence
 
         if on_arg and Input_File.is_xo2_input(on_arg): 
                 return on_arg

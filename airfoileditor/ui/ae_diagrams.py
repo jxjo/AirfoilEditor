@@ -7,8 +7,8 @@ Diagram (items) for airfoil
 
 """
 
-import logging
 from copy                   import deepcopy 
+
 from base.widgets           import * 
 from base.diagram           import * 
 from base.panels            import Edit_Panel, Toaster
@@ -19,14 +19,14 @@ from model.case             import Case_Abstract, Case_Optimize
 from model.xo2_driver       import Worker, Xoptfoil2
 from model.xo2_results      import OpPoint_Result, GeoTarget_Result
 
-from ae_artists             import *
-from ae_widgets             import Airfoil_Select_Open_Widget
+from ui.ae_artists          import *
+from ui.ae_widgets          import Airfoil_Select_Open_Widget
+from ui.xo2_artists         import *
 
-from xo2_artists            import *
-
-from ae_app_model              import App_Model
+from app_model              import App_Model
 
 
+import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -1054,7 +1054,7 @@ class Diagram_Item_Curvature (Diagram_Item):
                     set=self.curvature_artist.set_show_derivative,
                     disable=lambda: len(self.airfoils) != 1 and \
                                     not any (airfoil.usedAsDesign for airfoil in self.airfoils),
-                    toolTip="Show the derivative of curvature which amplifies curvature artefacts.<br>"+
+                    toolTip="Show the derivative of curvature which amplifies curvature artifacts.<br>"+
                             "Only active if one airfoil is displayed or Design airfoil is shown.")
             r += 1
             CheckBox (l,r,c, text=f"X axes linked to '{self._desired_xLink_name}'", 

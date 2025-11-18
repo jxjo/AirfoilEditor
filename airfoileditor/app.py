@@ -36,9 +36,10 @@ from base.panels            import Win_Util
 from base.widgets           import Icon, Widget
 from base.app_utils         import Settings, Update_Checker
 
-from ae_widgets             import create_airfoil_from_path
-from ae_diagrams            import Diagram_Airfoil_Polar
-from ae_app_model              import App_Model
+from ui.ae_widgets          import create_airfoil_from_path
+from ui.ae_diagrams         import Diagram_Airfoil_Polar
+
+from app_model              import App_Model
 from app_modes              import (Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_Id, 
                                     Mode_As_Bezier)
 
@@ -54,7 +55,7 @@ logger.setLevel(logging.DEBUG)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "4.2.0"                              # hatch "version dynamic" reads this version for build
+__version__      = "4.2.0-beta.1"                       # hatch "version dynamic" reads this version for build
 
 
 class Main (QMainWindow):
@@ -148,7 +149,7 @@ class Main (QMainWindow):
         main.setLayout (l) 
         self.setCentralWidget (main)
 
-        self._diagram = diagram                                             # keep for closedown
+        self._diagram = diagram                                             # keep for close down
 
 
         # --- Enter event loop ---------------

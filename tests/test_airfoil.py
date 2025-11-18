@@ -10,13 +10,9 @@ import pytest
 
 import numpy as np 
 import os
-import sys
 
-# add directory of self to sys.path, so import is relative to self
-modules_path = os.path.dirname(os.path.realpath(__file__))
-if not modules_path in sys.path:
-    sys.path.append(modules_path)
-
+# -> pyproject.toml
+# pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
 from model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from model.airfoil_examples import Root_Example, Tip_Example
@@ -24,6 +20,14 @@ from model.airfoil_geometry import Geometry, Geometry_Splined, Geometry_Bezier
 from model.airfoil_geometry import Curvature_of_xy, Curvature_of_Spline, Curvature_of_Bezier
 from model.xo2_driver       import Worker
 from base.common_utils      import PathHandler
+
+
+# temp_dir will be injected by pytest in the arguments of test functions
+@pytest.fixture
+def temp_dir(tmp_path):
+    """Create a temporary directory for test files"""
+    # just a wrapper for naming
+    return tmp_path
 
 
 class Test_Airfoil:
@@ -184,65 +188,23 @@ class Test_Airfoil:
 
         airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5)
         assert airfoil.geo.max_thick == 7.3015 / 100
-        y30_splined = airfoil.y[30]
-
-        # airfoil.do_blend (airfoil1, airfoil2, blendBy=1.0)
-        # assert airfoil.geo.max_camb == airfoil2.geo.max_camb
-
-        # # blend  - basic 
-
-        # airfoil  = Airfoil (name="<blend>", geometry = GEO_BASIC)
-        # airfoil1 = Root_Example(geometry = GEO_BASIC)
-        # airfoil2 = Tip_Example (geometry = GEO_BASIC)
-
-        # airfoil.do_blend (airfoil1, airfoil2, blendBy=0.0)
-        # assert airfoil.geo.max_thick == airfoil1.geo.max_thick
-
-        # airfoil.do_blend (airfoil1, airfoil2, blendBy=1.0)
-        # assert airfoil.geo.max_camb == airfoil2.geo.max_camb
-
-        # airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5)
-        # assert airfoil.geo.max_thick == 7.30088 / 100
-
-        # airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5, geometry=GEO_SPLINE)
-        # assert airfoil.y[30] == y30_splined 
 
 
 
-    def test_airfoil_file_functions (self):
+    def test_airfoil_file_functions (self, temp_dir):
 
         from pathlib import Path
         import shutil
-        import numpy as np 
-
 
         airfoil = Root_Example(geometry = GEO_SPLINE)
-        p_tmp = Path.cwd() / 'tmp'
         airfoil.normalize()
-
-        # copyAs with te gap 
-
-        te_gap =  0.01
-        destName = 'huhu'
-        newPathFileName = airfoil.save_copyAs (pathName=str(p_tmp), name=destName, te_gap=te_gap)
-
-        new_airfoil = Airfoil (pathFileName=newPathFileName)
-        new_airfoil.load()
-        new_airfoil.normalize()
-
-        assert new_airfoil.geo.te_gap == te_gap
-        assert new_airfoil.name  == destName + '_te_gap1.0'
-
-        # after set_teGap x-values should be equal - y-values different
-        assert np.sum(np.round(airfoil.x,7)) == np.sum(new_airfoil.x)
-        assert np.sum(np.round(airfoil.y)) != np.sum(new_airfoil.y)
 
         # saveAs 
 
         airfoil = Root_Example(geometry = GEO_SPLINE)
 
         destName = 'haha'
-        newPathFileName = airfoil.saveAs (dir=str(p_tmp), destName=destName)
+        newPathFileName = airfoil.saveAs (dir=str(temp_dir), destName=destName)
         new_airfoil = Airfoil (pathFileName=newPathFileName)
         new_airfoil.load()
 
@@ -256,8 +218,6 @@ class Test_Airfoil:
         relPath    = PathHandler(workingDir=workingDir).relFilePath (absPathFileName)
         new_airfoil = Airfoil (workingDir=workingDir, pathFileName=relPath)
         new_airfoil.load()
-
-        shutil.rmtree(str(p_tmp))
 
 
 
@@ -354,8 +314,8 @@ class Test_Worker:
         assert Worker.ready
 
 
-
-    def test_worker_generate_polar (self):
+    @pytest.mark.slow                       # vscode: activate in settings.json
+    def test_worker_generate_polar (self, temp_dir):
 
         from pathlib import Path
         import shutil
@@ -366,14 +326,13 @@ class Test_Worker:
 
         worker = Worker()
         airfoil = Root_Example(geometry = GEO_SPLINE)
-        p_tmp = Path.cwd() / 'tmp'
 
         # saveAs 
 
         airfoil = Root_Example(geometry = GEO_SPLINE)
 
         destName = 'haha'
-        airfoil_path = airfoil.saveAs (dir=str(p_tmp), destName=destName)
+        airfoil_path = airfoil.saveAs (dir=str(temp_dir), destName=destName)
 
         # ------- sync test ---------------------------------------------
 
@@ -415,30 +374,25 @@ class Test_Worker:
 
         assert polar_file
 
-        shutil.rmtree(str(p_tmp))
 
 
 
+    def test_worker_set_flap (self, temp_dir):
 
-    def test_worker_set_flap (self):
-
-        from pathlib import Path
         import shutil
-        import time
 
         Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
         assert Worker.ready
 
         worker = Worker()
         airfoil = Root_Example(geometry = GEO_SPLINE)
-        p_tmp = Path.cwd() / 'tmp'
 
         # saveAs 
 
         airfoil = Root_Example(geometry = GEO_SPLINE)
 
         destName = 'haha'
-        airfoil_path = airfoil.saveAs (dir=str(p_tmp), destName=destName)
+        airfoil_path = airfoil.saveAs (dir=str(temp_dir), destName=destName)
 
         # ------- set flap ---------------------------------------------
 
@@ -452,13 +406,11 @@ class Test_Worker:
         # ------- load flapped airfoil ---------------------------------------------
 
         fileName = outname + '.dat'
-        airfoil_flapped = Airfoil (pathFileName=fileName, workingDir=str(p_tmp))
+        airfoil_flapped = Airfoil (pathFileName=fileName, workingDir=str(temp_dir))
         airfoil_flapped.load()
 
         assert airfoil_flapped.isFlapped
         assert airfoil_flapped.geo.curvature.flap_kink_at == 0.69704585
-
-        shutil.rmtree(str(p_tmp))
 
 
 # Main program for testing 

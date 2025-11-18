@@ -7,12 +7,7 @@ Extra functions (dialogs) to modify airfoil
 
 """
 
-import logging
-logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
-
 import numpy as np
-import time 
 
 from PyQt6.QtCore           import QThread, Qt
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
@@ -29,10 +24,13 @@ from model.polar_set        import (Polar_Definition, polarType, var,
                                     re_from_v, v_from_re, re_sqrt_from_load, load_from_re_sqrt,
                                     TEMP_DEFAULT, ALT_DEFAULT, AIR_RHO, AIR_ETA,)
 
-from model.xo2_driver       import Worker
-from ae_widgets             import Airfoil_Select_Open_Widget
-from ae_app_model              import App_Model
+from ui.ae_widgets          import Airfoil_Select_Open_Widget
 
+from app_model              import App_Model
+
+import logging
+logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
 
 
 class Airfoil_Save_Dialog (Dialog):
@@ -125,7 +123,7 @@ class Airfoil_Save_Dialog (Dialog):
     def _on_widget_changed (self, *_):
         """ slot for change of widgets"""
 
-        # delayed refresh as pressed button hides itsself 
+        # delayed refresh as pressed button hides itself 
         timer = QTimer()                                
         timer.singleShot(20, self.refresh)     # delayed emit 
 
@@ -633,13 +631,13 @@ class Match_Bezier_Dialog (Dialog):
         self._stop_btn.setVisible (False) 
         self._close_btn.setVisible (True) 
 
-        # save current background color for state dependand backgrounds
+        # save current background color for state dependant backgrounds
 
         self._palette_normal = self._panel.palette()
 
 
     def _titletext (self) -> str: 
-        """ headertext dpending on state """
+        """ headertext depending on state """
         if self._matcher.isRunning():
             return f"Match running ... Pass: {self._ipass}  Iterations: {self._nevals}"
         elif self._matcher.isFinished():
@@ -682,7 +680,7 @@ class Match_Bezier_Dialog (Dialog):
         self._nevals = 0
         self._norm2  = 0 
         self._ipass +=1                                         # increase pass counter 
-        self._target_curv_le_weighting *= 2                     # double wighting in next pass 
+        self._target_curv_le_weighting *= 2                     # double weighting in next pass 
 
         self._panel.setDisabled (True)
         self.set_background_color (color='steelblue', alpha=0.3)        
@@ -702,7 +700,7 @@ class Match_Bezier_Dialog (Dialog):
 
 
     def _on_results (self, nevals, norm2, curv_le, curv_te):
-        """ slot to receice new results from running thread"""
+        """ slot to receive new results from running thread"""
 
         self._nevals = nevals
         self._norm2 = norm2         
@@ -715,7 +713,7 @@ class Match_Bezier_Dialog (Dialog):
 
 
     def _result_is_good_enough (self) -> bool:
-        """ return True if match reslt is good enough to end """ 
+        """ return True if match result is good enough to end """ 
 
         good = Matcher.result_quality.GOOD
  
@@ -925,7 +923,7 @@ class Matcher (QThread):
             curv_te = abs(aCurv.y[-1])
         if curv_te > (abs(max_curv_te) + 2): 
             return cls.result_quality.BAD
-        elif curv_te > (abs(max_curv_te) + 0.1):            # allow a lttle tolerance 
+        elif curv_te > (abs(max_curv_te) + 0.1):            # allow a little tolerance 
             return cls.result_quality.OK
         else: 
             return cls.result_quality.GOOD
@@ -964,7 +962,7 @@ class Matcher (QThread):
         self._ncp     = self._bezier.npoints
         self._nvar    =  (self._ncp - 2) * 2 - 1    #  number of design variables
         self._isLower = target_line.isLower         # lower side? - dv will be inverted
-        self._max_iter = self._nvar * 250           # max number of interations - depending on number of control points
+        self._max_iter = self._nvar * 250           # max number of interactions - depending on number of control points
 
         # selected target points for objective function
 
@@ -1013,7 +1011,7 @@ class Matcher (QThread):
                     no_improv_break=20, 
                     max_iter=self._max_iter,         
                     bounds = bounds,
-                    stop_callback=self.isInterruptionRequested)     # Qthread method 
+                    stop_callback=self.isInterruptionRequested)     # QThread method 
 
         variables = res[0]
 
@@ -1122,12 +1120,11 @@ class Matcher (QThread):
 
         curv_le = abs(self._bezier.curvature(0.0)) 
          
-        # highpoint of curvature muste be at LE
+        # highpoint of curvature must be at LE
 
         obj_le_hp = 0.0 
         curv_after_le = abs(self._bezier.curvature(0.005)) 
         if (curv_le - curv_after_le) < 0: 
-            # print ("ohooo", self._nevals, curv_le, curv_after_le)
             obj_le_hp = abs( (curv_le - curv_after_le))  / 4
 
         # difference to target le curvature 
@@ -1160,7 +1157,7 @@ class Matcher (QThread):
             if delta > 0.1:                                     # delta < 0.3 is ok,  0
                 obj_te = delta - 0.1   
 
-        # calculate derivative of curvature for detection of curvature artefacts 
+        # calculate derivative of curvature for detection of curvature artifacts 
 
         u = np.concatenate ((np.linspace (0.2, 0.95, 15, endpoint=False),
                              np.linspace (0.95, 1.0, 10)))          # higher density at te     
@@ -1271,7 +1268,7 @@ class Polar_Definition_Dialog (Dialog):
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
-        l.setVerticalSpacing(2)                                     # strange - otherwise vertcial spacing is too large
+        l.setVerticalSpacing(2)                                     # strange - otherwise vertical spacing is too large
         r,c = 0,0 
         SpaceR (l, r, height=5,stretch=1) 
         r += 1 

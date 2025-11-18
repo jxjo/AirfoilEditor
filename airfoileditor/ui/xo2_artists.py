@@ -6,22 +6,18 @@
 The "Artists" to plot a airfoil object on a pg.PlotItem 
 
 """
-import html 
 
-from typing                     import Callable
+from PyQt6.QtGui                import QColor, QPainterPath, QTransform
+from PyQt6.QtCore               import Qt, pyqtSignal, QRectF
 
 from base.artist                import *
 from base.common_utils          import *
 
-from model.airfoil              import Line
 from model.polar_set            import * 
-from model.xo2_input            import OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN, GeoTarget_Definitions
+from model.xo2_input            import (OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN)
 from model.xo2_results          import OpPoint_Result, Optimization_History_Entry
 
-from ae_artists                 import _color_airfoil
-
-from PyQt6.QtGui                import QColor, QBrush, QPen, QPainterPath, QTransform
-from PyQt6.QtCore               import Qt, pyqtSignal, QRectF
+from ui.ae_artists              import _color_airfoil
 
 
 import logging

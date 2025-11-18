@@ -3,38 +3,32 @@
 
 """  
 
-Extra functions (dialogs) to optimize airfoil  
+Extra dialogs to optimize airfoil  
 
 """
 
 from copy                   import copy 
 from shutil                 import copyfile, copytree, rmtree
-from datetime               import date
-
-import pyqtgraph as pg
 
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog, QMessageBox
 from PyQt6.QtGui            import QFontMetrics
 
 from base.widgets           import * 
-from base.panels            import Dialog, Edit_Panel, MessageBox, Container_Panel, Panel_Abstract
-
-from ae_dialogs             import Polar_Definition_Dialog
-from ae_widgets             import Airfoil_Select_Open_Widget, mode_color
+from base.panels            import Dialog, Edit_Panel, MessageBox, Panel_Abstract
 
 from model.airfoil          import Airfoil
 from model.polar_set        import Polar_Definition
 from model.case             import Case_Optimize
 from model.xo2_controller   import xo2_state, Xo2_Controller
 from model.xo2_results      import Xo2_Results, Optimization_History_Entry
-
 from model.xo2_input        import *
 
-from model.xo2_input        import SPEC_TYPES, var
-from xo2_diagrams           import Diagram_Xo2_Progress, Diagram_Xo2_Airfoil_and_Polar
+from ui.ae_dialogs          import Polar_Definition_Dialog
+from ui.ae_widgets          import Airfoil_Select_Open_Widget, mode_color
+from ui.xo2_diagrams        import Diagram_Xo2_Progress, Diagram_Xo2_Airfoil_and_Polar
 
-from ae_app_model              import App_Model
+from app_model              import App_Model
 
 
 import logging
@@ -188,7 +182,7 @@ class Xo2_Select_Dialog (Dialog):
     def _select_open_open_case (self): 
         """ file select of an input file and close self with input_fileName"""
 
-        # build somethinglike "*.inp *.xo2" as filter for the dialog
+        # build something like "*.inp *.xo2" as filter for the dialog
         filter_string = ""
         for extension in Input_File.INPUT_FILE_EXT:
             filter_string += f" *{extension}" if filter_string else f"*{extension}"

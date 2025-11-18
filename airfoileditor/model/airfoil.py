@@ -17,8 +17,8 @@ import numpy as np
 
 from base.math_util         import * 
 from base.common_utils      import * 
-from .airfoil_geometry      import Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne
-from .airfoil_geometry      import Line, Side_Airfoil_Bezier, GeometryException
+from .airfoil_geometry      import (Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne,
+                                    Line, Side_Airfoil_Bezier, GeometryException)
 
 from .xo2_driver            import Worker
 

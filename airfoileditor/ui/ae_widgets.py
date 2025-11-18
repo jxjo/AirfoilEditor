@@ -7,10 +7,6 @@ Handle Airfoil UI operations like Open and Select
 
 """
 
-import logging
-logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
-
 import os
 import fnmatch             
 
@@ -21,10 +17,14 @@ from PyQt6.QtWidgets        import QFileDialog, QWidget
 from base.widgets           import * 
 from base.panels            import MessageBox
 
-from model.airfoil          import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne
+from model.airfoil          import Airfoil
 from model.airfoil          import GEO_BASIC
 from model.airfoil_examples import Example
 
+
+import logging
+logger = logging.getLogger(__name__)
+# logger.setLevel(logging.WARNING)
 
 # ------ colors of modes ----------------------------------
 
@@ -263,7 +263,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     @override
     def refresh (self, disable=None):
 
-        self._no_files_here = None                              # reset cached vlaue 
+        self._no_files_here = None                              # reset cached value 
         super().refresh(disable) 
 
         if self._combo_widget is not None:
@@ -308,7 +308,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         if self._no_files_here is None: 
             n = len (self.airfoil_fileNames_sameDir())
             if n== 1:
-                # there can be a blank or exmaple entry as the first item 
+                # there can be a blank or example entry as the first item 
                 fileName_first = self.airfoil_fileNames_sameDir()[0]
                 no =  fileName_first == ""
             elif n == 0: 

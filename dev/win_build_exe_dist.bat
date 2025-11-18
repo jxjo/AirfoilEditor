@@ -19,11 +19,13 @@ del tmpFile
 
 set WIN_EXE_DIR=%PACKAGE_NAME%-%PACKAGE_VERSION%_win_exe
 
-rem ---- run Pytest  for *-test.py
+rem ---- run Pytest  for test_*.py
+rem          exclude slow test like polar with -m "not slow"
 
 echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
 echo.
-rem Pytest modules\
+
+Pytest tests\  -m "not slow"
 
 rem ---- run pyinstaller 
 
@@ -37,16 +39,16 @@ rem needed for pyinstaller to avoid "WARNING: lib not found: api-ms-win-crt ..."
 setlocal
 set PATH=%PATH%;C:\Windows\System32\downlevel
 
-rem to show missing imports: 			--debug imports ^
-rem also look in modules for imports!: 	--paths modules ^
-rem more infos during build:		 	--log-level=INFO
+rem to show missing imports: 					--debug imports ^
+rem also look in airfoileditor for imports!: 	--paths airfoileditor ^
+rem more infos during build:		 			--log-level=INFO
 rem suppress console  	--noconsole    ^
 pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --distpath %DIST_DIR% ^
-	--icon=./modules/AE_ico.ico ^
-	--paths modules ^
-    --add-data="./modules/base/icons;./icons" ^
-    --add-data="./modules/AE_ico.ico;./icons" ^
+	--icon=./airfoileditor/AE_ico.ico ^
+	--paths airfoileditor ^
+    --add-data="./airfoileditor/base/icons;./icons" ^
+    --add-data="./airfoileditor/AE_ico.ico;./icons" ^
     --add-data="./assets/windows/worker.exe;./assets/windows" ^
     --add-data="./assets/windows/xoptfoil2.exe;./assets/windows" ^
     --add-data="./examples_optimize;./examples_optimize" ^

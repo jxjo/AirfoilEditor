@@ -9,7 +9,7 @@ App model and state management for the airfoil editor.
 - signals for changes in data to inform the UI
 - loading and saving of airfoil specific settings
 - watchdog thread for monitoring polar generation and optimization state
-- can be notfied of changes in airfoil geometry and other parameters
+- can be notified of changes in airfoil geometry and other parameters
 
 The App Model is needed as the 'real' model is QObject agnostic and stateless. 
 
@@ -897,7 +897,7 @@ class Watchdog (QThread):
 
             case : Case_Optimize = self._case_optimize
 
-            # reset cached progress and result uptodate info
+            # reset cached progress and result up to date info
             there_is_progress = case.xo2.refresh_progress ()                    # ensure progress info is up to date
             case.results.set_results_could_be_outdated ()                       # will check for new Xoptfoil2 results
 
