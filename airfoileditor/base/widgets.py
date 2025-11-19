@@ -241,7 +241,7 @@ class Widget:
 
     # Signals - ! pyqtSignal will be active in subclass which is inherited from QWidget ! 
 
-    sig_changed  = pyqtSignal(object)                   # (Object class name, Method as string, new value)
+    sig_changed  = pyqtSignal(object)                   # signal self)
 
     # constants 
 
@@ -650,10 +650,10 @@ class Widget:
             qualname = ''
 
         logger.debug (f"{self} emit sig_changed: {qualname} ({self._val})")
-        self.sig_changed.emit (self)
+
         # emit signal delayed so we leave the scope of Widget 
-        # timer = QTimer()                                
-        # timer.singleShot(50, self.sig_changed.emit)     # delayed emit 
+        timer = QTimer()                                
+        timer.singleShot(0, lambda w= self: self.sig_changed.emit(w))     # delayed emit 
 
 
     def _layout_add (self, widget = None, col = None):

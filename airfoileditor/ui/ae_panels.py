@@ -875,7 +875,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         """ add Widgets to header layout"""
 
         Button (l_head, text="&Normalize", width=75,
-                set=lambda : self.airfoil.normalize(), signal=True, 
+                set=self.do_normalize, 
                 hide=lambda: not self.is_mode_modify,
                 toolTip="Normalize airfoil to get leading edge at 0,0 and trailing edge at x=1.0")
 
@@ -963,6 +963,13 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         return text 
 
 
+    def do_normalize (self):
+        """ normalize airfoil to LE at 0,0 and TE at x=1.0"""
+
+        self.airfoil.normalize()
+        self.app_model.notify_airfoil_changed()
+
+
 
 class Panel_LE_TE_Small  (Panel_LE_TE):
     """ info about LE and TE coordinates - small version"""
@@ -986,7 +993,7 @@ class Panel_LE_TE_Small  (Panel_LE_TE):
 
         r,c = 0, 5 
         ToolButton (l,r,c+1, icon=Icon.EDIT,
-                set=lambda : self.airfoil.normalize(), signal=True, 
+                set=self.do_normalize, 
                 hide=lambda: not self.is_mode_modify,
                 toolTip="Normalize airfoil to get leading edge at 0,0 and trailing edge at x=1.0")
         return l
