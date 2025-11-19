@@ -308,6 +308,41 @@ class Container_Panel (Panel_Abstract):
             self.setVisible (False)                     # setVisible(True) results in a dummy window on startup 
 
 
+    def calc_min_width (self) -> int:
+        """ calculate minimum width of self based on visible panels of self layout """
+
+        layout = self.layout()
+
+        # only QHBoxLayout supported here
+        if not isinstance (layout, QHBoxLayout):
+            return
+
+        min_width = 0
+        ncols = layout.count()
+        ncols_filled = 0
+
+        # loop over rows to find maximum row height
+        for i in range(ncols):
+            col_width = 0
+            item = layout.itemAt(i)
+            if item:
+                qwidget = item.widget()
+                if isinstance (qwidget, Panel_Abstract) and not qwidget.isHidden():
+                    col_width = max(col_width, qwidget.width()) 
+                elif isinstance (qwidget, Widget) and not qwidget.isHidden():
+                    col_width = max(col_width, qwidget.minimumWidth()) 
+                # print (f"panel {qwidget} width: {qwidget.width()} minWidth: {qwidget.minimumWidth()}" )
+            min_width += col_width
+            if col_width > 0:
+                ncols_filled += 1
+
+        # add horizontal spacings + margins
+        margins = layout.contentsMargins()
+        min_width = min_width + (ncols_filled-1) * layout.spacing() + margins.left() + margins.right()
+
+        return min_width
+
+
     def add_hint (self, hint : str):
         """ add stretchable hint for double click at the end of layout """
 

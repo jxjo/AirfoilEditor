@@ -161,6 +161,11 @@ class Mode_Abstract (QObject):
         # to be overridden in subclasses if needed.
         return on_arg
     
+    @property
+    def current_panel(self) -> Data_Panel:
+        """ Get the currently visible data panel. """
+        return self.stacked_panel.currentWidget() 
+
 
     def set_current_panel (self, minimized: bool = False, refresh=True):
         """ Set self and all modes to minimized or normal state. """
@@ -917,7 +922,6 @@ class Modes_Manager (QObject):
         super().__init__()
 
         self._modes_dict  = {}
-        self._panels_dict = {}
         self._app_model   = app_model
 
         self._modes_panel : QStackedWidget = None
@@ -930,15 +934,33 @@ class Modes_Manager (QObject):
 
 
     def _switch_mode_panel (self, mode: Mode_Abstract):
-        """ switch stacked widget to given mode panel """
+        """ switch stacked widget to panel of mode """
 
-        if mode.mode_id in self._panels_dict:
-            self._modes_panel.setCurrentWidget (self._panels_dict [mode.mode_id])
-        else:
-            logger.warning(f"Mode {mode} has no registered panels in Mode_Manager.")
+        if not (mode.mode_id in self._modes_dict):
+            logger.error (f"Mode {mode} not registered in Mode_Manager.")
 
-        # set panel with size small or normal 
+        # set small oder normal  
         mode.set_current_panel (self._is_minimized, refresh=True)
+
+        # switch stacked widget to new mode panel
+        self._modes_panel.setCurrentWidget (mode.stacked_panel)
+
+        # setting of the actual width of the modes panel after switching needs to be done
+        # after all current events are processed so that the size hint of the new panel is valid
+        QTimer.singleShot (100, self._set_min_width)        # set min width after current events processed
+
+
+    def _set_min_width (self):
+        """ set minimum width of modes panel according to current mode panel """
+
+        # because QStackedWidget takes the width of the widest widget of all its children,
+        # we need to set the minimum width of the stacked widget to the minimum width of the current mode panel
+
+        if self.current_mode is not None:
+            self._modes_panel.setMinimumWidth (0)
+            self._modes_panel.adjustSize()
+            min_width = self.current_mode.current_panel.calc_min_width()
+            self._modes_panel.setMinimumWidth (min_width)
 
 
     @property
@@ -1003,12 +1025,11 @@ class Modes_Manager (QObject):
         # collect all modes and their panels
         mode : Mode_Abstract
         for mode_id, mode in self._modes_dict.items():
-            self._panels_dict[mode_id] = mode.stacked_panel                  # register mode's data panels
             self._modes_panel.addWidget (mode.stacked_panel)                 # add mode's data panels to stacked widget
 
         # switch stacked widget to current mode panel
-        if self._app_model.mode_id is not None:
-            self._modes_panel.setCurrentWidget (self._panels_dict [self._app_model.mode_id])
+        if self.current_mode is not None:
+            self._modes_panel.setCurrentWidget (self.current_mode.stacked_panel)
 
         return self._modes_panel
 
@@ -1073,6 +1094,8 @@ class Modes_Manager (QObject):
 
         if self.current_mode is not None:
             self.current_mode.set_current_panel (minimized)         # set panel small or normal
+
+        # set to predefined height
         height = self._height_minimized if minimized else self._height
         self._modes_panel.setFixedHeight (height)    
 
@@ -1083,5 +1106,7 @@ class Modes_Manager (QObject):
         if self.current_mode is not None:
             self._set_minimized (not self._is_minimized)
 
+            # adjust new min with of data panel
+            self._set_min_width()        
 
 
