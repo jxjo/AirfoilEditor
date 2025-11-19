@@ -141,6 +141,8 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
             if air_file.lower() > anAirfoil.fileName.lower():
                 next_file = air_file
                 break
+        if next_file is None:   
+            next_file = airfoil_files [-1]                      # take last if none greater found
     else: 
         next_file = airfoil_files [0] if airfoil_files else None 
 
