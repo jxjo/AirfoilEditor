@@ -298,7 +298,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Label  (l,r,c,  colSpan=2, height=(None,None), style=style.COMMENT,
+        Label  (l,r,c,  colSpan=2, height=(None,None), style=style.COMMENT, wordWrap=True, width=(250,None),
                         get=lambda: self.info.descriptions_string if self.info.descriptions_string else 'Enter a description ...')
         ToolButton (l,r,c+2, icon=Icon.EDIT, align=ALIGN_TOP,
                         set=self._edit_description)
@@ -328,7 +328,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         r += 1
         l.setRowStretch (r,1)
         l.setColumnMinimumWidth (0,90)
-        l.setColumnMinimumWidth (1,140)     # the widest shape_functions_label_long defines the width
+        l.setColumnMinimumWidth (1,160)     # the widest shape_functions_label_long defines the width
         l.setColumnStretch (1,1)
         return l 
 
@@ -448,7 +448,7 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         
         r += 1
         l.setRowStretch (r,3)
-        l.setColumnMinimumWidth (0,180)
+        l.setColumnMinimumWidth (0,160)
         l.setColumnStretch (0,1)
 
         return l
@@ -511,7 +511,7 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ListBox    (l,r,c, rowSpan=4, height=140, 
+        ListBox    (l,r,c, rowSpan=4, height=140, width=200,
                     get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
                     set=self.set_cur_opPoint_def_from_label,
                     signal=False,                                               # do not signal xo2_input changed
@@ -530,8 +530,7 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
                      set=self._add_opPoint_def)
         r += 1
         l.setRowStretch (r,3)
-        l.setColumnMinimumWidth (0,150)
-        l.setColumnStretch (1,1)
+        # l.setColumnMinimumWidth (0,100)
 
         return l
 

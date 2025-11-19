@@ -1182,7 +1182,7 @@ class Xo2_Description_Dialog (Dialog):
 
     """ a small text editor to edit the &info description"""
 
-    _width  = 320
+    _width  = 300
     _height = 110
 
     name = "Description"

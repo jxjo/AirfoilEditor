@@ -648,7 +648,7 @@ class OpPoint_Definition:
         if self._myList.use_flap: 
             if self.flap_optimize:
                 flap = "  F-opt"
-            else:
+            elif self.flap_angle != 0.0 and self.flap_angle is not None:
                 valstr = f"{self.flap_angle:4.1f}".strip()
                 if not fix: 
                     valstr = (f"{valstr}").rstrip('0')                          # remove trailing 0
