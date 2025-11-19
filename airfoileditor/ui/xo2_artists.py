@@ -91,8 +91,8 @@ class Movable_OpPoint_Def (Movable_Point):
         self._opPoint_def = opPoint_def
         self._xyVars = xyVars
 
-        self._callback_selected = on_selected
-        self._callback_delete   = on_delete
+        self._callback_selected = on_selected if (callable(on_selected) and movable) else None
+        self._callback_delete   = on_delete if (callable(on_delete) and movable) else None
         self._highlight_item    = None                       
 
         brush = QColor ("black")
@@ -279,7 +279,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
     @property
     def optimizer_isRunning (self) -> bool:
         """ True if optimizer is ready - definitions can be changed"""
-        return not self._isRunning_fn() if callable (self._isRunning_fn) else True
+        return self._isRunning_fn() if callable (self._isRunning_fn) else False
 
 
     def _plot (self): 
@@ -287,7 +287,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
         for opPoint_def in self.opPoint_defs:
 
             pt = Movable_OpPoint_Def  (self._pi, opPoint_def, self.xyVars, 
-                                            movable=self.optimizer_isRunning and self.show_mouse_helper,
+                                            movable=not self.optimizer_isRunning and self.show_mouse_helper,
                                             on_changed =self.sig_opPoint_def_changed.emit,
                                             on_delete  =self._on_delete,
                                             on_selected=self.sig_opPoint_def_selected.emit)
@@ -298,7 +298,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
                 # highlight current opPoint def for edit with a big circle 
 
-                if opPoint_def == self.cur_opPoint_def and self.optimizer_isRunning:
+                if opPoint_def == self.cur_opPoint_def and not self.optimizer_isRunning:
 
                     brush = QColor (Movable_OpPoint_Def.COLOR)
                     brush.setAlphaF (0.3)

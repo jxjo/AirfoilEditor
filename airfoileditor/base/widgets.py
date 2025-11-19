@@ -1814,6 +1814,7 @@ class ComboBox (Field_With_Label, QComboBox):
         # overloaded
         super()._get_properties () 
         self._options = self._get_value (self._options_getter)
+        self._options = self._options if isinstance (self._options, list) else []
         self._val = str(self._val) if self._val is not None else None
 
 

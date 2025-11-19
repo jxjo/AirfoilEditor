@@ -148,7 +148,7 @@ class Movable_Point (pg.TargetItem):
             pass                                                        # take class name 
 
         self._id = id
-        self._callback_changed = on_changed if callable(on_changed) else None 
+        self._callback_changed = on_changed if (callable(on_changed) and movable) else None 
 
         self._show_label_static = show_label_static
         self._label_anchor = label_anchor

@@ -1218,7 +1218,6 @@ class Diagram_Item_Polars (Diagram_Item):
         self.app_model.sig_new_polars.connect               (self.refresh)
         self.app_model.sig_polar_set_changed.connect        (self.refresh)
         self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh)
-        self.app_model.sig_xo2_input_changed.connect        (self.refresh)  # e.g. opPoint def changed
 
         self.app_model.sig_xo2_new_design.connect           (self.refresh)
 
@@ -1642,6 +1641,7 @@ class Diagram_Airfoil_Polar (Diagram):
         self.app_model.sig_xo2_run_started.connect   (self._on_xo2_run_started)
         self.app_model.sig_xo2_new_design.connect    (self._on_xo2_new_design)
         self.app_model.sig_xo2_new_state.connect     (self.refresh)
+        self.app_model.sig_xo2_input_changed.connect (self.refresh)         # e.g. seed airfoil, opPoint def changed
 
 
 

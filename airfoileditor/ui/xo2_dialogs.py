@@ -704,10 +704,10 @@ class Xo2_Run_Dialog (Dialog):
         self.app_model.sig_xo2_new_step.connect         (self.on_new_step)
         self.app_model.sig_xo2_still_running.connect    (self.panel_running.refresh)
 
-        # run immediately if ready 
-        
-        # if self.case.xo2.isReady:
-        #     QTimer.singleShot(0, self.app_model.run_xo2)                             # run xo2 
+        # run immediately if ready and no previous run result
+
+        if self.case.xo2.state == xo2_state.READY and not self.case.isFinished:        
+            QTimer.singleShot(0, self._run_xo2)                                     # run xo2 
 
 
 

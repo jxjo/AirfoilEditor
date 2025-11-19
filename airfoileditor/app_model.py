@@ -30,7 +30,7 @@ from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
 from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from model.xo2_driver       import Worker, Xoptfoil2
 from model.xo2_input        import OpPoint_Definition
-from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract
+from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
 
 import logging
 logger = logging.getLogger(__name__)
@@ -283,11 +283,30 @@ class App_Model (QObject):
         """ current application mode id """
         return self._mode_id
     
-    def set_mode_id (self, mode_id : Mode_Id):
-        """ set new application mode id """
-        if isinstance (mode_id, Mode_Id) :
-            self._mode_id = mode_id
-            self.sig_new_mode.emit()
+
+    def set_mode_and_case (self, mode_id : Mode_Id, case : Case_Abstract):
+        """ set new application mode id and case """
+
+        # sanity - ensure mode and case are compatible
+
+        ok = False
+        if mode_id == Mode_Id.OPTIMIZE      and isinstance (case, Case_Optimize):
+            ok = True
+        elif mode_id == Mode_Id.MODIFY      and isinstance (case, Case_Direct_Design):
+            ok = True
+        elif mode_id == Mode_Id.AS_BEZIER   and isinstance (case, Case_As_Bezier):
+            ok = True
+        elif mode_id == Mode_Id.VIEW and case is None:
+            ok = True
+
+        if not ok:
+            raise ValueError (f"{self} cannot set mode {mode_id} with case {case}")
+        
+        self.set_case (case)
+        self._mode_id = mode_id
+        self.sig_new_mode.emit()
+
+
 
     @property
     def is_ready (self) -> bool:
@@ -297,22 +316,22 @@ class App_Model (QObject):
     @property
     def is_mode_view (self) -> bool:
         """ is current mode view """
-        return self.mode_id == Mode_Id.VIEW
+        return self._mode_id == Mode_Id.VIEW
 
     @property
     def is_mode_modify (self) -> bool:
         """ is current mode modify """
-        return self.mode_id == Mode_Id.MODIFY
+        return self._mode_id == Mode_Id.MODIFY
 
     @property
     def is_mode_optimize (self) -> bool:
         """ is current mode optimize """
-        return self.mode_id == Mode_Id.OPTIMIZE
+        return self._mode_id == Mode_Id.OPTIMIZE
 
     @property
     def is_mode_as_bezier (self) -> bool:
         """ is current mode as bezier """
-        return self.mode_id == Mode_Id.AS_BEZIER
+        return self._mode_id == Mode_Id.AS_BEZIER
 
 
     @property
@@ -320,7 +339,7 @@ class App_Model (QObject):
         """ design or optimize case holding all design airfoils"""
         return self._case 
 
-    def set_case (self, case : Case_Abstract | None):
+    def set_case (self, case : Case_Abstract | None, silent: bool = True):
         """ set new case (design or optimize) - will also set new airfoil"""
 
         logger.debug (f"{self} Set new {case} ")
@@ -328,7 +347,8 @@ class App_Model (QObject):
         if isinstance (case, Case_Abstract) :
             self._case = case
             self.set_airfoil (case.initial_airfoil_design(), silent=True)   # set initial design airfoil silently
-            self.sig_new_case.emit()
+            if not silent:  
+                self.sig_new_case.emit()
         else: 
             self._case = None 
 

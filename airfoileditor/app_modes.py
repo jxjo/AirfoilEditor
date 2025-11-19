@@ -150,9 +150,6 @@ class Mode_Abstract (QObject):
         on_str = f" with arg {initial_arg}" if initial_arg is not None else ""   
         logger.debug(f"Entering {self.__class__.__name__} {on_str}")
 
-        # switch app_model to this mode - important for widgets to know current mode
-        self._app_model.set_mode_id (self.mode_id)
-
 
     def on_leave(self):
         """ Actions to perform when exiting the mode. Override in subclasses if needed. """
@@ -287,6 +284,9 @@ class Mode_View (Mode_Abstract):
     def on_enter(self, airfoil: Airfoil):
 
         self._app_model.set_airfoil (airfoil, silent=True)
+
+        # switch app_model to this mode - remove any case
+        self._app_model.set_mode_and_case (self.mode_id, None)
 
         super().on_enter()
 
@@ -431,8 +431,8 @@ class Mode_Modify (Mode_Abstract):
         if airfoil.isExample:
             airfoil.save()
 
-        # create new Design Case and get/create first design
-        self._app_model.set_case (Case_Direct_Design (airfoil))
+        # switch app_model to this mode with new Design Case - will get/create first design
+        self._app_model.set_mode_and_case (self.mode_id, Case_Direct_Design (airfoil))
 
         # show airfoil design initially
         self._app_model.set_show_airfoil_design (True)
@@ -570,8 +570,8 @@ class Mode_As_Bezier (Mode_Abstract):
         if airfoil.isExample:
             airfoil.save()
 
-        # create new Design Case and get/create first design
-        self._app_model.set_case (Case_As_Bezier (airfoil))
+        # switch app_model to this mode with new Design Case - will get/create first design
+        self._app_model.set_mode_and_case (self.mode_id, Case_As_Bezier (airfoil))
 
         # show airfoil design initially
         self._app_model.set_show_airfoil_design (True)
@@ -712,8 +712,8 @@ class Mode_Optimize (Mode_Abstract):
     def on_enter(self, pathFileName: str):
         """ Actions to perform when entering the mode. """
 
-        # create new Case Optimize
-        self._app_model.set_case (Case_Optimize (pathFileName))
+        # switch app_model to this mode with new Optimize Case - will get/create first design
+        self._app_model.set_mode_and_case (self.mode_id, Case_Optimize (pathFileName))
 
         # don't show airfoil design initially
         self._app_model.set_show_airfoil_design(False)
@@ -804,7 +804,6 @@ class Mode_Optimize (Mode_Abstract):
             self._panel = Data_Panel (self, self._app_model, layout = l)
 
             self._app_model.sig_xo2_input_changed.connect (self._panel.refresh)
-            self._app_model.sig_new_mode.connect (self._panel.refresh)
 
         return self._panel
 
@@ -988,9 +987,7 @@ class Modes_Manager (QObject):
         # prepare new mode and argument to work on
         arg =  mode.prepare_check_enter (on_arg)
 
-        self._app_model.set_mode_id (mode_id)
-        
-        mode.on_enter(arg)                                              # prepare enter new mode
+        mode.on_enter(arg)                                              # set mode
         mode.set_current_panel (self._is_minimized)                     # select the right panels small or not
 
 
