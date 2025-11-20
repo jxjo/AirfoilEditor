@@ -13,6 +13,8 @@ doc/RCN
 test_airfoils
 test_optimize
 
+prod/
+
 # VSCodeCounter 
 .VSCodeCounter
 

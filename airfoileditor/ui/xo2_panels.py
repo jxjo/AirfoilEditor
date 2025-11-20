@@ -268,7 +268,7 @@ class Panel_Xo2_File_Small (Panel_Xo2_File):
         l = QGridLayout()
         r,c = 0, 0 
         Button      (l,r,c, width=100, text="&Run Xoptfoil2", button_style = button_style.PRIMARY,
-                        set=self.sig_run_xo2.emit, toolTip="Run Optimizer Xoptfoil2")        
+                        set=self._open_run_dialog, toolTip="Run Optimizer Xoptfoil2")        
         ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
                         toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
         r += 1

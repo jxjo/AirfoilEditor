@@ -25,7 +25,8 @@ rem          exclude slow test like polar with -m "not slow"
 echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
 echo.
 
-Pytest tests\  -m "not slow"
+rem Pytest tests\  -m "not slow"
+Pytest tests\  
 
 rem ---- run pyinstaller 
 

@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 4.2.0-beta 
+## 4.2.0b1 
 
 This is a maintenance release with major refactorings adding some smaller features
 
@@ -14,8 +14,8 @@ This is a maintenance release with major refactorings adding some smaller featur
 - Revised Match Bezier UI
 
 #### More ...
-
-- Major refactorings
+* Minor improvements
+* Bug fixes and extensive refactorings 
 
 
 ## 4.1.1
