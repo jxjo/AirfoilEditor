@@ -288,7 +288,7 @@ class Mode_View (Mode_Abstract):
 
     def on_enter(self, airfoil: Airfoil):
 
-        self._app_model.set_airfoil (airfoil, silent=True)
+        self._app_model.set_airfoil (airfoil, silent=True, load_settings=True)
 
         # switch app_model to this mode - remove any case
         self._app_model.set_mode_and_case (self.mode_id, None)

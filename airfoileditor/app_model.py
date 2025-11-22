@@ -363,9 +363,11 @@ class App_Model (QObject):
         """ current airfoil with current polar definitions"""
         return self._airfoil 
     
-    def set_airfoil (self, aNew : Airfoil, silent: bool = False ):
+    def set_airfoil (self, aNew : Airfoil, 
+                     silent: bool = False,
+                     load_settings: bool = False):
 
-        logger.debug (f"{self} Set new {aNew} {'having settings' if self.airfoil_settings_exist else ''}")
+        logger.debug (f"{self} Set new {aNew}")
 
         # sanity cleanup Worker working dir of previous airfoil
         if self.airfoil:
@@ -377,7 +379,12 @@ class App_Model (QObject):
         if aNew is not None: 
             self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions, only_active=True))
 
-        self._airfoil_settings_loaded = False
+        # load settings if requested and avaiable
+        if load_settings and self.airfoil_settings_exist:
+            self.load_settings()
+            self._airfoil_settings_loaded = True
+        else:
+            self._airfoil_settings_loaded = False
 
         if not silent: 
             self.sig_new_airfoil.emit()

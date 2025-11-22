@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.2.0b2 
+
+### Fixed
+
+- load settings when open airfoil 
+
 ## 4.2.0b1 
 
 This is a maintenance release with major refactorings adding some smaller features

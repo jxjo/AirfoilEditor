@@ -55,7 +55,7 @@ logger.setLevel(logging.DEBUG)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "4.2.0b1"                       # hatch "version dynamic" reads this version for build
+__version__      = "4.2.0b2"                       # hatch "version dynamic" reads this version for build
 
 CHANGE_TEXT      = "- Save / Load individual airfoil settings<br>" + \
                    "- Change polar diagram variables directly in diagram<br>" + \
@@ -109,7 +109,7 @@ class Main (QMainWindow):
 
         # load initial settings like polar definitions 
 
-        app_model.load_settings ()                                          # either global or airfoil specific settings
+        app_model.load_settings ()                                          # global settings (no airfoil set)
         app_model.sig_new_airfoil.connect (self._set_win_title)             # update title on new airfoil
         app_model.sig_new_mode.connect    (self._set_win_title)             # update title on new case
 

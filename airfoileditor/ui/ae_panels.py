@@ -154,8 +154,8 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         w =Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
                                     textOpen="&Open", widthOpen=100, 
                                     get=lambda: self.airfoil, 
-                                    set=lambda airfoil: self.app_model.set_airfoil(airfoil))
-        w.sig_opened_via_button.connect (self.sig_load_airfoil_settings.emit)       # explicitly load settings on open
+                                    set=     lambda airfoil: self.app_model.set_airfoil(airfoil),
+                                    set_open=lambda airfoil: self.app_model.set_airfoil(airfoil, load_settings=True))
 
         r += 1
         Button (l,r,c, text="&Modify", width=100, 
@@ -240,7 +240,8 @@ class Panel_File_View_Small (Panel_File_View):
         Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
                                     textOpen="&Open", widthOpen=100, 
                                     get=lambda: self.airfoil, 
-                                    set=lambda airfoil: self.app_model.set_airfoil(airfoil))
+                                    set=     lambda airfoil: self.app_model.set_airfoil(airfoil),
+                                    set_open=lambda airfoil: self.app_model.set_airfoil(airfoil, load_settings=True))
         r += 1
         Button      (l,r,c, text="&Exit", width=100, set=self.sig_exit.emit)
         MenuButton  (l,r,c+2, text="More...", width=80, 

@@ -8,7 +8,9 @@ Handle Airfoil UI operations like Open and Select
 """
 
 import os
-import fnmatch             
+import fnmatch        
+
+from typing                 import override, Callable    
 
 from PyQt6.QtCore           import QMargins
 from PyQt6.QtWidgets        import QHBoxLayout
@@ -179,20 +181,20 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
     _width  = (120, None)
 
-    sig_opened_via_button = pyqtSignal()        # emitted when airfoil opened via button
-
-
     def __init__(self, *args,
-                 get = None,                # get current / initial airfoil 
-                 set = None,                # will set new airfoil
-                 addEmpty = False,          # add empty entry to fie list 
-                 asSpin = False,            # ComboBox with spin buttons 
-                 withOpen = True,           # include open button 
-                 textOpen = "Open",         # text for Open button 
-                 widthOpen = 100,           # width of open text button 
+                 get = None,                            # get current / initial airfoil 
+                 set : callable= None,                  # callback: will set new airfoil
+                 set_open : Callable | None = None,     # alternate callback when opened via button 
+                 addEmpty = False,                      # add empty entry to file list 
+                 asSpin = False,                        # ComboBox with spin buttons 
+                 withOpen = True,                       # include open button 
+                 textOpen = "Open",                     # text for Open button 
+                 widthOpen = 100,                       # width of open text button 
                  initialDir : Airfoil | str | None = None, # either an airfoil or a pathString 
                  **kwargs):
         super().__init__(*args, get=get, set=set, **kwargs)
+
+        self._set_open = set_open if callable(set_open) else None
 
         self._combo_widget  = None 
         self._button_widget = None 
@@ -299,9 +301,11 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             airfoil = create_airfoil_from_path (self, newPathFilename)
             if airfoil is not None: 
 
-                self.set_airfoil (airfoil)
+                if self._set_open is not None:
+                    self._set_open (airfoil)                     # call alternate callback
+                else:
+                    self.set_airfoil (airfoil)
 
-                self.sig_opened_via_button.emit()          # signal that airfoil was opened via button
 
 
     def no_files_here (self) -> bool:
