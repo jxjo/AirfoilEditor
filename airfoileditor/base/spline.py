@@ -10,7 +10,6 @@ import bisect
 import math
 import numpy as np
 from copy                   import deepcopy
-from pathlib                import Path
 
 from .math_util             import findMin, newton
 

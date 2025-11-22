@@ -11,15 +11,40 @@ from datetime               import date, datetime
 from platformdirs           import user_config_dir, user_data_dir
 
 from packaging.version      import Version                                  # has to be installed
-from PyQt6.QtWidgets        import QDialogButtonBox
+from PyQt6.QtCore           import QTimer
+from PyQt6.QtWidgets        import QDialogButtonBox, QWidget
 
-from base.common_utils      import Parameters, fromDict, toDict
-from base.panels            import Dialog
-from base.widgets           import *
+from .common_utils          import Parameters
+from .panels                import Dialog
+from .widgets               import *
 
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+
+
+# ----------------------------------------------------------------------------
+
+def check_or_get_initial_file (initial_file : str) -> str:
+    """ check if initial file exists - otherwise get last opened file from settings """
+
+    if initial_file and os.path.isfile (initial_file):
+        return initial_file
+
+    app_settings = Settings()                                           # load app settings
+
+    last_opened = app_settings.get('last_opened', default=None) 
+    if last_opened and os.path.isfile (last_opened):
+        logger.info (f"Starting on 'last opened' airfoil file: {last_opened}")
+        return last_opened
+    else:
+        if last_opened:
+            logger.error (f"File '{last_opened}' doesn't exist")
+            app_settings.delete ('last_opened', purge=True)              # remove invalid entry
+
+    return None
 
 
 # ----------------------------------------------------------------------------
@@ -235,8 +260,6 @@ class Update_Info_Dialog (Dialog):
         lab.setPixmap (pixmap)
 
         r,c = 0, 1 
-        # SpaceR (l,r, stretch=0)
-        # r += 1
         text =  f"There is a new version <b>{self._latest_version }</b> of {self._app_name} available.<br><br>" +   \
                 f"Depending on your installation mode,<br><br>" + \
                 f" - either update package with 'pip install {self._package_name} -U'<br>" + \

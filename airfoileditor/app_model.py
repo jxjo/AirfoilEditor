@@ -379,7 +379,7 @@ class App_Model (QObject):
         if aNew is not None: 
             self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions, only_active=True))
 
-        # load settings if requested and avaiable
+        # load settings if requested and available
         if load_settings and self.airfoil_settings_exist:
             self.load_settings()
             self._airfoil_settings_loaded = True

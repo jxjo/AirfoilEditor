@@ -34,7 +34,7 @@ from model.case             import Case_Optimize, Case_Direct_Design
 from base.common_utils      import * 
 from base.panels            import Win_Util
 from base.widgets           import Icon, Widget
-from base.app_utils         import Settings, Update_Checker, Run_Checker
+from base.app_utils         import Settings, Update_Checker, Run_Checker, check_or_get_initial_file
 
 from ui.ae_widgets          import create_airfoil_from_path
 from ui.ae_diagrams         import Diagram_Airfoil_Polar
@@ -97,7 +97,7 @@ class Main (QMainWindow):
 
         # either airfoil file or Xoptfoil2 input file
 
-        initial_file = self._check_or_get_initial_file(initial_file)
+        initial_file = check_or_get_initial_file (initial_file)
 
         if Input_File.is_xo2_input (initial_file):
             initial = initial_file
@@ -168,34 +168,7 @@ class Main (QMainWindow):
         logger.info (f"{modes_manager.current_mode} ready")
 
 
-
-    @override
-    def __repr__(self) -> str:
-        return f"<{type(self).__name__}>"
-
-
-    def _check_or_get_initial_file (self, initial_file : str) -> str:
-        """ check if initial file exists - otherwise get last opened file from settings """
-
-        if initial_file and os.path.isfile (initial_file):
-            return initial_file
-
-        app_settings = Settings()                                           # load app settings
-
-        last_opened = app_settings.get('last_opened', default=None) 
-        if last_opened and os.path.isfile (last_opened):
-            logger.info (f"Starting on 'last opened' airfoil file: {last_opened}")
-            return last_opened
-        else:
-            if last_opened:
-                logger.error (f"File '{last_opened}' doesn't exist")
-                app_settings.delete ('last_opened', purge=True)              # remove invalid entry
-
-        return None
-
-
     # --- private ---------------------------------------------------------
-
 
     def _set_win_title (self):
         """ set window title with airfoil or case name """
@@ -273,7 +246,6 @@ class Main (QMainWindow):
         # save e.g. diagram options 
         self._save_app_settings () 
 
-
         # inform parent (PlanformCreator) 
         if self._app_model.airfoil: 
             self.sig_closing.emit (self._app_model.airfoil.pathFileName)
@@ -281,9 +253,8 @@ class Main (QMainWindow):
         event.accept()
 
 
+#-------------------------------------------------------------------------------
 
-
-#--------------------------------
 
 def start ():
     """ start the app """

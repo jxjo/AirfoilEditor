@@ -11,16 +11,16 @@ import logging
 
 from typing             import override, Type
 
-from PyQt6.QtCore       import QSize, QMargins, pyqtSignal, QTimer
-from PyQt6.QtWidgets    import QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
+from PyQt6.QtCore       import QMargins, pyqtSignal, QTimer
+from PyQt6.QtWidgets    import QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
 from PyQt6.QtWidgets    import QWidget
-from PyQt6.QtGui        import QPalette, QIcon, QColor
+from PyQt6.QtGui        import QColor
 
 import pyqtgraph as pg                          # import PyQtGraph after PyQt6
 
 from .common_utils      import *
 from .panels            import Edit_Panel, Container_Panel
-from .widgets           import Icon, Widget
+from .widgets           import Widget
 from .artist            import Artist, Text_Button
 
 logger = logging.getLogger(__name__)

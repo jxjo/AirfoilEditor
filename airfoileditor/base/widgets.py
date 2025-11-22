@@ -14,17 +14,16 @@ logger = logging.getLogger(__name__)
 import os
 import types
 from typing             import override
-from enum               import Enum, StrEnum
+from enum               import Enum
 
-from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QObject
+from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer
 
 from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
-from PyQt6.QtWidgets    import (
-                            QApplication, QWidget, QPushButton, QMenu,
-                            QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
-                            QLabel, QToolButton, QCheckBox,
-                            QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
-                            QSizePolicy, QStyleOptionButton)
+from PyQt6.QtWidgets    import (QApplication, QWidget, QPushButton, QMenu,
+                                QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
+                                QLabel, QToolButton, QCheckBox,
+                                QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
+                                QSizePolicy)
 from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon, QAction
 
 
