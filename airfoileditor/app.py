@@ -28,10 +28,11 @@ from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget
 from PyQt6.QtWidgets        import QGridLayout
 from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 
+from base.common_utils      import * 
+
 from model.xo2_input        import Input_File
 from model.case             import Case_Optimize, Case_Direct_Design
 
-from base.common_utils      import * 
 from base.panels            import Win_Util
 from base.widgets           import Icon, Widget
 from base.app_utils         import Settings, Update_Checker, Run_Checker, check_or_get_initial_file

@@ -7,6 +7,7 @@
 """
 import os
 import ast
+import logging
 from datetime               import datetime, timedelta
 from copy                   import copy
 from typing                 import Type, override
@@ -15,15 +16,17 @@ from pathlib                import Path
 
 import numpy as np
 
-from base.common_utils      import fromDict, toDict, clip 
+from airfoileditor.base.common_utils    import fromDict, toDict, clip 
+from airfoileditor.base.spline          import HicksHenne
+
 from .airfoil_geometry      import (Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne,
                                     Line, Side_Airfoil_Bezier, GeometryException)
 
 from .xo2_driver            import Worker
 
-import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
 
 
 #-------------------------------------------------------------------------------
@@ -1383,8 +1386,6 @@ class Airfoil_Hicks_Henne(Airfoil):
         """
         reads hicks henne definition from file. 
         """    
-
-        from base.spline import HicksHenne
 
         with open(fromPath, 'r') as file:            
 

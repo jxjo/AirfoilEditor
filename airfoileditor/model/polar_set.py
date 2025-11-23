@@ -30,28 +30,23 @@
 """
 
 import os
-import sys
-import html 
 from copy                   import copy 
 from typing                 import Tuple, override
 from enum                   import StrEnum
-from pathlib                import Path
 
 import numpy as np
 
-from base.common_utils      import * 
-from base.math_util         import * 
-from base.spline            import Spline1D, Spline2D
+from airfoileditor.base.common_utils      import * 
+from airfoileditor.base.math_util         import * 
+from airfoileditor.base.spline            import Spline1D, Spline2D
 
 from .airfoil               import Airfoil, Airfoil_Bezier
 from .airfoil               import Flap_Definition
 from .xo2_driver            import Worker, file_in_use   
 
-
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
-
 
 
 #-------------------------------------------------------------------------------
