@@ -7,10 +7,14 @@ Airfoil examples - hard coded
 
 """
 import io
+import os
+import logging
 from typing                 import override
 
-from base.common_utils      import * 
 from .airfoil               import Airfoil, GEO_SPLINE, GEO_BASIC
+
+logger = logging.getLogger(__name__)
+# logger.setLevel(logging.WARNING)
 
 
 class Airfoil_Example_Abstract (Airfoil): 

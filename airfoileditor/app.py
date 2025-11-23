@@ -39,9 +39,8 @@ from base.app_utils         import Settings, Update_Checker, Run_Checker, check_
 from ui.ae_widgets          import create_airfoil_from_path
 from ui.ae_diagrams         import Diagram_Airfoil_Polar
 
-from app_model              import App_Model
-from app_modes              import (Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_Id, 
-                                    Mode_As_Bezier)
+from app_model              import App_Model, Mode_Id
+from app_modes              import Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_As_Bezier
 
 import logging
 logger = logging.getLogger(__name__)
@@ -73,11 +72,9 @@ class Main (QMainWindow):
     sig_xo2_about_to_run        = pyqtSignal()          # short before optimization starts
     sig_xo2_new_state           = pyqtSignal()          # Xoptfoil2 new info/state
 
-    sig_closing                 = pyqtSignal(str)       # the app is closing with an airfoils pathFilename
 
-
-    def __init__(self, initial_file, parent_app=None):
-        super().__init__(parent_app)
+    def __init__(self, initial_file):
+        super().__init__()
 
 
         # --- init Settings, check for newer app version ---------------
@@ -122,7 +119,7 @@ class Main (QMainWindow):
         logger.info (f"Initialize UI")
 
         self._set_win_title ()
-        self._set_win_style (parent=parent_app)
+        self._set_win_style ()
         self._set_win_geometry ()
 
 
@@ -187,7 +184,7 @@ class Main (QMainWindow):
         self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
 
 
-    def _set_win_style (self, parent : QWidget = None):
+    def _set_win_style (self):
         """ 
         Set window style according to settings
             - if app has parent, self will be modal
@@ -198,9 +195,6 @@ class Main (QMainWindow):
         scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)   # either unknown (from System), Dark, Light
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])    # set scheme of QT
         Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)           # set mode for Widgets
-
-        if parent is not None:
-            self.setWindowModality(Qt.WindowModality.ApplicationModal)  
 
 
     def _set_win_geometry (self):
@@ -245,10 +239,6 @@ class Main (QMainWindow):
 
         # save e.g. diagram options 
         self._save_app_settings () 
-
-        # inform parent (PlanformCreator) 
-        if self._app_model.airfoil: 
-            self.sig_closing.emit (self._app_model.airfoil.pathFileName)
 
         event.accept()
 

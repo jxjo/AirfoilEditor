@@ -9,7 +9,7 @@ The modes are controlled by the Modes_Manager
 
 """
 
-from PyQt6.QtCore           import pyqtSignal, QObject, QTimer
+from PyQt6.QtCore           import Qt, pyqtSignal, QObject, QTimer, QMargins
 from PyQt6.QtWidgets        import QHBoxLayout, QMessageBox, QStackedWidget, QDialog
 
 from base.panels            import Container_Panel, Toaster        
@@ -105,12 +105,6 @@ class Mode_Abstract (QObject):
         return f"<{self.__class__.__name__}>"
 
 
-    @property
-    def _airfoil(self): 
-        """ current airfoil from app state """
-        return self._app_model.airfoil
-
-
     def _toast_message (self, msg, toast_style = style.HINT):
         """ show toast message """
         
@@ -140,7 +134,7 @@ class Mode_Abstract (QObject):
         return self._stacked_panel
 
 
-    def on_enter(self, initial_arg: Airfoil | str = None):
+    def on_enter(self, initial_arg = None):
         """ 
         Actions to perform when entering the mode. 
             Override in subclasses if needed. 
@@ -156,7 +150,7 @@ class Mode_Abstract (QObject):
         logger.debug(f"Exiting {self.__class__.__name__}")
 
 
-    def prepare_check_enter(self, on_arg=None) -> Airfoil | str:
+    def prepare_check_enter(self, on_arg=None) -> object:
         """ Check if the mode can be entered. Prepare and Return initial object. """
         # to be overridden in subclasses if needed.
         return on_arg
@@ -205,7 +199,6 @@ class Mode_Abstract (QObject):
         """ User action: Switch to another mode. """
          
         QTimer.singleShot (0, lambda: self.sig_switch_mode_requested.emit (mode_id, on_arg))
-
 
 
 class Mode_View (Mode_Abstract):
@@ -277,13 +270,14 @@ class Mode_View (Mode_Abstract):
 
         return self._panel_small
 
+
     def prepare_check_enter(self, initial_airfoil: Airfoil | None) -> Airfoil:
         """ Check if the mode can be entered. Prepare and Return initial object. """
 
         if isinstance (initial_airfoil, Airfoil):
             return initial_airfoil
         else:
-            return self._airfoil
+            return self._app_model.airfoil
 
 
     def on_enter(self, airfoil: Airfoil):
@@ -420,14 +414,14 @@ class Mode_Modify (Mode_Abstract):
         """ Check if the mode can be entered. Override in subclasses if needed. """
 
         # info if airfoil is flapped 
-        if self._airfoil.geo.isProbablyFlapped:
+        if self._app_model.airfoil.geo.isProbablyFlapped:
 
             text = "The airfoil is probably flapped and will be normalized.\n\n" + \
                    "Modifying the geometry can lead to strange results."
             button = MessageBox.confirm (self.stacked_panel, "Modify Airfoil", text)
             if button == QMessageBox.StandardButton.Cancel:
                 return None
-        return self._airfoil
+        return self._app_model.airfoil
 
 
     def on_enter(self, airfoil: Airfoil):
@@ -476,7 +470,7 @@ class Mode_Modify (Mode_Abstract):
         # create new, final airfoil based on actual design and path from airfoil org 
 
         case : Case_Direct_Design = self._app_model.case
-        new_airfoil = case.get_final_from_design (self._airfoil)
+        new_airfoil = case.get_final_from_design (self._app_model.airfoil)
 
         # dialog to edit name, choose path, ..
 
@@ -490,7 +484,7 @@ class Mode_Modify (Mode_Abstract):
         self._app_model.case.set_airfoil_final (new_airfoil)
 
         self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
-        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._airfoil.fileName}")
+        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
 
         super().finish()
     
@@ -559,14 +553,14 @@ class Mode_As_Bezier (Mode_Abstract):
     def prepare_check_enter(self, on_arg = None) -> Airfoil | None:
         """ Check if the mode can be entered. Override in subclasses if needed. """
 
-        if not self._airfoil.isNormalized:
+        if not self._app_model.airfoil.isNormalized:
 
             text = "The airfoil is not normalized.\n\n" + \
                    "Match Bezier will not lead to the best results."
             button = MessageBox.confirm (self.stacked_panel, "New As Bezier", text)
             if button == QMessageBox.StandardButton.Cancel:
                 return None
-        return self._airfoil
+        return self._app_model.airfoil
 
 
     def on_enter(self, airfoil: Airfoil):
@@ -614,7 +608,7 @@ class Mode_As_Bezier (Mode_Abstract):
         # create new, final airfoil based on actual design and path from airfoil org 
 
         case : Case_As_Bezier = self._app_model.case
-        new_airfoil = case.get_final_from_design (self._airfoil)
+        new_airfoil = case.get_final_from_design (self._app_model.airfoil)
 
         # dialog to edit name, choose path, ..
 
@@ -628,7 +622,7 @@ class Mode_As_Bezier (Mode_Abstract):
         self._app_model.case.set_airfoil_final (new_airfoil)
 
         self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
-        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._airfoil.fileName}")
+        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
 
         super().finish()
     
@@ -760,7 +754,7 @@ class Mode_Optimize (Mode_Abstract):
             
         # no xo2 file as argument - ask user to select existing or create new one
 
-        diag = Xo2_Select_Dialog (self.stacked_panel, self._airfoil, parentPos=(0.4,-0.5), dialogPos=(0,1))
+        diag = Xo2_Select_Dialog (self.stacked_panel, self._app_model.airfoil, parentPos=(0.4,-0.5), dialogPos=(0,1))
         rc = diag.exec()
 
         if rc == QDialog.DialogCode.Accepted:
@@ -770,7 +764,7 @@ class Mode_Optimize (Mode_Abstract):
                 return os.path.join(diag.workingDir, diag.input_fileName)
             else: 
                 # create new xo2 file based on current airfoil
-                seed_airfoil = self._airfoil
+                seed_airfoil = self._app_model.airfoil
                 workingDir   = seed_airfoil.pathName_abs
 
                 diag = Xo2_New_Dialog (self.stacked_panel, workingDir, seed_airfoil, parentPos=(0.5,0.0), dialogPos=(0,1.1))

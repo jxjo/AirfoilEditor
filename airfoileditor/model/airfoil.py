@@ -15,8 +15,7 @@ from pathlib                import Path
 
 import numpy as np
 
-from base.math_util         import * 
-from base.common_utils      import * 
+from base.common_utils      import fromDict, toDict, clip 
 from .airfoil_geometry      import (Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne,
                                     Line, Side_Airfoil_Bezier, GeometryException)
 
@@ -331,7 +330,7 @@ class Airfoil:
         thickness_color = thickness_color if thickness_color else ''
         camber_color    = camber_color    if camber_color    else ''
 
-        if self.x is not None and self.geo and self.geo.max_thick:          # could be strak airfoil
+        if self.isLoaded and self.geo and self.geo.max_thick:          # could be strak airfoil
             info += f"<table>" + \
                     f"<tr>" + \
                         f"<td>Thickness  </td>" + \
@@ -365,7 +364,7 @@ class Airfoil:
 
         info = "<p style='white-space:pre'>"                     # no word wrap 
 
-        if self.x is not None:
+        if self.isLoaded:
             used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
             info += f"{used_as}{self.fileName}" 
             info += f"<br><br>in {self.pathName_abs}" 
