@@ -244,17 +244,11 @@ class Airfoil:
     @property
     def x (self): 
         """ x coordinates of self """
-
-        if not self.isLoaded:                                           # lazy load
-            self.load()
         return self._x
 
     @property
     def y (self): 
         """ y coordinates of self """
-
-        if not self.isLoaded:                                           # lazy load
-            self.load()
         return self._y
 
 
