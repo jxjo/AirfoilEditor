@@ -7,6 +7,8 @@ Helper classes, dialogs, functions for an App
 import os
 import requests
 
+from packaging.version      import Version                                  # has to be installed
+
 from datetime               import date, datetime
 from platformdirs           import user_config_dir, user_data_dir
 
