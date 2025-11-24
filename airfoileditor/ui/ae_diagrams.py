@@ -22,6 +22,7 @@ from model.xo2_results      import OpPoint_Result, GeoTarget_Result
 from ui.ae_artists          import *
 from ui.ae_widgets          import Airfoil_Select_Open_Widget
 from ui.xo2_artists         import *
+from ui.util_dialogs        import Polar_Definition_Dialog, Airfoil_Scale_Dialog
 
 from app_model              import App_Model
 
@@ -297,8 +298,6 @@ class Panel_Airfoils (Edit_Panel):
     def edit_airfoil_scale_value (self, id : int):
         """ the scale value of (ref) airfoil"""
 
-        from ui.ae_dialogs import Airfoil_Scale_Dialog
-
         airfoil = self.airfoils[id]
 
         diag = Airfoil_Scale_Dialog (self, airfoil.scale_factor, dx=400, dy=100)
@@ -399,8 +398,6 @@ class Panel_Polar_Defs (Edit_Panel):
 
     def edit_polar_def (self, id : int = None, polar_def : Polar_Definition = None):
         """ edit polar definition with index idef"""
-
-        from ui.ae_dialogs import Polar_Definition_Dialog
 
         if isinstance (id, int):
             polar_def = self.polar_defs[id]

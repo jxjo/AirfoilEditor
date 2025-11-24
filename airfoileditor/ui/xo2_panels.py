@@ -17,7 +17,7 @@ from model.case             import Case_Optimize
 from model.xo2_input        import *
 from model.xo2_driver       import Xoptfoil2
 
-from ui.ae_dialogs          import Polar_Definition_Dialog
+from ui.util_dialogs        import Polar_Definition_Dialog
 from ui.ae_widgets          import Airfoil_Select_Open_Widget, mode_color
 from ui.xo2_dialogs         import *
 

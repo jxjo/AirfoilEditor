@@ -18,7 +18,7 @@ from base.app_utils         import Settings
 from model.xo2_driver       import Worker, Xoptfoil2
 from model.case             import Case_Direct_Design, Case_As_Bezier
 
-from ui.ae_dialogs          import Airfoil_Save_Dialog
+from ui.util_dialogs        import Airfoil_Save_Dialog
 from ui.ae_panels           import *
 
 from ui.xo2_dialogs         import Xo2_Select_Dialog, Xo2_New_Dialog
