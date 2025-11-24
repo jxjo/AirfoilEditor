@@ -151,6 +151,9 @@ class Diagram (QWidget):
             if rowStretch:      self.graph_layout.setRowStretchFactor    (row, rowStretch)
             if columnStretch:   self.graph_layout.setColumnStretchFactor (col, columnStretch)
 
+        # set self as parent to handle visibility of item (can't get isVisible working ...)
+        anItem.set_parent_diagram (self)                     # set parent diagram
+
         # connect to visible signal of item to rebuild grid 
         try:
             anItem.sig_visible.disconnect (self._on_item_visible)
@@ -289,12 +292,11 @@ class Diagram (QWidget):
 
         if also_viewRange:                              # also setup view range if not visible
             for item in self.diagram_items:
-                    item.setup_viewRange() 
-                    item.refresh_artists()
+                item._viewRange_set = False
 
         if self.isVisible():
 
-            logger.debug (f"{str(self)} refresh")
+            logger.debug (f"{str(self)} refresh - also_viewRange: {also_viewRange}")
 
             if self._viewPanel:
                 self._viewPanel.refresh()               # first view panel as diagram settings could change
@@ -478,6 +480,7 @@ class Diagram_Item (pg.PlotItem):
 
         self._getter = getter
         self._show   = show 
+        self._parent_diagram : Diagram = None           # parent diagram
 
         self._section_panel = None                      # view section to the left 
         self._artists : list [Artist] = []              # list of my artists
@@ -623,6 +626,12 @@ class Diagram_Item (pg.PlotItem):
 
             self._help_message_items[artist] = p1
             i +=1
+
+    def set_parent_diagram (self, aDiagram : Diagram):
+        """ set parent diagram of self"""
+
+        # set Diagram as parent to handle visibility of self (can't get isVisible working ...)
+        self._parent_diagram = aDiagram
 
 
     @override
@@ -862,6 +871,14 @@ class Diagram_Item (pg.PlotItem):
 
         refresh_done = False
 
+        # check if parent diagram is visible  (isVisible() doesn't work if parent is hidden..?)
+        if isinstance(self._parent_diagram, Diagram) and not self._parent_diagram.isVisible():
+            return
+
+        # check if self is visible 
+        if not self.isVisible() :
+            return
+
         if self._section_panel is not None: 
             # refresh artists only if self section is switched on 
             if self.section_panel.switched_on:
@@ -910,7 +927,11 @@ class Diagram_Item (pg.PlotItem):
 
     def refresh_artists (self):
         """ refresh all artists of self - can be overridden"""
-
+   
+        # check if self is visible 
+        if not self.isVisible():
+            return
+        
         logger.debug (f"{self} refresh artists")
         
         for artist in self._artists:
