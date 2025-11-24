@@ -588,7 +588,7 @@ class Widget:
         have_called = self._set_value_callback ()
 
         if have_called and self._signal: 
-            self._emit_change () 
+            QTimer.singleShot(0, self._emit_change)     # delayed emit 
 
         self._while_setting = False                
 
@@ -641,18 +641,14 @@ class Widget:
     def _emit_change (self):
         """ emit change signal""" 
 
-        if isinstance(self._setter, types.FunctionType):
-            qualname  = self._setter.__qualname__
-        elif callable(self._setter):        
-            qualname  = self._setter.__qualname__
-        else: 
-            qualname = ''
+        # Check if widget still exists before emitting signal
+        # from PyQt6              import sip
+        # if sip.isdeleted(self):
+        #     return
+        # else:
+        logger.debug (f"{self} emit sig_changed: {self} ({self._val})")
+        self.sig_changed.emit(self)
 
-        logger.debug (f"{self} emit sig_changed: {qualname} ({self._val})")
-
-        # emit signal delayed so we leave the scope of Widget 
-        timer = QTimer()                                
-        timer.singleShot(0, lambda w= self: self.sig_changed.emit(w))     # delayed emit 
 
 
     def _layout_add (self, widget = None, col = None):
