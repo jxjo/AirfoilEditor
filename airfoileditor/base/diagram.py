@@ -866,14 +866,19 @@ class Diagram_Item (pg.PlotItem):
             return [self.data_object()]   
 
 
+    @override
+    def isVisible (self) -> bool:
+        """ overloaded to get visibility from parent diagram too"""
+        if self._parent_diagram is not None:
+            return super().isVisible() and self._parent_diagram.isVisible()
+        else:
+            return super().isVisible()
+
+
     def refresh(self): 
         """ refresh my artists and section panel """
 
         refresh_done = False
-
-        # check if parent diagram is visible  (isVisible() doesn't work if parent is hidden..?)
-        if isinstance(self._parent_diagram, Diagram) and not self._parent_diagram.isVisible():
-            return
 
         # check if self is visible 
         if not self.isVisible() :

@@ -492,11 +492,9 @@ class Polar_Definition:
 
     def name_with_v (self, chord : float):
         """ returns polar name with velocity for given chord """
-        if self.type == polarType.T1 and chord:
-            v = v_from_re (self.re, chord / 1000) 
-            return f"{self.name} | {v:.1f}m/s" if v is not None else self.name
-        else:
-            return self.name
+        v = self.calc_v_for_chord(chord)
+        return f"{self.name} | {v:.1f}m/s" if v is not None else self.name
+
 
     def is_equal_to (self, aDef: 'Polar_Definition', ignore_active=False):
         """ True if aPolarDef is equals self"""
@@ -538,6 +536,20 @@ class Polar_Definition:
     def set_flap_def (self, aDef : Flap_Definition | None):
         self._flap_def = aDef
 
+
+    def calc_v_for_chord (self, chord : float) -> float | None:
+        """ 
+        calc velocity for given chord length in mm based on Re
+            - only for Type 1 polars 
+            - rounded to 1 decimal place
+        """
+
+        if chord and self.type == polarType.T1:
+            v = v_from_re (self.re, chord / 1000, round_dec=1) 
+            return v 
+        else:
+            return None
+        
 
 #------------------------------------------------------------------------------
 
@@ -1544,6 +1556,17 @@ class Polar_Task:
 
 
     @classmethod
+    def get_total_n_polars_running (cls) -> int:
+        """ total number of polars being generated in all tasks"""
+
+        nPolarsRunning = 0
+
+        for task in cls.get_instances():
+            nPolarsRunning += task.n_polars_running
+        return nPolarsRunning
+
+
+    @classmethod
     def terminate_task_of_polar (cls, polar : Polar) -> 'Polar_Task':
         """ if polar is in a Task, terminate Task"""
 
@@ -1573,6 +1596,15 @@ class Polar_Task:
         """ number of polars of self should generate"""
         return len(self._polars)
 
+    @property
+    def n_polars_running (self) -> int:
+        """ number of polars of self which are still running"""
+        nRunning = 0
+        for polar in self._polars:
+            if not polar.isLoaded:
+                nRunning += 1
+        return nRunning
+    
 
     def add_polar (self, polar : Polar) -> bool:
         """
