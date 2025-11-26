@@ -16,21 +16,21 @@ The App Model is needed as the 'real' model is QObject agnostic and stateless.
 """
 
 import os
-from enum                   import Enum, auto
-from typing                 import override
-from PyQt6.QtCore           import pyqtSignal, QObject, QThread
+from enum                    import Enum, auto
+from typing                  import override
+from PyQt6.QtCore            import pyqtSignal, QObject, QThread
 
-from base.common_utils      import Parameters, clip
-from base.app_utils         import Settings
+from .base.common_utils      import Parameters, clip
+from .base.app_utils         import Settings
 
 # --- the real model imports
-from model.airfoil          import Airfoil, usedAs
-from model.airfoil_examples import Example
-from model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
-from model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
-from model.xo2_driver       import Worker, Xoptfoil2
-from model.xo2_input        import OpPoint_Definition
-from model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
+from .model.airfoil          import Airfoil, usedAs
+from .model.airfoil_examples import Example
+from .model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
+from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
+from .model.xo2_driver       import Worker, Xoptfoil2
+from .model.xo2_input        import OpPoint_Definition
+from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
 
 import logging
 logger = logging.getLogger(__name__)

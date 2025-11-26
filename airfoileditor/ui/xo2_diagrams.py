@@ -11,15 +11,15 @@ from typing                 import override
 
 import pyqtgraph as pg                                
 
-from base.artist            import Artist
-from base.diagram           import Diagram, Diagram_Item 
-from model.polar_set        import var
-from model.xo2_results      import Optimization_History_Entry
+from ..base.artist          import Artist
+from ..base.diagram         import Diagram, Diagram_Item 
+from ..model.polar_set      import var
+from ..model.xo2_results    import Optimization_History_Entry
 
-from ui.xo2_artists         import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist, Xo2_OpPoint_Defs_Artist
-from ui.ae_artists          import Polar_Artist
+from .xo2_artists           import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist, Xo2_OpPoint_Defs_Artist
+from .ae_artists            import Polar_Artist
 
-from app_model              import App_Model
+from ..app_model            import App_Model
 
 
 import logging
@@ -61,7 +61,7 @@ class Diagram_Xo2_Airfoil_and_Polar (Diagram):
         from ui.ae_diagrams       import Diagram_Item_Airfoil, Diagram_Item_Polars
 
         r = 0
-        item = Diagram_Item_Airfoil (self.app_model)
+        item = Diagram_Item_Airfoil (self,self.app_model)
         item.setMinimumSize (300, 200)
         self._add_item (item, r, 0, colspan=2)
 
@@ -70,7 +70,7 @@ class Diagram_Xo2_Airfoil_and_Polar (Diagram):
 
         for iItem in [0,1]:
             # create Polar items with init values vor axes variables 
-            item = Diagram_Item_Polars (self.app_model,show=True)
+            item = Diagram_Item_Polars (self, self.app_model, show=True)
             item.name = f"{Diagram_Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
             item._set_settings (default_settings[iItem])                        # set default settings first
             self._add_item (item, r, iItem, rowStretch=3)
@@ -105,7 +105,7 @@ class Diagram_Item_Design_Radius (Diagram_Item):
 
     @property
     def steps (self) -> list ['Optimization_History_Entry']: 
-        return self._getter ()
+        return self._dataObject ()
 
 
     @override
@@ -158,7 +158,7 @@ class Diagram_Item_Improvement (Diagram_Item):
 
     @property
     def steps (self) -> list ['Optimization_History_Entry']: 
-        return self._getter ()
+        return self._dataObject ()
 
     @override
     def _setup_buttons(self):
@@ -210,14 +210,14 @@ class Diagram_Xo2_Progress (Diagram):
     @property
     def steps (self) -> list ['Optimization_History_Entry']:
         """ optimization steps imported (up to now)""" 
-        return self._getter ()
+        return self._dataObject ()
     
 
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
-        item = Diagram_Item_Design_Radius (lambda: self.steps)
+        item = Diagram_Item_Design_Radius (self, lambda: self.steps)
         self._add_item (item, 0, 0)
-        item = Diagram_Item_Improvement   (lambda: self.steps)
+        item = Diagram_Item_Improvement   (self, lambda: self.steps)
         self._add_item (item, 0, 1)
 
 

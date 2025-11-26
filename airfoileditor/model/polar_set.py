@@ -36,9 +36,9 @@ from enum                   import StrEnum
 
 import numpy as np
 
-from airfoileditor.base.common_utils      import * 
-from airfoileditor.base.math_util         import * 
-from airfoileditor.base.spline            import Spline1D, Spline2D
+from ..base.common_utils      import * 
+from ..base.math_util         import * 
+from ..base.spline            import Spline1D, Spline2D
 
 from .airfoil               import Airfoil, Airfoil_Bezier
 from .airfoil               import Flap_Definition

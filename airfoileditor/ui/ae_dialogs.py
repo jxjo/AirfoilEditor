@@ -12,17 +12,17 @@ import numpy as np
 from PyQt6.QtCore           import QThread, Qt
 from PyQt6.QtWidgets        import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 
-from base.math_util         import nelder_mead, derivative1
-from base.widgets           import * 
-from base.panels            import Dialog
+from ..base.math_util       import nelder_mead, derivative1
+from ..base.widgets         import * 
+from ..base.panels          import Dialog
 
-from model.airfoil          import Airfoil, Flap_Setter
-from model.airfoil_geometry import Side_Airfoil_Bezier, Line
-from model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline
+from ..model.airfoil          import Airfoil, Flap_Setter
+from ..model.airfoil_geometry import Side_Airfoil_Bezier, Line
+from ..model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline
 
-from ui.ae_widgets          import Airfoil_Select_Open_Widget
+from .ae_widgets            import Airfoil_Select_Open_Widget
 
-from app_model              import App_Model
+from ..app_model            import App_Model
 
 import logging
 logger = logging.getLogger(__name__)

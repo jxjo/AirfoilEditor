@@ -57,10 +57,10 @@ from typing             import override
 from copy               import deepcopy
 from math               import isclose
 
-from airfoileditor.base.common_utils  import clip
-from airfoileditor.base.math_util     import * 
-from airfoileditor.base.spline        import Spline1D, Spline2D, Bezier
-from airfoileditor.base.spline        import HicksHenne
+from ..base.common_utils  import clip
+from ..base.math_util     import * 
+from ..base.spline        import Spline1D, Spline2D, Bezier
+from ..base.spline        import HicksHenne
 
 import logging
 logger = logging.getLogger(__name__)

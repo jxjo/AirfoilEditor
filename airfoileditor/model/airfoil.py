@@ -16,8 +16,8 @@ from pathlib                import Path
 
 import numpy as np
 
-from airfoileditor.base.common_utils    import fromDict, toDict, clip 
-from airfoileditor.base.spline          import HicksHenne
+from ..base.common_utils      import fromDict, toDict, clip 
+from ..base.spline            import HicksHenne
 
 from .airfoil_geometry      import (Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne,
                                     Line, Side_Airfoil_Bezier, GeometryException)

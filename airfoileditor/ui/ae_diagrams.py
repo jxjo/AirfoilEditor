@@ -9,22 +9,22 @@ Diagram (items) for airfoil
 
 from copy                   import deepcopy 
 
-from base.widgets           import * 
-from base.diagram           import * 
-from base.panels            import Edit_Panel, Toaster
+from ..base.widgets         import * 
+from ..base.diagram         import * 
+from ..base.panels          import Edit_Panel, Toaster
 
-from model.airfoil          import Airfoil
-from model.polar_set        import *
-from model.case             import Case_Abstract, Case_Optimize
-from model.xo2_driver       import Worker, Xoptfoil2
-from model.xo2_results      import OpPoint_Result, GeoTarget_Result
+from ..model.airfoil        import Airfoil
+from ..model.polar_set      import *
+from ..model.case           import Case_Abstract, Case_Optimize
+from ..model.xo2_driver     import Worker, Xoptfoil2
+from ..model.xo2_results    import OpPoint_Result, GeoTarget_Result
 
-from ui.ae_artists          import *
-from ui.ae_widgets          import Airfoil_Select_Open_Widget
-from ui.xo2_artists         import *
-from ui.util_dialogs        import Polar_Definition_Dialog, Airfoil_Scale_Dialog
+from .ae_artists            import *
+from .ae_widgets            import Airfoil_Select_Open_Widget
+from .xo2_artists           import *
+from .util_dialogs          import Polar_Definition_Dialog, Airfoil_Scale_Dialog
 
-from app_model              import App_Model
+from ..app_model            import App_Model
 
 
 import logging
@@ -606,7 +606,7 @@ class Diagram_Item_Airfoil (Diagram_Item):
     @property
     def app_model (self) -> App_Model:
         """ the app model"""
-        return self._getter
+        return self._dataObject
 
     @property
     def airfoils (self) -> list[Airfoil]: 
@@ -989,7 +989,7 @@ class Diagram_Item_Curvature (Diagram_Item):
     @property
     def app_model (self) -> App_Model:
         """ the app model"""
-        return self._getter
+        return self._dataObject
 
     @property
     def airfoils (self) -> list[Airfoil]: 
@@ -1104,7 +1104,7 @@ class Diagram_Item_Welcome (Diagram_Item):
     @property
     def app_model (self) -> App_Model:
         """ the app model"""
-        return self._getter
+        return self._dataObject
     
     def _welcome_message (self) -> str: 
         # use Notepad++ or https://froala.com/online-html-editor/ to edit 
@@ -1234,7 +1234,7 @@ class Diagram_Item_Polars (Diagram_Item):
     @property
     def app_model (self) -> App_Model:
         """ the app model"""
-        return self._getter
+        return self._dataObject
 
     @property
     def airfoils (self) -> list[Airfoil]: 
@@ -1600,11 +1600,8 @@ class Diagram_Airfoil_Polar (Diagram):
     sig_opPoint_def_dblClick        = pyqtSignal(object,object, object)     # opPoint definition double clicked
 
 
-    def __init__(self, app_model : App_Model, *args,  **kwargs):
-
-        if not app_model.is_ready:
-            raise Exception ("Diagram_Airfoil_Polar: app_model is not ready")
-    
+    def __init__(self, *args,  **kwargs):
+  
          # panels for diagram items
 
         self._panel_polar           = None 
@@ -1614,7 +1611,7 @@ class Diagram_Airfoil_Polar (Diagram):
         self._show_polar_points     = False                         # show polars data points 
         self._show_bubbles          = False                         # show bubbles in polars 
 
-        super().__init__(app_model, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # load initial settings
         self.set_settings (self.app_model.settings)
@@ -1739,15 +1736,15 @@ class Diagram_Airfoil_Polar (Diagram):
         if self.app_model._is_first_run:
 
             # show Welcome text if App runs the first time
-            item = Diagram_Item_Welcome (self.app_model)
+            item = Diagram_Item_Welcome (self, self.app_model)
             self._add_item (item, r, 0, colspan=2)                          # item has fixed height
             r += 1
 
-        item = Diagram_Item_Airfoil (self.app_model)     
+        item = Diagram_Item_Airfoil (self, self.app_model)     
         self._add_item (item, r, 0, colspan=2, rowStretch=2)
 
         r += 1
-        item = Diagram_Item_Curvature (self.app_model, show=False)
+        item = Diagram_Item_Curvature (self, self.app_model, show=False)
         item.set_desired_xLink_name (Diagram_Item_Airfoil.name)             # link x axis to airfoil item
         self._add_item (item, r, 0, colspan=2, rowStretch=2)
 
@@ -1757,7 +1754,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
             for iItem in [0,1]:
                 # create Polar items with init values vor axes variables 
-                item = Diagram_Item_Polars (self.app_model,show=False)
+                item = Diagram_Item_Polars (self, self.app_model, show=False)
                 item.name = f"{Diagram_Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
                 item._set_settings (default_settings[iItem])                        # set default settings first
                 self._add_item (item, r, iItem, rowStretch=3)

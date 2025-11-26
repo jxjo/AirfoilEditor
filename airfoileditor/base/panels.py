@@ -1295,13 +1295,10 @@ class Tab_Panel (QTabWidget):
 
 
     def __init__(self,  
-                 parent=None,
                  width=None, 
                  height=None, 
                  **kwargs):
-        super().__init__(parent=parent, **kwargs)
-
-        self._parent = parent
+        super().__init__(**kwargs)
 
         if width  is not None: self._width = width
         if height is not None: self._height = height

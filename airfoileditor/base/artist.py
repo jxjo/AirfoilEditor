@@ -498,14 +498,16 @@ class Movable_Bezier (pg.PlotCurveItem):
           
         if movable:
             penColor = COLOR_EDITABLE
+            clickable = True                            # allow ctrl_click to add points
         else:
             penColor = QColor (color).darker (150)
+            clickable = False
         pen = pg.mkPen (penColor, width=1, style=Qt.PenStyle.DotLine)
 
-        super().__init__(*self.jpoints_xy(), pen=pen)
+        super().__init__(*self.jpoints_xy(), pen=pen, clickable=clickable, **kwargs)
 
         if movable:
-            self.setZValue (10)                     # movable dotted line above other objects 
+            self.setZValue (10)                         # movable dotted line above other objects 
         else: 
             self.setZValue (5)
 
@@ -587,11 +589,13 @@ class Movable_Bezier (pg.PlotCurveItem):
     @override
     def mouseClickEvent(self, ev : MouseClickEvent):
         """ pg override - handle ctrl_click """
-        if self.movable :
-            if ev.modifiers() & Qt.KeyboardModifier.ControlModifier: 
+        if self.clickable and ev.modifiers() & Qt.KeyboardModifier.ControlModifier:
+
+            if self.mouseShape().contains(ev.pos()):        # mouse pos close to line?
+
                 x = round (ev.pos().x(),6)
                 y = round (ev.pos().y(),6)
-                added = self._add_point ((x,y))
+                added = self._add_point (x,y)             # try to add point, overriden in subclass
 
                 if added: 
                     ev.accept()
@@ -612,7 +616,7 @@ class Movable_Bezier (pg.PlotCurveItem):
             self._bezier_item.show()
 
 
-    def _add_point (self, xy : tuple) -> bool:
+    def _add_point (self, x: float, y: float) -> bool:
         """ 
         handle add point - will be called when ctrl_click on Bezier
         
@@ -621,7 +625,7 @@ class Movable_Bezier (pg.PlotCurveItem):
         """
 
         # to be overridden
-        logger.debug (f"Bezier ctrl_click at x={xy[0]} y={xy[1]}")
+        logger.debug (f"Bezier ctrl_click at x={x} y={y} - not implemented")
         return False
 
 

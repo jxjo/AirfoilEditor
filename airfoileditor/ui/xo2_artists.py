@@ -10,14 +10,14 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 from PyQt6.QtGui                import QColor, QPainterPath, QTransform
 from PyQt6.QtCore               import Qt, pyqtSignal, QRectF
 
-from base.artist                import *
-from base.common_utils          import *
+from ..base.artist              import *
+from ..base.common_utils        import *
 
-from model.polar_set            import * 
-from model.xo2_input            import (OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN)
-from model.xo2_results          import OpPoint_Result, Optimization_History_Entry
+from ..model.polar_set          import * 
+from ..model.xo2_input          import (OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN)
+from ..model.xo2_results        import OpPoint_Result, Optimization_History_Entry
 
-from ui.ae_artists              import _color_airfoil
+from .ae_artists                import _color_airfoil
 
 
 import logging
@@ -307,7 +307,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
                     pt.set_highlight_item (highlight_item)
 
 
-        # make scene clickable to add wing section - delayed as during init scene is not yet available
+        # make scene clickable to opPoint:def - delayed as during init scene is not yet available
 
         QTimer().singleShot (10, self._connect_scene_mouseClick)
 
@@ -343,7 +343,7 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
     def _scene_clicked (self, ev : MouseClickEvent):
         """ 
-        slot - mouse click in scene of self - handle add wing section with ctrl-click 
+        slot - mouse click in scene of self - handle add opPoint_def with ctrl-click 
         """ 
 
         # handle only ctrl-click

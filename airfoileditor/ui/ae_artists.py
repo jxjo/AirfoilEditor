@@ -8,13 +8,13 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 """
 import html 
 
-from base.math_util             import derivative1
-from base.artist                import *
-from base.spline                import Bezier, HicksHenne
+from ..base.math_util           import derivative1
+from ..base.artist              import *
+from ..base.spline              import Bezier, HicksHenne
 
-from model.airfoil              import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flap_Setter
-from model.airfoil_geometry     import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
-from model.polar_set            import * 
+from ..model.airfoil            import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flap_Setter
+from ..model.airfoil_geometry   import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
+from ..model.polar_set          import * 
 
 from PyQt6.QtGui                import QColor, QBrush, QPen
 from PyQt6.QtCore               import pyqtSignal, QObject
@@ -391,30 +391,9 @@ class Movable_Side_Bezier (Movable_Bezier):
         #     self._bezier_item.show()
 
 
-    def scene_clicked (self, ev : MouseClickEvent):
-        """ 
-        slot - mouse click in scene of self 
-            - handle add Bezier point with crtl-click either on upper or lower side
-        """ 
-
-        # handle on ctrl-click
-        if not (ev.modifiers() & Qt.KeyboardModifier.ControlModifier): return  
-       
-        # get scene coordinates of click pos and map to view box 
-        vb : pg.ViewBox = self.getViewBox()
-        pos : pg.Point = vb.mapSceneToView(ev.scenePos())
-        pos_x = pos.x()
-        pos_y = pos.y()
-
-        # typically there are 2 instances of self - upper and lower Bezier 
-        if pos_y < 0.0 and self._side.isLower:
-            self._add_point (pos_x, pos_y)
-        elif pos_y >= 0.0 and self._side.isUpper:
-            self._add_point (pos_x, pos_y)
-
 
     def _add_point (self, pos_x, pos_y):
-       """ add controlpoint to Bezier curve""" 
+       """ add controlpoint to Bezier curve - called by mouse ctrl_click on Bezier line """ 
 
        index, point = self._side.check_new_controlPoint_at (pos_x, pos_y)
        
@@ -876,11 +855,6 @@ class Bezier_Artist (Artist):
                                               on_changed=self.sig_bezier_changed.emit) 
                     self._add(p)
  
-                    # connect to mouse click in scene to add a new Bezier control point 
-
-                    if movable:
-                        sc : pg.GraphicsScene = p.scene()
-                        sc.sigMouseClicked.connect (p.scene_clicked)
 
 
 

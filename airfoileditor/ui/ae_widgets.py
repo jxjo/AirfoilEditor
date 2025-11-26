@@ -10,18 +10,18 @@ Handle Airfoil UI operations like Open and Select
 import os
 import fnmatch        
 
-from typing                 import override, Callable    
+from typing                     import override, Callable    
 
-from PyQt6.QtCore           import QMargins
-from PyQt6.QtWidgets        import QHBoxLayout
-from PyQt6.QtWidgets        import QFileDialog, QWidget
+from PyQt6.QtCore               import QMargins
+from PyQt6.QtWidgets            import QHBoxLayout
+from PyQt6.QtWidgets            import QFileDialog, QWidget
 
-from base.widgets           import * 
-from base.panels            import MessageBox
+from ..base.widgets             import * 
+from ..base.panels              import MessageBox
 
-from model.airfoil          import Airfoil
-from model.airfoil          import GEO_BASIC
-from model.airfoil_examples import Example
+from ..model.airfoil            import Airfoil
+from ..model.airfoil            import GEO_BASIC
+from ..model.airfoil_examples   import Example
 
 
 import logging

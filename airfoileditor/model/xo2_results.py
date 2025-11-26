@@ -18,8 +18,8 @@ from datetime               import datetime
 from timeit                 import default_timer as timer
 
 
-from airfoileditor.base.common_utils      import * 
-from airfoileditor.base.spline            import HicksHenne
+from ..base.common_utils    import * 
+from ..base.spline          import HicksHenne
 from .airfoil               import Airfoil, Airfoil_Bezier, Airfoil_Hicks_Henne, usedAs
 from .airfoil               import GEO_BASIC, Line
 from .polar_set             import * 

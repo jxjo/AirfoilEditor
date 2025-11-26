@@ -14,21 +14,21 @@ from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDial
 from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog, QMessageBox
 from PyQt6.QtGui            import QFontMetrics
 
-from base.widgets           import * 
-from base.panels            import Dialog, Edit_Panel, MessageBox, Panel_Abstract
+from ..base.widgets         import * 
+from ..base.panels          import Dialog, Edit_Panel, MessageBox, Panel_Abstract
 
-from model.airfoil          import Airfoil
-from model.polar_set        import Polar_Definition
-from model.case             import Case_Optimize
-from model.xo2_controller   import xo2_state, Xo2_Controller
-from model.xo2_results      import Xo2_Results, Optimization_History_Entry
-from model.xo2_input        import *
+from ..model.airfoil        import Airfoil
+from ..model.polar_set      import Polar_Definition
+from ..model.case           import Case_Optimize
+from ..model.xo2_controller import xo2_state, Xo2_Controller
+from ..model.xo2_results    import Xo2_Results, Optimization_History_Entry
+from ..model.xo2_input      import *
 
-from ui.util_dialogs        import Polar_Definition_Dialog
-from ui.ae_widgets          import Airfoil_Select_Open_Widget, mode_color
-from ui.xo2_diagrams        import Diagram_Xo2_Progress, Diagram_Xo2_Airfoil_and_Polar
+from .util_dialogs          import Polar_Definition_Dialog
+from .ae_widgets            import Airfoil_Select_Open_Widget, mode_color
+from .xo2_diagrams          import Diagram_Xo2_Progress, Diagram_Xo2_Airfoil_and_Polar
 
-from app_model              import App_Model
+from ..app_model            import App_Model
 
 
 import logging

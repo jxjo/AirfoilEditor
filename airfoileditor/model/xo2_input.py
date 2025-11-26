@@ -17,7 +17,7 @@ from typing import TextIO
 
 import f90nml                                       # fortran namelist parser
 
-from base.common_utils      import * 
+from ..base.common_utils      import * 
 
 from .polar_set             import * 
 from .airfoil               import Airfoil, GEO_BASIC, usedAs

@@ -35,8 +35,11 @@ license-files = ["LICEN[CS]E*"]
 Homepage = "https://github.com/jxjo/AirfoilEditor"
 Issues = "https://github.com/jxjo/AirfoilEditor/issues"
 
-[project.gui-scripts]
+[project.gui-scripts]                       # run without console window on Windows
 airfoileditor = "airfoileditor.app:start"
+
+[project.scripts]                           # run with console window on Windows
+huhu = "airfoileditor.app:start"
 
 [tool.hatch.version]
 path = "airfoileditor/app.py"

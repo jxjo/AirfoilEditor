@@ -10,11 +10,11 @@ Samller Utility dialogs not depending on app model
 from PyQt6.QtWidgets                    import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 from PyQt6.QtWidgets                    import QFileDialog, QWidget
 
-from airfoileditor.base.widgets         import * 
-from airfoileditor.base.panels          import Dialog
+from ..base.widgets                     import * 
+from ..base.panels                      import Dialog
 
-from airfoileditor.model.airfoil        import Airfoil, Flap_Definition
-from airfoileditor.model.polar_set      import *
+from ..model.airfoil                    import Airfoil, Flap_Definition
+from ..model.polar_set                  import *
 
 import logging
 logger = logging.getLogger(__name__)

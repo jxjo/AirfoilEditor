@@ -45,13 +45,14 @@ class Diagram (QWidget):
 
 
     def __init__(self, 
-                 getter,                            # function or object to get data object for diagram items
+                 parent: QWidget,                   # parent widget needed for visibility handling
+                 dataObject,                        # function or object to get data object for diagram items
                  width=None, 
                  height=None, 
                  **kwargs):
-        super().__init__( **kwargs)
+        super().__init__(parent=parent, **kwargs)
 
-        self._getter = getter
+        self._dataObject = dataObject
         self._section_panel = None 
         self._diagram_items_grid_dict = {}
         self._show_first_time = True
@@ -122,10 +123,10 @@ class Diagram (QWidget):
     def dataObject (self): 
         # to be overloaded - or implemented with semantic name   
 
-        if callable(self._getter):
-            obj = self._getter()
+        if callable(self._dataObject):
+            obj = self._dataObject()
         else: 
-            obj = self._getter     
+            obj = self._dataObject     
         return obj 
 
 
@@ -470,17 +471,18 @@ class Diagram_Item (pg.PlotItem):
     sig_visible = pyqtSignal(bool, object)              # when self is set to show/hide 
 
 
-    def __init__(self,  
-                 getter = None, 
+    def __init__(self, 
+                 parent = None,
+                 dataObject = None, 
                  show = True,                           # show initially 
                  **kwargs):
 
         super().__init__(name=self.name,                # to link view boxes 
                          **kwargs)
 
-        self._getter = getter
+        self._dataObject = dataObject
         self._show   = show 
-        self._parent_diagram : Diagram = None           # parent diagram
+        self._parent = parent                           # parent diagram
 
         self._section_panel = None                      # view section to the left 
         self._artists : list [Artist] = []              # list of my artists
@@ -631,7 +633,7 @@ class Diagram_Item (pg.PlotItem):
         """ set parent diagram of self"""
 
         # set Diagram as parent to handle visibility of self (can't get isVisible working ...)
-        self._parent_diagram = aDiagram
+        self._parent = aDiagram
 
 
     @override
@@ -852,10 +854,10 @@ class Diagram_Item (pg.PlotItem):
 
     def data_object (self): 
         # to be ooverloaded - or implemented with semantic name 
-        if callable(self._getter):
-            return self._getter()
+        if callable(self._data_object):
+            return self._data_object()
         else: 
-            return self._getter
+            return self._data_object
 
 
     def data_list (self): 
@@ -869,16 +871,22 @@ class Diagram_Item (pg.PlotItem):
     @override
     def isVisible (self) -> bool:
         """ overloaded to get visibility from parent diagram too"""
-        if self._parent_diagram is not None:
-            return super().isVisible() and self._parent_diagram.isVisible()
-        else:
-            return super().isVisible()
+        # if self._parent_diagram is not None:
+        #     return super().isVisible() and self._parent_diagram.isVisible()
+        # else:
+        #     return super().isVisible()
+        return super().isVisible()
 
 
     def refresh(self): 
         """ refresh my artists and section panel """
 
         refresh_done = False
+
+        # check if parent widget is visible 
+        if self._parent is not None:
+            if not self._parent.isVisible():
+                return
 
         # check if self is visible 
         if not self.isVisible() :

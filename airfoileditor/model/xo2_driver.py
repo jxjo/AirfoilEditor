@@ -1146,7 +1146,7 @@ class Worker (X_Program):
 if __name__ == "__main__":
 
     # init logging 
-    from base.common_utils      import init_logging
+    from ..base.common_utils      import init_logging
     init_logging (level= logging.DEBUG)
 
 

@@ -9,22 +9,22 @@ The modes are controlled by the Modes_Manager
 
 """
 
-from PyQt6.QtCore           import Qt, pyqtSignal, QObject, QTimer, QMargins
-from PyQt6.QtWidgets        import QHBoxLayout, QMessageBox, QStackedWidget, QDialog
+from PyQt6.QtCore            import Qt, pyqtSignal, QObject, QTimer, QMargins
+from PyQt6.QtWidgets         import QHBoxLayout, QMessageBox, QStackedWidget, QDialog
 
-from base.panels            import Container_Panel, Toaster        
-from base.app_utils         import Settings
+from .base.panels            import Container_Panel, Toaster        
+from .base.app_utils         import Settings
 
-from model.xo2_driver       import Worker, Xoptfoil2
-from model.case             import Case_Direct_Design, Case_As_Bezier
+from .model.xo2_driver       import Worker, Xoptfoil2
+from .model.case             import Case_Direct_Design, Case_As_Bezier
 
-from ui.util_dialogs        import Airfoil_Save_Dialog
-from ui.ae_panels           import *
+from .ui.util_dialogs        import Airfoil_Save_Dialog
+from .ui.ae_panels           import *
 
-from ui.xo2_dialogs         import Xo2_Select_Dialog, Xo2_New_Dialog
-from ui.xo2_panels          import *
+from .ui.xo2_dialogs         import Xo2_Select_Dialog, Xo2_New_Dialog
+from .ui.xo2_panels          import *
 
-from app_model              import App_Model, Mode_Id
+from .app_model              import App_Model, Mode_Id
 
 
 import logging

@@ -10,18 +10,18 @@ UI small data panels
 from PyQt6.QtWidgets        import QDialog, QFileDialog
 from PyQt6.QtCore           import Qt
 
-from base.widgets           import * 
-from base.panels            import Edit_Panel, MessageBox
+from ..base.widgets         import * 
+from ..base.panels          import Edit_Panel, MessageBox
 
-from model.case             import Case_Optimize
-from model.xo2_input        import *
-from model.xo2_driver       import Xoptfoil2
+from ..model.case           import Case_Optimize
+from ..model.xo2_input      import *
+from ..model.xo2_driver     import Xoptfoil2
 
-from ui.util_dialogs        import Polar_Definition_Dialog
-from ui.ae_widgets          import Airfoil_Select_Open_Widget, mode_color
-from ui.xo2_dialogs         import *
+from .util_dialogs          import Polar_Definition_Dialog
+from .ae_widgets            import Airfoil_Select_Open_Widget, mode_color
+from .xo2_dialogs           import *
 
-from app_model              import App_Model
+from ..app_model            import App_Model
 
 
 import logging

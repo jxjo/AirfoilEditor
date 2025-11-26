@@ -19,6 +19,7 @@
         |-- Airfoil                             - airfoil model object 
 """
 
+from ast import Add
 import os
 import sys
 import argparse
@@ -28,20 +29,25 @@ from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget
 from PyQt6.QtWidgets        import QGridLayout
 from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 
-from base.common_utils      import * 
+# DEV: when running app.py as main, set package property to allow relative imports
+if __name__ == "__main__":  
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    __package__ = "airfoileditor"
 
-from model.xo2_input        import Input_File
-from model.case             import Case_Optimize, Case_Direct_Design
+from .base.common_utils      import * 
 
-from base.panels            import Win_Util
-from base.widgets           import Icon, Widget
-from base.app_utils         import Settings, Update_Checker, Run_Checker, check_or_get_initial_file
+from .model.xo2_input        import Input_File
+from .model.case             import Case_Optimize, Case_Direct_Design
 
-from ui.ae_widgets          import create_airfoil_from_path
-from ui.ae_diagrams         import Diagram_Airfoil_Polar
+from .base.panels            import Win_Util
+from .base.widgets           import Icon, Widget
+from .base.app_utils         import Settings, Update_Checker, Run_Checker, check_or_get_initial_file
 
-from app_model              import App_Model, Mode_Id
-from app_modes              import Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_As_Bezier
+from .ui.ae_widgets          import create_airfoil_from_path
+from .ui.ae_diagrams         import Diagram_Airfoil_Polar
+
+from .app_model              import App_Model, Mode_Id
+from .app_modes              import Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_As_Bezier
 
 import logging
 logger = logging.getLogger(__name__)
@@ -140,7 +146,7 @@ class Main (QMainWindow):
         
         # main widgets and layout of app
 
-        diagram     = Diagram_Airfoil_Polar (app_model)                     # big diagram widget
+        diagram     = Diagram_Airfoil_Polar (self,app_model)                # big diagram widget
         modes_panel = modes_manager.stacked_modes_panel()                   # stacked widget with mode data panels
 
         l = QGridLayout () 
