@@ -840,7 +840,7 @@ class Bezier_Artist (Artist):
 
     def _plot (self): 
     
-        airfoil: Airfoil
+        one_airfoil_movable = False
 
         for airfoil in self.airfoils:
             if airfoil.isBezierBased and airfoil.isLoaded:
@@ -854,7 +854,14 @@ class Bezier_Artist (Artist):
                     p = Movable_Side_Bezier (airfoil, side, color=color, movable=movable,
                                               on_changed=self.sig_bezier_changed.emit) 
                     self._add(p)
- 
+
+                if movable:
+                    one_airfoil_movable = True
+
+        # show mouse helper message
+        if one_airfoil_movable:
+            msg = "Bezier control points: shift-click to remove,  ctrl-click to add"
+            self.set_help_message (msg)
 
 
 

@@ -212,9 +212,9 @@ class Polar_Definition_Dialog (Dialog):
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
-        l.setVerticalSpacing(2)                                     # strange - otherwise vertical spacing is too large
+        l.setVerticalSpacing(3)                                     # strange - otherwise vertical spacing is too large
         r,c = 0,0 
-        SpaceR (l, r, height=5,stretch=1) 
+        SpaceR (l, r, height=10,stretch=0) 
         r += 1 
         Label  (l,r,c, get="Polar type")
         ComboBox (l,r,c+1,  width=55, options=polarType.values(),
@@ -252,7 +252,7 @@ class Polar_Definition_Dialog (Dialog):
                             disable=True,
                             hide = lambda: self._fixed_chord is None or self.polar_def.type==polarType.T2)
             r += 1 
-            SpaceR (l, r, height=5, stretch=3) 
+            SpaceR (l, r, height=10, stretch=0) 
             r += 1 
             CheckBox (l,r,c, text=f"Set flap just for this polar", colSpan=7,
                             obj=self.polar_def, prop=Polar_Definition.is_flapped)
@@ -269,7 +269,7 @@ class Polar_Definition_Dialog (Dialog):
             # Label   (l,r,c+10, get="of thickness", style=style.COMMENT)
 
             r += 1
-            SpaceR (l, r, height=5, stretch=3) 
+            SpaceR (l, r, height=10, stretch=2) 
             r += 1 
             CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
                             get=self.polar_def.autoRange)
@@ -283,7 +283,7 @@ class Polar_Definition_Dialog (Dialog):
             Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
                             get="The smaller the value, the more time is needed")
         r += 1
-        SpaceR (l, r, height=5, stretch=3) 
+        l.setRowStretch (r,3)
         return l
 
 

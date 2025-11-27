@@ -307,17 +307,12 @@ class Xo2_OpPoint_Defs_Artist (Artist):
                     pt.set_highlight_item (highlight_item)
 
 
-        # make scene clickable to opPoint:def - delayed as during init scene is not yet available
-
-        QTimer().singleShot (10, self._connect_scene_mouseClick)
-
-        self.show_help_message ()
-
-
-    def show_help_message (self):
-        """ show mouse helper message"""
+        # show mouse helper message
         msg = "OpPoint: click to select, shift-click to remove,  ctrl-click to add"
         self.set_help_message (msg)
+
+        # make scene clickable to opPoint:def - delayed as during init scene is not yet available
+        QTimer().singleShot (10, self._connect_scene_mouseClick)
 
 
     def _connect_scene_mouseClick (self): 

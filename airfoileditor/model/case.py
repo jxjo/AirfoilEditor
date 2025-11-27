@@ -428,8 +428,8 @@ class Case_As_Bezier (Case_Direct_Design):
 
     def __init__(self, airfoil: Airfoil):
 
-        if not type(airfoil) is Airfoil:
-            raise ValueError (f"Airfoil for 'New as Bezier' must be .dat Airfoil, not {type(airfoil)}")
+        if not isinstance(airfoil, Airfoil) or not airfoil.isDatBased:
+            raise ValueError (f"Airfoil for 'New as Bezier' must be .dat Airfoil")
 
         # create initial Bezier airfoil based on current
         self._initial_airfoil_bez = Airfoil_Bezier.onAirfoil (airfoil)

@@ -66,6 +66,7 @@ class Airfoil:
     isExample           = False                      # vs. Example_Airfoil 
     isBezierBased       = False
     isHicksHenneBased   = False
+    isDatBased          = not isBezierBased and not isHicksHenneBased
 
     Extension           = '.dat'
 

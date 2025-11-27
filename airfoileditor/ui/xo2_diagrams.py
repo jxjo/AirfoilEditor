@@ -94,8 +94,11 @@ class Diagram_Item_Design_Radius (Diagram_Item):
     title       = "Design Radius"
     subtitle    = None                
 
-    min_width   = 100                                       # min size needed - see below 
+    min_width   = 100                                    # min size needed - see below 
     min_height  = 100 
+
+    show_buttons = False                                 # no buttons
+    show_coords  = False                                 # no coordinates
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -107,15 +110,6 @@ class Diagram_Item_Design_Radius (Diagram_Item):
     def steps (self) -> list ['Optimization_History_Entry']: 
         return self._dataObject ()
 
-
-    @override
-    def _setup_buttons(self):
-        """ no buttons"""
-        pass
-
-    def _setup_coords_item(self):
-        """ no coords item """
-        pass
 
     @override
     def plot_title(self):
@@ -151,6 +145,9 @@ class Diagram_Item_Improvement (Diagram_Item):
     min_width   = 100                                    # min size needed - see below 
     min_height  = 100 
 
+    show_buttons = False                                 # no buttons
+    show_coords  = False                                 # no coordinates
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -159,16 +156,6 @@ class Diagram_Item_Improvement (Diagram_Item):
     @property
     def steps (self) -> list ['Optimization_History_Entry']: 
         return self._dataObject ()
-
-    @override
-    def _setup_buttons(self):
-        """ no buttons"""
-        pass
-
-    @override
-    def _setup_coords_item(self):
-        """ no coords item """
-        pass
 
 
     @override

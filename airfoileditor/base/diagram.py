@@ -152,9 +152,6 @@ class Diagram (QWidget):
             if rowStretch:      self.graph_layout.setRowStretchFactor    (row, rowStretch)
             if columnStretch:   self.graph_layout.setColumnStretchFactor (col, columnStretch)
 
-        # set self as parent to handle visibility of item (can't get isVisible working ...)
-        anItem.set_parent_diagram (self)                     # set parent diagram
-
         # connect to visible signal of item to rebuild grid 
         try:
             anItem.sig_visible.disconnect (self._on_item_visible)
@@ -466,6 +463,9 @@ class Diagram_Item (pg.PlotItem):
     min_width   = 300                                   # min size needed - see below 
     min_height  = 150 
 
+    show_buttons = True                                 # show reset buttons
+    show_coords  = True                                 # show mouse coordinates
+
     # Signals 
 
     sig_visible = pyqtSignal(bool, object)              # when self is set to show/hide 
@@ -505,8 +505,10 @@ class Diagram_Item (pg.PlotItem):
         self._coords_item = None
 
         self.hideButtons ()                                 # hide pyqtgraph default buttons
-        self._setup_buttons ()                              # setup our own buttons
-        self._setup_coords_item ()                          # setup coordinate label item
+        if self.show_buttons:
+            self._setup_buttons ()                              # setup our own buttons
+        if self.show_coords:
+            self._setup_coords_item ()                          # setup coordinate label item
 
         # set margins (inset) of self - ensure some space for coordinates
 
@@ -628,12 +630,6 @@ class Diagram_Item (pg.PlotItem):
 
             self._help_message_items[artist] = p1
             i +=1
-
-    def set_parent_diagram (self, aDiagram : Diagram):
-        """ set parent diagram of self"""
-
-        # set Diagram as parent to handle visibility of self (can't get isVisible working ...)
-        self._parent = aDiagram
 
 
     @override

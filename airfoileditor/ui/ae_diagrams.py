@@ -402,7 +402,8 @@ class Panel_Polar_Defs (Edit_Panel):
         if isinstance (id, int):
             polar_def = self.polar_defs[id]
 
-        diag = Polar_Definition_Dialog (self, polar_def, dx=260, dy=-150, fixed_chord=self.chord)
+        diag = Polar_Definition_Dialog (self, polar_def, 
+                                        parentPos=(1.1, 0.5), dialogPos=(0,0.5), fixed_chord=self.chord)
         diag.exec()
 
         # sort polar definitions ascending re number 
@@ -857,9 +858,13 @@ class Diagram_Item_Airfoil (Diagram_Item):
         self.bezier_artist = a
         self._add_artist (a)
 
-        self.hicks_henne_artist = Hicks_Henne_Artist (self, lambda: self.airfoils, show_legend=True, show=False)
+        a = Hicks_Henne_Artist (self, lambda: self.airfoils, show_legend=True, show=False)
+        self.hicks_henne_artist = a
+        self._add_artist (a)
 
-        self.bezier_devi_artist = Bezier_Deviation_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
+        a = Bezier_Deviation_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
+        self.bezier_devi_artist = a
+        self._add_artist (a)
 
         a  = Flap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True)
         self.flap_artist = a
@@ -900,24 +905,10 @@ class Diagram_Item_Airfoil (Diagram_Item):
     @override
     def refresh_artists (self):
 
-        # switch off deviation artist if not design
+        # ensure Bezier deviation artist is switched off
         if not self._is_design_and_bezier():
-            self.bezier_devi_artist.set_show(False)
-        else: 
-            self.bezier_devi_artist.refresh()
+            self.bezier_devi_artist.set_show(False, refresh=False)
 
-        # show Bezier shape function when current airfoil is Design and Bezier 
-        if self.airfoils:
-            cur_airfoil : Airfoil = self.airfoils[0]
-            if cur_airfoil.isBezierBased and cur_airfoil.usedAsDesign:
-                self.bezier_artist.set_show (True)
-            else: 
-                self.bezier_artist.refresh() 
-
-        # show Hicks Henne shape functions 
-        self.hicks_henne_artist.refresh()
-
-        # the other artists
         super().refresh_artists()
 
 
@@ -1072,8 +1063,11 @@ class Diagram_Item_Curvature (Diagram_Item):
 class Diagram_Item_Welcome (Diagram_Item):
     """ Item with Welcome message  """
 
-    title       = ""                                    # has it's own title 
+    title       = ""                                # has it's own title 
     subtitle    = None
+
+    show_buttons = False                            # no buttons
+    show_coords  = False                            # no coordinates
 
     def __init__(self, *args, **kwargs):
 
@@ -1089,16 +1083,6 @@ class Diagram_Item_Welcome (Diagram_Item):
         p1.anchor(itemPos=(0,0), parentPos=(0.0), offset=(50,0))
         p1.setZValue(5)
         self._title_item = p1
-
-    @override
-    def _setup_buttons(self):
-        """ no buttons"""
-        pass
-
-    @override
-    def _setup_coords_item(self):
-        """ no coords item """
-        pass
 
 
     @property
