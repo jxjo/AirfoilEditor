@@ -51,25 +51,26 @@ class Xo2_Select_Dialog (Dialog):
 
     name = "Airfoil Optimization"
 
-    EXAMPLE_DIR = "examples_optimize"
 
+    def __init__ (self, parent, app_model, **kwargs): 
 
-    def __init__ (self, parent, current_airfoil : Airfoil, **kwargs): 
-
+        self._app_model       = app_model
         self._input_fileName  = None
-        self._current_airfoil = current_airfoil
         self._workingDir      = None 
 
         self._info_panel = None
 
         # is there an existing input file for airfoil
 
-        if self._current_airfoil is not None:
-            self._input_fileName = Input_File.fileName_of (self._current_airfoil)
-            self._workingDir     = self._current_airfoil.pathName_abs 
+        if self.current_airfoil is not None:
+            self._input_fileName = Input_File.fileName_of (self.current_airfoil)
+            self._workingDir     = self.current_airfoil.pathName_abs 
 
-        super().__init__ ( parent, **kwargs)
+        super().__init__ (parent, **kwargs)
 
+    @property
+    def app_model (self) -> App_Model:
+        return self._app_model
 
     @property 
     def input_fileName (self) -> str:
@@ -81,7 +82,7 @@ class Xo2_Select_Dialog (Dialog):
     
     @property
     def current_airfoil (self) -> Airfoil:
-        return self._current_airfoil
+        return self.app_model.airfoil
     
 
     def _init_layout(self) -> QLayout:
@@ -138,7 +139,7 @@ class Xo2_Select_Dialog (Dialog):
             lab.setOpenExternalLinks(True)
 
             r += 1
-            examples_dict = self._get_example_files ()
+            examples_dict = self.app_model.xo2_example_files
             if examples_dict:
                 for example_file, example_path in examples_dict.items():
                     #https://docs.python.org/3.4/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
@@ -149,11 +150,11 @@ class Xo2_Select_Dialog (Dialog):
                 c = 0
             else:
                Label    (l,r,c, colSpan=3, style=style.ERROR,
-                         get=f"No examples found in directory {self.EXAMPLE_DIR}") 
+                         get=f"No examples directory found ... ") 
             r += 1
             SpaceR   (l,r,height=10, stretch=0)
             r += 1
-            Label    (l,r,c, colSpan=3, get="After that you are ready for your own projects!")
+            Label    (l,r,c, colSpan=3, get="After that you are ready for your own projects...")
             r += 1
             SpaceR   (l,r,height=10, stretch=0)
 
@@ -166,7 +167,6 @@ class Xo2_Select_Dialog (Dialog):
             self._info_panel.set_background_color (**mode_color.OPTIMIZE)
 
         return self._info_panel 
-
 
 
     @override
@@ -231,46 +231,6 @@ class Xo2_Select_Dialog (Dialog):
         self._input_fileName = pathHandler.relFilePath (pathFileName)
         self._workingDir     = pathHandler.workingDir
         self.accept ()
-
-
-    def _get_example_files (self) -> dict: 
-        """ 
-        Returns dict of example input files in example dir and below 
-        All .inp, .xo2 are collected 
-        """
-
-        # examples already copied to user data dir? Are they actual? 
-
-        example_dir = os.path.join (Example.workingDir_default, self.EXAMPLE_DIR)
-        
-        # AE repo installation, the examples are in <cwd>/examples_optimize/... 
-        if os.path.isdir (self.EXAMPLE_DIR):
-            src_example_dir = self.EXAMPLE_DIR
-        elif os.path.isdir (os.path.join ("..", self.EXAMPLE_DIR)):
-            src_example_dir = os.path.join ("..", self.EXAMPLE_DIR)
-        # AE package install, the examples are in <dir of __file__>/examples_optimize/...
-        elif os.path.isdir (os.path.join (os.path.dirname(__file__), self.EXAMPLE_DIR)):
-            src_example_dir = os.path.join (os.path.dirname(__file__), self.EXAMPLE_DIR)
-        else:
-            return {}
-
-        if not os.path.isdir (example_dir) :              
-            copytree (src_example_dir, example_dir)
-            logger.info (f"{self.EXAMPLE_DIR} installed in {Example.workingDir_default}") 
-        elif os.path.getctime(src_example_dir) > os.path.getctime(example_dir):
-            rmtree (example_dir)
-            copytree (src_example_dir, example_dir)
-            logger.info (f"{self.EXAMPLE_DIR} updated in {Example.workingDir_default}") 
-
-        # collect all xo2 input files 
-
-        examples_dict = {}
-
-        for sub_dir, _, _ in os.walk(example_dir):
-            for input_file in Input_File.files_in_dir (sub_dir):
-                examples_dict [input_file] = os.path.join (sub_dir, input_file)
-        return examples_dict
-
 
 
 
@@ -484,7 +444,7 @@ class Xo2_New_Dialog (Dialog):
 
         self._edit_panel      = Edit_Panel (self, layout=l, has_head=False, main_margins= (5,0,10,5), panel_margins=(0,0,0,0), width=380) 
 
-        self._diagram         = Diagram_Xo2_Airfoil_and_Polar (self._app_model)
+        self._diagram         = Diagram_Xo2_Airfoil_and_Polar (self, self._app_model)
         
         l =  QHBoxLayout()
         l.addWidget (self._edit_panel)
@@ -1266,8 +1226,6 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
         self._app_model = app_model
 
-        self._individual_weighting  = False if self.cur_opPoint_def.has_default_weighting else True 
-        self._individual_polar      = False if self.cur_opPoint_def.has_default_polar     else True 
         self._individual_flap       = False if self.cur_opPoint_def.has_default_flap      else True 
 
         # init layout etc 
@@ -1331,8 +1289,6 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         """ slot for refresh opPoint def"""
 
         # update local settings 
-        self.set_individual_weighting (not self.cur_opPoint_def.has_default_weighting) 
-        self.set_individual_polar     (not self.cur_opPoint_def.has_default_polar) 
         self.set_individual_flap      (not self.cur_opPoint_def.has_default_flap) 
 
         self.refresh()
@@ -1355,35 +1311,64 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.opt_asString,
                     options=lambda:self.cur_opPoint_def.opt_allowed_asString(),
                     toolTip="Type of optimization for this Operating Point")
+        
+        # target value cd       0.001 .. 0.1 step 0.00001
         FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.00001, 
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
                     hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
                                       self.cur_opPoint_def.optVar==var.CD and \
                                       not self.cur_opPoint_def.optValue_isFactor),
-                    toolTip="Target value to achieve")
-        FieldF   (l,r,c+2, width=70, dec=2, lim=(0.0,200), step=0.01, 
+                    toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
+
+        # target value cl/cd    0 .. 200     step 0.01
+        FieldF   (l,r,c+2, width=70, dec=2, lim=(0,200), step=0.01, 
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
                     hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
-                                      self.cur_opPoint_def.optVar!=var.CD or \
+                                      self.cur_opPoint_def.optVar==var.GLIDE and \
+                                      not self.cur_opPoint_def.optValue_isFactor),
+                    toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
+        
+        # target value cl       0.001 .. 5   step 0.001
+        FieldF   (l,r,c+2, width=70, dec=3, lim=(0.001,5), step=0.001, 
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
+                    hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
+                                      self.cur_opPoint_def.optVar==var.CL and \
+                                      not self.cur_opPoint_def.optValue_isFactor),
+                    toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
+
+        # target value cm       -0.5 .. 0.5  step 0.001
+        FieldF   (l,r,c+2, width=70, dec=4, lim=(-0.5,0.5), step=0.001, 
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
+                    hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
+                                      self.cur_opPoint_def.optVar==var.CM and \
+                                      not self.cur_opPoint_def.optValue_isFactor),
+                    toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
+
+        # target factor         0.5 .. 2  step 0.001
+        FieldF   (l,r,c+2, width=70, dec=3, lim=(0.5,2), step=0.001, 
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
+                    hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
                                       self.cur_opPoint_def.optValue_isFactor),
-                    toolTip="Target value to achieve")
+                    toolTip="Factor on the value of the seed airfoil to achieve")
+
         CheckBox (l,r,c+4, text="Factor",
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue_isFactor,
-                    hide=lambda: not self.cur_opPoint_def.isTarget_type,
+                    hide=lambda: not self.cur_opPoint_def.isTarget_type or \
+                                  self.cur_opPoint_def.optVar == var.CM,                # cm does not make sense as factor
                     toolTip="Target value should be a factor to value of seed airfoil")
         r += 1
         SpaceR   (l,r, stretch=0)
         r += 1
         CheckBox (l,r,c, text="Individual Weighting", colSpan=2, 
-                    get=lambda: self.individual_weighting, set=self.set_individual_weighting,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.has_individual_weighting,
                     toolTip="Set an individual weighting for this Operating Point")
         FieldF   (l,r,c+2, width=70, step=0.1, lim=(0,10), dec=1,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.weighting_abs,
-                    hide=lambda: not self.individual_weighting,
+                    hide=lambda: not self.cur_opPoint_def.has_individual_weighting,
                     toolTip="An individual weighting for this Operating Point")
         CheckBox (l,r,c+4, text="Fixed",
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.weighting_fixed,
-                    hide=lambda: not self.individual_weighting or not self.opPoint_defs.dynamic_weighting,
+                    hide=lambda: not self.cur_opPoint_def.has_individual_weighting or not self.opPoint_defs.dynamic_weighting,
                     toolTip="Fix this weighting during Dynamic Weighting")
 
         r += 1
@@ -1447,36 +1432,21 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
 
     @property
-    def individual_weighting (self) -> bool:
-        """ checkbox - opPoint def has individual weighting"""
-        return self._individual_weighting
-
-    def set_individual_weighting (self, aBool : bool):
-        self._individual_weighting = aBool 
-        if not aBool:
-            self.cur_opPoint_def.set_weighting (1.0)                    # will set to default 
-
-
-    @property
     def individual_polar (self) -> bool:
         """ checkBox - opPoint def has individual polar """
-        return self._individual_polar 
+        return self.cur_opPoint_def.has_individual_polar 
 
     def set_individual_polar (self, aBool : bool):
         if not aBool:
-            # switch off - remove individual polar definition
-            self.cur_opPoint_def.set_re(None)                           # will set to default 
-            self.cur_opPoint_def.set_ma(None)                    
-            self.cur_opPoint_def.set_ncrit(None)  
-        elif aBool and not self._individual_polar:    
+            self.cur_opPoint_def.set_has_individual_polar(False)
+        elif aBool and not self.individual_polar:    
             # switch on
             if not self.polar_defs_without_default:
-                # if there are now other polar defs open dialog directly 
+                # if there are no other polar defs open dialog directly 
                 self.new_polar_def ()   
             else: 
                 # take the first individual polar 
                 self.cur_opPoint_def.set_polar_def (self.polar_defs_without_default[0])          
-        self._individual_polar = aBool 
 
 
     def set_polar_def_by_name (self, aStr : str):
@@ -1489,12 +1459,12 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
     def new_polar_def (self):
         """ create new polar definition"""
 
-        if self.cur_opPoint_def.has_default_polar:
+        if self.cur_opPoint_def.has_individual_polar:
+            new_polar_def = self.cur_opPoint_def.polar_def
+        else:
             new_polar_def  = copy (self.opPoint_defs.polar_def_default)
             new_polar_def.set_re (new_polar_def.re + 100000)
             new_polar_def.set_active(True)
-        else:
-            new_polar_def = self.cur_opPoint_def.polar_def
         
         diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, polar_type_fixed=True, 
                                         parentPos=(0.9, 0.5), dialogPos=(0, 0.5))

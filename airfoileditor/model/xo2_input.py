@@ -11,13 +11,13 @@
 """
 
 import os
-import fnmatch      
-from pathlib import Path
-from typing import TextIO
+from operator               import attrgetter
+from pathlib                import Path
+from typing                 import TextIO
 
 import f90nml                                       # fortran namelist parser
 
-from ..base.common_utils      import * 
+from ..base.common_utils    import * 
 
 from .polar_set             import * 
 from .airfoil               import Airfoil, GEO_BASIC, usedAs
@@ -40,10 +40,11 @@ class Input_File:
 
 
     @staticmethod
-    def files_in_dir (workingDir :  str | None) -> list[str]: 
+    def files_in_dir (workingDir : str|None,
+                      exclude_versions = False) -> list[str]: 
         """ 
         Returns list of xo2 input file path in directory workingDir
-        All .dat, .bez and .hicks files are collected 
+        All .inp and .xo2 files are collected 
         """
 
         if workingDir is None or not os.path.isdir (workingDir): return []
@@ -52,10 +53,13 @@ class Input_File:
 
         for file in os.listdir(workingDir):
             extension = os.path.splitext(file)[1]
-            if extension.lower() in Input_File.INPUT_FILE_EXT:
-                if not file.startswith("tmp~"):                         # ignore temporary polar generation files
-                    input_files.append (file)
-
+            if not extension.lower() in Input_File.INPUT_FILE_EXT:
+                continue
+            if file.startswith("tmp~") :                         # ignore temporary polar generation files
+                continue        
+            if exclude_versions and '_v' in file:
+                continue    
+            input_files.append (file)
         return sorted (input_files, key=str.casefold)
 
 
@@ -738,16 +742,8 @@ class OpPoint_Definition:
 
             if optValue is not None: 
 
-                if self.optVar == var.GLIDE:                        # recalc cl/cd to cd  - or vice versa 
-                    optVar = var.CD 
-                    if optValue != 0.0:     
-                        optValue = polar_point.cl / optValue        # cd = cl / glide
-                    else:
-                        optValue = 0.005                            # avoid div by 0 - should not happen  - take dummy value  
-                else:
-                    optVar = self.optVar
-
-                polar_point.set_value (optVar, optValue)   
+                # set exact target value in polar point
+                polar_point.set_value (self.optVar, optValue)   
 
             else: 
                 logger.error (f"{self} - no target value set")
@@ -807,8 +803,8 @@ class OpPoint_Definition:
         # set optVar and type with an initial value 
         if opt in OPT_ALLOWED and (optType != self._optType or optVar != self._optVar): 
             self._optType = optType
-            self._optVar  = optVar 
             self._optValue = self.polar_point().get_value (optVar) if self.polar_point() else None
+            self._optVar  = optVar 
 
 
     def opt_allowed_asString (self) -> list [str]: 
@@ -853,16 +849,28 @@ class OpPoint_Definition:
         
     def set_optValue (self, aVal):  
         if self.optType == OPT_TARGET and aVal is not None:
-            if self.optValue_isFactor:
-                self._optValue = -abs(round(aVal,2))
+
+            # aVal could be factor if negative
+            if not self.optVar == var.CM and aVal < 0.0:
+                self._optValue = -abs(round(aVal,3))
+            elif not self.optVar == var.CM and self.optValue_isFactor and aVal > 0.0:
+                self._optValue = -abs(round(aVal,3))
+
+            # normal values 
             else: 
                 if self.optVar == var.CD:
-                    # round to the worse value 
-                    # self._optValue = round_up (aVal,6)
-                    self._optValue = round (aVal,7)
+                    aVal = clip (aVal, 0.001, 0.1) 
+                    self._optValue = round (aVal,6)
+                elif self.optVar == var.CL:
+                    aVal = clip (aVal, 0.001, 5.0) 
+                    self._optValue = round (aVal,4)
+                elif self.optVar == var.GLIDE:
+                    aVal = clip (aVal, 0, 200.0) 
+                    self._optValue = round (aVal,3)
+                elif self.optVar == var.CM:
+                    aVal = clip (aVal, -0.5, 0.5) 
+                    self._optValue = round (aVal,4)
                 else: 
-                    # round to the worse value 
-                    # self._optValue = round_down (aVal,3)
                     self._optValue = round (aVal,4)
         else: 
             self._optValue = None 
@@ -884,7 +892,7 @@ class OpPoint_Definition:
         # only possible for target-cd and target-glide 
         if self.isTarget_type and not self.optVar == var.CM:
             if aBool: 
-                self.set_optValue (-1.0) 
+                self._optValue = -1.0 
             else: 
                 # reset - take inital value from seed airfoil polar
                 seedValue = self.polar_point().get_value(self.optVar)
@@ -943,26 +951,34 @@ class OpPoint_Definition:
         else: 
             self._ncrit = aVal
 
+
     @property
-    def has_default_polar (self) -> bool:
-        """ True if op point has default polar (re, ma, ncrit == None) """
-        return self._re == None and self._ma == None and self._ncrit == None 
+    def has_individual_polar (self) -> bool:
+        """ True if op point has individual polar (re, ma, ncrit != None) """
+        return self._re != None or self._ma != None or self._ncrit != None 
+
+    def set_has_individual_polar (self, aBool : bool):
+        if not aBool:
+            self._re    = None
+            self._ma    = None
+            self._ncrit = None
+
 
     @property
     def polar_def (self) -> Polar_Definition | None:
         """ individial polar definition (re, ma, ncrit) or None """
-        if self.has_default_polar:
-            return None
-        else: 
+        if self.has_individual_polar:
             return Polar_Definition ({"re": self.re, "mach": self.ma, "ncrit": self.ncrit, "type": self.re_type})
+        else: 
+            return None
         
     @property
     def polar_def_or_default (self) -> Polar_Definition | None:
         """ either individual or default polar definition """
-        if self.has_default_polar:
-            return self._myList.polar_def_default
-        else: 
+        if self.has_individual_polar:
             return self.polar_def
+        else: 
+            return self._myList.polar_def_default
 
 
     def set_polar_def (self, polar_def : Polar_Definition):
@@ -1008,9 +1024,13 @@ class OpPoint_Definition:
 
 
     @property
-    def has_default_weighting (self) -> bool:
+    def has_individual_weighting (self) -> bool:
         """ True if op point has default weighting """
-        return self._weighting == None
+        return not self._weighting == None
+
+    def set_has_individual_weighting (self, aBool : bool):
+        self._weighting = 1.0 if aBool else None
+
 
     @property
     def flap_angle (self): 
@@ -1453,10 +1473,8 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
     def _sort (self):
         """ sorts self with ascending specValue """
 
-        from operator import attrgetter
         self.sort(key=attrgetter('specValue'))  
         self.sort(key=attrgetter('specVar'), reverse=True)  
-
 
 
     def _create_polar_defs (self) -> list[Polar_Definition]: 
