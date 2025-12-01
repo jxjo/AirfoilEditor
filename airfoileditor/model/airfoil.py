@@ -25,7 +25,7 @@ from .airfoil_geometry      import (Geometry_Splined, Geometry, Geometry_Bezier,
 from .xo2_driver            import Worker
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 
@@ -91,9 +91,11 @@ class Airfoil:
             self._workingDir = ''
         self._name          = name if name is not None else ''
 
-        if not x is None: x = x if isinstance(x,np.ndarray) else np.asarray (x)
+        if x is not None: 
+            x = x if isinstance(x,np.ndarray) else np.asarray (x)
         self._x     = x
-        if not y is None: y = y if isinstance(y,np.ndarray) else np.asarray (y)
+        if y is not None: 
+            y = y if isinstance(y,np.ndarray) else np.asarray (y)
         self._y     = y  
 
         self._isModified     = False
@@ -257,8 +259,10 @@ class Airfoil:
     def geo (self) -> Geometry:
         """ the geometry of self"""
         if self._geo is None: 
-            self._geo = self._geometry_class (self.x, self.y, onChange = self._handle_geo_changed)
-
+            if self.isLoaded:
+                self._geo = self._geometry_class (self.x, self.y, onChange = self._handle_geo_changed)
+            else:
+                raise GeometryException (f"Airfoil '{self.name}' not loaded - cannot create geometry.")
         return self._geo
     
 
@@ -418,7 +422,14 @@ class Airfoil:
 
     @property
     def isLoaded (self) -> bool:
-        return self._x is not None and len(self._x) > 10
+        """ true if airfoil has coordinates loaded"""
+        if self._x is None or self._y is None:
+            return False
+        if isinstance(self._x, np.ndarray) and isinstance(self._y, np.ndarray):
+            if self._x.size < 2 or self._y.size < 2:
+                return False
+            return True
+        return bool(self._x)
     
     @property
     def isNormalized (self) -> bool:
@@ -902,6 +913,10 @@ class Airfoil:
         if not geometry_class is None and geometry_class != self._geometry_class:
             self._geometry_class = geometry_class
             self._geo = None                                            # reset geometry
+
+        # allow self is dummy airfoil with no coordinates (normally exception)
+        if self._geo is None:
+            self._geo = self._geometry_class (self.x, self.y, onChange = self._handle_geo_changed)
 
         self.geo.blend (airfoil1.geo, airfoil2.geo, blendBy)
 

@@ -857,14 +857,14 @@ class Polar_Point:
     @property
     def glide (self) -> float: 
         if self.cd and self.cl:                  
-            return round_down(self.cl/self.cd,2)  
+            return round(self.cl/self.cd,3)  
         else: 
             return 0.0 
 
     @property
     def sink (self) -> float: 
         if self.cd > 0.0 and self.cl >= 0.0:                  
-            return round_down(self.cl**1.5 / self.cd,2)
+            return round(self.cl**1.5 / self.cd,3)
         else: 
             return 0.0 
 
@@ -910,6 +910,10 @@ class Polar_Point:
 
         if op_var == var.CD:
             self.cd = val
+        elif op_var == var.GLIDE:
+            self.cd = round_down(self.cl/val,6) if val != 0.0 else 0.0
+        elif op_var == var.SINK:
+            self.cd = round_down(self.cl**1.5/val,6) if val != 0.0 else 0.0
         elif op_var == var.CDP:
             self.cdp = val
         elif op_var == var.CL:

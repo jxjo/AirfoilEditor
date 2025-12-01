@@ -18,6 +18,7 @@ The App Model is needed as the 'real' model is QObject agnostic and stateless.
 import os
 from enum                    import Enum, auto
 from typing                  import override
+from shutil                  import copytree, rmtree
 from PyQt6.QtCore            import pyqtSignal, QObject, QThread
 
 from .base.common_utils      import Parameters, clip
@@ -29,7 +30,7 @@ from .model.airfoil_examples import Example
 from .model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from .model.xo2_driver       import Worker, Xoptfoil2
-from .model.xo2_input        import OpPoint_Definition
+from .model.xo2_input        import OpPoint_Definition, Input_File
 from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
 
 import logging
@@ -102,8 +103,15 @@ class App_Model (QObject):
 
     """
 
-    WORKER_MIN_VERSION         = '1.0.10'
-    XOPTFOIL2_MIN_VERSION      = '1.0.10'
+    WORKER_MIN_VERSION          = '1.0.10'
+    XOPTFOIL2_MIN_VERSION       = '1.0.10'
+
+    # root directory for the resources like ./assets,  ./examples_optimize - has to be adjusted at runtime
+    RESOURCES_DIR               = os.path.abspath (os.path.join (os.path.dirname(__file__), '..'))
+    XO2_EXAMPLE_DIR             = "examples_optimize"
+
+
+    # --- signals
 
     sig_new_mode                = pyqtSignal()          # new mode selected
     sig_new_case                = pyqtSignal()          # new case selected
@@ -138,6 +146,8 @@ class App_Model (QObject):
 
         self._workingDir_default= workingDir_default if workingDir_default else os.getcwd()
 
+        logger.info (f"Init App_Model - working dir: {self._workingDir_default}")
+
         self._version           = ""                    # application version
         self._change_text       = ""                    # change text for this version
         self._is_first_run      = False                 # is first run of this version
@@ -165,7 +175,11 @@ class App_Model (QObject):
 
         # Worker for polar generation and Xoptfoil2 for optimization ready? 
         modulesDir = os.path.dirname(os.path.abspath(__file__))                
-        projectDir = os.path.dirname(modulesDir)
+        # Get project root directory - works both in normal and -m execution mode
+        if __package__:
+            projectDir = modulesDir                     # Running as package with -m option
+        else:
+            projectDir = os.path.dirname(modulesDir)    # Running as script
 
         Worker    (workingDir=self._workingDir_default).isReady (projectDir, min_version=self.WORKER_MIN_VERSION)
         Xoptfoil2 (workingDir=self._workingDir_default).isReady (projectDir, min_version=self.XOPTFOIL2_MIN_VERSION)
@@ -177,10 +191,10 @@ class App_Model (QObject):
     def __repr__(self):
         """ nice representation of self """
         if self.case:
-            on_str = f"on {self.case}"
+            on_str = f" on {self.case}"
         else:
-            on_str = f"on {self.airfoil}" if self.airfoil else "no airfoil"
-        return f"<App_Model {on_str}>"
+            on_str = f" on {self.airfoil}" if self.airfoil else ""
+        return f"<App_Model{on_str}>"
 
 
     def _init_watchdog (self):
@@ -342,9 +356,10 @@ class App_Model (QObject):
     def set_case (self, case : Case_Abstract | None, silent: bool = True):
         """ set new case (design or optimize) - will also set new airfoil"""
 
-        logger.debug (f"{self} Set new {case} ")
 
         if isinstance (case, Case_Abstract) :
+
+            logger.debug (f"{self} Set new {case} ")
             self._case = case
             self.set_airfoil (case.initial_airfoil_design(), silent=True)   # set initial design airfoil silently
             if not silent:  
@@ -367,7 +382,10 @@ class App_Model (QObject):
                      silent: bool = False,
                      load_settings: bool = False):
 
-        logger.debug (f"{self} Set new {aNew}")
+        if aNew == self.airfoil:
+            return  
+
+        logger.debug (f"{self} Set new airfoil {aNew}")
 
         # sanity cleanup Worker working dir of previous airfoil
         if self.airfoil:
@@ -637,6 +655,40 @@ class App_Model (QObject):
             self.sig_xo2_input_changed.emit()                                       # inform diagram 
 
 
+    @property
+    def xo2_example_files (self) -> dict:
+        """
+        Returns dict of example xo2 input files by name
+            collect in exaample dir and below 
+        """ 
+
+        # example_dir already copied to user data dir? Are they actual? 
+
+        example_dir_org  = os.path.join (self.RESOURCES_DIR,       self.XO2_EXAMPLE_DIR)
+        example_dir_user = os.path.join (self._workingDir_default, self.XO2_EXAMPLE_DIR)
+
+        if not os.path.isdir (example_dir_org):
+            return {}          # no examples available
+
+        if not os.path.isdir (example_dir_user) :              
+            copytree (example_dir_org, example_dir_user)
+            logger.info (f"{self.XO2_EXAMPLE_DIR} installed in {self._workingDir_default}") 
+
+        elif os.path.getctime(example_dir_org) > os.path.getctime(example_dir_user):
+            rmtree (example_dir_user)
+            copytree (example_dir_org, example_dir_user)
+            logger.info (f"{self.XO2_EXAMPLE_DIR} updated in {self._workingDir_default}") 
+
+        # collect all xo2 input files 
+
+        examples_dict = {}
+
+        for sub_dir, _, _ in os.walk(example_dir_user):
+            for input_file in Input_File.files_in_dir (sub_dir, exclude_versions=True):
+                examples_dict [input_file] = os.path.join (sub_dir, input_file)
+        return examples_dict
+
+
     # --- polar definitions etc
 
 
@@ -709,12 +761,12 @@ class App_Model (QObject):
             s = Airfoil_Settings (airfoil)
 
             self._airfoil_settings_loaded = True
-            logger.info (f"Settings of {airfoil} loaded from {s.pathFileName}")
+            logger.info (f"{self} Individual settings loaded: {s.pathFileName}")
 
         else:
             s = Settings()
             self._airfoil_settings_loaded = False
-            logger.info (f"Application settings loaded from {s.pathFileName}")
+            logger.info (f"{self} Settings loaded: {s.pathFileName}")
 
         # panelling 
         nPanels  = s.get ('spline_nPanels', None)
@@ -1007,7 +1059,7 @@ class Watchdog (QThread):
         # thread environment has been set up. 
         # Thread is started with .start()
 
-        logger.info (f"Starting WatchdogThread")
+        logger.info (f"Starting Watchdog")
         self.msleep (1000)                                  # initial wait before polling begins 
 
         while not self.isInterruptionRequested():

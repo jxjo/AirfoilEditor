@@ -8,7 +8,7 @@
             "program": "${file}",
             "justMyCode": true,
             "cwd": "${fileDirname}",
-            "args": []                      // add program arguments here
+            "args": [""]      // add program arguments here : ${workspaceFolder}/tests/test_airfoils/MH 30.dat
         }
     ]
 }

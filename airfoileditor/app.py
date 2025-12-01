@@ -27,7 +27,7 @@ import argparse
 from PyQt6.QtCore           import pyqtSignal, QMargins, Qt
 from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget 
 from PyQt6.QtWidgets        import QGridLayout
-from PyQt6.QtGui            import QCloseEvent, QGuiApplication
+from PyQt6.QtGui            import QCloseEvent, QGuiApplication, QIcon
 
 # DEV: when running app.py as main, set package property to allow relative imports
 if __name__ == "__main__":  
@@ -83,8 +83,12 @@ class Main (QMainWindow):
     def __init__(self, initial_file):
         super().__init__()
 
+        logger.info (f"Init Main Window")
 
         # --- init Settings, check for newer app version ---------------
+
+        Icon.RESOURCES_DIR      = self._resources_dir()
+        App_Model.RESOURCES_DIR = self._resources_dir()
 
         Settings.set_file (APP_NAME, file_extension= '.settings')
 
@@ -123,7 +127,6 @@ class Main (QMainWindow):
 
         # main window style - dark or light mode
 
-        logger.info (f"Initialize UI")
 
         self._set_win_title ()
         self._set_win_style ()
@@ -132,6 +135,8 @@ class Main (QMainWindow):
 
         # app Modes and manager ---------------
         
+        logger.info (f"Init Modes Manager")
+
         modes_manager = Modes_Manager (app_model)
         modes_manager.add_mode (Mode_View       (app_model))
         modes_manager.add_mode (Mode_Modify     (app_model))
@@ -145,6 +150,8 @@ class Main (QMainWindow):
 
         
         # main widgets and layout of app
+
+        logger.info (f"Init UI - mode: {modes_manager.current_mode}")
 
         diagram     = Diagram_Airfoil_Polar (self,app_model)                # big diagram widget
         modes_panel = modes_manager.stacked_modes_panel()                   # stacked widget with mode data panels
@@ -169,10 +176,31 @@ class Main (QMainWindow):
 
         # --- Enter event loop ---------------
 
-        logger.info (f"{modes_manager.current_mode} ready")
+        logger.info (f"{modes_manager.current_mode} ready - entering event loop")
 
 
     # --- private ---------------------------------------------------------
+
+    def _resources_dir (self):
+        """ get root directory for resources like ./assets,  ./examples_optimize """
+
+
+        # in frozen exe (pyinstaller - onedir), this is the _internals dir below the exe dir 
+        if getattr(sys, 'frozen', False):
+            root_dir = os.path.join(os.path.dirname(sys.executable), '_internal')
+
+        # in a bundeled package this is the package dir equals the dir of self __file__
+        elif not __name__ == "__main__":                  # __package__ is always set ...
+            root_dir = os.path.abspath (os.path.dirname(__file__))
+
+        # in dev this is the main dir of the project equals the parent dir of self __file__
+        else:
+            root_dir = os.path.abspath (os.path.join (os.path.dirname(__file__), '..'))
+ 
+        return  root_dir
+
+
+
 
     def _set_win_title (self):
         """ set window title with airfoil or case name """
@@ -194,10 +222,9 @@ class Main (QMainWindow):
     def _set_win_style (self):
         """ 
         Set window style according to settings
-            - if app has parent, self will be modal
         """
-
-        self.setWindowIcon (Icon ('AE_ico.ico'))                                    # get icon either in modules or in icons 
+            
+        self.setWindowIcon(Icon(icon_filename='AE.ico'))
 
         scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)   # either unknown (from System), Dark, Light
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])    # set scheme of QT
@@ -271,6 +298,8 @@ def start ():
         initial_file = None
 
     # init Qt Application and style  
+
+    logger.info (f"Starting {APP_NAME} v{__version__} - Initial file: {initial_file}")
 
     app = QApplication(sys.argv)
     app.setStyle('fusion')

@@ -26,7 +26,8 @@ echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION%
 echo.
 
 rem Pytest tests\  -m "not slow"
-Pytest tests\  
+
+rem Pytest tests\  
 
 rem ---- run pyinstaller 
 
@@ -44,12 +45,11 @@ rem to show missing imports: 					--debug imports ^
 rem also look in airfoileditor for imports!: 	--paths airfoileditor ^
 rem more infos during build:		 			--log-level=INFO
 rem suppress console  	--noconsole    ^
-pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
+pyinstaller --noconfirm --log-level=INFO  --onedir    ^
     --distpath %DIST_DIR% ^
-	--icon=./airfoileditor/AE_ico.ico ^
+	--icon=./icons/AE.ico ^
 	--paths airfoileditor ^
-    --add-data="./airfoileditor/base/icons;./icons" ^
-    --add-data="./airfoileditor/AE_ico.ico;./icons" ^
+    --add-data="./icons;./icons" ^
     --add-data="./assets/windows/worker.exe;./assets/windows" ^
     --add-data="./assets/windows/xoptfoil2.exe;./assets/windows" ^
     --add-data="./examples_optimize;./examples_optimize" ^

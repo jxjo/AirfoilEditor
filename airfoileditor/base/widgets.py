@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # logger.setLevel(logging.WARNING)
 
 import os
+import sys
 import types
 from typing             import override
 from enum               import Enum
@@ -112,75 +113,68 @@ class Icon (QIcon):
     ERROR      = "error.png" 
 
 
-    cache = {}
+    cache     = {}
 
-    subdirs = ["icons",             # py :  __file__: ...\modules\base    icons in: ...\base\icons      (toolbutton) 
-               "..",                # py :  __file__: ...\modules\base    icons in: ...\modules         (app icon) 
-               "..\\icons",         # exe:  __file__: ...\_internal\base\ icons in: ...\_internal\icons
-               "."]
+    RESOURCES_DIR = None            # parent of 'icons' directory - has to be set at runtime
+ 
 
     @staticmethod
-    def _get_icon(icon_name : str, light_mode = None, icon_dir=None) -> QIcon:
-        """ load icon_name from file and store into class dict (cache) """
+    def _get_icon (icon_name : str = None, 
+                   light_mode =  None, 
+                   icon_filename: str = None) -> QIcon:
+        """ 
+        Returns QIcon for icon_name handling light/dark mode - alternatively from filename
+        """
 
         ico = None
 
-        if light_mode == True:
-            icon_filename = icon_name + '_light' + '.png'
-        elif light_mode == False:
-            icon_filename = icon_name + '_dark' + '.png'
+        if Icon.RESOURCES_DIR is None:
+            raise ValueError ("Icon.RESOURCES_DIR must be set before using icons")
+        else:
+            icon_dir = os.path.join (Icon.RESOURCES_DIR, "icons")
+
+        # Check if icon_name looks like a filename (has extension)
+        if icon_name and '.' in icon_name:
+            filename = icon_name
+        elif icon_filename is not None:
+            filename = icon_filename
+        elif icon_name is not None:
+            light_mode = light_mode if light_mode is not None else Widget.light_mode
+            filename = f"{icon_name}{"_light" if light_mode else "_dark"}.png"
+        else:
+            raise ValueError ("Either 'icon_name' or 'icon_filename' must be provided")
+
+        # icon in cache ? 
+        if Icon.cache.get (filename, None) is not None:
+            ico =  Icon.cache.get (filename)
+
+        # read icon from file via QIcon 
         else: 
-            icon_filename = icon_name
-        
-        if Icon.cache.get (icon_filename, None) is not None:
-            # icon in cache 
-            ico =  Icon.cache.get (icon_filename)
-
-        else: 
-
-            # try to find in one of the subdirs relativ to __file__ (widgets.py) which can be in a subtree 
-            root_dirs = [os.path.dirname(os.path.realpath(__file__))]
-
-            # add optional icon_dir to root_dirs 
-            if icon_dir:
-                root_dirs.append(icon_dir)
-
-            wrong_dirs = []
-
-            for root_dir in root_dirs: 
-                for subdir in Icon.subdirs:
-                    icon_dir = os.path.join(root_dir, subdir)
-                    icon_pathFilename = os.path.join(icon_dir, icon_filename)
-
-                    # found icon file 
-                    if os.path.isfile (icon_pathFilename):
-                        ico = QIcon (icon_pathFilename)
-                        Icon.cache [icon_filename] = ico 
-                        break 
-                    else: 
-                        wrong_dirs.append(icon_dir)
-
-        if ico is None:                 
-            logger.error (f"Icon '{icon_filename} not found in {wrong_dirs}")
-
+            icon_pathFilename = os.path.join (icon_dir, filename)
+            if os.path.isfile(icon_pathFilename): 
+                ico = QIcon (icon_pathFilename)
+                Icon.cache [filename] = ico 
+            else:
+                logger.error (f"Icon '{icon_pathFilename}' not found")
         return ico 
 
 
+    # -------------
+
+
     @override
-    def __init__ (self, aName, light_mode=None, icon_dir=None):
+    def __init__ (self, icon_name = None, light_mode=None, icon_filename: str = None):
         """ Allow an Icon name to create a QIcon
 
         Args:
             aName:  name of icon
             light_mode: retrieve icon for light or dark mode
-            icon_dir: optional new icon dir to look additionally for icon file 
         """
 
-        if isinstance (aName, str): 
-            super().__init__ (Icon._get_icon (aName, light_mode=light_mode, icon_dir=icon_dir))
+        if isinstance (icon_name, str) or icon_filename is not None: 
+            super().__init__ (Icon._get_icon (icon_name=icon_name, light_mode=light_mode, icon_filename=icon_filename))
         else:
-            super().__init__(aName) 
-
+            super().__init__(icon_name) 
 
 
 #-------------------------------------------------------------------------------

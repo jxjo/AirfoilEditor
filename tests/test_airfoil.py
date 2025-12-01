@@ -14,12 +14,12 @@ import os
 # -> pyproject.toml
 # pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
-from model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
-from model.airfoil_examples import Root_Example, Tip_Example
-from model.airfoil_geometry import Geometry, Geometry_Splined, Geometry_Bezier
-from model.airfoil_geometry import Curvature_of_xy, Curvature_of_Spline, Curvature_of_Bezier
-from model.xo2_driver       import Worker
-from base.common_utils      import PathHandler
+from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
+from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
+from airfoileditor.model.airfoil_geometry import Geometry, Geometry_Splined, Geometry_Bezier
+from airfoileditor.model.airfoil_geometry import Curvature_of_xy, Curvature_of_Spline, Curvature_of_Bezier
+from airfoileditor.model.xo2_driver       import Worker
+from airfoileditor.base.common_utils      import PathHandler
 
 
 # temp_dir will be injected by pytest in the arguments of test functions
@@ -420,7 +420,7 @@ if __name__ == "__main__":
     test.test_geo_basic()
     test.test_geo_splined()
     test.test_airfoil_geo_functions ()
-    test.test_airfoil_file_functions ()
+    test.test_airfoil_file_functions (temp_dir())
 
     test = Test_Airfoil_Bezier()
     test.test_geo_bezier ()

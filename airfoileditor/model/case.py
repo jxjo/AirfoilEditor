@@ -396,7 +396,7 @@ class Case_Direct_Design (Case_Abstract):
             t_file_start = time.perf_counter()
             try: 
                 airfoil = Airfoil.onFileType(fileName, workingDir=working_dir, geometry=GEO_SPLINE)
-                # airfoil.load()
+                airfoil.load()
                 airfoil.useAsDesign()
                 airfoil.set_isEdited (True)                         # airfoil can be edited
                 airfoil_loaded = True # airfoil.isLoaded

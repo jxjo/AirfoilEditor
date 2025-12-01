@@ -11,7 +11,7 @@ import numpy as np
 # -> pyproject.toml
 # pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
-from base.spline import *
+from airfoileditor.base.spline import *
 
 
 class Test_Spline:

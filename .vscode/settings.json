@@ -2,7 +2,7 @@
     "python.analysis.extraPaths": ["./airfoileditor"],
     "python.analysis.typeCheckingMode": "off",
     "markdown.preview.fontSize": 10,
-    "python.testing.pytestArgs": ["-m", "not slow"],
+    "python.testing.pytestArgs": [],            // ["-m", "not slow"] to skip slow tests
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "debugpy.debugJustMyCode": true,

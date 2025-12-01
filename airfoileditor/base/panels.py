@@ -409,10 +409,10 @@ class Edit_Panel (Panel_Abstract):
     def __init__(self, *args, 
                  layout : QLayout | None = None,
                  lazy = False, 
-                 switchable : bool = False,
-                 switched_on : bool = True, 
-                 on_switched = None, 
-                 hide_switched : bool = True,
+                 switchable : bool = False,                 # if True add on/off checkbox switch to header
+                 switched_on : bool | Callable = True,      # initial switch state on/off or callable returning it
+                 on_switched : Callable | None = None,      # callback when user switched on/off
+                 hide_switched : bool = True,               # if True hide panel area when switched off
                  has_head : bool = True,
                  auto_height : bool = False,                # if True fix min height after layout init
                  main_margins  : tuple = None,             
@@ -470,7 +470,8 @@ class Edit_Panel (Panel_Abstract):
         self.setLayout (l_main)
 
         # initial switch state 
-        self.set_switched_on (self._switched_on, silent=True)
+        switch_on = self._switched_on () if callable(self._switched_on) else self._switched_on
+        self.set_switched_on (switch_on, silent=True)
 
         # initial enabled/disabled state
         if self._isDisabled: 
@@ -495,33 +496,50 @@ class Edit_Panel (Panel_Abstract):
         else:
             return super().mouseDoubleClickEvent(a0)
 
+    def _adjust_height (self, switched_on: bool = True):
+        """ adjust height of self when switched on/off """
+
+        if self._switchable and self._hide_switched and not switched_on:
+            height_new = 35
+        elif self._panel.layout() is None:
+            height_new = 35                          # minimal height if no layout yet
+        else:
+            height_new = self._height
+
+        if self.height() != height_new:
+            Widget._set_height (self, height_new)
+
 
     @property 
     def switched_on (self) -> bool:
         """ True if self is switched on"""
-        return self._switched_on
+        
+        if callable(self._switched_on):
+            return self._switched_on()
+        else:
+            return self._switched_on
     
     def set_switched_on (self, aBool : bool, silent=False):
         """ switch on/off 
             - optional hide main panel 
             - option callback on_switched
         """
-        self._switched_on = aBool is True 
+        if not callable(self._switched_on):
+            self._switched_on = aBool is True 
         
         if self._hide_switched:
-            self._panel.setVisible (self.switched_on)
+            self._panel.setVisible (aBool)
 
-            if self.switched_on:
-                Widget._set_height (self, self._height)
-            else: 
-                Widget._set_height (self, 35)
+        self._adjust_height (aBool)
+
+        # set by checkbox - callback to Diagram_Item or parent panel
+        if not silent and callable (self._on_switched):              
+                self._on_switched (aBool)
 
         # refresh also header checkbox
-        for w in self.header_widgets:
-            w.refresh ()
-
-        if not silent and callable (self._on_switched):                                          # set by checkbox - callback to Diagram_Item 
-            self._on_switched (self._switched_on)
+        if not silent:
+            for w in self.header_widgets:
+                w.refresh ()
 
 
     def toggle_switched (self):
@@ -557,22 +575,42 @@ class Edit_Panel (Panel_Abstract):
             self.setVisible (self.shouldBe_visible)
             logger.debug (f"{self} - setVisible ({self.shouldBe_visible})")
 
-        if self.shouldBe_visible: 
+        if not self.shouldBe_visible: 
+            return                                      # no more refresh if hidden 
 
-            # reinit layout 
-            if show or reinit_layout:
-                if self._head:
-                    self._set_header_layout ()
-                self._set_panel_layout () 
+        # header 
+        if self._head:
+            self._set_header_layout()                   # ensure header layout
+            self.refresh_header ()
+
+        # panel 
+
+        should_hide_panel = self._switchable and not self.switched_on and self._hide_switched
+
+        if should_hide_panel:
+            self._panel.setVisible (False)
+        else:
+            self._panel.setVisible (True)
+
+            if show or reinit_layout:                   # show again or forced reinit
+                self._set_panel_layout ()
+            else:
+                self.refresh_panel (self._isDisabled, reinit_layout=reinit_layout)
                 logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
 
-            # refresh widgets of self only if visible 
-            self.refresh_widgets (self._isDisabled)
-            logger.debug (f"{self} - refresh widgets   disable: {self._isDisabled}")
+        self._adjust_height (self.switched_on)
 
 
-    def refresh_widgets (self, disable : bool, reinit_layout=False):
-        """ enable / disable all widgets of self - except Labels (color!) """
+
+    def refresh_header (self):
+        """ refresh all header widgets of self """
+
+        for w in self.header_widgets:
+            w.refresh ()
+
+
+    def refresh_panel (self, disable : bool, reinit_layout=False):
+        """ refresh all panel widgets including child panels of self """
 
         for w in self.widgets:
             w.refresh (disable=disable)
@@ -581,9 +619,14 @@ class Edit_Panel (Panel_Abstract):
         for p in self.panels_of_layout (self._panel.layout()):
             p.refresh (reinit_layout=reinit_layout)
 
+
+    def refresh_widgets (self, disable : bool, reinit_layout=False):
+        """ refresh all widgets of self including  sub panels """
+
+        self.refresh_panel (disable, reinit_layout=reinit_layout)
+
         # refresh also header 
-        for w in self.header_widgets:
-            w.refresh (disable=disable)
+        self.refresh_header()
 
 
     def _set_header_layout(self):

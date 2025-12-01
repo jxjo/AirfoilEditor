@@ -754,7 +754,7 @@ class Mode_Optimize (Mode_Abstract):
             
         # no xo2 file as argument - ask user to select existing or create new one
 
-        diag = Xo2_Select_Dialog (self.stacked_panel, self._app_model.airfoil, parentPos=(0.4,-0.5), dialogPos=(0,1))
+        diag = Xo2_Select_Dialog (self.stacked_panel, self._app_model, parentPos=(0.4,-0.5), dialogPos=(0,1))
         rc = diag.exec()
 
         if rc == QDialog.DialogCode.Accepted:
@@ -786,6 +786,7 @@ class Mode_Optimize (Mode_Abstract):
             p = Panel_Xo2_File (self, self._app_model, width=250, lazy=True)
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             p.sig_open_next.connect             (self.open_next)
+            p.sig_new.connect                   (self.new)
             p.sig_new_version.connect           (self.new_version)
             p.sig_finish.connect                (self.finish)
             l.addWidget (p)
@@ -884,6 +885,20 @@ class Mode_Optimize (Mode_Abstract):
         else: 
             MessageBox.error   (self.stacked_panel,'Create new version', f"New Version of {cur_fileName} could not be created.",
                                 min_width=350)
+
+
+    def new (self):
+        """ slot user action - create new xo2 input file """
+
+        self._save_input_file (ask=True)
+
+        diag = Xo2_New_Dialog (self.stacked_panel, self._app_model.workingDir, self._app_model.airfoil_seed, 
+                               parentPos=(0.5,0.0), dialogPos=(0.5,1.1))
+        rc = diag.exec()
+
+        if rc == QDialog.DialogCode.Accepted:
+            pathFileName = os.path.join(diag.workingDir, diag.input_fileName)
+            self.switch_mode (Mode_Id.OPTIMIZE, pathFileName)
 
 
     def finish (self):

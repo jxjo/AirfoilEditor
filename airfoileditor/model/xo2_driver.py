@@ -506,7 +506,7 @@ class X_Program:
                 exe_dir = os.path.dirname (exe_path)
                 ready_msg = f"{self.NAME_EXE} using OS search path to execute: {exe_dir}"
             else: 
-                ready_msg = f"{self.NAME_EXE} not found either in '{assets_dir}' nor via OS search path" 
+                ready_msg = f"{self.NAME_EXE} not found either via OS search path nor in '{check_dir1}' or '{check_dir2}'" 
         return exe_dir, ready_msg
 
 

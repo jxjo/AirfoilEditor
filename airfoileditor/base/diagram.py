@@ -146,7 +146,7 @@ class Diagram (QWidget):
 
         graphicsLayout.addItem (anItem, row, col, rowspan=rowspan, colspan=colspan)
 
-        if anItem.isVisible(): 
+        if anItem.show: 
 
             # core of Qt bug hack: set stretch only to visible items 
             if rowStretch:      self.graph_layout.setRowStretchFactor    (row, rowStretch)
@@ -230,15 +230,19 @@ class Diagram (QWidget):
             return items [0]
         else: 
             return None
-        
 
-    def _show_section_and_item (self, item_class : Type['Diagram_Item'], show = True) -> list['Diagram_Item']:
-        """show view_panel section and the diagram item """
+    def _show_item (self, item_class : Type['Diagram_Item']) -> bool:
+        """is first item of item_class shown """
+        items = self._get_items (item_class)
+        return items[0].show if items else False
+
+    def _set_show_item (self, item_class : Type['Diagram_Item'], 
+                                show : bool|None = True, silent=False) :
+        """show item(s) of item_class """
         if not isinstance (show, bool):
-            return
+            return                                          # no action
         for item in self._get_items (item_class):
-            if item._section_panel is not None:
-                item.section_panel.set_switched_on (show)
+            item.set_show (show, silent=silent)
 
 
     def _get_artist (self, artists : Type[Artist] | list[type[Artist]]) -> list[Artist]:
@@ -312,7 +316,7 @@ class Diagram (QWidget):
 
         item : Diagram_Item
         for item in self.diagram_items:
-            if item.isVisible(): 
+            if item.show: 
                 item.refresh() 
 
         # refresh all panels on viewPanel - but not the initial first time
@@ -482,7 +486,7 @@ class Diagram_Item (pg.PlotItem):
 
         self._dataObject = dataObject
         self._show   = show 
-        self._parent = parent                           # parent diagram
+        self._parent : Diagram | None = parent         # parent diagram
 
         self._section_panel = None                      # view section to the left 
         self._artists : list [Artist] = []              # list of my artists
@@ -540,7 +544,7 @@ class Diagram_Item (pg.PlotItem):
 
         # initial show or hide - use super() - avoid refresh
  
-        super().setVisible (show) 
+        self.setVisible (show) 
 
 
     @override
@@ -632,18 +636,6 @@ class Diagram_Item (pg.PlotItem):
             i +=1
 
 
-    @override
-    def setVisible (self, aBool):
-        """ Qt overloaded to signal parent """
-        super().setVisible (aBool)
-
-        logger.debug  (f"{self} - setVisible {aBool}")
-
-        self.set_show (aBool)
-
-        self.sig_visible.emit (aBool, self)
-
-
     def set_desired_xLink_name (self, aName : str | None):
         """ set the name of the item to xlink to """
         self._desired_xLink_name = aName
@@ -669,21 +661,42 @@ class Diagram_Item (pg.PlotItem):
         else: 
             self.viewBox.setXLink(None)
 
+    @property
+    def show (self) -> bool:
+        """ is self shown """
 
-    def set_show (self, aBool : bool):
-        """ switch on/off artists of self"""
+        return self.isVisible ()                        # use Qt visible property 
+
+
+    def set_show (self, aBool : bool, silent=False):
+        """ 
+        switch on/off of self
+            - will set Qt visibility (independant of parent)
+            - will refresh if self is now visible
+        """
          
-        if not isinstance (aBool, bool):
-            return 
+        if not isinstance (aBool, bool):  return 
         
-        self._show = aBool
+        changed = aBool != self.isVisible ()
+
+        if changed:
+
+            self.setVisible (aBool)                     # Qt visible
 
         if aBool: 
-            self.refresh_artists ()
-            self.setup_viewRange()   
-            self._viewRange_set = True
+            if self.isVisible_effective ():             # really visible - really refresh
+                self.plot_title ()
+                self.refresh_artists ()
+                self.setup_viewRange()   
+                self._viewRange_set = True
+            else:                
+                self._viewRange_set = False             # just mark view range dirty
 
-            self.plot_title ()
+        if changed and self._section_panel is not None: 
+            self.section_panel.refresh()
+
+        if changed and not silent:
+            self.sig_visible.emit (aBool, self)
 
 
     @override
@@ -864,13 +877,13 @@ class Diagram_Item (pg.PlotItem):
             return [self.data_object()]   
 
 
-    @override
-    def isVisible (self) -> bool:
-        """ overloaded to get visibility from parent diagram too"""
-        # if self._parent_diagram is not None:
-        #     return super().isVisible() and self._parent_diagram.isVisible()
-        # else:
-        #     return super().isVisible()
+    def isVisible_effective (self) -> bool:
+        """ internal visibility check including parent diagram"""
+
+        # check if parent diagram is visible 
+        if self._parent is not None:
+            if not self._parent.isVisible():
+                return False
         return super().isVisible()
 
 
@@ -880,12 +893,7 @@ class Diagram_Item (pg.PlotItem):
         refresh_done = False
 
         # check if parent widget is visible 
-        if self._parent is not None:
-            if not self._parent.isVisible():
-                return
-
-        # check if self is visible 
-        if not self.isVisible() :
+        if not self.isVisible_effective():
             return
 
         if self._section_panel is not None: 
@@ -937,8 +945,8 @@ class Diagram_Item (pg.PlotItem):
     def refresh_artists (self):
         """ refresh all artists of self - can be overridden"""
    
-        # check if self is visible 
-        if not self.isVisible():
+        # refresh only if self is shown
+        if not self.show:
             return
         
         logger.debug (f"{self} refresh artists")

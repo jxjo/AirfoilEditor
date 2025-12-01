@@ -32,18 +32,22 @@ logger.setLevel(logging.DEBUG)
 def check_or_get_initial_file (initial_file : str) -> str:
     """ check if initial file exists - otherwise get last opened file from settings """
 
-    if initial_file and os.path.isfile (initial_file):
-        return initial_file
+    if initial_file:
+        if os.path.isfile (initial_file):
+            return initial_file
+        else:
+            logger.error (f"Initial file '{initial_file}' doesn't exist - using Example")
+            return None
 
     app_settings = Settings()                                           # load app settings
 
     last_opened = app_settings.get('last_opened', default=None) 
     if last_opened and os.path.isfile (last_opened):
-        logger.info (f"Starting on 'last opened' airfoil file: {last_opened}")
+        logger.info (f"Starting on last opened file '{last_opened}'")
         return last_opened
     else:
         if last_opened:
-            logger.error (f"File '{last_opened}' doesn't exist")
+            logger.error (f"Last opened file '{last_opened}' doesn't exist anymore")
             app_settings.delete ('last_opened', purge=True)              # remove invalid entry
 
     return None
@@ -95,7 +99,7 @@ class Settings (Parameters):
 
         cls._pathFileName = os.path.join(settings_dir, fileName)
 
-        logger.info (f"Reading settings from {cls._pathFileName}")
+        logger.debug (f"Reading settings from {cls._pathFileName}")
 
 
 class Run_Checker:

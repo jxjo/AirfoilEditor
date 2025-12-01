@@ -39,7 +39,7 @@ Issues = "https://github.com/jxjo/AirfoilEditor/issues"
 airfoileditor = "airfoileditor.app:start"
 
 [project.scripts]                           # run with console window on Windows
-huhu = "airfoileditor.app:start"
+ae_console = "airfoileditor.app:start"
 
 [tool.hatch.version]
 path = "airfoileditor/app.py"
@@ -47,10 +47,16 @@ path = "airfoileditor/app.py"
 [tool.hatch.build.targets.wheel]
 packages = ["airfoileditor"]
 only-include = [
-  "airfoileditor", 
+  "airfoileditor",
+  "examples_optimize",
   "assets",
-  "examples_optimize"
+  "icons"
 ]
+
+[tool.hatch.build.targets.wheel.sources]
+"examples_optimize" = "airfoileditor/examples_optimize"
+"assets" = "airfoileditor/assets"
+"icons" = "airfoileditor/icons"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
@@ -60,13 +66,10 @@ include = [
   "airfoileditor",
   "examples/optimize",
   "assets",
+  "icons",
   "README.md",
   "LICENSE"
 ]
-
-[tool.hatch.build.targets.wheel.sources]
-"examples/optimize" = "airfoileditor/examples/optimize"
-"assets" = "airfoileditor/assets"
 
 [tool.pytest.ini_options]
 pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls

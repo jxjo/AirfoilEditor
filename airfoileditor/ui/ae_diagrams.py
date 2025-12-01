@@ -29,7 +29,7 @@ from ..app_model            import App_Model
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 #-------------------------------------------------------------------------------
@@ -569,7 +569,7 @@ class Panel_Airfoil_Settings (Edit_Panel):
 # Diagram Items  
 #-------------------------------------------------------------------------------
 
-class Diagram_Item_Airfoil (Diagram_Item):
+class Item_Airfoil (Diagram_Item):
     """ 
     Diagram (Plot) Item for airfoils shape 
     """
@@ -961,13 +961,15 @@ class Diagram_Item_Airfoil (Diagram_Item):
             l.setRowStretch    (r,2)
 
             self._section_panel = Edit_Panel (title=self.name, layout=l, auto_height=True,
-                                              switchable=True, on_switched=self.setVisible)
+                                              switchable=True, 
+                                              switched_on=lambda: self.show,
+                                              on_switched=lambda aBool: self.set_show (aBool))
 
         return self._section_panel 
 
 
 
-class Diagram_Item_Curvature (Diagram_Item):
+class Item_Curvature (Diagram_Item):
     """ 
     Diagram (Plot) Item for airfoils curvature 
     """
@@ -987,18 +989,12 @@ class Diagram_Item_Curvature (Diagram_Item):
         return self.app_model.airfoils_to_show
         
 
-    @override
-    def set_show (self, aBool):
-        """ switch on/off artists of self when diagram_item is switched on/off"""
-        super().set_show (aBool)
-
-        self.curvature_artist.set_show (aBool)
-
-
     def setup_artists (self):
         """ create and setup the artists of self"""
         
-        self.curvature_artist = Curvature_Artist (self, lambda: self.airfoils, show_derivative=False, show_legend=True)
+        a = Curvature_Artist (self, lambda: self.airfoils, show_derivative=False, show_legend=True)
+        self._add_artist (a)
+        self.curvature_artist = a
 
 
     def setup_viewRange (self):
@@ -1011,13 +1007,6 @@ class Diagram_Item_Curvature (Diagram_Item):
         self.viewBox.setYRange(-2.0, 2.0)
 
         self.showGrid(x=True, y=True)
-
-
-    def refresh_artists (self):
-        self.curvature_artist.refresh() 
-
-        # disable derivative of curvature if not one airfoil is shown or Design airfoil is shown 
-        self.section_panel.refresh()
 
 
     @property
@@ -1053,14 +1042,15 @@ class Diagram_Item_Curvature (Diagram_Item):
             l.setRowStretch    (r,2)
 
             self._section_panel = Edit_Panel (title=self.name, layout=l, auto_height=True,
-                                              switchable=True, switched_on=self._show, 
-                                              on_switched=self.setVisible)
+                                              switchable=True, 
+                                              switched_on=lambda: self.show,
+                                              on_switched=lambda aBool: self.set_show (aBool))
 
         return self._section_panel 
 
 
 
-class Diagram_Item_Welcome (Diagram_Item):
+class Item_Welcome (Diagram_Item):
     """ Item with Welcome message  """
 
     title       = ""                                # has it's own title 
@@ -1173,7 +1163,7 @@ Try out the functionality with this example or <strong><span style="color: silve
 
 
 
-class Diagram_Item_Polars (Diagram_Item):
+class Item_Polars (Diagram_Item):
     """ 
     Diagram (Plot) Item for polars 
     """
@@ -1626,37 +1616,38 @@ class Diagram_Airfoil_Polar (Diagram):
     def _hide_item_welcome (self):
         """ hide the Welcome Item"""
 
-        item_welcome : Diagram_Item_Welcome = self._get_first_item (Diagram_Item_Welcome)
-        if item_welcome and item_welcome.isVisible():
+        item_welcome : Item_Welcome = self._get_first_item (Item_Welcome)
+        if item_welcome and item_welcome.show:
             item_welcome.hide()
 
 
     def _settings (self) -> dict:
         """ return dictionary of self settings"""
         s = {}
-        toDict (s, f"{self.panel_polar.name}", self.panel_polar.switched_on)
+        show = self._show_item (Item_Polars)
+        toDict (s, f"{Item_Polars.name}", show)
 
-        item = self._get_first_item (Diagram_Item_Airfoil)
-        toDict (s, f"{item.name}", item.isVisible() if item else None)
+        show = self._show_item (Item_Airfoil)
+        toDict (s, f"{Item_Airfoil.name}", show)
 
-        item = self._get_first_item (Diagram_Item_Curvature)
-        toDict (s, f"{item.name}", item.isVisible() if item else None)
-
+        show = self._show_item (Item_Curvature)
+        toDict (s, f"{Item_Curvature.name}", show)
         return s
 
 
     def _set_settings (self, s : dict):
         """ set settings of self from dict """
 
-        show = s.get(self.panel_polar.name, None)                          # axes variables
-        if show is not None:
-            self.panel_polar.set_switched_on (show)
+        show = s.get(self.panel_polar.name, False)     
+        self._set_show_item (Item_Polars, show, silent=True)        # silent set
 
-        show = s.get(Diagram_Item_Airfoil.name, None)
-        self._show_section_and_item (Diagram_Item_Airfoil, show)
+        show = s.get(Item_Airfoil.name, None)
+        self._set_show_item (Item_Airfoil, show, silent=True)       # silent set
 
-        show = s.get(Diagram_Item_Curvature.name, None)
-        self._show_section_and_item (Diagram_Item_Curvature, show)
+        show = s.get(Item_Curvature.name, None)
+        self._set_show_item (Item_Curvature, show, silent=True)     # silent set
+
+        self._rebuild_grid_layout()
 
 
     def _load_settings_of_airfoil (self):
@@ -1720,16 +1711,16 @@ class Diagram_Airfoil_Polar (Diagram):
         if self.app_model._is_first_run:
 
             # show Welcome text if App runs the first time
-            item = Diagram_Item_Welcome (self, self.app_model)
+            item = Item_Welcome (self, self.app_model)
             self._add_item (item, r, 0, colspan=2)                          # item has fixed height
             r += 1
 
-        item = Diagram_Item_Airfoil (self, self.app_model)     
+        item = Item_Airfoil (self, self.app_model)     
         self._add_item (item, r, 0, colspan=2, rowStretch=2)
 
         r += 1
-        item = Diagram_Item_Curvature (self, self.app_model, show=False)
-        item.set_desired_xLink_name (Diagram_Item_Airfoil.name)             # link x axis to airfoil item
+        item = Item_Curvature (self, self.app_model, show=False)
+        item.set_desired_xLink_name (Item_Airfoil.name)             # link x axis to airfoil item
         self._add_item (item, r, 0, colspan=2, rowStretch=2)
 
         if Worker.ready:
@@ -1738,8 +1729,8 @@ class Diagram_Airfoil_Polar (Diagram):
 
             for iItem in [0,1]:
                 # create Polar items with init values vor axes variables 
-                item = Diagram_Item_Polars (self, self.app_model, show=False)
-                item.name = f"{Diagram_Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
+                item = Item_Polars (self, self.app_model, show=False)
+                item.name = f"{Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
                 item._set_settings (default_settings[iItem])                        # set default settings first
                 self._add_item (item, r, iItem, rowStretch=3)
  
@@ -1836,6 +1827,14 @@ class Diagram_Airfoil_Polar (Diagram):
         return self._panel_airfoil_settings
 
 
+    @property
+    def show_polars (self) -> bool:
+        """ show polar diagrams """
+        return self._show_item (Item_Polars)
+
+    def set_show_polars (self, aBool : bool, silent=False):
+        self._set_show_item (Item_Polars, aBool, silent=silent)
+
     @property 
     def show_polar_points (self) -> bool:
         """ show polar operating points """
@@ -1910,19 +1909,6 @@ class Diagram_Airfoil_Polar (Diagram):
                 Label (l,r,c, colSpan=2, style=style.COMMENT, height=40,
                        get="To change polar variables, <br>click the axis labels in the diagram.")
                 r += 1
-                # for i, item in enumerate(self._get_items (Diagram_Item_Polars)):
-
-                #     Label       (l,r,c,   width=20, get="y")
-                #     ComboBox    (l,r,c+1, width=60, obj=item, prop=Diagram_Item_Polars.yVar, options=var.values,
-                #                     toolTip=f"Select the polar variable of the y axis for diagram {i+1}")
-                #     SpaceC      (l,c+2,   width=15, stretch=0)
-                #     Label       (l,r,c+3, width=20, get="x")
-                #     ComboBox    (l,r,c+4, width=60, obj=item, prop=Diagram_Item_Polars.xVar, options=var.values,
-                #                     toolTip=f"Select the polar variable of the x axis for diagram {i+1}")
-                #     SpaceC      (l,c+5)
-                #     r += 1
-
-                r += 1
                 CheckBox (l,r,c, text="Polar points", colSpan=2,
                             get=lambda: self.show_polar_points, set=self.set_show_polar_points,
                             toolTip="Show the polar data points")
@@ -1952,8 +1938,9 @@ class Diagram_Airfoil_Polar (Diagram):
                 SpaceR (l,r, height=5) 
                 l.setColumnStretch (1,1)
 
-            self._panel_polar = Edit_Panel (title=Diagram_Item_Polars.name, layout=l, auto_height=True,
-                                            switchable=True, switched_on=False, on_switched=self._on_view_polars_switched)
+            self._panel_polar = Edit_Panel (title=Item_Polars.name, layout=l, auto_height=True, switchable  = True, 
+                                            switched_on = lambda: self.show_polars,
+                                            on_switched = lambda aBool: self.set_show_polars(aBool))
             
             # patch Worker version into head of panel 
             if Worker.ready:
@@ -2006,9 +1993,9 @@ class Diagram_Airfoil_Polar (Diagram):
         if aBool:
             self._hide_item_welcome ()
     
-        for item in self._get_items (Diagram_Item_Polars):
-            if item.isVisible() != aBool:   
-                item.setVisible (aBool)
+        for item in self._get_items (Item_Polars):
+            if item.show != aBool:   
+                item.set_show (aBool)
 
 
     def _on_show_airfoil_changed (self):
@@ -2018,7 +2005,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         # list of airfoils will be dependent of property "show" in app_model
         for item in self.diagram_items:
-            if item.isVisible(): 
+            if item.show: 
                 item.refresh()
 
 
@@ -2056,7 +2043,7 @@ class Diagram_Airfoil_Polar (Diagram):
         # just panel for new design airfoil - items are signaled from app_model
         self.section_panel.refresh ()
 
-        item : Diagram_Item_Airfoil
-        for item in self._get_items (Diagram_Item_Airfoil):
+        item : Item_Airfoil
+        for item in self._get_items (Item_Airfoil):
             item.refresh ()
         

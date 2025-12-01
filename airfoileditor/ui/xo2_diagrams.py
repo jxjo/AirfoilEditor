@@ -17,6 +17,7 @@ from ..model.polar_set      import var
 from ..model.xo2_results    import Optimization_History_Entry
 
 from .xo2_artists           import Xo2_Design_Radius_Artist, Xo2_Improvement_Artist, Xo2_OpPoint_Defs_Artist
+from .ae_diagrams           import Item_Airfoil, Item_Polars
 from .ae_artists            import Polar_Artist
 
 from ..app_model            import App_Model
@@ -58,10 +59,8 @@ class Diagram_Xo2_Airfoil_and_Polar (Diagram):
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
 
-        from ui.ae_diagrams       import Diagram_Item_Airfoil, Diagram_Item_Polars
-
         r = 0
-        item = Diagram_Item_Airfoil (self,self.app_model)
+        item = Item_Airfoil (self,self.app_model)
         item.setMinimumSize (300, 200)
         self._add_item (item, r, 0, colspan=2)
 
@@ -70,8 +69,8 @@ class Diagram_Xo2_Airfoil_and_Polar (Diagram):
 
         for iItem in [0,1]:
             # create Polar items with init values vor axes variables 
-            item = Diagram_Item_Polars (self, self.app_model, show=True)
-            item.name = f"{Diagram_Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
+            item = Item_Polars (self, self.app_model, show=True)
+            item.name = f"{Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
             item._set_settings (default_settings[iItem])                        # set default settings first
             self._add_item (item, r, iItem, rowStretch=3)
 

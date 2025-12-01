@@ -11,9 +11,9 @@ import shutil
 # -> pyproject.toml
 # pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
-from model.case import Case_Direct_Design, Case_Abstract
-from model.airfoil import Airfoil, GEO_SPLINE
-from model.airfoil_examples import Root_Example
+from airfoileditor.model.case import Case_Direct_Design, Case_Abstract
+from airfoileditor.model.airfoil import Airfoil, GEO_SPLINE
+from airfoileditor.model.airfoil_examples import Root_Example
 
 # temp_dir will be injected by pytest in the arguments of test functions
 @pytest.fixture
@@ -32,7 +32,9 @@ class Test_Case_Direct_Design:
         """Create a seed airfoil for testing"""
         airfoil = Root_Example(geometry=GEO_SPLINE)
         airfoil_path = airfoil.saveAs(dir=str(temp_dir), destName="test_seed")
-        return Airfoil(pathFileName=airfoil_path, workingDir=str(temp_dir))
+        airfoil_copied = Airfoil(pathFileName=airfoil_path, workingDir=str(temp_dir))
+        airfoil_copied.load()
+        return airfoil_copied
 
     def test_case_creation(self, seed_airfoil: Airfoil):
         """Test basic case creation"""
