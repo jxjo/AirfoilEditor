@@ -416,7 +416,8 @@ class App_Model (QObject):
             case : Case_Direct_Design = self.case
             case.add_design(self.airfoil)
 
-            self.set_airfoil (self.airfoil)                # new DESIGN - inform diagram   
+            logger.debug (f"{self} airfoil_changed - added new design")
+            self.sig_new_airfoil.emit()                             # inform diagram and data panel - new design generated
 
 
     def notify_airfoils_scale_changed (self):

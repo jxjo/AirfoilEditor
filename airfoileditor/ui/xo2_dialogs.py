@@ -926,7 +926,7 @@ class Xo2_Run_Dialog (Dialog):
         l.addWidget (self.panel_finished, 0,0,1,1)
         l.addWidget (self.panel_error, 0,0,1,1)
 
-        self._diagram = Diagram_Xo2_Progress (lambda: self.steps)
+        self._diagram = Diagram_Xo2_Progress (self, lambda: self.steps)
 
         l.addWidget (self._diagram, 1,0,1,1) 
 

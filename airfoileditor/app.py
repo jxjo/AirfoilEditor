@@ -87,9 +87,6 @@ class Main (QMainWindow):
 
         # --- init Settings, check for newer app version ---------------
 
-        Icon.RESOURCES_DIR      = self._resources_dir()
-        App_Model.RESOURCES_DIR = self._resources_dir()
-
         Settings.set_file (APP_NAME, file_extension= '.settings')
 
         is_first_run = Run_Checker.is_first_run (__version__)                 # to show Welcome message
@@ -98,6 +95,9 @@ class Main (QMainWindow):
 
 
         # --- init App Model ---------------
+
+        resources_dir      = self._resources_dir()                              # get root dir for resources like icons, templates, etc.
+        App_Model.RESOURCES_DIR = resources_dir
 
         app_model = App_Model (workingDir_default=Settings.user_data_dir (APP_NAME))
 
@@ -123,17 +123,16 @@ class Main (QMainWindow):
 
         self._app_model     = app_model                                     # keep for close 
 
+
         # --- init UI ---------------
 
         # main window style - dark or light mode
 
-
+        self._set_win_style (resources_dir, 'AE.ico')
         self._set_win_title ()
-        self._set_win_style ()
         self._set_win_geometry ()
 
-
-        # app Modes and manager ---------------
+        # app Modes and manager  
         
         logger.info (f"Init Modes Manager")
 
@@ -148,7 +147,6 @@ class Main (QMainWindow):
 
         self._modes_manager = modes_manager                                 # keep as it hosts slots
 
-        
         # main widgets and layout of app
 
         logger.info (f"Init UI - mode: {modes_manager.current_mode}")
@@ -219,15 +217,21 @@ class Main (QMainWindow):
         self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
 
 
-    def _set_win_style (self):
+    def _set_win_style (self, resources_dir, icon_filename):
         """ 
         Set window style according to settings
         """
-            
-        self.setWindowIcon(Icon(icon_filename='AE.ico'))
+
+        # set app icon    
+
+        Icon.RESOURCES_DIR = resources_dir                                          # set resources dir for Icons
+        self.setWindowIcon(Icon(icon_filename=icon_filename))
+
+        # set dark or light mode
 
         scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)   # either unknown (from System), Dark, Light
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])    # set scheme of QT
+
         Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)           # set mode for Widgets
 
 

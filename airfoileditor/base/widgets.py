@@ -569,8 +569,8 @@ class Widget:
         """write the current value of the widget to model via setter path
         """
 
-        if newVal is None:                          # None for button 
-            pass
+        if newVal is None:                          # None for button and ComboBox empty selection
+            self._val = None
         elif self._val == newVal :                  # different signals could have beem emitted
             return
         else:                                        

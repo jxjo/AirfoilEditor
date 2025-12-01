@@ -601,7 +601,6 @@ class Item_Airfoil (Diagram_Item):
         self.app_model.sig_airfoil_geo_paneling.connect     (self._on_paneling_changed)
         self.app_model.sig_airfoil_flap_set.connect         (self.flap_artist.set_show)
         self.app_model.sig_airfoil_bezier.connect           (self.bezier_artist.refresh_from_side)
-        self.app_model.sig_airfoil_geo_changed.connect      (self.bezier_artist.refresh)
 
 
     @property

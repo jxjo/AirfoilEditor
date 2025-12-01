@@ -38,7 +38,7 @@ class Blend_Airfoil_Dialog (Dialog):
     name = "Blend Airfoil with ..."
 
     sig_blend_changed      = pyqtSignal ()
-    sig_airfoil_2_changed  = pyqtSignal (Airfoil)
+    sig_airfoil_2_changed  = pyqtSignal (object)    # either airfoil or None
 
 
     def __init__ (self, parent : QWidget, 
@@ -80,6 +80,7 @@ class Blend_Airfoil_Dialog (Dialog):
         SpaceC (l,5, width=10, stretch=0)
         Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
                                     get=lambda: self.airfoil2, set=self._set_airfoil2,
+                                    addEmpty=True,                                  # do not show first airfoil in directory
                                     initialDir=self._airfoil_org)
 
         SpaceC (l,7, width=5)
@@ -110,7 +111,7 @@ class Blend_Airfoil_Dialog (Dialog):
         """ airfoil to blend with """
         return self._airfoil2
     
-    def _set_airfoil2 (self, aAirfoil : Airfoil):
+    def _set_airfoil2 (self, aAirfoil : Airfoil = None):
         """ set new 2nd airfoil - do blend - signal change"""
         self._airfoil2 = aAirfoil
         self.refresh()
@@ -118,7 +119,7 @@ class Blend_Airfoil_Dialog (Dialog):
 
         # first blend with new airfoil - use copy as airfoil2 could be normalized
 
-        self._airfoil2_copy = aAirfoil.asCopy()
+        self._airfoil2_copy = aAirfoil.asCopy() if aAirfoil is not None else None
 
         if aAirfoil is not None: 
             self._airfoil.geo.blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
@@ -535,7 +536,7 @@ class Match_Bezier_Dialog (Dialog):
         self._target_curv_le_weighting *= 2                     # double weighting in next pass 
 
         self._panel.setDisabled (True)
-        self.set_background_color (color='steelblue', alpha=0.3)        
+        self.set_background_color (color='magenta', alpha=0.2)        
 
         self._matcher.set_match (self._side_bezier, self._target_line,
                                 self.target_curv_le, self._target_curv_le_weighting,

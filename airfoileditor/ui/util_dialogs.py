@@ -89,6 +89,7 @@ class Airfoil_Save_Dialog (Dialog):
         SpaceR (l, r, height=10, stretch=0) 
         r += 1
         Field  (l,r,0, lab="Directory", obj=self.airfoil, prop=Airfoil.pathName_abs, width=(150,None),
+                       toolTip=lambda: f"{self.airfoil.pathName_abs}",
                        disable=True)
         ToolButton (l,r,2, icon=Icon.OPEN, set=self._open_dir, signal=True,
                     hide = self._rename_mode,

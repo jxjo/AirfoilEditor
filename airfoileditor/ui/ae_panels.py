@@ -470,7 +470,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         """ blend with another airfoil - open blend airfoil dialog """ 
 
         dialog = Blend_Airfoil_Dialog (self, self.airfoil, self.app_model.airfoil_seed, 
-                                       parentPos=(0.25, 0.75), dialogPos=(0,1))  
+                                       parentPos=(0.75, 0.2), dialogPos=(0,1))  
 
         dialog.sig_airfoil_2_changed.connect    (self.app_model.set_airfoil_2)
         dialog.sig_blend_changed.connect        (self.app_model.notify_airfoil_geo_changed)
