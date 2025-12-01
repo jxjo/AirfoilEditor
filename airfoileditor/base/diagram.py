@@ -24,7 +24,7 @@ from .widgets           import Widget
 from .artist            import Artist, Text_Button
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 

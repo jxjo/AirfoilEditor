@@ -6,7 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- load settings when open airfoil 
+- Worker and xoptfoil2 were not found
+- Individual settings of an airfoil were not loaded
+- Airfoil Optimization: Negative cm value couldn't be entered
+- Many refactorings ...
 
 ## 4.2.0b1 
 

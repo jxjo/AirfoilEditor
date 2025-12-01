@@ -27,7 +27,7 @@ echo.
 
 rem Pytest tests\  -m "not slow"
 
-rem Pytest tests\  
+Pytest tests\  
 
 rem ---- run pyinstaller 
 
@@ -58,10 +58,19 @@ pyinstaller --noconfirm --log-level=INFO  --onedir    ^
 	-n %APP_NAME% ^
     %PACKAGE_NAME%.py 
 
+rem ---- copy README into dir 
+
+echo.
+echo ------ copy README.pdf into %DIST_DIR%\%APP_NAME%
+echo.
+
+if exist README.pdf copy README.pdf %DIST_DIR%\%APP_NAME%
+
+
 rem ---- rename target
  
 echo.
-echo ------ rename %APP_NAME% in %DIST_DIR%
+echo ------ rename %APP_NAME% to %WIN_EXE_DIR%
 echo.
 
 cd %DIST_DIR%
@@ -72,7 +81,7 @@ ren %APP_NAME% %WIN_EXE_DIR%
 rem ---- zip directory 
 
 echo.
-echo ------ zip %WIN_EXE_DIR% in %DIST_DIR%
+echo ------ zip %WIN_EXE_DIR% into %WIN_EXE_DIR%.zip
 echo.
 pause
 
