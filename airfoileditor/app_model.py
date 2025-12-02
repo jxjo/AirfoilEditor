@@ -21,6 +21,7 @@ from typing                  import override
 from shutil                  import copytree, rmtree
 from PyQt6.QtCore            import pyqtSignal, QObject, QThread
 
+from .                       import resources_dir_ae, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
 from .base.app_utils         import Settings
 
@@ -106,11 +107,6 @@ class App_Model (QObject):
     WORKER_MIN_VERSION          = '1.0.10'
     XOPTFOIL2_MIN_VERSION       = '1.0.10'
 
-    # root directory for the resources like ./assets,  ./examples_optimize - has to be adjusted at runtime
-    RESOURCES_DIR               = os.path.abspath (os.path.join (os.path.dirname(__file__), '..'))
-    XO2_EXAMPLE_DIR             = "examples_optimize"
-
-
     # --- signals
 
     sig_new_mode                = pyqtSignal()          # new mode selected
@@ -173,16 +169,9 @@ class App_Model (QObject):
         # set working dir for Example airfoils created
         Example.workingDir_default = workingDir_default   
 
-        # Worker for polar generation and Xoptfoil2 for optimization ready? 
-        modulesDir = os.path.dirname(os.path.abspath(__file__))                
-        # Get project root directory - works both in normal and -m execution mode
-        if __package__:
-            projectDir = modulesDir                     # Running as package with -m option
-        else:
-            projectDir = os.path.dirname(modulesDir)    # Running as script
-
-        Worker    (workingDir=self._workingDir_default).isReady (projectDir, min_version=self.WORKER_MIN_VERSION)
-        Xoptfoil2 (workingDir=self._workingDir_default).isReady (projectDir, min_version=self.XOPTFOIL2_MIN_VERSION)
+        # setup path for worker and xoptfoil2 - and their working dir
+        Worker    (workingDir=self._workingDir_default).isReady (resources_dir_ae(), min_version=self.WORKER_MIN_VERSION)
+        Xoptfoil2 (workingDir=self._workingDir_default).isReady (resources_dir_ae(), min_version=self.XOPTFOIL2_MIN_VERSION)
 
         # initialize watchdog thread for polars and xo2 state changes
         self._init_watchdog()
@@ -665,20 +654,20 @@ class App_Model (QObject):
 
         # example_dir already copied to user data dir? Are they actual? 
 
-        example_dir_org  = os.path.join (self.RESOURCES_DIR,       self.XO2_EXAMPLE_DIR)
-        example_dir_user = os.path.join (self._workingDir_default, self.XO2_EXAMPLE_DIR)
+        example_dir_org  = os.path.join (resources_dir_ae(),          XO2_EXAMPLE_DIR)
+        example_dir_user = os.path.join (self._workingDir_default, XO2_EXAMPLE_DIR)
 
         if not os.path.isdir (example_dir_org):
             return {}          # no examples available
 
         if not os.path.isdir (example_dir_user) :              
             copytree (example_dir_org, example_dir_user)
-            logger.info (f"{self.XO2_EXAMPLE_DIR} installed in {self._workingDir_default}") 
+            logger.info (f"{XO2_EXAMPLE_DIR} installed in {self._workingDir_default}") 
 
         elif os.path.getctime(example_dir_org) > os.path.getctime(example_dir_user):
             rmtree (example_dir_user)
             copytree (example_dir_org, example_dir_user)
-            logger.info (f"{self.XO2_EXAMPLE_DIR} updated in {self._workingDir_default}") 
+            logger.info (f"{XO2_EXAMPLE_DIR} updated in {self._workingDir_default}") 
 
         # collect all xo2 input files 
 

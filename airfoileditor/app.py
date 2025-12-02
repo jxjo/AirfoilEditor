@@ -34,6 +34,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = "airfoileditor"
 
+from .                       import resources_dir_ae
 from .base.common_utils      import * 
 
 from .model.xo2_input        import Input_File
@@ -53,7 +54,6 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-
 #-------------------------------------------------------------------------------
 # The App   
 #-------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ logger.setLevel(logging.DEBUG)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "4.2.0b2"                       # hatch "version dynamic" reads this version for build
+__version__      = "4.2.0-b.3"                       # hatch "version dynamic" reads this version for build
 
 CHANGE_TEXT      = "- Save / Load individual airfoil settings<br>" + \
                    "- Change polar diagram variables directly in diagram<br>" + \
@@ -96,9 +96,6 @@ class Main (QMainWindow):
 
         # --- init App Model ---------------
 
-        resources_dir      = self._resources_dir()                              # get root dir for resources like icons, templates, etc.
-        App_Model.RESOURCES_DIR = resources_dir
-
         app_model = App_Model (workingDir_default=Settings.user_data_dir (APP_NAME))
 
         app_model.set_app_info (__version__, CHANGE_TEXT, is_first_run)
@@ -128,7 +125,7 @@ class Main (QMainWindow):
 
         # main window style - dark or light mode
 
-        self._set_win_style (resources_dir, 'AE.ico')
+        self._set_win_style (resources_dir_ae(), 'AE.ico')
         self._set_win_title ()
         self._set_win_geometry ()
 
@@ -179,26 +176,6 @@ class Main (QMainWindow):
 
     # --- private ---------------------------------------------------------
 
-    def _resources_dir (self):
-        """ get root directory for resources like ./assets,  ./examples_optimize """
-
-
-        # in frozen exe (pyinstaller - onedir), this is the _internals dir below the exe dir 
-        if getattr(sys, 'frozen', False):
-            root_dir = os.path.join(os.path.dirname(sys.executable), '_internal')
-
-        # in a bundeled package this is the package dir equals the dir of self __file__
-        elif not __name__ == "__main__":                  # __package__ is always set ...
-            root_dir = os.path.abspath (os.path.dirname(__file__))
-
-        # in dev this is the main dir of the project equals the parent dir of self __file__
-        else:
-            root_dir = os.path.abspath (os.path.join (os.path.dirname(__file__), '..'))
- 
-        return  root_dir
-
-
-
 
     def _set_win_title (self):
         """ set window title with airfoil or case name """
@@ -222,9 +199,13 @@ class Main (QMainWindow):
         Set window style according to settings
         """
 
+        # set resources dir for Icons
+
+        if resources_dir is not None:
+            Icon.RESOURCES_DIR = resources_dir
+
         # set app icon    
 
-        Icon.RESOURCES_DIR = resources_dir                                          # set resources dir for Icons
         self.setWindowIcon(Icon(icon_filename=icon_filename))
 
         # set dark or light mode

@@ -103,6 +103,24 @@ class Win_Util:
         qwindow.move (x, y)
 
 
+#------------------------------------------------------------------------------
+
+class Disabled_Overlay(QWidget):
+    """ Create a semi-transparent overlay to indicate disabled state """
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+
+        self.setGeometry(parent.rect())
+        set_background (self, color=QColor("#202020"), alpha=0.7)
+        self.raise_()                               # Ensure it's on top
+        self.show()
+    
+    def resizeEvent(self, event):
+        # Keep overlay covering the entire parent window
+        self.resize(self.parent().size())
+
+
 
 #------------------------------------------------------------------------------
 # Panels - QWidgets like a field group within a context 
@@ -1461,18 +1479,26 @@ class Tab_Panel (QTabWidget):
         """ at an item having 'name' to self"""
 
         if name is None:
-            name = aWidget.name
+            try:
+                name = aWidget.name
+            except AttributeError:
+                name = aWidget.__class__.__name__
 
         self.addTab (aWidget, name)
 
 
-    def set_tab (self, class_name : str):
-        """ set the current tab to tab with widgets class name"""
+    @property
+    def current_tab_name (self) -> str:
+        """ return the label of the current tab """
+        return self.tabText (self.currentIndex())
 
-        if class_name:
+    def set_current_tab (self, name : str):
+        """ set the current tab to tab with label 'name' """
+        if name:
             for itab in range (self.count()):
-                if self.widget(itab).__class__.__name__ == class_name:
+                if self.tabText(itab) == name:
                     self.setCurrentIndex (itab)
                     return
         else:
             self.setCurrentIndex (0)
+
