@@ -550,9 +550,13 @@ class Edit_Panel (Panel_Abstract):
 
         self._adjust_height (aBool)
 
+        # ensure refresh of panel if made visible again
+        if aBool:
+            self.refresh_panel (self._isDisabled)
+
         # set by checkbox - callback to Diagram_Item or parent panel
         if not silent and callable (self._on_switched):              
-                self._on_switched (aBool)
+            self._on_switched (aBool)
 
         # refresh also header checkbox
         if not silent:

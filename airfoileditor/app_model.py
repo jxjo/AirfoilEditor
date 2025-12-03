@@ -16,6 +16,7 @@ The App Model is needed as the 'real' model is QObject agnostic and stateless.
 """
 
 import os
+import stat
 from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
@@ -654,7 +655,7 @@ class App_Model (QObject):
 
         # example_dir already copied to user data dir? Are they actual? 
 
-        example_dir_org  = os.path.join (resources_dir_ae(),          XO2_EXAMPLE_DIR)
+        example_dir_org  = os.path.join (resources_dir_ae(),       XO2_EXAMPLE_DIR)
         example_dir_user = os.path.join (self._workingDir_default, XO2_EXAMPLE_DIR)
 
         if not os.path.isdir (example_dir_org):
@@ -662,12 +663,17 @@ class App_Model (QObject):
 
         if not os.path.isdir (example_dir_user) :              
             copytree (example_dir_org, example_dir_user)
-            logger.info (f"{XO2_EXAMPLE_DIR} installed in {self._workingDir_default}") 
+            logger.info (f"{self} {XO2_EXAMPLE_DIR} installed in {self._workingDir_default}") 
 
+        # copy if org examples are newer than user ones
         elif os.path.getctime(example_dir_org) > os.path.getctime(example_dir_user):
-            rmtree (example_dir_user)
-            copytree (example_dir_org, example_dir_user)
-            logger.info (f"{XO2_EXAMPLE_DIR} updated in {self._workingDir_default}") 
+            try:
+                rmtree (example_dir_user)
+                copytree (example_dir_org, example_dir_user)
+                logger.info (f"{self} {XO2_EXAMPLE_DIR} updated in {self._workingDir_default}") 
+            except (PermissionError, OSError) as e:
+                logger.warning (f"{self} Failed to update {example_dir_user}: {e}. Using existing ones.")
+
 
         # collect all xo2 input files 
 

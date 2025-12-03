@@ -70,7 +70,7 @@ class Settings (Parameters):
 
 
     @staticmethod
-    def user_data_dir (app_name, app_author = 'jxjo'):
+    def user_data_dir (app_name, app_author = False):
         """ returns directory for app data 
         
         Args:
@@ -82,7 +82,7 @@ class Settings (Parameters):
 
 
     @classmethod
-    def set_file (cls, app_name, app_author = 'jxjo', name_suffix=None, file_extension= '.json'):
+    def set_file (cls, app_name, app_author = False, name_suffix=None, file_extension= '.json'):
         """ static set of the file the settings will belong to 
         
         Args:
@@ -164,7 +164,7 @@ class Update_Checker:
                 latest_version = response.json()['info']['version']
                 logger.debug (f"Package {package_name} version {latest_version} found on PyPI")
             elif response.status_code == 404:
-                logger.error (f"Package {package_name} not found on PyPI")
+                logger.warning (f"Package {package_name} not found on PyPI")
             else:
                 logger.error (f"Error {response.status_code} on accessing PyPI for package {package_name}")
 
@@ -205,7 +205,7 @@ class Update_Checker:
 
         if is_available:
             logger.info (f"New version {self._latest_version} of {self._app_name} available on PyPI")
-        else:
+        elif self._latest_version:
             logger.info (f"{self._app_name} is up-to-date")
 
         return is_available
