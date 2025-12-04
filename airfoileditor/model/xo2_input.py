@@ -1363,8 +1363,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             op_def.set_flap_angle   (flap_angles[iop])
             op_def.set_flap_optimize(flap_optimizes[iop])
 
-            op_def.set_optValue     (target_values[iop])            # could be reset by opt type
-
             opt = optimization_types[iop]
             if opt == 'min-drag':
                 op_def.set_optType (OPT_MIN)
@@ -1392,6 +1390,9 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 op_def.set_optVar  (var.XTR)
             else:
                 raise ValueError ("Type '%s' of Operating point %d not known. Using default" %(opt, iop))
+
+            op_def.set_optValue     (target_values[iop])            # opt type and var had to be set
+
 
             self.append (op_def) 
 

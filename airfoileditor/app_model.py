@@ -149,18 +149,18 @@ class App_Model (QObject):
         self._change_text       = ""                    # change text for this version
         self._is_first_run      = False                 # is first run of this version
 
+        self._mode_id : Mode_Id = None                  # current app mode
+
         self._airfoil           = None                  # current airfoil 
         self._airfoils_ref      = []                    # reference airfoils 
         self._airfoil_2         = None                  # 2nd airfoil for blend  
         self._show_airfoil_design = True                # show design airfoil by default
 
-        self._xo2_pathFileName  = None                  # current xo2 input path file name (rel or abs)
         self._xo2_iopPoint_def  = 0                     # current xo2 opPoint definition index
         self._xo2_run_started   = False                 # has xo2 run started
 
         self._polar_definitions = []                    # current polar definitions  
         self._case : Case_Abstract = None               # design Case holding all designs 
-        self._mode_id : Mode_Id = None                  # current app mode
 
         self._settings = {}                             # actual loaded settings dict
         self._airfoil_settings_loaded = False           # have settings been loaded for current airfoil
@@ -346,12 +346,15 @@ class App_Model (QObject):
     def set_case (self, case : Case_Abstract | None, silent: bool = True):
         """ set new case (design or optimize) - will also set new airfoil"""
 
-
         if isinstance (case, Case_Abstract) :
 
             logger.debug (f"{self} Set new {case} ")
+
             self._case = case
+
             self.set_airfoil (case.initial_airfoil_design(), silent=True)   # set initial design airfoil silently
+            self._xo2_iopPoint_def  = 0                                     # reset state variables
+
             if not silent:  
                 self.sig_new_case.emit()
         else: 
