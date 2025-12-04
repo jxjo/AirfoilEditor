@@ -232,7 +232,9 @@ A ready-build Windows App including Worker for polar generation and Xoptfoil2 fo
 
 Download the .zip file and extract the file in your preferred directory. For the first trials it's convenient to extract the .zip file on your Windows Desktop.
 
-A double click on 'airfoileditor.exe' will start the app.
+A double click on 'AirfoilEditor.exe' will start the app.
+
+By assigning the file extension '.dat' to 'AirfoilEditor.exe', a double click on an airfoil file will open the app and show the airfoil. 
 
 ### Windows Setup using Python
 
@@ -242,12 +244,15 @@ The package already includes Worker and Xoptfoil2.
 
 Install the app:
 ```
-pip3 install airfoileditor 
+pip install airfoileditor 
 ```
 
-To upgrade to the actual version use `pip3 install airfoileditor -U`.
+To upgrade to the actual version use `pip install airfoileditor -U`.
 
 Run the app by typing `airfoileditor` on the command line.
+
+The command `where airfoileditor.exe` will show, where Python installed the program within your filesystem.
+This file path can be used to create a shortcut on your desktop or to assign the file extension '.dat' to the app,  allowing to open an airfoil with a double click. 
 
 If you just want to try out the app and want to ensure, that the installation doesn't influence other packages, you may prefer to install the package in an 'virtual environment'. For daily use a 'normal' installation is more convenient.
 
@@ -264,6 +269,10 @@ pip3 install airfoileditor
 To upgrade to the actual version use `pip3 install airfoileditor -U`.
 
 Run the app by typing `airfoileditor` on the command line.
+
+The command `which airfoileditor` will show, where Python installed the program within your filesystem.
+This file path can be used to create a shortcut on your desktop or to assign the file extension '.dat' to the app,  allowing to open an airfoil with a double click. 
+
 
 #### Preparing Xoptfoil2 and Worker
 To use polar generation and airfoil optimization the two programs `worker` and `xoptfoil2` have to be compiled and made available for the AirfoilEditor by copying the two programs into /usr/local/bin. 

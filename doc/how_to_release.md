@@ -84,4 +84,7 @@ A short guide for developers how to create a new release
 
 ---
 
+### Release information on RCN
+
+---
 Done!
