@@ -8,9 +8,7 @@ build-backend = "hatchling.build"
 [project]
 name = "airfoileditor"
 dynamic = ["version"]               
-authors = [
-  { name="Jochen Guenzel", email="jochen@jxjo.de" },
-]
+authors = [{ name="Jochen Guenzel", email="jochen@jxjo.de" }]
 description = "View, Modify, Optimize Airfoils"
 readme = "doc/README_PyPi.md"
 requires-python = ">=3.12"
@@ -37,34 +35,45 @@ license-files = ["LICEN[CS]E*"]
 Homepage = "https://github.com/jxjo/AirfoilEditor"
 Issues = "https://github.com/jxjo/AirfoilEditor/issues"
 
-[project.gui-scripts]
+[project.gui-scripts]                       # run without console window on Windows
 airfoileditor = "airfoileditor.app:start"
 
+[project.scripts]                           # run with console window on Windows
+ae_console = "airfoileditor.app:start"
+
 [tool.hatch.version]
-path = "modules/app.py"
+path = "airfoileditor/app.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ae_pkg"]
+packages = ["airfoileditor"]
 only-include = [
-  "modules", 
-  "assets",
-  "examples_optimize"
-]
-
-[tool.hatch.build.targets.sdist]
-exclude = [
-  "path_test.py",
-  "doc",
-  "ae.py",
-  "airfoilEditor.py"
-]
-include = [
-  "modules",
+  "airfoileditor",
   "examples_optimize",
-  "assets"
+  "assets",
+  "icons"
 ]
 
 [tool.hatch.build.targets.wheel.sources]
-"modules" = "airfoileditor"
 "examples_optimize" = "airfoileditor/examples_optimize"
 "assets" = "airfoileditor/assets"
+"icons" = "airfoileditor/icons"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "doc",
+]
+include = [
+  "airfoileditor",
+  "examples/optimize",
+  "assets",
+  "icons",
+  "README.md",
+  "LICENSE"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor modules
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

@@ -19,11 +19,15 @@ del tmpFile
 
 set WIN_EXE_DIR=%PACKAGE_NAME%-%PACKAGE_VERSION%_win_exe
 
-rem ---- run Pytest  for *-test.py
+rem ---- run Pytest  for test_*.py
+rem          exclude slow test like polar with -m "not slow"
 
 echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
 echo.
-rem Pytest modules\
+
+rem Pytest tests\  -m "not slow"
+
+Pytest tests\  
 
 rem ---- run pyinstaller 
 
@@ -37,16 +41,15 @@ rem needed for pyinstaller to avoid "WARNING: lib not found: api-ms-win-crt ..."
 setlocal
 set PATH=%PATH%;C:\Windows\System32\downlevel
 
-rem to show missing imports: 			--debug imports ^
-rem also look in modules for imports!: 	--paths modules ^
-rem more infos during build:		 	--log-level=INFO
+rem to show missing imports: 					--debug imports ^
+rem also look in airfoileditor for imports!: 	--paths airfoileditor ^
+rem more infos during build:		 			--log-level=INFO
 rem suppress console  	--noconsole    ^
 pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --distpath %DIST_DIR% ^
-	--icon=./modules/AE_ico.ico ^
-	--paths modules ^
-    --add-data="./modules/base/icons;./icons" ^
-    --add-data="./modules/AE_ico.ico;./icons" ^
+	--icon=./icons/AE.ico ^
+	--paths airfoileditor ^
+    --add-data="./icons;./icons" ^
     --add-data="./assets/windows/worker.exe;./assets/windows" ^
     --add-data="./assets/windows/xoptfoil2.exe;./assets/windows" ^
     --add-data="./examples_optimize;./examples_optimize" ^
@@ -55,29 +58,42 @@ pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
 	-n %APP_NAME% ^
     %PACKAGE_NAME%.py 
 
+rem ---- copy README into dir 
+
+echo.
+echo ------ copy README.pdf into %DIST_DIR%\%APP_NAME%
+echo.
+
+if exist README.pdf copy README.pdf %DIST_DIR%\%APP_NAME%
+
 rem ---- rename target
  
 echo.
-echo ------ rename %APP_NAME% in %DIST_DIR%
+echo ------ rename %APP_NAME% to %WIN_EXE_DIR%
 echo.
 
 cd %DIST_DIR%
 
 if exist %WIN_EXE_DIR% rd /S /Q %WIN_EXE_DIR%
+if exist %WIN_EXE_DIR% (
+	echo Error: %WIN_EXE_DIR% couldn't be deleted
+	goto end
+)
 ren %APP_NAME% %WIN_EXE_DIR%
 
 rem ---- zip directory 
 
 echo.
-echo ------ zip %WIN_EXE_DIR% in %DIST_DIR%
+echo ------ zip %WIN_EXE_DIR% into %WIN_EXE_DIR%.zip
 echo.
 pause
 
 if exist %WIN_EXE_DIR%.zip del %WIN_EXE_DIR%.zip
 powershell Compress-Archive %WIN_EXE_DIR%\* %WIN_EXE_DIR%.zip
 
-dir
-
+echo.
+echo ------ Finished successfully! 
+echo.
 
 :end
 cd %CUR_DIR%

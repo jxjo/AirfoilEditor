@@ -13,12 +13,14 @@ hatch project metadata version > tmpFile
 set /p PACKAGE_VERSION= < tmpFile 
 del tmpFile 
 
-rem ---- run Pytest  for *-test.py
+rem ---- run Pytest  for test_*.py
+rem          exclude slow test like polar with -m "not slow"
 
 echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
 echo.
 
-Pytest modules\
+rem Pytest tests\  -m "not slow"
+Pytest tests\  
 
 rem ---- build package - wheel and sdist 
 
@@ -30,7 +32,10 @@ pause
 hatch clean
 hatch build
 
+echo.
+echo ------ Finished successfully! 
+echo.
+
 :end
 cd %CUR_DIR%
-echo.
 pause

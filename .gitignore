@@ -5,12 +5,15 @@ README.pdf
 *_polars
 *_designs
 *_temp
-test_optimize
-example/
+examples/
 run_control
 *_temp
 doc/RCN
-# dev/*.exe
+
+test_airfoils
+test_optimize
+
+prod/
 
 # VSCodeCounter 
 .VSCodeCounter

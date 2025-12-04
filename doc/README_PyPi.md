@@ -1,6 +1,6 @@
 ![AE](https://github.com/jxjo/AirfoilEditor/blob/main/images/AirfoilEditor_logo.png?raw=true)
 
-### Version 4.1.1
+### Version 4.2.0
 
 ---
 
@@ -23,13 +23,14 @@ The **AirfoilEditor** serves as a fast airfoil viewer and an advanced geometry e
 * Graphical definition of polar based objectives
 * View results while optimizing
 
-#### New in 4.1
-* Show laminar separation bubbles
-* Scale reference airfoils and their polars
 
 The app was initially developed to address artefacts found in other tools like Xflr5 when using xfoil geometry routines. The aim has been an intuitive, user-friendly experience that encourages exploration.
 
 The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. 
 Linux and MacOS users are required to compile Xoptfoil2 (airfoil optimization) and Worker (polar generation) from the [Xoptfoil2](https://github.com/jxjo/Xoptfoil2) project.
 
-Find more info about the **AirfoilEditor** on [Github](https://github.com/jxjo/AirfoilEditor) ...
+Find more info about the **AirfoilEditor** on [Github](https://github.com/jxjo/AirfoilEditor).
+
+---
+
+Find Release Information in [CHANGELOG](https://github.com/jxjo/AirfoilEditor/CHANGELOG.md).

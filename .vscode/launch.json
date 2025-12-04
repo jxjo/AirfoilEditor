@@ -8,7 +8,7 @@
             "program": "${file}",
             "justMyCode": true,
             "cwd": "${fileDirname}",
-            "env": { "PYTHONPATH": "${fileDirname}/.." }  // to start modules and find 'base' subDir
+            "args": [""]      // add program arguments here : ${workspaceFolder}/tests/test_airfoils/MH 30.dat
         }
     ]
 }
