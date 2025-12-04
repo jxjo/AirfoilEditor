@@ -45,7 +45,7 @@ rem to show missing imports: 					--debug imports ^
 rem also look in airfoileditor for imports!: 	--paths airfoileditor ^
 rem more infos during build:		 			--log-level=INFO
 rem suppress console  	--noconsole    ^
-pyinstaller --noconfirm --log-level=INFO  --onedir    ^
+pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --distpath %DIST_DIR% ^
 	--icon=./icons/AE.ico ^
 	--paths airfoileditor ^
@@ -66,7 +66,6 @@ echo.
 
 if exist README.pdf copy README.pdf %DIST_DIR%\%APP_NAME%
 
-
 rem ---- rename target
  
 echo.
@@ -76,6 +75,10 @@ echo.
 cd %DIST_DIR%
 
 if exist %WIN_EXE_DIR% rd /S /Q %WIN_EXE_DIR%
+if exist %WIN_EXE_DIR% (
+	echo Error: %WIN_EXE_DIR% couldn't be deleted
+	goto end
+)
 ren %APP_NAME% %WIN_EXE_DIR%
 
 rem ---- zip directory 
@@ -88,8 +91,9 @@ pause
 if exist %WIN_EXE_DIR%.zip del %WIN_EXE_DIR%.zip
 powershell Compress-Archive %WIN_EXE_DIR%\* %WIN_EXE_DIR%.zip
 
-dir
-
+echo.
+echo ------ Finished successfully! 
+echo.
 
 :end
 cd %CUR_DIR%

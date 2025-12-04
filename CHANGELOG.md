@@ -2,18 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 4.2.0b2 
-
-### Fixed
-
-- Worker and xoptfoil2 were not found
-- Individual settings of an airfoil were not loaded
-- Airfoil Optimization: Negative cm value couldn't be entered
-- Many refactorings ...
-
-## 4.2.0b1 
-
-This is a maintenance release with major refactorings adding some smaller features
+## 4.2.0
 
 ### Added
 
@@ -21,10 +10,12 @@ This is a maintenance release with major refactorings adding some smaller featur
 - Change polar diagram variables directly in the diagram
 - Maximize / minimize lower data panel
 - Revised Match Bezier UI
+- Now using OS dependent user data directory for settings and examples 
 
 #### More ...
-* Minor improvements
-* Bug fixes and extensive refactorings 
+* A lot of minor improvements
+* Extensive refactorings 
+* Bug fixes
 
 
 ## 4.1.1

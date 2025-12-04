@@ -29,4 +29,8 @@ The app was initially developed to address artefacts found in other tools like X
 The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. 
 Linux and MacOS users are required to compile Xoptfoil2 (airfoil optimization) and Worker (polar generation) from the [Xoptfoil2](https://github.com/jxjo/Xoptfoil2) project.
 
-Find more info about the **AirfoilEditor** on [Github](https://github.com/jxjo/AirfoilEditor) ...
+Find more info about the **AirfoilEditor** on [Github](https://github.com/jxjo/AirfoilEditor).
+
+---
+
+Find Release Information in [CHANGELOG](https://github.com/jxjo/AirfoilEditor/CHANGELOG.md).

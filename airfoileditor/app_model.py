@@ -37,7 +37,7 @@ from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abst
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 # -----------------------------------------------------------------------------
@@ -653,7 +653,7 @@ class App_Model (QObject):
     def xo2_example_files (self) -> dict:
         """
         Returns dict of example xo2 input files by name
-            collect in exaample dir and below 
+            collect in example dir and below 
         """ 
 
         # example_dir already copied to user data dir? Are they actual? 

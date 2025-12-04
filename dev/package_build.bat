@@ -19,7 +19,8 @@ rem          exclude slow test like polar with -m "not slow"
 echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
 echo.
 
-Pytest tests\  -m "not slow"
+rem Pytest tests\  -m "not slow"
+Pytest tests\  
 
 rem ---- build package - wheel and sdist 
 
@@ -31,7 +32,10 @@ pause
 hatch clean
 hatch build
 
+echo.
+echo ------ Finished successfully! 
+echo.
+
 :end
 cd %CUR_DIR%
-echo.
 pause
