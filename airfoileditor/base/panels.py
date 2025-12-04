@@ -614,11 +614,16 @@ class Edit_Panel (Panel_Abstract):
         else:
             self._panel.setVisible (True)
 
-            if show or reinit_layout:                   # show again or forced reinit
+            # reinit layout if forced or show again after hide 
+            #   - but only if layout is from subclass - not from init argument
+            if (show or reinit_layout) and not self._initial_layout:                   # show again or forced reinit
                 self._set_panel_layout ()
+                logger.debug (f"{self} - refresh - reinit_layout ")
+
+            # normal refresh 
             else:
                 self.refresh_panel (self._isDisabled, reinit_layout=reinit_layout)
-                logger.debug (f"{self} - refresh - reinit_layout: {reinit_layout} ")
+                logger.debug (f"{self} - refresh ")
 
         self._adjust_height (self.switched_on)
 
