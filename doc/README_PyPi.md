@@ -33,4 +33,4 @@ Find more info about the **AirfoilEditor** on [Github](https://github.com/jxjo/A
 
 ---
 
-Find Release Information in [CHANGELOG](https://github.com/jxjo/AirfoilEditor/CHANGELOG.md).
+Find Release Information in [CHANGELOG](https://github.com/jxjo/AirfoilEditor/blob/main/CHANGELOG.md).
