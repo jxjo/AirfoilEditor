@@ -116,7 +116,7 @@ class Icon (QIcon):
     cache     = {}
 
     # parent of 'icons' directory - has to be set at runtime - defaults to grand parent of self  dir
-    RESOURCES_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))            
+    RESOURCES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))          
  
 
     @staticmethod
