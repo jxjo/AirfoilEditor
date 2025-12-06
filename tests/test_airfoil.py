@@ -14,6 +14,7 @@ import os
 # -> pyproject.toml
 # pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
+from airfoileditor.resources              import get_assets_dir
 from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
 from airfoileditor.model.airfoil_geometry import Geometry, Geometry_Splined, Geometry_Bezier
@@ -301,15 +302,8 @@ class Test_Worker:
 
     def test_worker_ready (self):
 
-        # handle different current dir 
-
-        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
-
-        if not Worker.ready:
-            # check .\assets\...
-
-            Worker.exe_dir = None               # reset exe_dir
-            Worker().isReady ("..", min_version=self.WORKER_MIN_VERSION)
+        assets_dir = str(get_assets_dir()) 
+        Worker().isReady (assets_dir, min_version=self.WORKER_MIN_VERSION)
 
         assert Worker.ready
 
@@ -321,8 +315,7 @@ class Test_Worker:
         import shutil
         import time
 
-        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
-        assert Worker.ready
+        self.test_worker_ready()
 
         worker = Worker()
         airfoil = Root_Example(geometry = GEO_SPLINE)
@@ -379,10 +372,7 @@ class Test_Worker:
 
     def test_worker_set_flap (self, temp_dir):
 
-        import shutil
-
-        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
-        assert Worker.ready
+        self.test_worker_ready()
 
         worker = Worker()
         airfoil = Root_Example(geometry = GEO_SPLINE)

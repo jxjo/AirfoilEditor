@@ -22,7 +22,7 @@ from typing                  import override
 from shutil                  import copytree, rmtree
 from PyQt6.QtCore            import pyqtSignal, QObject, QThread
 
-from .                       import resources_dir_ae, XO2_EXAMPLE_DIR
+from resources               import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
 from .base.app_utils         import Settings
 
@@ -171,8 +171,9 @@ class App_Model (QObject):
         Example.workingDir_default = workingDir_default   
 
         # setup path for worker and xoptfoil2 - and their working dir
-        Worker    (workingDir=self._workingDir_default).isReady (resources_dir_ae(), min_version=self.WORKER_MIN_VERSION)
-        Xoptfoil2 (workingDir=self._workingDir_default).isReady (resources_dir_ae(), min_version=self.XOPTFOIL2_MIN_VERSION)
+        assets_dir = str(get_assets_dir()) 
+        Worker    (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.WORKER_MIN_VERSION)
+        Xoptfoil2 (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.XOPTFOIL2_MIN_VERSION)
 
         # initialize watchdog thread for polars and xo2 state changes
         self._init_watchdog()
@@ -658,7 +659,7 @@ class App_Model (QObject):
 
         # example_dir already copied to user data dir? Are they actual? 
 
-        example_dir_org  = os.path.join (resources_dir_ae(),       XO2_EXAMPLE_DIR)
+        example_dir_org  = str(get_xo2_examples_dir())
         example_dir_user = os.path.join (self._workingDir_default, XO2_EXAMPLE_DIR)
 
         if not os.path.isdir (example_dir_org):

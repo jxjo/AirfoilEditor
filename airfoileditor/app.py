@@ -34,7 +34,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = "airfoileditor"
 
-from .                       import resources_dir_ae
+from resources               import get_icons_path, get_icon_path
 from .base.common_utils      import * 
 
 from .model.xo2_input        import Input_File
@@ -126,7 +126,7 @@ class Main (QMainWindow):
 
         # main window style - dark or light mode
 
-        self._set_win_style (resources_dir_ae(), 'AE.ico')
+        self._set_win_style (app_icon_name='AE.ico')
         self._set_win_title ()
         self._set_win_geometry ()
 
@@ -195,26 +195,27 @@ class Main (QMainWindow):
         self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
 
 
-    def _set_win_style (self, resources_dir, icon_filename):
+    def _set_win_style (self, icons_path : Path = None, app_icon_name : str  = None):
         """ 
         Set window style according to settings
         """
 
         # set resources dir for Icons
+        if icons_path is None:
+            icons_path = get_icons_path()
+        Icon.ICONS_PATH = icons_path
 
-        if resources_dir is not None:
-            Icon.RESOURCES_DIR = resources_dir
-
-        # set app icon    
-
-        self.setWindowIcon(Icon(icon_filename=icon_filename))
+        # get and set app icon  
+        app_icon_path = get_icon_path(app_icon_name) 
+        if app_icon_path:
+            self.setWindowIcon (QIcon (str(app_icon_path)))  
 
         # set dark or light mode
-
         scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)   # either unknown (from System), Dark, Light
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])    # set scheme of QT
 
-        Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)           # set mode for Widgets
+        # set mode for Widgets
+        Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)          
 
 
     def _set_win_geometry (self):
@@ -224,7 +225,7 @@ class Main (QMainWindow):
 
         geometry = app_settings.get('window_geometry', [])
         maximize = app_settings.get('window_maximize', False)
-        Win_Util.set_initialWindowSize (self, size_frac= (0.85, 0.80), pos_frac=(0.1, 0.1),
+        Win_Util.set_initialWindowSize (self, size_frac= (0.80, 0.80), pos_frac=(0.1, 0.1),
                                         geometry=geometry, maximize=maximize)
 
 

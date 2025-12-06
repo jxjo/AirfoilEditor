@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 import os
 import sys
 import types
+from pathlib            import Path
 from typing             import override
 from enum               import Enum
 
@@ -115,8 +116,8 @@ class Icon (QIcon):
 
     cache     = {}
 
-    # parent of 'icons' directory - has to be set at runtime - defaults to grand parent of self  dir
-    RESOURCES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))          
+    # 'icons' directory - has to be set at runtime as it differs between pip, frozen and dev mode
+    ICONS_PATH : Path = None        
  
 
     @staticmethod
@@ -129,10 +130,8 @@ class Icon (QIcon):
 
         ico = None
 
-        if Icon.RESOURCES_DIR is None:
-            raise ValueError ("Icon.RESOURCES_DIR must be set before using icons")
-        else:
-            icon_dir = os.path.join (Icon.RESOURCES_DIR, "icons")
+        if Icon.ICONS_PATH is None:
+            raise ValueError ("Icon.ICONS_PATH must be set before using icons")
 
         # Check if icon_name looks like a filename (has extension)
         if icon_name and '.' in icon_name:
@@ -151,15 +150,15 @@ class Icon (QIcon):
 
         # read icon from file via QIcon 
         else: 
-            if os.path.isfile(filename):
-                icon_pathFilename = filename
+            if Path(filename).is_file():
+                icon_path = Path(filename)
             else:   
-                icon_pathFilename = os.path.join (icon_dir, filename)
-            if os.path.isfile(icon_pathFilename): 
-                ico = QIcon (icon_pathFilename)
+                icon_path = Icon.ICONS_PATH / filename
+            if icon_path.is_file(): 
+                ico = QIcon (str(icon_path))
                 Icon.cache [filename] = ico 
             else:
-                logger.error (f"Icon '{icon_pathFilename}' not found")
+                logger.error (f"Icon '{icon_path}' not found")
         return ico 
 
 

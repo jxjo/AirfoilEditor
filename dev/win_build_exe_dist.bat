@@ -3,6 +3,7 @@
 setlocal
 set CUR_DIR=%cd%
 set APP_NAME=AirfoilEditor
+set ICON_NAME=AE.ico
 set DIST_DIR=dist
 
 
@@ -47,12 +48,12 @@ rem more infos during build:		 			--log-level=INFO
 rem suppress console  	--noconsole    ^
 pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --distpath %DIST_DIR% ^
-	--icon=./icons/AE.ico ^
-	--paths airfoileditor ^
-    --add-data="./icons;./icons" ^
-    --add-data="./assets/windows/worker.exe;./assets/windows" ^
-    --add-data="./assets/windows/xoptfoil2.exe;./assets/windows" ^
-    --add-data="./examples_optimize;./examples_optimize" ^
+	--icon=./icons/%ICON_NAME% ^
+	--paths %PACKAGE_NAME% ^
+    --add-data="./icons;%PACKAGE_NAME%/icons" ^
+    --add-data="./assets/windows/worker.exe;%PACKAGE_NAME%/assets/windows" ^
+    --add-data="./assets/windows/xoptfoil2.exe;%PACKAGE_NAME%/assets/windows" ^
+    --add-data="./examples_optimize;%PACKAGE_NAME%/examples_optimize" ^
  	--exclude-module matplotlib ^
 	--runtime-tmpdir="mySuperTemp" ^
 	-n %APP_NAME% ^
