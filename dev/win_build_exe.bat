@@ -10,30 +10,38 @@ set DIST_DIR=dist
 if not exist pyproject.toml cd ..
 if not exist pyproject.toml goto end
 
-rem ---- get package name and version with hatch https://hatch.pypa.io/latest/cli/reference/
+echo.
+echo ------  Create Windows exe using Pyinstaller  ...
+echo.
 
-hatch project metadata name > tmpFile 
-set /p PACKAGE_NAME= < tmpFile 
-hatch project metadata version > tmpFile 
-set /p PACKAGE_VERSION= < tmpFile 
-del tmpFile 
+rem ---- Get package version using hatch
+
+for /f "delims=" %%i in ('hatch project metadata name') do set PACKAGE_NAME=%%i
+for /f "delims=" %%i in ('hatch project metadata version') do set PACKAGE_VERSION=%%i
 
 set WIN_EXE_DIR=%PACKAGE_NAME%-%PACKAGE_VERSION%_win_exe
+
+echo App              : %APP_NAME%
+echo Icon             : %ICON_NAME%
+echo Package name     : %PACKAGE_NAME%
+echo Package version  : %PACKAGE_VERSION%
+echo In directory     : %DIST_DIR%
+echo Pyinstaller exe  : %WIN_EXE_DIR%
 
 rem ---- run Pytest  for test_*.py
 rem          exclude slow test like polar with -m "not slow"
 
-echo ------ Pytest %PACKAGE_NAME% %PACKAGE_VERSION% 
+echo.
+echo ------ Pytest -m "not slow"
 echo.
 
-rem Pytest tests\  -m "not slow"
-
-Pytest tests\  
+Pytest tests\  -m "not slow"
+rem Pytest tests\  
 
 rem ---- run pyinstaller 
 
 echo.
-echo ------ Pyinstaller: Build ...win.exe on %PACKAGE_NAME% %PACKAGE_VERSION% in %DIST_DIR%
+echo ------ Pyinstaller: Build %APP_NAME% 
 echo.
 
 pause
@@ -41,6 +49,7 @@ pause
 rem needed for pyinstaller to avoid "WARNING: lib not found: api-ms-win-crt ..." 
 setlocal
 set PATH=%PATH%;C:\Windows\System32\downlevel
+
 
 rem to show missing imports: 					--debug imports ^
 rem also look in airfoileditor for imports!: 	--paths airfoileditor ^
@@ -55,6 +64,8 @@ pyinstaller --noconfirm --log-level=INFO  --onedir  --noconsole   ^
     --add-data="./assets/windows/xoptfoil2.exe;%PACKAGE_NAME%/assets/windows" ^
     --add-data="./examples_optimize;%PACKAGE_NAME%/examples_optimize" ^
  	--exclude-module matplotlib ^
+ 	--exclude-module numpy.tests ^
+ 	--exclude-module PyQt6.QtWebEngine ^
 	--runtime-tmpdir="mySuperTemp" ^
 	-n %APP_NAME% ^
     %PACKAGE_NAME%.py 
@@ -82,6 +93,10 @@ if exist %WIN_EXE_DIR% (
 )
 ren %APP_NAME% %WIN_EXE_DIR%
 
+
+rem - no more zip 
+goto finished
+
 rem ---- zip directory 
 
 echo.
@@ -92,6 +107,7 @@ pause
 if exist %WIN_EXE_DIR%.zip del %WIN_EXE_DIR%.zip
 powershell Compress-Archive %WIN_EXE_DIR%\* %WIN_EXE_DIR%.zip
 
+:finished
 echo.
 echo ------ Finished successfully! 
 echo.
