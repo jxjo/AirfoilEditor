@@ -1,6 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 4.2.0
+### Version 4.2.1
 
 ---
 
@@ -228,13 +228,17 @@ Doing such iterations it is very helpful to create a new version when changing t
 
 ### Windows Easy Setup
 
-A ready-build Windows App including Worker for polar generation and Xoptfoil2 for airfoil optimization is available in the [releases section on GitHub](https://github.com/jxjo/AirfoilEditor/releases).
+A Windows Installer including Worker for polar generation and Xoptfoil2 for airfoil optimization is available in the [releases section on GitHub](https://github.com/jxjo/AirfoilEditor/releases).
 
-Download the .zip file and extract the file in your preferred directory. For the first trials it's convenient to extract the .zip file on your Windows Desktop.
+Download and run the setup program. During installation, you may define whether the file extension .dat (and .bez for Bezier based airfoils) shall be assigned to the AirfoilEditor. 
 
-A double click on 'AirfoilEditor.exe' will start the app.
+When running the downloaded setup file, Windows SmartScreen may display a warning: "Windows protected your PC" with "Unknown publisher". **This is normal** for open-source software distributed without a code signing certificate.
 
-By assigning the file extension '.dat' to 'AirfoilEditor.exe', a double click on an airfoil file will open the app and show the airfoil. 
+To install in this case:
+1. Click "More info"
+2. Click "Run anyway"
+
+
 
 ### Windows Setup using Python
 
@@ -303,9 +307,8 @@ pip install  "platformdirs>=4.3.0"
 ### Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for history of changes.
+
+
 # Finally 
 
 I hope you enjoy working with the **AirfoilEditor**.
-
-> [!TIP]
-For Windows: Use the "Open with ..." Explorer command to connect the AirfoilEditor.exe to the file extension .dat. Later a double click on an airfoil dat-file will open the AirfoilEditor and you can browse through the files in the directory (if you are using the Python version, create a little batch job to open an airfoils dat-file)

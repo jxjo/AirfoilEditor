@@ -8,6 +8,7 @@
 ; WIN_EXE_DIR
 ; DESCRIPTION
 ; ICON_NAME
+; INSTALLER_NAME
 
 
 ; Extract major and minor version from VERSION (e.g., "4.2.1")
@@ -22,23 +23,38 @@
 
 RequestExecutionLevel admin
 
-Name "${APP_NAME}"
+Name "${APP_NAME} ${VERSION}"
+Caption "${APP_NAME} ${VERSION} Setup"
+BrandingText "${APP_NAME} Installer"
 Icon "..\icons\${ICON_NAME}"
-OutFile "..\dist\${WIN_EXE_DIR}_Setup.exe"
+OutFile "..\dist\${INSTALLER_NAME}"
 InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "Software\${APP_NAME}" "Install_Dir"
 
 ; Modern UI
 !include "MUI2.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
+
 !define MUI_ICON "..\icons\${ICON_NAME}"
 !define MUI_UNICON "..\icons\${ICON_NAME}"
 !define MUI_HEADERIMAGE
 !define MUI_ABORTWARNING
 
+; Variables for checkboxes
+Var Dialog
+Var AssocDatBez
+Var AssocXo2
+Var CheckDatBez
+Var CheckXo2
+
 ; Pages
 !insertmacro MUI_PAGE_LICENSE "..\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
+Page custom FileAssocPage FileAssocPageLeave
 !insertmacro MUI_PAGE_INSTFILES
+
+; Finish page
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_NAME}.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch ${APP_NAME}"
 !insertmacro MUI_PAGE_FINISH
@@ -57,6 +73,35 @@ VIAddVersionKey "FileDescription" "${DESCRIPTION}"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "LegalCopyright" "© ${COMPANYNAME}"
+
+Function FileAssocPage
+  !insertmacro MUI_HEADER_TEXT "File Associations" "Choose which file types to associate with ${APP_NAME}"
+  
+  nsDialogs::Create 1018
+  Pop $Dialog
+  
+  ${If} $Dialog == error
+    Abort
+  ${EndIf}
+  
+  ${NSD_CreateLabel} 0 0 100% 20u "Select the file types you want to open with ${APP_NAME}:"
+  Pop $0
+  
+  ${NSD_CreateCheckbox} 10u 30u 100% 12u "Associate .dat and .bez files (Airfoil coordinate and Bezier files)"
+  Pop $CheckDatBez
+  ${NSD_SetState} $CheckDatBez $AssocDatBez
+  
+  ${NSD_CreateCheckbox} 10u 50u 100% 12u "Associate .xo2 files (Airfoil Optimizer - Xoptfoil2 - files)"
+  Pop $CheckXo2
+  ${NSD_SetState} $CheckXo2 $AssocXo2
+  
+  nsDialogs::Show
+FunctionEnd
+
+Function FileAssocPageLeave
+  ${NSD_GetState} $CheckDatBez $AssocDatBez
+  ${NSD_GetState} $CheckXo2 $AssocXo2
+FunctionEnd
 
 Section "Install"
   SetOutPath "$INSTDIR"
@@ -83,6 +128,35 @@ Section "Install"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoRepair" 1
   
+  ; File associations based on checkbox selections
+  ${If} $AssocDatBez == ${BST_CHECKED}
+    ; Register .dat file extension
+    WriteRegStr HKCR ".dat" "" "${APP_NAME}.datfile"
+    WriteRegStr HKCR "${APP_NAME}.datfile" "" "Airfoil Data File"
+    WriteRegStr HKCR "${APP_NAME}.datfile\DefaultIcon" "" "$INSTDIR\${APP_NAME}.exe,0"
+    WriteRegStr HKCR "${APP_NAME}.datfile\shell\open\command" "" '"$INSTDIR\${APP_NAME}.exe" "%1"'
+    
+    ; Register .bez file extension
+    WriteRegStr HKCR ".bez" "" "${APP_NAME}.bezfile"
+    WriteRegStr HKCR "${APP_NAME}.bezfile" "" "Airfoil Bezier File"
+    WriteRegStr HKCR "${APP_NAME}.bezfile\DefaultIcon" "" "$INSTDIR\${APP_NAME}.exe,0"
+    WriteRegStr HKCR "${APP_NAME}.bezfile\shell\open\command" "" '"$INSTDIR\${APP_NAME}.exe" "%1"'
+  ${EndIf}
+  
+  ${If} $AssocXo2 == ${BST_CHECKED}
+    ; Register .xo2 file extension
+    WriteRegStr HKCR ".xo2" "" "${APP_NAME}.xo2file"
+    WriteRegStr HKCR "${APP_NAME}.xo2file" "" "Airfoil XO2 File"
+    WriteRegStr HKCR "${APP_NAME}.xo2file\DefaultIcon" "" "$INSTDIR\${APP_NAME}.exe,0"
+    WriteRegStr HKCR "${APP_NAME}.xo2file\shell\open\command" "" '"$INSTDIR\${APP_NAME}.exe" "%1"'
+  ${EndIf}
+  
+  ; Notify Windows of file association changes
+  ${If} $AssocDatBez == ${BST_CHECKED}
+  ${OrIf} $AssocXo2 == ${BST_CHECKED}
+    System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+  ${EndIf}
+  
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
@@ -91,7 +165,29 @@ Section "Uninstall"
   ; Remove registry keys
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
   DeleteRegKey HKLM "Software\${APP_NAME}"
+
+  ; Remove file associations only if they belong to us
+  ReadRegStr $0 HKCR ".dat" ""
+  ${If} $0 == "${APP_NAME}.datfile"
+    DeleteRegKey HKCR ".dat"
+  ${EndIf}
+  DeleteRegKey HKCR "${APP_NAME}.datfile"
   
+  ReadRegStr $0 HKCR ".bez" ""
+  ${If} $0 == "${APP_NAME}.bezfile"
+    DeleteRegKey HKCR ".bez"
+  ${EndIf}
+  DeleteRegKey HKCR "${APP_NAME}.bezfile"
+  
+  ReadRegStr $0 HKCR ".xo2" ""
+  ${If} $0 == "${APP_NAME}.xo2file"
+    DeleteRegKey HKCR ".xo2"
+  ${EndIf}
+  DeleteRegKey HKCR "${APP_NAME}.xo2file"
+
+  ; Notify Windows of file association changes and clear icon cache
+  System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+
   ; Remove shortcuts
   Delete "$DESKTOP\${APP_NAME}.lnk"
   Delete "$SMPROGRAMS\${APP_NAME}\*.*"

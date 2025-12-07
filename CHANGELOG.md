@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.2.1
+
+### Added
+
+- Windows Installer which replaces the former ZIP file download
+
 ## 4.2.0
 
 ### Added

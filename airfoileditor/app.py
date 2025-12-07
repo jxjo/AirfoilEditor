@@ -36,7 +36,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = "airfoileditor"
 
-from resources               import get_icons_path, get_icon_path
+from .resources              import get_icons_path, get_icon_path
 from .base.common_utils      import * 
 
 from .model.xo2_input        import Input_File

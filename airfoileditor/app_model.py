@@ -22,7 +22,7 @@ from typing                  import override
 from shutil                  import copytree, rmtree
 from PyQt6.QtCore            import pyqtSignal, QObject, QThread
 
-from resources               import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
+from .resources              import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
 from .base.app_utils         import Settings
 

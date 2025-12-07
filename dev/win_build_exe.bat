@@ -92,7 +92,16 @@ if exist %WIN_EXE_DIR% (
 	goto end
 )
 ren %APP_NAME% %WIN_EXE_DIR%
-
+if %ERRORLEVEL% neq 0 (
+	echo Error: Failed to rename %APP_NAME% to %WIN_EXE_DIR%
+	echo Please close any programs that might be using files in this directory.
+	pause
+	ren %APP_NAME% %WIN_EXE_DIR%
+)
+if %ERRORLEVEL% neq 0 (
+	echo Error: Rename still failed
+	goto end
+)
 
 rem - no more zip 
 goto finished
