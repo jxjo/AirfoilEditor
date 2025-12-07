@@ -5,18 +5,20 @@
 
     Object model overview (a little simplified) 
 
-    App                                         - root frame 
-        |-- Panel_Geometry                      - geometry data 
-        |-- Panel_Coordinates                   - LE and TE coordinates
-                ...                             - ...
+    App                                         - Main 
+        |-- App_Mode                            - different UI modes like View, Modify, Optimize 
+            |-- Data_Panel                      - UI lower data panel for mode 
+                |-- Panel_Geometry              - UI single panel with fields 
 
-        |-- Airfoil_Diagram                     - main airfoil view 
-                :
-                |-- Airfoil_Diagram_Item        - Pyqtgraph Plot item for airfoil contour
-                |-- Curvature_Diagram_Item      - Pyqtgraph Plot item for airfoil curvature 
-                ...                             - ...
-
-        |-- Airfoil                             - airfoil model object 
+            |-- Airfoil_Diagram                 - UI upper diagram area 
+                |-- Airfoil_Diagram_Item        - UI a single plot item within diagram
+                    |-- Curvature_Artist        - UI curvature plot artist
+            
+        |-- App_Model                           - App shell around data model allowing signals
+            |-- Airfoil                         - airfoil model object 
+            |-- Case                            - handle different like optimize, modify 
+                |-- Xo2_Input                   - main object optimization - represents an X02 input file 
+        
 """
 
 from ast import Add
