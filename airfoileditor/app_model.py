@@ -407,8 +407,12 @@ class App_Model (QObject):
 
         if isinstance (self.case, Case_Direct_Design) and self.airfoil.usedAsDesign:
 
+            # create copy of airfoil and it add this to the list of designs, current gets new name
             case : Case_Direct_Design = self.case
             case.add_design(self.airfoil)
+
+            # reset the polar set of the current airfoil ensure re-generation of polars (new filename)
+            self.airfoil.set_polarSet (Polar_Set (self.airfoil, polar_def=self.polar_definitions, only_active=True))
 
             logger.debug (f"{self} airfoil_changed - added new design")
             self.sig_new_airfoil.emit()                             # inform diagram and data panel - new design generated
