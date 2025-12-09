@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.2.2
+
+### Fixed
+
+- Auto polar generation when modifying an airfoil
+
 ## 4.2.1
 
 ### Added
