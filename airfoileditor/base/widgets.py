@@ -1827,6 +1827,19 @@ class ComboBox (Field_With_Label, QComboBox):
       self._set_placeholder_text()
 
 
+    @override
+    def showPopup(self):
+        """Override to refresh items before showing dropdown"""
+
+        old_options = self._options.copy() if self._options else []
+        self._get_properties()
+
+        if old_options != self._options:
+            self._set_Qwidget ()
+        
+        super().showPopup()
+
+
     def _set_placeholder_text (self):
         if not self._val and len(self._options) > 1: 
             self.setPlaceholderText ("Select")
