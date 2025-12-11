@@ -1,4 +1,4 @@
-# see PyPI_how_to.docx
+# see PyPI_how_to.docx  <"dingens">26
 
 [build-system]
 requires = ["hatchling"]
@@ -16,7 +16,7 @@ dependencies = [
   "numpy~=2.2.0",
   "packaging>=24.0",
   "requests",
-  "pyqt6>=6.9.1",
+  "pyqt6>=6.10.1",
   "pyqtgraph>=0.13.7",
   "f90nml>=1.4.4",
   "termcolor>=2.3.0",
