@@ -292,10 +292,16 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     def _open_airfoil (self):
         """ open a new airfoil and load it"""
 
-        filters   = "Airfoil files (*.dat);;Bezier files (*.bez);;Hicks Henne files (*.hicks)"
+        filters   = "Airfoil files (*.dat *.bez);;All files (*.*)"
         directory = self._val.pathName_abs if isinstance (self._val, Airfoil) else self._initial_dir
 
-        newPathFilename, _ = QFileDialog.getOpenFileName(self, filter=filters, directory=directory)
+        # Validate directory, ensure caption - QFileDialog tends to crash with native WIndows Dialog
+        if not (directory and os.path.isdir(directory)):
+            directory = ""
+         
+        newPathFilename, _ = QFileDialog.getOpenFileName(self, filter=filters, 
+                                                         directory=directory,
+                                                         caption="Select Airfoil File to Open")
 
         if newPathFilename:                         # user pressed open
             airfoil = create_airfoil_from_path (self, newPathFilename)
