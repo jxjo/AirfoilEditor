@@ -245,11 +245,10 @@ class App_Model (QObject):
 
         logger.debug (f"{str(self)} on Xoptfoil2 new design {case.xo2.nDesigns}")
 
-        airfoil_design = case.airfoil_designs [-1]        
-        self.set_airfoil (airfoil_design, silent=True)                      # new current airfoil
+        airfoil_design = case.airfoil_designs [-1]    
 
-        # remove polar set of design airfoil (during optimization) - so no polar creation 
-        airfoil_design.set_polarSet (Polar_Set (airfoil_design, polar_def=[]))
+        # set new current airfoil - no polar_set to avoid polar generation during optimization  
+        self.set_airfoil (airfoil_design, silent=True, assign_polar_set=False)         # new current airfoil
 
         self.sig_xo2_new_design.emit ()                                     # inform diagram
 
@@ -264,12 +263,18 @@ class App_Model (QObject):
         # signal start and end of an optimization run
         if case.xo2.isRunning and not self._xo2_run_started:
             self._xo2_run_started = True
+
             self.sig_xo2_run_started.emit()
 
         elif not case.xo2.isRunning and self._xo2_run_started:
             self._xo2_run_started = False
+
             self._watchdog.set_case_optimize (None)                         # stop watching
-            self.sig_xo2_run_finished.emit()
+            self.set_show_airfoil_design (False)                            # not show design airfoil finally
+            # assign polar set to the last design airfoil (it was assigned without polar set during optimization)
+            self.airfoil.set_polarSet (Polar_Set (self.airfoil, polar_def=self.polar_definitions, only_active=True))
+
+            self.sig_xo2_run_finished.emit()                                # wake up UI
 
         self.sig_xo2_new_state.emit()
 
@@ -374,7 +379,8 @@ class App_Model (QObject):
     
     def set_airfoil (self, aNew : Airfoil, 
                      silent: bool = False,
-                     load_settings: bool = False):
+                     load_settings: bool = False,
+                     assign_polar_set: bool = True):
 
         if aNew == self.airfoil:
             return  
@@ -388,8 +394,12 @@ class App_Model (QObject):
         # set new airfoil 
         self._airfoil = aNew
 
-        if aNew is not None: 
-            self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions, only_active=True))
+        # assign polar set with current polar definitions
+        if aNew is not None:
+            if assign_polar_set: 
+                self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=self.polar_definitions, only_active=True))
+            else: 
+                self._airfoil.set_polarSet (Polar_Set (aNew, polar_def=[]))   # empty polar set
 
         # load settings if requested and available
         if load_settings and self.airfoil_settings_exist:

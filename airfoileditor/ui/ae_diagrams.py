@@ -602,6 +602,8 @@ class Item_Airfoil (Diagram_Item):
         self.app_model.sig_airfoil_flap_set.connect         (self.flap_artist.set_show)
         self.app_model.sig_airfoil_bezier.connect           (self.bezier_artist.refresh_from_side)
 
+        self.app_model.sig_xo2_new_design.connect           (self.refresh_artists)
+
 
     @property
     def app_model (self) -> App_Model:
@@ -977,6 +979,13 @@ class Item_Curvature (Diagram_Item):
     title       = "Curvature"                 
     subtitle    = None                                 # will be set dynamically 
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # connect signals of app model
+
+        self.app_model.sig_xo2_new_design.connect           (self.refresh_artists)
+
 
     @property
     def app_model (self) -> App_Model:
@@ -1222,11 +1231,11 @@ class Item_Polars (Diagram_Item):
     @property
     def design_airfoil (self) -> Airfoil:
         """ design airfoil if it is available"""
-        for airfoil in self.airfoils:
+        for airfoil in self.app_model.airfoils:                     # all airfoils (not only those to show)
             if airfoil.usedAsDesign: return airfoil
 
     @property
-    def iDesign (self) -> Airfoil | None:
+    def iDesign (self)  -> int | None:
         """ iDesign of the Design airfoil - or None if there is no design"""
         return Case_Abstract.get_iDesign (self.design_airfoil)
 
@@ -2042,7 +2051,4 @@ class Diagram_Airfoil_Polar (Diagram):
         # just panel for new design airfoil - items are signaled from app_model
         self.section_panel.refresh ()
 
-        item : Item_Airfoil
-        for item in self._get_items (Item_Airfoil):
-            item.refresh ()
-        
+        # refresh of artists is done in items        
