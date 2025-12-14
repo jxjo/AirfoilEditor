@@ -492,7 +492,7 @@ class Reader_Abstract:
                     new_text = ''
                 else:
                     new_text = 'new '
-                if time_load < 0.01 and time_read < 0.005:
+                if time_load < 0.001 and time_read < 0.01:
                     logger.debug (f"{self} imported {n_new} {new_text}{object_name}  (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
                 elif n_new == 1: 
                     logger.warning (f"{self} importing {len(file_lines)} lines takes too long (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
