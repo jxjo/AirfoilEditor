@@ -602,7 +602,7 @@ class Item_Airfoil (Diagram_Item):
         self.app_model.sig_airfoil_flap_set.connect         (self.flap_artist.set_show)
         self.app_model.sig_airfoil_bezier.connect           (self.bezier_artist.refresh_from_side)
 
-        self.app_model.sig_xo2_new_design.connect           (self.refresh_artists)
+        self.app_model.sig_xo2_new_design.connect           (self._on_new_design)
 
 
     @property
@@ -678,6 +678,15 @@ class Item_Airfoil (Diagram_Item):
         artist : Airfoil_Artist
         for artist in self._get_artist (Airfoil_Artist):
             artist.set_show_points (is_paneling)
+
+
+    def _on_new_design (self):
+        """ slot to handle new design airfoil created signal """
+
+        # update airfoil geometry info on plot
+        self._plot_geo_info (refresh_airfoil=True)
+
+        self.refresh()
 
 
     @property 
@@ -1720,16 +1729,16 @@ class Diagram_Airfoil_Polar (Diagram):
 
             # show Welcome text if App runs the first time
             item = Item_Welcome (self, self.app_model)
-            self._add_item (item, r, 0, colspan=2)                          # item has fixed height
+            self._add_item (item, r, 0, colspan=3)                          # item has fixed height
             r += 1
 
         item = Item_Airfoil (self, self.app_model)     
-        self._add_item (item, r, 0, colspan=2, rowStretch=2)
+        self._add_item (item, r, 0, colspan=2, rowStretch=3)
 
         r += 1
         item = Item_Curvature (self, self.app_model, show=False)
         item.set_desired_xLink_name (Item_Airfoil.name)             # link x axis to airfoil item
-        self._add_item (item, r, 0, colspan=2, rowStretch=2)
+        self._add_item (item, r, 0, colspan=2, rowStretch=3)
 
         if Worker.ready:
             r += 1
@@ -1740,7 +1749,7 @@ class Diagram_Airfoil_Polar (Diagram):
                 item = Item_Polars (self, self.app_model, show=False)
                 item.name = f"{Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
                 item._set_settings (default_settings[iItem])                        # set default settings first
-                self._add_item (item, r, iItem, rowStretch=3)
+                self._add_item (item, r, iItem, rowStretch=4)
  
 
     @override
