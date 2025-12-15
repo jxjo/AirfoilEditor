@@ -1196,8 +1196,8 @@ class Item_Polars (Diagram_Item):
 
         self._title_item2 = None                        # a second 'title' for x-axis 
         self._autoRange_not_set = True                  # to handle initial no polars to autoRange 
-        self._next_btn    = None
-        self._prev_btn    = None 
+        self._switch_btn  = None
+        self._switch_menu_is_open = False
 
         super().__init__(*args, **kwargs)
 
@@ -1208,18 +1208,6 @@ class Item_Polars (Diagram_Item):
         self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh)
 
         self.app_model.sig_xo2_new_design.connect           (self.refresh)
-
-        # buttons for prev/next diagram 
-
-        p = Icon_Button (Icon.COLLAPSE, parent=self, itemPos=(0.5,0), parentPos=(0.5,0), offset=(0,0) )
-        p.clicked.connect(self._btn_prev_next_clicked)  
-        self._prev_btn = p
-
-        p = Icon_Button (Icon.EXPAND, parent=self, itemPos=(0.5,1), parentPos=(0.5,1), offset=(0,5) )
-        p.clicked.connect(self._btn_prev_next_clicked)
-        self._next_btn = p
-
-        self._refresh_prev_next_btn ()
 
 
     @property
@@ -1324,28 +1312,6 @@ class Item_Polars (Diagram_Item):
         return False 
 
 
-    def _btn_prev_next_clicked (self, button : Icon_Button):
-        """ prev or next buttons clicked"""
-
-        step = -1 if button.icon_name == Icon.COLLAPSE else 1
-
-        try:
-            # save current view Range
-            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
-
-            # get index of current and set new 
-            l = list (self._xyVars_show_dict.keys())
-            i = l.index(self._xyVars) + step
-            if i >= 0 :
-                self._xyVars = l[i]
-                viewRect = self._xyVars_show_dict [self._xyVars]
-                self.setup_viewRange (rect=viewRect)                # restore view Range
-                self._refresh_artist_xy ()                             # draw new polar
-            self._refresh_prev_next_btn ()                          # update visibility of buttons
-        except :
-            pass
-
-
     @override
     def plot_title (self):
         """ override to have 'title' at x,y axis"""
@@ -1401,29 +1367,96 @@ class Item_Polars (Diagram_Item):
         """ add actual xyVars and viewRange to the dict of already shown combinations"""
         try:
             self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
-            self._refresh_prev_next_btn ()
+            self._refresh_switch_btn ()
         except:
             pass
 
 
-    def _refresh_prev_next_btn (self):
-        """ hide/show previous / next buttons"""
+    def _refresh_switch_btn (self):
+        """ hide/show switch diagram button"""
 
         l = list (self._xyVars_show_dict.keys())
 
-        if self._xyVars in l:
-            i = l.index(self._xyVars)
-            if i == 0:
-                self._prev_btn.hide()
-            else:
-                self._prev_btn.show()
-            if i >= (len (self._xyVars_show_dict) - 1):
-                self._next_btn.hide()
-            else:
-                self._next_btn.show()
+        if not self._xyVars in l:
+            return                                          # not yet in dict - race condition
+        if len(l) < 2:                                      # only one diagram shown so far
+            return
+                
+        if len(l) == 2:
+            l.remove (self._xyVars)                             
+            text = f"Switch to {l[0][1]} vs {l[0][0]}"       # switch directly to second
         else: 
-            self._prev_btn.hide()
-            self._next_btn.hide()
+            text = f"Switch to ..."
+
+        if self._switch_btn is not None:                    # remove existing button - setText doesn't work well here
+            self._switch_btn.clicked.disconnect(self._switch_btn_clicked)
+            self.scene().removeItem(self._switch_btn)
+            self._switch_btn = None
+
+        # create switch button
+        p = Text_Button (text, parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
+                        itemPos=(0,0), parentPos=(0,0), offset=(130,2), frame_pad=0)
+        p.clicked.connect(self._switch_btn_clicked)  
+        p.setToolTip (f"Switch to polar diagram")
+        self._switch_btn = p
+
+
+    def _switch_btn_clicked (self, pos : QPoint):
+        """ switch diagram button clicked - show menu of available diagrams"""
+
+        l = list (self._xyVars_show_dict.keys())
+
+
+        if len(l) == 2:
+            # switch directly to second
+            l.remove (self._xyVars)                               
+            self._set_xyVars_from_switch (l[0])
+
+        elif len(l) > 2:
+            # Build popup menu 
+            menu = QMenu()
+            for xy in l:
+                action = QAction (f"{xy[1]} - {xy[0]}", menu)
+                action.setCheckable (True)
+                action.setChecked (xy == self._xyVars)
+                action.triggered.connect (lambda  checked, xy=xy : self._set_xyVars_from_switch (xy))
+                menu.addAction (action)
+            # Temporarily disable hover events while menu is open
+            self._switch_menu_is_open = True
+            menu.exec (pos)
+            self._switch_menu_is_open = False
+
+
+    def _set_xyVars_from_switch (self, xyVars):
+        """ set xyVars from switch button menu selection"""
+
+        try:
+            # save current view Range
+            self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
+
+            # set new xyVars
+            self._xyVars = xyVars
+            viewRect = self._xyVars_show_dict [self._xyVars]
+            self.setup_viewRange (rect=viewRect)                    # restore view Range
+            self._refresh_artist_xy ()                              # draw new polar
+            self._refresh_switch_btn ()                             # update switch button
+        except :
+            pass
+
+
+    @override
+    def hoverEvent(self, ev):
+        """ overridden to show/hide prev, next buttons"""
+
+        super().hoverEvent (ev)
+
+        if self._switch_btn is not None and not self._switch_menu_is_open:
+            if ev.enter:
+                n_diag = len(self._xyVars_show_dict.keys())
+                if n_diag > 1:
+                    self._switch_btn.show()
+            elif ev.exit:
+                self._switch_btn.hide()
 
 
     def _refresh_artist_xy (self): 

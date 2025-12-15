@@ -700,32 +700,16 @@ class Text_Button (pg.LabelItem):
                   brush_color_hover :str="#484747",       # background color hover
                   on_clicked : Callable = None,             # callback on click with scene position
                   **kwargs):
-        super().__init__(text, color=color, size=size,**kwargs)
 
-        self._on_clicked = on_clicked if callable(on_clicked) else None
+        self._on_clicked  = on_clicked if callable(on_clicked) else None
         self._brush_color_hover = brush_color_hover
-        self._brush_color = brush_color
+        self._brush_color  = brush_color
+        self._frame_color  = frame_color
+        self._frame_radius = frame_radius
+        self._frame_pad    = frame_pad
+        self._button_frame = None
 
-        # frame around text with background (hover) color
-        rect = self.boundingRect()
-        height_correction = int(rect.height() / 8 )                         # to better fit text vertically
-        rect.adjust(0,height_correction+1,0,-height_correction)
-
-        rect.adjust(-frame_pad, -frame_pad, frame_pad, frame_pad)
-
-        # create rounded rectangle path for text background
-        path = QPainterPath()
-        path.addRoundedRect(rect, frame_radius, frame_radius)
-
-        # Create frame around text - QGraphicsRectItem based on rect
-        frame = QGraphicsPathItem(path, parent=self)
-        pen = QPen(QColor(frame_color))
-        pen.setWidthF (1)
-        frame.setPen(pen)
-        frame.setBrush(QColor(self._brush_color))
-        frame.setZValue(self.zValue() - 2)
-
-        self._button_frame = frame
+        super().__init__(text, color=color, size=size,**kwargs)
 
         # set self (LabelItem) - attach to parent PlotItem
 
@@ -738,6 +722,47 @@ class Text_Button (pg.LabelItem):
             self.setAcceptHoverEvents(True)
         if self._on_clicked: 
             self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+
+        # frame around text with background (hover) color
+        self._create_frame_around_text ()
+
+
+    def _create_frame_around_text (self):
+        """ create frame around text with background (hover) color """
+
+        rect = self.boundingRect()
+        height_correction = int(rect.height() / 8 )           # to better fit text vertically
+        rect.adjust(0,height_correction+1,0,-height_correction)
+
+        rect.adjust(-self._frame_pad, -self._frame_pad, self._frame_pad, self._frame_pad)
+
+        # create rounded rectangle path for text background
+        path = QPainterPath()
+        path.addRoundedRect(rect, self._frame_radius, self._frame_radius)
+        # Create frame around text - QGraphicsRectItem based on rect
+        frame = QGraphicsPathItem(path, parent=self)
+        pen = QPen(QColor(self._frame_color))
+        pen.setWidthF (1)
+        frame.setPen(pen)
+        frame.setBrush(QColor(self._brush_color))
+        frame.setZValue(-1)                          # as frame is child, zValue is relative behind text
+
+        self._button_frame = frame
+
+
+    def set_text(self, text, **args):
+        """ set new text of button with frame update """
+        # buggy! frame size is not always adjusted correctly  
+        
+        super().setText(text, **args)
+
+        if self._button_frame is not None:
+            self.scene().removeItem(self._button_frame)
+
+        # Force the internal QGraphicsTextItem to update its layout
+        self.item.adjustSize()
+
+        self._create_frame_around_text ()
 
 
     def mousePressEvent(self, event):
