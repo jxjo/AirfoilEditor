@@ -9,6 +9,10 @@ Diagram (items) for airfoil
 
 from copy                   import deepcopy 
 
+from PyQt6.QtCore           import Qt, QTimer, QMargins, pyqtSignal
+from PyQt6.QtGui            import QColor
+import pyqtgraph as pg
+
 from ..base.widgets         import * 
 from ..base.diagram         import * 
 from ..base.panels          import Edit_Panel, Toaster
@@ -1179,6 +1183,40 @@ Try out the functionality with this example or <strong><span style="color: silve
         self.showGrid(x=False, y=False)
 
 
+#-------------------------------------------------------------------------------
+
+
+class ViewBox_Fixed (pg.ViewBox):
+    """
+    This subclass replaces the pyqtgraph ViewBox to allow skipping the first drag event
+    after a context menu interaction. This prevents sudden jumps in the view when the user
+    interacts with the context menu and pan/drags the view immediately after.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._skip_next_drag_start = False
+    
+    @override
+    def mouseDragEvent(self, ev, axis=None):
+        """ Skip the first drag start after menu closes to prevent jump """
+
+        if self.state['mouseMode'] == pg.ViewBox.PanMode:
+            if self._skip_next_drag_start and ev.isStart():
+                ev.accept()
+                self._skip_next_drag_start = False
+                return
+        
+        # Normal processing
+        super().mouseDragEvent(ev, axis)
+
+
+    def set_skip_next_drag(self, skip: bool):
+        """ Set whether to skip the next drag start event """
+        self._skip_next_drag_start = skip
+
+
 
 class Item_Polars (Diagram_Item):
     """ 
@@ -1197,9 +1235,13 @@ class Item_Polars (Diagram_Item):
         self._title_item2 = None                        # a second 'title' for x-axis 
         self._autoRange_not_set = True                  # to handle initial no polars to autoRange 
         self._switch_btn  = None
-        self._switch_menu_is_open = False
+        self._popup_menu  = None                        # popup menu for variable selection
+        self._popup_menu_is_open = False
 
-        super().__init__(*args, **kwargs)
+        # Create custom ViewBox - see ViewBox_Fixed class for infos
+        custom_viewbox = ViewBox_Fixed(enableMenu=False)   # parent=self, 
+
+        super().__init__(*args, viewBox=custom_viewbox, **kwargs)
 
         # connect to model signals
 
@@ -1301,8 +1343,6 @@ class Item_Polars (Diagram_Item):
         xyVars = d.get('xyVars', None)                          
         if xyVars is not None:
             self.set_xyVars (xyVars)
-            self._refresh_artist_xy ()
-            self.setup_viewRange ()
 
 
     @property 
@@ -1352,7 +1392,9 @@ class Item_Polars (Diagram_Item):
                 action.setChecked (v == self.xVar)
                 action.triggered.connect (lambda  checked, v=v: self.set_xVar (v))
             menu.addAction (action)
-        menu.exec (pos)
+
+        # open non-modal popup menu at pos
+        self._open_popup_menu (menu, pos)
 
 
     def xo2_isRunning (self) -> bool:
@@ -1377,21 +1419,18 @@ class Item_Polars (Diagram_Item):
 
         l = list (self._xyVars_show_dict.keys())
 
-        if not self._xyVars in l:
-            return                                          # not yet in dict - race condition
-        if len(l) < 2:                                      # only one diagram shown so far
-            return
+        if not self._xyVars in l: return                    # not yet in dict - race condition                         
+        if len(l) < 2: return                               # only one diagram shown so far
                 
         if len(l) == 2:
             l.remove (self._xyVars)                             
-            text = f"Switch to {l[0][1]} vs {l[0][0]}"       # switch directly to second
+            text = f"Switch to {l[0][1]} vs {l[0][0]}"      # switch directly to second
         else: 
             text = f"Switch to ..."
 
         if self._switch_btn is not None:                    # remove existing button - setText doesn't work well here
             self._switch_btn.clicked.disconnect(self._switch_btn_clicked)
             self.scene().removeItem(self._switch_btn)
-            self._switch_btn = None
 
         # create switch button
         p = Text_Button (text, parent=self, color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt",
@@ -1402,10 +1441,9 @@ class Item_Polars (Diagram_Item):
 
 
     def _switch_btn_clicked (self, pos : QPoint):
-        """ switch diagram button clicked - show menu of available diagrams"""
+        """ switch button clicked - direct switch or show menu of available diagrams"""
 
         l = list (self._xyVars_show_dict.keys())
-
 
         if len(l) == 2:
             # switch directly to second
@@ -1413,44 +1451,71 @@ class Item_Polars (Diagram_Item):
             self._set_xyVars_from_switch (l[0])
 
         elif len(l) > 2:
-            # Build popup menu 
+            # build and open popup menu with all diagrams
             menu = QMenu()
-            for xy in l:
-                action = QAction (f"{xy[1]} - {xy[0]}", menu)
-                action.setCheckable (True)
-                action.setChecked (xy == self._xyVars)
-                action.triggered.connect (lambda  checked, xy=xy : self._set_xyVars_from_switch (xy))
-                menu.addAction (action)
-            # Temporarily disable hover events while menu is open
-            self._switch_menu_is_open = True
-            menu.exec (pos)
-            self._switch_menu_is_open = False
+            for xyVars in l:
+                action = QAction(f"{xyVars[1]} vs {xyVars[0]}", menu)
+                action.setCheckable(True)
+                action.setChecked(xyVars == self._xyVars)
+                action.triggered.connect(lambda checked, xy=xyVars: self._set_xyVars_from_switch(xy))
+                menu.addAction(action)
+
+            self._open_popup_menu (menu, pos)
+
+        # refresh button after menu closed
+        QTimer.singleShot (10, self._refresh_switch_btn)    
+
+
+    def _open_popup_menu (self, aMenu : QMenu, pos: QPoint):
+        """ 
+        Open a given popup menu at pos - with handling of menu open flag
+        """
+
+        # aMenu must bei instance variable to avoid garbage collection
+        self._popup_menu = aMenu   
+
+        # Mark menu open to suppress hover/UI flicker
+        self._popup_menu_is_open = True
+
+        # Show non-modal popup (no nested event loop)
+        self._popup_menu.popup(pos)
+
+        # When the menu hides, clear the flag and set flag to skip first pan drag
+        def on_hide():
+            if isinstance(self.viewBox, ViewBox_Fixed):
+                self.viewBox.set_skip_next_drag(True)
+            self._popup_menu_is_open = False
+
+        aMenu.aboutToHide.connect(on_hide)
+
 
 
     def _set_xyVars_from_switch (self, xyVars):
         """ set xyVars from switch button menu selection"""
 
         try:
-            # save current view Range
+
+            # save current diagram's viewRect before switching
             self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
 
             # set new xyVars
             self._xyVars = xyVars
             viewRect = self._xyVars_show_dict [self._xyVars]
-            self.setup_viewRange (rect=viewRect)                    # restore view Range
-            self._refresh_artist_xy ()                              # draw new polar
-            self._refresh_switch_btn ()                             # update switch button
+ 
+            self.setup_viewRange (rect=viewRect)        # restore view Range
+            self._refresh_artist_xy ()                  # draw new polar
+
         except :
             pass
 
 
     @override
     def hoverEvent(self, ev):
-        """ overridden to show/hide prev, next buttons"""
+        """ overridden to show/hide switch diagram button on hover"""
 
         super().hoverEvent (ev)
 
-        if self._switch_btn is not None and not self._switch_menu_is_open:
+        if self._switch_btn is not None and not self._popup_menu_is_open:
             if ev.enter:
                 n_diag = len(self._xyVars_show_dict.keys())
                 if n_diag > 1:
@@ -1500,7 +1565,7 @@ class Item_Polars (Diagram_Item):
             self._xyVars_show_dict[self._xyVars] = self.viewBox.viewRect()
 
         self._xyVars = (self._xyVars[0], varType)
-        # wait a little until user is sure for new xyVars (prev/next buttons)
+        # wait a little until user is sure for new xyVars (switch button)
         QTimer.singleShot (3000, self._add_xyVars_to_show_dict)
 
         self._refresh_artist_xy ()
@@ -1522,6 +1587,9 @@ class Item_Polars (Diagram_Item):
         else: 
             yVar = yVar 
         self._xyVars = (xVar, yVar)
+
+        self._refresh_artist_xy ()
+        self.setup_viewRange ()
 
 
     @override
@@ -1575,7 +1643,8 @@ class Item_Polars (Diagram_Item):
 
             self.showGrid(x=True, y=True)
         else: 
-            self.viewBox.setRange (rect=rect, padding=0.0)      # restore view Range
+
+            self.viewBox.setRange(rect=rect, padding=0.0)       # restore view Range
 
         self._set_legend_position ()                            # find nice legend position 
 
