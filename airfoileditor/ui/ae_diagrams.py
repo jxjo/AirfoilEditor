@@ -231,6 +231,7 @@ class Panel_Airfoils (Edit_Panel):
                     Airfoil_Select_Open_Widget (l,r,c+2, 
                                     get=self.airfoil, set=self.set_airfoil, id=iair,
                                     initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
+                                    dialog_parent=self,                                 # needed as layout is transient
                                     toolTip=air.info_as_html)
 
                     ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_airfoil, id=iair,
@@ -242,6 +243,7 @@ class Panel_Airfoils (Edit_Panel):
                 Airfoil_Select_Open_Widget (l,r,c+2, 
                                 get=None, set=self.set_airfoil, id=iair+1,
                                 initialDir=self.airfoils[-1], addEmpty=True,
+                                dialog_parent=self,                                     # needed as layout is transient
                                 toolTip=f"New reference airfoil")
                 r +=1
             # SpaceR (l,r,stretch=0)

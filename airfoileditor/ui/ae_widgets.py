@@ -182,15 +182,16 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     _width  = (120, None)
 
     def __init__(self, *args,
-                 get = None,                            # get current / initial airfoil 
-                 set : callable= None,                  # callback: will set new airfoil
-                 set_open : Callable | None = None,     # alternate callback when opened via button 
-                 addEmpty = False,                      # add empty entry to file list 
-                 asSpin = False,                        # ComboBox with spin buttons 
-                 withOpen = True,                       # include open button 
-                 textOpen = "Open",                     # text for Open button 
-                 widthOpen = 100,                       # width of open text button 
-                 initialDir : Airfoil | str | None = None, # either an airfoil or a pathString 
+                 get = None,                                # get current / initial airfoil 
+                 set : callable= None,                      # callback: will set new airfoil
+                 set_open : Callable | None = None,         # alternate callback when opened via button 
+                 addEmpty = False,                          # add empty entry to file list 
+                 asSpin = False,                            # ComboBox with spin buttons 
+                 withOpen = True,                           # include open button 
+                 textOpen = "Open",                         # text for Open button 
+                 widthOpen = 100,                           # width of open text button 
+                 initialDir : Airfoil | str | None = None,  # either an airfoil or a pathString 
+                 dialog_parent : QWidget | None = None,     # alternate, explicit parent for QFileDialog if self is transient
                  **kwargs):
         super().__init__(*args, get=get, set=set, **kwargs)
 
@@ -207,6 +208,8 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             self._initial_dir = airfoil.pathName_abs
         else:
             self._initial_dir = initialDir
+
+        self._dialog_parent = dialog_parent
 
         # get initial properties  (cur airfoil) 
         self._get_properties ()
@@ -298,8 +301,14 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         # Validate directory, ensure caption - QFileDialog tends to crash with native WIndows Dialog
         if not (directory and os.path.isdir(directory)):
             directory = ""
-         
-        newPathFilename, _ = QFileDialog.getOpenFileName(self, filter=filters, 
+
+        # get parent for dialog
+        if self._dialog_parent is None:
+            parent = self
+        else:
+            parent = self._dialog_parent            # QFileDialog parent if self is transient (would crash)
+
+        newPathFilename, _ = QFileDialog.getOpenFileName(parent, filter=filters, 
                                                          directory=directory,
                                                          caption="Select Airfoil File to Open")
 
