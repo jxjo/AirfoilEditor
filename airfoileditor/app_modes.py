@@ -430,11 +430,11 @@ class Mode_Modify (Mode_Abstract):
         if airfoil.isExample:
             airfoil.save()
 
-        # switch app_model to this mode with new Design Case - will get/create first design
-        self._app_model.set_mode_and_case (self.mode_id, Case_Direct_Design (airfoil))
-
         # show airfoil design initially
         self._app_model.set_show_airfoil_design (True)
+
+        # switch app_model to this mode with new Design Case - will get/create first design
+        self._app_model.set_mode_and_case (self.mode_id, Case_Direct_Design (airfoil))
 
         super().on_enter()
 
