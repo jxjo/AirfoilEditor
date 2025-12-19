@@ -272,7 +272,8 @@ class App_Model (QObject):
             self._watchdog.set_case_optimize (None)                         # stop watching
             self.set_show_airfoil_design (False)                            # not show design airfoil finally
             # assign polar set to the last design airfoil (it was assigned without polar set during optimization)
-            self.airfoil.set_polarSet (Polar_Set (self.airfoil, polar_def=self.polar_definitions, only_active=True))
+            if self.airfoil:
+                self.airfoil.set_polarSet (Polar_Set (self.airfoil, polar_def=self.polar_definitions, only_active=True))
 
             self.sig_xo2_run_finished.emit()                                # wake up UI
 
