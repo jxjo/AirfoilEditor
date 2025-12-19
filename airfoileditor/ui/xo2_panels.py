@@ -305,7 +305,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         r += 1
         SpaceR (l,r, stretch=0)
         r += 1
-        Field       (l,r,c, lab="Final Airfoil", 
+        Field       (l,r,c, lab="Final Airfoil", lab_disable=True,
                      get=lambda: self.input_file.airfoil_final_fileName,
                      style=lambda: style.GOOD if self.case.airfoil_final else style.NORMAL,
                      toolTip=lambda: (self.case.airfoil_final.info_as_html if self.case.airfoil_final else "it does not yet exist"))
@@ -323,6 +323,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
                      toolTip=lambda: "Bezier based seed airfoil is master of shape functions" if self.input_file.airfoil_seed.isBezierBased \
                                      else "Select shape functions for optimization")     
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_shape_functions,
+                     disable=lambda: self.input_file.airfoil_seed.isBezierBased,
                      toolTip="Edit options of shape functions")
 
         r += 1
@@ -825,7 +826,9 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
         """ add Widgets to header layout"""
 
         Button (l_head, text="Input File", width=70, button_style = button_style.SUPTLE,
-                set=self.sig_edit_input_file.emit, toolTip="Direct editing of the Xoptfoil2 input file")
+                set=self.sig_edit_input_file.emit, 
+                disable=lambda: self._isDisabled,
+                toolTip="Direct editing of the Xoptfoil2 input file")
 
 
     def _init_layout (self) -> QGridLayout:
