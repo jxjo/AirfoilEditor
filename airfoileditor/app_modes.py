@@ -767,7 +767,9 @@ class Mode_Optimize (Mode_Abstract):
                 seed_airfoil = self._app_model.airfoil
                 workingDir   = seed_airfoil.pathName_abs
 
-                diag = Xo2_New_Dialog (self.stacked_panel, workingDir, seed_airfoil, parentPos=(0.5,0.0), dialogPos=(0,1.1))
+                diag = Xo2_New_Dialog (self.stacked_panel, workingDir, seed_airfoil, 
+                                       watchdog=self._app_model._watchdog, 
+                                       parentPos=(0.5,0.0), dialogPos=(0,1.1))
                 rc = diag.exec()
 
                 if rc == QDialog.DialogCode.Accepted:
@@ -892,7 +894,11 @@ class Mode_Optimize (Mode_Abstract):
 
         self._save_input_file (ask=True)
 
-        diag = Xo2_New_Dialog (self.stacked_panel, self._app_model.workingDir, self._app_model.airfoil_seed, 
+        seed_airfoil = self._app_model.airfoil_seed
+        workingDir   = self._app_model.workingDir
+
+        diag = Xo2_New_Dialog (self.stacked_panel, workingDir, seed_airfoil, 
+                               watchdog=self._app_model._watchdog,
                                parentPos=(0.5,0.0), dialogPos=(0.5,1.1))
         rc = diag.exec()
 

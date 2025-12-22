@@ -1173,6 +1173,7 @@ class Airfoil_Bezier(Airfoil):
          
         self._name = new_name
         self._isLoaded = True 
+        self._isModified = False                            # set_newSide_for will set isModified True
 
         logger.debug (f"Bezier definition for {self.name} loaded")
 

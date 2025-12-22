@@ -351,7 +351,7 @@ class Input_File:
         return self._airfoil_seed
 
     
-    def set_airfoil_seed (self, airfoil: Airfoil | str):  
+    def set_airfoil_seed (self, airfoil: Airfoil):  
         """ set new seed airfoil in input file"""
 
         if isinstance (airfoil, Airfoil): 
@@ -366,9 +366,6 @@ class Input_File:
                 ncp_bot = geo.lower.nControlPoints
                 self.nml_bezier_options.set_ncp_top (ncp_top)
                 self.nml_bezier_options.set_ncp_bot (ncp_bot)
-
-        elif isinstance (airfoil, str):
-            self.nml_optimization_options.set_airfoil_file(airfoil)
 
         # reset existing Airfoil - will be re-created 
         self._airfoil_seed = None

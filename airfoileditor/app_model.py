@@ -138,7 +138,7 @@ class App_Model (QObject):
     sig_xo2_opPoint_def_selected= pyqtSignal()          # xo2 opPoint definition selected
 
 
-    def __init__(self, workingDir_default: str = None):
+    def __init__(self, workingDir_default: str = None, start_watchdog: bool = True):
         super().__init__()
 
         self._workingDir_default= workingDir_default if workingDir_default else os.getcwd()
@@ -166,6 +166,8 @@ class App_Model (QObject):
         self._airfoil_settings_loaded = False           # have settings been loaded for current airfoil
 
         self._is_lower_minimized= False                 # is lower panel minimized
+        
+        self._watchdog = None                           # watchdog thread (may not be started)
 
         # set working dir for Example airfoils created
         Example.workingDir_default = workingDir_default   
@@ -175,8 +177,9 @@ class App_Model (QObject):
         Worker    (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.WORKER_MIN_VERSION)
         Xoptfoil2 (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.XOPTFOIL2_MIN_VERSION)
 
-        # initialize watchdog thread for polars and xo2 state changes
-        self._init_watchdog()
+        # initialize watchdog thread for polars and xo2 state changes (optional)
+        if start_watchdog:
+            self._init_watchdog()
 
 
     def __repr__(self):
@@ -209,8 +212,19 @@ class App_Model (QObject):
         """ finish watchdog thread """
 
         if self._watchdog:
+
+            # Disconnect all signals safely
+            self._watchdog.sig_new_polars.disconnect()
+            self._watchdog.sig_xo2_new_state.disconnect()
+            self._watchdog.sig_xo2_new_design.disconnect()
+            self._watchdog.sig_xo2_new_step.disconnect()
+            self._watchdog.sig_xo2_still_running.disconnect()
+
+            # Stop the thread
+            self._watchdog.set_case_optimize(None)              # stop watching
             self._watchdog.requestInterruption()
-            self._watchdog.wait (2000)                     # wait max 2s for finish
+            self._watchdog.wait(2000)                           # wait max 2s for finish
+            
             self._watchdog = None
 
 

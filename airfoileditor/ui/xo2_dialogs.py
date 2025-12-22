@@ -28,7 +28,7 @@ from .util_dialogs          import Polar_Definition_Dialog
 from .ae_widgets            import Airfoil_Select_Open_Widget, mode_color
 from .xo2_diagrams          import Diagram_Xo2_Progress, Diagram_Xo2_Airfoil_and_Polar
 
-from ..app_model            import App_Model
+from ..app_model            import App_Model, Watchdog
 
 
 import logging
@@ -244,19 +244,21 @@ class Xo2_New_Dialog (Dialog):
 
     # -------------------------------------------------------------------------
 
-    def __init__ (self, parent, workingDir : str,  current_airfoil : Airfoil, **kwargs): 
+    def __init__ (self, parent, workingDir : str,  current_airfoil : Airfoil, 
+                  watchdog : Watchdog, **kwargs): 
 
-        # create new, separate app_model 
+        # create new, separate app_model (without watchdog thread - use watchdog of parent)
 
-        self._app_model = App_Model (workingDir_default=workingDir)
+        self._app_model = App_Model (workingDir_default=workingDir, start_watchdog=False)
+        self._watchdog  = watchdog
 
-        self._app_model.set_airfoil (current_airfoil)
+        self._app_model.set_airfoil (current_airfoil.asCopy())
         self._app_model.set_case (Case_Optimize (None, workingDir=workingDir))   
 
 
         # init empty input file with current seed airfoil
 
-        self.input_file.set_airfoil_seed (current_airfoil.fileName)
+        self.input_file.set_airfoil_seed (current_airfoil.asCopy())
         self.input_file.nml_info.set_descriptions([f"e.g. improve max glide, while keep min cd", "and thickness"])
         self.optimization_options.set_shape_functions (Nml_optimization_options.BEZIER)
         self.operating_conditions.set_re_default_asK (400)
@@ -276,6 +278,9 @@ class Xo2_New_Dialog (Dialog):
 
         # initially disable ok button - see refresh 
         self._btn_ok.setDisabled(True)
+
+        # connect to new polar loading
+        self._watchdog.sig_new_polars.connect (self.refresh)
 
 
     @override
@@ -599,6 +604,16 @@ class Xo2_New_Dialog (Dialog):
         self.input_file.save_nml ()
 
         super().accept()
+
+
+    @override
+    def done(self, result):
+        """ called by both accept() and reject() before closing"""
+
+        self._watchdog.sig_new_polars.disconnect (self.refresh)
+        self._watchdog = None
+
+        super().done(result)
 
 
 

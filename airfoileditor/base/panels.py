@@ -1348,6 +1348,13 @@ class Dialog (QDialog):
         super().reject()
 
 
+    @override
+    def done (self, r : int):
+        """ handle done actions - both accept and reject"""
+        # to override 
+        super().done(r)
+
+
 #-------------------------------------------------------------------------------
 # Tab panel    
 #-------------------------------------------------------------------------------
