@@ -63,13 +63,11 @@ logger = logging.getLogger(__name__)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "4.2.2"                  # hatch "version dynamic" - PEP440 compliant version string
+__version__      = "4.2.3"                  # hatch "version dynamic" - PEP440 compliant version string
                                             # for Github use SemVer "4.2.0-beta.3"
 
-CHANGE_TEXT      = "- Save / Load individual airfoil settings<br>" + \
-                   "- Change polar diagram variables directly in diagram<br>" + \
-                   "- Maximize / minimize lower data panel<br>" + \
-                   "- Revised Match Bezier UI<br>"
+CHANGE_TEXT      = "- Switch between polar diagram variables" # + \
+                #    "- Revised Match Bezier UI<br>"
 
 
 class Main (QMainWindow):

@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.2.3
+This is just a maintenance release 
+
+### Added
+
+- Switch button in polar diagrams to select last recently used polar variables
+
+### Fixed
+
+- Optimization: New case polar generation 
+- Optimization: Display of design airfoils 
+- Optimization: Disabled widgets during run 
+- Jumping polar diagram after menu selection 
+- QFileDialog crashes app
+- Update PYQT6 version to 6.10.1 
+- Refresh combo box items when open list
+
 ## 4.2.2
 
 ### Fixed

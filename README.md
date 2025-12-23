@@ -1,6 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 4.2.2
+### Version 4.2.3
 
 ---
 
