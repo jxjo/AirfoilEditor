@@ -1021,6 +1021,11 @@ class Airfoil_Bezier(Airfoil):
         cp_upper = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.upper, 5)
         cp_lower = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.lower, 5)
 
+        # sanity - ensure TE is symmetric and at x=1.0
+        avg_y = (cp_upper[-1][1] - cp_lower[-1][1]) / 2
+        cp_upper[-1] = (1.0,  avg_y)
+        cp_lower[-1] = (1.0, -avg_y)
+
         airfoil_new =  Airfoil_Bezier (name=name, cp_upper=cp_upper, cp_lower=cp_lower)
 
         # new pathFileName

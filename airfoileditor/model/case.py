@@ -430,14 +430,21 @@ class Case_As_Bezier (Case_Direct_Design):
 
         if not isinstance(airfoil, Airfoil) or not airfoil.isDatBased:
             raise ValueError (f"Airfoil for 'New as Bezier' must be .dat Airfoil")
+        
+        # sanity - ensure airfoil is normalized
+        if not airfoil.isNormalized:
+            seed_airfoil = airfoil.asCopy ()
+            seed_airfoil.normalize(just_basic=True, mod_string='_norm')
+        else:
+            seed_airfoil = airfoil
 
         # create initial Bezier airfoil based on current
-        self._initial_airfoil_bez = Airfoil_Bezier.onAirfoil (airfoil)
+        self._initial_airfoil_bez = Airfoil_Bezier.onAirfoil (seed_airfoil)
 
         # remove existing design dir - start with new designs
         shutil.rmtree (self.design_dir, ignore_errors=True)
 
-        super().__init__(airfoil)
+        super().__init__(seed_airfoil)
 
 
 

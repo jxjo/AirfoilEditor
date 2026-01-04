@@ -555,8 +555,8 @@ class Mode_As_Bezier (Mode_Abstract):
 
         if not self._app_model.airfoil.isNormalized:
 
-            text = "The airfoil is not normalized.\n\n" + \
-                   "Match Bezier will not lead to the best results."
+            text = f"{self._app_model.airfoil.fileName} is not normalized.\n\n" + \
+                   "Match Bezier will work on a normalized copy of the airfoil."
             button = MessageBox.confirm (self.stacked_panel, "New As Bezier", text)
             if button == QMessageBox.StandardButton.Cancel:
                 return None
