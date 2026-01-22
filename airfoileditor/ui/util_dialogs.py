@@ -168,7 +168,7 @@ class Polar_Definition_Dialog (Dialog):
     """ Dialog to edit a single polar definition"""
 
     _width  = 480
-    _height = (360, None)
+    _height = (300, None)
 
     name = "Edit Polar Definition"
 
@@ -267,7 +267,7 @@ class Polar_Definition_Dialog (Dialog):
                             disable=True,
                             hide = lambda: self._fixed_chord is None or self.polar_def.type==polarType.T2)
             r += 1 
-            SpaceR (l, r, height=5, stretch=2) 
+            SpaceR (l, r, height=10, stretch=0) 
 
             r += 1 
             CheckBox (l,r,c, text="Force transition at x ...", colSpan=7,
@@ -337,6 +337,8 @@ class Polar_Definition_Dialog (Dialog):
     def _on_widget_changed (self):
         """ slot a input field changed - repanel and refresh"""
         self.refresh()
+        # Adjust dialog size to fit content after widgets are shown/hidden
+        self.adjustSize()
 
 
     @override
