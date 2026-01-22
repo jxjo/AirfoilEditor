@@ -16,13 +16,47 @@ from ..model.airfoil            import Airfoil, Airfoil_Bezier, usedAs, Geometry
 from ..model.airfoil_geometry   import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
 from ..model.polar_set          import * 
 
-from PyQt6.QtGui                import QColor, QBrush, QPen
+from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath
 from PyQt6.QtCore               import pyqtSignal, QObject
 
 
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
+
+
+# -------- additional symbols to plot ------------------------
+
+def _symbol_transition_right ():
+    """ Symbol transition - create double wave"""
+
+    path = QPainterPath()
+    # coords = [(-0.125, 0.125), (0, 0), (0.125, 0.125),
+    #             (0.05, 0.125), (0.05, 0.5), (-0.05, 0.5), (-0.05, 0.125)]
+    coords = [
+            (0,0),
+            (0,0.125),
+            (-0.04, 0.125),
+            (-0.04, -0.125),
+            (0, -0.125),
+            (0,0),
+            (0.05, 0.075),
+            (0.15, -0.075),
+            (0.25, 0.075),
+            (0.35, -0.075),
+            (0.4, 0)]
+    path.moveTo(*coords[0])
+    for x,y in coords[1:]:
+        path.lineTo(x, y)
+
+   # Scale by 4
+    transform = QTransform()
+    transform.scale(4, 4)
+    transform.translate(0.03,0)
+    return transform.map(path)
+
+SYMBOL_TRANSITION_RIGHT  = _symbol_transition_right()       
+
 
 
 # -------- helper functions ------------------------
@@ -1294,7 +1328,7 @@ class Polar_Artist (Artist):
 
 
 
-    def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color): 
+    def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color : QColor): 
         """ plot a single polar"""
 
         airfoils_with_design = False 
@@ -1345,9 +1379,84 @@ class Polar_Artist (Artist):
 
         x,y = polar.ofVars (self.xyVars)
 
-        self._plot_dataItem  (x, y, name=label, pen = pen, 
-                                symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                antialias = antialias, zValue=zValue)
+        # plot xtrip marker if available - split at forced transition
+        
+        plotted = False
+        if polar.has_xtrip:
+            upper_idx = None
+            lower_idx = None
+            
+            # For XTR plots, determine which side is being plotted
+            if var.XTRT in self.xyVars and polar.xtript is not None:
+                upper_idx = polar.xtript_end_idx
+            elif var.XTRB in self.xyVars and polar.xtripb is not None:
+                lower_idx = polar.xtripb_start_idx
+            # For normal plots, check both upper and lower
+            else:
+                if polar.xtript is not None:
+                    upper_idx = polar.xtript_end_idx
+                if polar.xtripb is not None:
+                    lower_idx = polar.xtripb_start_idx
+            
+            # Split and plot based on which transitions are active
+            if upper_idx is not None or lower_idx is not None:
+                pen2 = pg.mkPen(color, width=linewidth, style=Qt.PenStyle.DashDotLine)
+                
+                if upper_idx is not None and lower_idx is not None:
+                    # Both transitions: forced upper [0:upper_idx+1], natural [upper_idx:lower_idx+1], forced lower [lower_idx:]
+                    # enusre upper is not greater than lower to avoid double plotting
+                    upper_idx = min(upper_idx, lower_idx)
+                    x_forced_upper = x[:upper_idx+1]
+                    y_forced_upper = y[:upper_idx+1]
+                    self._plot_dataItem  (x_forced_upper, y_forced_upper, name='Forced transition region', pen = pen2,  
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
+                    
+                    x_natural = x[upper_idx:lower_idx+1]
+                    y_natural = y[upper_idx:lower_idx+1]
+                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
+                    
+                    x_forced_lower = x[lower_idx:]
+                    y_forced_lower = y[lower_idx:]
+                    self._plot_dataItem  (x_forced_lower, y_forced_lower, name='Forced transition region', pen = pen2, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
+                    
+                elif lower_idx is not None:
+                    # Only lower transition: natural [0:idx+1], forced [idx:]
+                    x_natural = x[:lower_idx+1]
+                    y_natural = y[:lower_idx+1]
+                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
+                    
+                    x_forced = x[lower_idx:]
+                    y_forced = y[lower_idx:]
+                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
+                else:
+                    # Only upper transition: forced [0:idx+1], natural [idx:]
+                    x_forced = x[:upper_idx+1]
+                    y_forced = y[:upper_idx+1]
+                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
+                    
+                    x_natural = x[upper_idx:]
+                    y_natural = y[upper_idx:]
+                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
+                plotted = True
+        
+        # Default plot for all other cases
+        if not plotted:
+            self._plot_dataItem  (x, y, name=label, pen = pen, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)
 
 
     def _plot_bubble_info (self, polar: Polar, color : QColor):

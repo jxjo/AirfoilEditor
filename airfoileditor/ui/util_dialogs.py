@@ -168,7 +168,7 @@ class Polar_Definition_Dialog (Dialog):
     """ Dialog to edit a single polar definition"""
 
     _width  = 480
-    _height = (300, None)
+    _height = (360, None)
 
     name = "Edit Polar Definition"
 
@@ -182,6 +182,7 @@ class Polar_Definition_Dialog (Dialog):
         self._small_mode        = small_mode
         self._polar_type_fixed  = polar_type_fixed
         self._fixed_chord       = fixed_chord
+        self._has_xtrip         = polar_def.has_xtrip
 
         if small_mode:
             self._height = 140
@@ -201,6 +202,19 @@ class Polar_Definition_Dialog (Dialog):
     @property
     def flap_def (self) -> Flap_Definition:
         return self.polar_def.flap_def if self.polar_def else None
+
+    @property
+    def has_xtrip (self) -> bool:
+        """ True if forced transition is or shall be set on top or bottom side"""
+        return self._has_xtrip
+    
+    def set_has_xtrip (self, aBool : bool):
+        self._has_xtrip = aBool
+        if not aBool:
+            self.polar_def.set_xtript (None)
+            self.polar_def.set_xtripb (None)
+        self.refresh()
+
 
     @property
     def v (self) -> float:
@@ -253,9 +267,23 @@ class Polar_Definition_Dialog (Dialog):
                             disable=True,
                             hide = lambda: self._fixed_chord is None or self.polar_def.type==polarType.T2)
             r += 1 
-            SpaceR (l, r, height=10, stretch=0) 
+            SpaceR (l, r, height=5, stretch=2) 
+
             r += 1 
-            CheckBox (l,r,c, text=f"Set flap just for this polar", colSpan=7,
+            CheckBox (l,r,c, text="Force transition at x ...", colSpan=7,
+                            obj=self, prop=Polar_Definition_Dialog.has_xtrip)
+            r += 1
+            FieldF  (l,r,c, lab="Upper Side", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
+                            obj=self.polar_def, prop=Polar_Definition.xtript,
+                            hide=lambda: not self.has_xtrip)
+            FieldF  (l,r,c+4, lab="Lower", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
+                            obj=self.polar_def, prop=Polar_Definition.xtripb,
+                            hide=lambda: not self.has_xtrip)
+            r += 1 
+            SpaceR (l, r, height=5, stretch=1) 
+
+            r += 1 
+            CheckBox (l,r,c, text="Set flap just for this polar ...", colSpan=7,
                             obj=self.polar_def, prop=Polar_Definition.is_flapped)
             r += 1
             FieldF  (l,r,c, lab="Flap Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
@@ -270,7 +298,7 @@ class Polar_Definition_Dialog (Dialog):
             # Label   (l,r,c+10, get="of thickness", style=style.COMMENT)
 
             r += 1
-            SpaceR (l, r, height=10, stretch=2) 
+            SpaceR (l, r, height=5, stretch=1) 
             r += 1 
             CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
                             get=self.polar_def.autoRange)
@@ -284,7 +312,7 @@ class Polar_Definition_Dialog (Dialog):
             Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
                             get="The smaller the value, the more time is needed")
         r += 1
-        l.setRowStretch (r,3)
+        l.setRowStretch (r,1)
         return l
 
 

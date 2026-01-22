@@ -17,7 +17,7 @@ from ..model.polar_set          import *
 from ..model.xo2_input          import (OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN)
 from ..model.xo2_results        import OpPoint_Result, Optimization_History_Entry
 
-from .ae_artists                import _color_airfoil
+from .ae_artists                import _color_airfoil, SYMBOL_TRANSITION_RIGHT
 
 
 import logging
@@ -662,43 +662,6 @@ class Xo2_Improvement_Artist (Artist):
 class Xo2_Transition_Artist (Artist):
     """ Plot Xoptfoil2 point of transition on design airfoil """
 
-    # ----------  Symbol transition - create an arrow up and rotate to right 
-    #
-    #               .--x
-    #               |
-    #               y
-
-    @staticmethod
-    def _symbol_transition_right ():
-        path = QPainterPath()
-        # coords = [(-0.125, 0.125), (0, 0), (0.125, 0.125),
-        #             (0.05, 0.125), (0.05, 0.5), (-0.05, 0.5), (-0.05, 0.125)]
-        coords = [
-                (0,0),
-                (0,0.125),
-                (-0.04, 0.125),
-                (-0.04, -0.125),
-                (0, -0.125),
-                (0,0),
-                (0.05, 0.075),
-                (0.15, -0.075),
-                (0.25, 0.075),
-                (0.35, -0.075),
-                (0.4, 0)]
-        path.moveTo(*coords[0])
-        for x,y in coords[1:]:
-            path.lineTo(x, y)
-        # path.closeSubpath()
-        return path
-    # tr : QTransform = QTransform()
-    # tr.rotate(90)                                   # because y is downward
-    # tr.translate (0,-0.5)                          # translate is after rotation ...
-
-    # SYMBOL_TRANSITION_RIGHT  = tr.map (_symbol_transition_up())                         
-    SYMBOL_TRANSITION_RIGHT  = _symbol_transition_right()                         
-
-    # ----------------
-
     def __init__ (self, *args, 
                   opPoints_result_fn : Callable = None,
                   **kwargs):
@@ -719,8 +682,7 @@ class Xo2_Transition_Artist (Artist):
         legend_name = "Point of Transition xtr"
 
         color  = _color_airfoil ([], airfoil).darker (120) 
-        symbol = self.SYMBOL_TRANSITION_RIGHT
-        size   = 40
+        size   = 10
         brush  = QColor ("black")
         fill   = QColor ("black")
         fill.setAlphaF (0.5) 
@@ -736,7 +698,7 @@ class Xo2_Transition_Artist (Artist):
                 text   = f"{iop+1}"
                 anchor = (0.5, 1.2) if side.isUpper else (0.5, -0.2)
 
-                self._plot_point (x,y, color=color, symbol=symbol, size=size, brush=brush, 
+                self._plot_point (x,y, color=color, symbol=SYMBOL_TRANSITION_RIGHT, size=size, brush=brush, 
                                   text=text, textColor=color, anchor=anchor, textFill=fill, name=legend_name)
 
                 legend_name = None                                      # only once for legend 

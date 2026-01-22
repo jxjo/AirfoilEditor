@@ -275,14 +275,17 @@ class Polar_Definition:
 
     def __init__(self, dataDict : dict = None):
         
-        self._ncrit     = fromDict (dataDict, "ncrit",    7.0)
         self._autoRange = fromDict (dataDict, "autoRange",True)
         self._valRange  = fromDict (dataDict, "valRange", self.VAL_RANGE_ALPHA)
         self._specVar   = None 
         self.set_specVar (fromDict (dataDict, "specVar",  var.ALPHA))       # it is a enum
         self._type      = None 
         self.set_type    (fromDict (dataDict, "type",     polarType.T1))    # it is a enum
-       
+
+        self._ncrit     = fromDict (dataDict, "ncrit",    7.0)
+        self._xtript    = fromDict (dataDict, "xtript",   None)             # forced transition top side
+        self._xtripb    = fromDict (dataDict, "xtripb",   None)             # forced transition bot side
+
         self._re        = fromDict (dataDict, "re",       400000)             
         self._ma        = fromDict (dataDict, "mach",     0.0)
 
@@ -314,22 +317,33 @@ class Polar_Definition:
         toDict (d, "valRange",       self.valRange) 
         toDict (d, "active",         self.active) 
 
+        if self._xtript is not None:
+            toDict (d, "xtript",    self._xtript)
+        if self._xtripb is not None:
+            toDict (d, "xtripb",    self._xtripb)
+
         if self._flap_def:
             toDict (d, "flap", self._flap_def._as_dict ())
         return d
 
 
-    def _get_label (self, polarType, re, ma, ncrit, flap_def : Flap_Definition =None): 
+    def _get_label (self, polarType, re : float, ma : float, 
+                    ncrit : float, 
+                    xtript: float | None, xtripb: float | None,
+                    flap_def : Flap_Definition): 
         """ return a label of these polar variables"""
-        ncirt_str = f" N{ncrit:.2f}".rstrip('0').rstrip('.') 
-        ma_str    = f" M{ma:.2f}".rstrip('0').rstrip('.') if ma else ""
+        ncirt_str  = f" N{ncrit:.2f}".rstrip('0').rstrip('.') 
+        ma_str     = f" M{ma:.2f}".rstrip('0').rstrip('.') if ma else ""
+        xtript_str = f" Trt{xtript:.0%}" if xtript is not None else ""
+        xtripb_str = f" Trb{xtripb:.0%}" if xtripb is not None else ""
+
         if flap_def:
             flap_str  = f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
             flap_str += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
         else:
             flap_str = ""
 
-        return f"{polarType} Re{int(re/1000)}k{ma_str}{ncirt_str}{flap_str}"
+        return f"{polarType} Re{int(re/1000)}k{ma_str}{ncirt_str}{flap_str}{xtript_str}{xtripb_str}"
     
 
     @property
@@ -358,6 +372,37 @@ class Polar_Definition:
         if aVal is not None and (aVal > 0.0 and aVal < 20.0):
             self._ncrit = aVal 
 
+
+    @property
+    def xtript (self) -> float:
+        """ forced transition top side 0..1"""
+        return self._xtript if self._xtript is not None else 1.0
+
+    def set_xtript (self, aVal : float):
+        if aVal is None:
+            self._xtript = None
+        else:
+            xtript = round (clip (aVal, 0.0, 1.0), 2)
+            self._xtript = xtript if xtript < 1.0 else None
+
+
+    @property
+    def xtripb (self) -> float:
+        """ forced transition bottom side 0..1"""
+        return self._xtripb if self._xtripb is not None else 1.0
+
+    def set_xtripb (self, aVal : float):
+        if aVal is None:
+            self._xtripb = None
+        else:
+            xtripb = round (clip (aVal, 0.0, 1.0), 2)
+            self._xtripb = xtripb if xtripb < 1.0 else None
+
+    @property
+    def has_xtrip (self) -> bool:
+        """ True if forced transition is set on top or bottom side"""
+        return (self.xtript < 1.0) or (self.xtripb < 1.0)
+    
 
     @property
     def specVar (self): 
@@ -483,7 +528,7 @@ class Polar_Definition:
     @property
     def name (self): 
         """ returns polar name as a label  """
-        return self._get_label (self.type, self.re, self.ma, self.ncrit, self.flap_def)
+        return self._get_label (self.type, self.re, self.ma, self.ncrit, self._xtript, self._xtripb, self.flap_def)
 
     @property
     def name_long (self):
@@ -986,6 +1031,8 @@ class Polar (Polar_Definition):
             self.set_re         (polar_def.re)     
             self.set_ma         (polar_def.ma)
             self.set_ncrit      (polar_def.ncrit)
+            self.set_xtript     (polar_def.xtript)
+            self.set_xtripb     (polar_def.xtripb)
             self.set_autoRange  (polar_def.autoRange)
             self.set_specVar    (polar_def.specVar)
             self.set_valRange   (polar_def.valRange)
@@ -1103,6 +1150,48 @@ class Polar (Polar_Definition):
         """ returns the average transition values of self """
         return (self.xtrb + self.xtrt) / 2.0
 
+
+    @property
+    def xtript_end_idx (self) -> int | None:
+        """ 
+        Last index where forced transition on top side is active.
+        Forced region: [0:idx+1], Natural region: [idx+1:]
+        Returns None if not defined.
+        """
+
+        if self.xtrt is None or len(self.xtrt) == 0 or self._xtript is None:
+            return None
+
+        # sanity - first xtrt value must be equal forced transition
+        if not np.isclose(self.xtrt[0], self._xtript, atol=1e-5):
+            return None
+
+        # find last polar point with xtrt == forced transition
+        for i, xtrt in enumerate (self.xtrt):
+            if not np.isclose(xtrt, self._xtript, atol=1e-5):
+                return i-1
+        return None
+
+
+    @property
+    def xtripb_start_idx (self) -> int | None:
+        """
+        First index where forced transition on bottom side starts.
+        Natural region: [0:idx], Forced region: [idx:]
+        Returns None if not defined.
+        """
+        if self.xtrb is None or len(self.xtrb) == 0 or self._xtripb is None:
+            return None
+
+        # no sanity as xfoil shows bug here - sometimes last xtrb value isn't equal forced transition
+
+        # find first polar point with xtrb == forced transition
+        for i, xtrb in enumerate (self.xtrb):
+            if np.isclose(xtrb, self._xtripb, atol=1e-5):
+                return i
+        return None
+
+
     @property
     def bubble_top (self) -> list:
         """ returns the bubble top side values of self """
@@ -1172,19 +1261,47 @@ class Polar (Polar_Definition):
 
     @property
     def alpha_cl0_inviscid (self) -> float:
-        """ inviscid alpha_cl0 extrapolated from linear part of polar"""
+        """ - don't use it... inviscid alpha_cl0 extrapolated from linear part of polar """
         if not np.any(self.cl) or not np.any(self.alpha): return None
 
         cl_alpha2 = self.get_interpolated (var.ALPHA, 2.0, var.CL)
         cl_alpha4 = self.get_interpolated (var.ALPHA, 4.0, var.CL)
 
         alpha_cl0 = interpolate (cl_alpha2, cl_alpha4, 2.0, 4.0, 0.0)
-
         return round(alpha_cl0,2)
 
 
     @property
+    def alpha_cl0_lr (self) -> float:
+        """ 
+        alpha at cl=0 from linear regression of polar of alpha range around alpha0
+            Use forced transition at 0.05 on upper and lower for good results
+            ! no advantage in this case to alpha_cl0 (linear interpolation)  !
+        """
+        if not np.any(self.cl) or not np.any(self.alpha): return None
+
+        # define mask range around alpha0 for linear regression
+        alpha_min = self.alpha_cl0 - 2.0
+        alpha_max = self.alpha_cl0 + 4.0
+        mask = (self.alpha >= alpha_min) & (self.alpha <= alpha_max)
+        if np.sum(mask) < 2: return None                     # not enough points for linear regression
+
+        cl_lr    = self.cl[mask]
+        alpha_lr = self.alpha[mask]
+
+        # do linear regression
+        a, b = np.polyfit(alpha_lr, cl_lr, 1)
+        alpha_cl0 = -b / a
+
+        return round(alpha_cl0, 2)
+
+
+    @property
     def alpha_cl0 (self) -> float:
+        """ 
+        alpha at cl=0 from linear interpolation of polar for cl=0
+            Use forced transition at 0.05 on upper and lower for good results!
+        """
         if np.any(self.cl) and np.any(self.alpha):
             return self.get_interpolated (var.CL, 0.0, var.ALPHA)
         else: 
@@ -1366,7 +1483,8 @@ class Polar (Polar_Definition):
 
             airfoil_pathFileName = self.polar_set.airfoil_pathFileName_abs
             polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
-                                                self.type, self.re, self.ma, self.ncrit,
+                                                self.type, self.re, self.ma, 
+                                                self.ncrit, self._xtript, self._xtripb,
                                                 flap_angle, x_flap, y_flap, y_flap_spec)
 
             if polar_pathFileName and not file_in_use (polar_pathFileName): 
@@ -1485,29 +1603,32 @@ class Polar_Task:
 
     def __init__(self, polar: Polar =None):
         
-        self._ncrit     = None
-        self._autoRange = None
-        self._specVar   = None
-        self._valRange  = None
-        self._type      = None 
-        self._re        = []             
-        self._ma        = []
+        self._autoRange  = None
+        self._specVar    = None
+        self._valRange   = None
+        self._type       = None 
+        self._re         = []             
+        self._ma         = []
 
-        self._flap_def    = None
-        self._x_flap      = None
-        self._y_flap      = None
-        self._y_flap_spec = None
-        self._flap_angle  = []
+        self._ncrit      = None
+        self._xtript     = None                         # forced transition top side
+        self._xtripb     = None                         # forced transition bot side
 
-        self._flap_def  = None
+        self._flap_def   = None
+        self._x_flap     = None
+        self._y_flap     = None
+        self._y_flap_spec= None
+        self._flap_angle = []
 
-        self._nPoints   = None                          # speed up polar generation with limited coordinate points
+        self._flap_def   = None
+
+        self._nPoints    = None                         # speed up polar generation with limited coordinate points
 
         self._polars : list[Polar] = []                 # my polars to generate 
-        self._myWorker  = None                          # Worker instance which does the job
-        self._finalized = False                         # worker has done the job  
+        self._myWorker   = None                         # Worker instance which does the job
+        self._finalized  = False                        # worker has done the job  
 
-        self._airfoil_pathFileName_abs = None               # airfoil file 
+        self._airfoil_pathFileName_abs = None           # airfoil file 
 
         if polar:
             self.add_polar (polar) 
@@ -1622,7 +1743,6 @@ class Polar_Task:
         taken_over = True 
         
         if not self._re: 
-            self._ncrit      = polar.ncrit
             self._autoRange  = polar.autoRange
             self._specVar    = polar.specVar
             self._valRange   = polar.valRange
@@ -1630,6 +1750,10 @@ class Polar_Task:
         
             self._re         = [polar.re]             
             self._ma         = [polar.ma]
+
+            self._ncrit      = polar.ncrit
+            self._xtript     = polar._xtript                    # use instance variables to allow None
+            self._xtripb     = polar._xtripb                    # use instance variables to allow None
 
             self._flap_def   = polar.flap_def
             self._x_flap     = polar.flap_def.x_flap      if polar.flap_def else None
@@ -1640,9 +1764,10 @@ class Polar_Task:
             self._polars     = [polar]
             self._airfoil_pathFileName_abs = polar.polar_set.airfoil_pathFileName_abs
 
-        # collect all polars with same type, ncrit, specVar, valRange 
+        # collect all polars with same type, ncrit, xtript, xtripb, specVar, valRange 
         # to allow Worker multi-threading 
         elif  self._type==polar.type and self._ncrit == polar.ncrit and \
+              self._xtript == polar._xtript and self._xtripb == polar._xtripb and \
               self._autoRange == polar.autoRange and \
               self._specVar == polar.specVar and self._valRange == polar.valRange and \
               Flap_Definition.have_same_hinge (self._flap_def, polar.flap_def):
@@ -1668,6 +1793,7 @@ class Polar_Task:
         try:
             self._myWorker.generate_polar (self._airfoil_pathFileName_abs, 
                         self._type, self._re, self._ma, self._ncrit, 
+                        xtript=self._xtript, xtripb=self._xtripb,
                         autoRange=self._autoRange, spec=self._specVar, 
                         valRange=self._valRange, run_async=True,
                         flap_angle=self._flap_angle, x_flap=self._x_flap, y_flap=self._y_flap, 

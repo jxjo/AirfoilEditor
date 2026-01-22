@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## 4.2.4
+This is just a maintenance release 
+
+### Added
+- Support of forced transition in polar generation. Polar regions are marked as forced.
+Needs Worker 1.0.11
+
+
 ## 4.2.3
 This is just a maintenance release 
 

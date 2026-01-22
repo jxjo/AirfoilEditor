@@ -728,7 +728,8 @@ class Worker (X_Program):
 
     @staticmethod
     def get_existingPolarFile (airfoil_pathFileName, 
-                               polarType : str, re : float, ma : float, ncrit : float,
+                               polarType : str, re : float, ma : float, 
+                               ncrit : float, xtript : float, xtripb : float,
                                flap_angle : float, x_flap : float, y_flap : float, y_flap_spec : str) -> str:
         """ 
         Get pathFileName of polar file if it exists 
@@ -790,6 +791,14 @@ class Worker (X_Program):
                 y_flap_spec_arg = 'YC' if y_flap_spec =='y/c' else None
                 ok = ok and parm_is_ok ("yspec", y_flap_spec_arg, None, args)
 
+                # transition part '_Trt60_Trb20' for non default values
+                
+                xtript_arg = None if xtript is None else round (xtript*100, 0)
+                ok = ok and parm_is_ok ("Trt", xtript_arg, 0, args)
+
+                xtripb_arg = None if xtripb is None else round (xtripb*100, 0)
+                ok = ok and parm_is_ok ("Trb", xtripb_arg, 0, args)
+
                 if ok:
                     # logger.debug (f"<class Worker> found polar file {fileName} in {polarDir}")
                     return os.path.join (polarDir, fileName)        # return pathFileName
@@ -838,6 +847,7 @@ class Worker (X_Program):
                         flap_angle : float | list = 0.0, x_flap=0.75, y_flap=0, y_flap_spec='y/t',
                         nPoints : int = None, 
                         detect_bubble = True,
+                        xtript : float = None, xtripb : float = None,
                         run_async = True) -> int:
         """ 
         Generate polar for airfoilPathFileName in directory of airfoil.
@@ -874,7 +884,8 @@ class Worker (X_Program):
         self._tmp_inpFile = self._generate_polar_inputFile (workingDir, 
                                     re, ma, polarTypeNo, ncrit, autoRange, spec_al, valRange,
                                     flap_angles=flap_angle, x_flap=x_flap, y_flap=y_flap, y_flap_spec=y_flap_spec,
-                                    nPoints=nPoints, detect_bubble=detect_bubble) 
+                                    nPoints=nPoints, detect_bubble=detect_bubble,
+                                    xtript=xtript, xtripb=xtripb) 
         if not self._tmp_inpFile:
             raise RuntimeError (f"{self.NAME} polar generation failed: Couldn't create input file")
 
@@ -1022,6 +1033,7 @@ class Worker (X_Program):
                                   autoRange : bool, spec_al: bool, valRange: list[float], 
                                   nPoints : int = None, detect_bubble = False, 
                                   flap_angles : list[float] = None, x_flap=None, y_flap=None, y_flap_spec=None,
+                                  xtript : float = None, xtripb : float = None,
                                    ) -> str:
         """ Generate a temporary polar input file for worker like this 
 
@@ -1036,6 +1048,8 @@ class Worker (X_Program):
         /
         &xfoil_run_options
             ncrit = 7.0
+            xtript = 0.20
+            xtripb = 0.20
         /
         &operating_conditions                          ! options to describe the optimization task
         x_flap                 = 0.75                  ! chord position of flap 
@@ -1070,6 +1084,10 @@ class Worker (X_Program):
 
             tmp.write ("&xfoil_run_options\n")
             tmp.write ("  ncrit = %.1f\n" % ncrit) 
+            if xtript is not None:
+                tmp.write (f"  xtript = {xtript:.2f}\n")
+            if xtripb is not None:
+                tmp.write (f"  xtripb = {xtripb:.2f}\n")
             if detect_bubble and Worker.can_detect_bubbles():
                 tmp.write ("  detect_bubble = .true.\n") 
             tmp.write ("/\n")

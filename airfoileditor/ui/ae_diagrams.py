@@ -1638,6 +1638,10 @@ class Item_Polars (Diagram_Item):
         if rect is None: 
             self.viewBox.autoRange ()                           # ensure best range x,y 
 
+            # for xtr ensure x = 0..1
+            if self.xVar in (var.XTRB, var.XTRT) or self.yVar in (var.XTRB, var.XTRT):
+                self.viewBox.setXRange(0, 1)
+
             # it could be that there are initially no polars, so autoRange wouldn't set a range, retry at next refresh
             if  self.viewBox.childrenBounds() != [None,None] and self._autoRange_not_set:
                 self._autoRange_not_set = False 
