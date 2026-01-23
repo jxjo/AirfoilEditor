@@ -1709,6 +1709,7 @@ class Diagram_Airfoil_Polar (Diagram):
 
         self._show_polar_points     = False                         # show polars data points 
         self._show_bubbles          = False                         # show bubbles in polars 
+        self._show_VLM_polars       = False                         # show VLM polars also
 
         super().__init__(*args, **kwargs)
 
@@ -1985,6 +1986,18 @@ class Diagram_Airfoil_Polar (Diagram):
         for artist in self._get_artist (Polar_Artist):
             artist.set_show_bubbles (aBool) 
 
+    @property
+    def show_VLM_polars (self) -> bool:
+        """ show VLM polar sister (forced transition) also """
+        return self._show_VLM_polars
+    def set_show_VLM_polars (self, aBool : bool):
+        self._show_VLM_polars = aBool
+
+        artist : Polar_Artist
+        for artist in self._get_artist (Polar_Artist):
+            artist.set_show_VLM_also (aBool) 
+
+
     @property 
     def show_xo2_opPoint_def (self) -> bool:
         """ show opPoint definitions"""
@@ -2045,7 +2058,12 @@ class Diagram_Airfoil_Polar (Diagram):
                                     "<br>Laminar separation bubbles are identified by a range of negative shear stress " + \
                                     "along the airfoil surface.") if Worker.can_detect_bubbles()\
                                         else f"Worker version {Worker.version} cannot detect bubbles")
-
+                r += 1
+                CheckBox (l,r,c, text="Forced transition versions", colSpan=2,
+                            get=lambda: self.show_VLM_polars, set=self.set_show_VLM_polars,
+                            toolTip=f"Include polars with forced transition at {Polar_Definition.XTRIP_VLM:.0%} chord.<br>" + \
+                                    "These simplified polars are used by VLM wing calculation to evaluate alpha0 and Clmax.")
+                
                 l.setColumnMinimumWidth (0,18)
                 l.setColumnStretch (1,1)
 
