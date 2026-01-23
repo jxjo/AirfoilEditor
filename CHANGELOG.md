@@ -9,6 +9,8 @@ This is just a maintenance release
 ### Added
 - Support of forced transition in polar generation. Polar regions are marked as forced.
 Needs Worker 1.0.11
+- Show polar forced transition version as used for VLM 
+- Visualize turbulent separated bubble resulting in high drag increase 
 
 
 ## 4.2.3
