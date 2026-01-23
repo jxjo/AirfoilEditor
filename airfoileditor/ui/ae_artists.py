@@ -1221,6 +1221,7 @@ class Polar_Artist (Artist):
 
         self._show_points = False                       # show point marker 
         self._show_bubbles = False                      # show bubble info
+        self._show_VLM_also = False                     # show VLM polars also
         self._xyVars = xyVars                           # definition of x,y axis
 
 
@@ -1235,6 +1236,13 @@ class Polar_Artist (Artist):
     def show_bubbles (self): return self._show_bubbles
     def set_show_bubbles (self, aBool): 
         self._show_bubbles = aBool 
+        self.refresh()
+
+
+    @property
+    def show_VLM_also (self): return self._show_VLM_also
+    def set_show_VLM_also (self, aBool): 
+        self._show_VLM_also = aBool 
         self.refresh()
 
 
@@ -1264,6 +1272,10 @@ class Polar_Artist (Artist):
 
         for airfoil in self.airfoils: 
             polarSet = airfoil.polarSet
+            if self.show_VLM_also:
+                polarSet.ensure_polars_VLM()
+            else:
+                polarSet.remove_polars_VLM()
             if polarSet:
                 polarSet.load_or_generate_polars ()
             else:
@@ -1275,19 +1287,18 @@ class Polar_Artist (Artist):
         nPolar_generating = 0                     # is there a polar in calculation 
         error_msg         = []  
 
-        airfoil: Airfoil
         for airfoil in self.airfoils:
 
             if airfoil.polarSet:
  
                 color_airfoil = _color_airfoil (self.airfoils, airfoil)
 
-                # first filter only visible polars to get number of polars and plot 
-
+                # filter only visible polars, sort by re descending, then has_xtrip=False first 
                 polarSet : Polar_Set = airfoil.polarSet
-                polars =  [p for p in polarSet.polars if p.active] 
+                polars =  [p for p in polarSet.polars if p.active]
+                polars = sorted(polars, key=lambda p: (-p.re, p.has_xtrip))
 
-                for iPolar, polar in enumerate(polars [::-1]): 
+                for iPolar, polar in enumerate(polars): 
 
                     if polar.error_occurred:
                         # in error_msg could be e.g. '<' 
@@ -1322,9 +1333,6 @@ class Polar_Artist (Artist):
             else: 
                 text = f"Generating {nPolar_generating} polars"
             self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
-
-            # refresh for new polars 
-            # QTimer().singleShot(1000, self.check_for_new_polars)     # delayed emit 
 
 
 
@@ -1406,17 +1414,17 @@ class Polar_Artist (Artist):
                     # Both transitions: forced upper [0:upper_idx+1], natural [upper_idx:lower_idx+1], forced lower [lower_idx:]
                     # enusre upper is not greater than lower to avoid double plotting
                     upper_idx = min(upper_idx, lower_idx)
-                    x_forced_upper = x[:upper_idx+1]
-                    y_forced_upper = y[:upper_idx+1]
-                    self._plot_dataItem  (x_forced_upper, y_forced_upper, name='Forced transition region', pen = pen2,  
-                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                    antialias = antialias, zValue=zValue)
-                    
                     x_natural = x[upper_idx:lower_idx+1]
                     y_natural = y[upper_idx:lower_idx+1]
                     self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
+
+                    x_forced_upper = x[:upper_idx+1]
+                    y_forced_upper = y[:upper_idx+1]
+                    self._plot_dataItem  (x_forced_upper, y_forced_upper, name='Forced transition region', pen = pen2,  
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)                    
                     
                     x_forced_lower = x[lower_idx:]
                     y_forced_lower = y[lower_idx:]
@@ -1439,17 +1447,17 @@ class Polar_Artist (Artist):
                                     antialias = antialias, zValue=zValue)
                 else:
                     # Only upper transition: forced [0:idx+1], natural [idx:]
-                    x_forced = x[:upper_idx+1]
-                    y_forced = y[:upper_idx+1]
-                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
-                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                    antialias = antialias, zValue=zValue)
-                    
                     x_natural = x[upper_idx:]
                     y_natural = y[upper_idx:]
                     self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
+
+                    x_forced = x[:upper_idx+1]
+                    y_forced = y[:upper_idx+1]
+                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
+                                    symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
+                                    antialias = antialias, zValue=zValue)                    
                 plotted = True
         
         # Default plot for all other cases
@@ -1467,37 +1475,55 @@ class Polar_Artist (Artist):
         # bubble symbol style and color
         color_symbol =  QColor (color) 
         color_symbol.setAlphaF (0.7) 
-        brush_color_symbol =  QColor ('black') 
-        brush_color_symbol.setAlphaF (0.6) 
-        brush_symbol = pg.mkBrush(brush_color_symbol)
+        brush_color =  QColor ('black') 
+        brush_color.setAlphaF (0.6) 
+        brush = pg.mkBrush(brush_color)
+        brush_red =  QColor ('red') 
+        brush_red.setAlphaF (0.8) 
+        brush_red = pg.mkBrush(brush_red)
 
         # bubble line in xtr style and color        
         color_line   =  QColor (color) 
         color_line.setAlphaF (0.4) 
-        pen_line     = pg.mkPen(color_line, width=3)  
-        
+        color_red   =  QColor ('red') 
+        color_red.setAlphaF (0.5)
+        pen     = pg.mkPen(color_line, width=3)  
+        pen_red = pg.mkPen(color_red, width=3)
+
+        name_red = 'bubble - turbulent separated'
+
         x,y = polar.ofVars (self.xyVars)
 
         if polar.has_bubble_top:
-            name = 'bubble upper side'
-            for i, bubble in enumerate(polar.bubble_top):
+            name     = 'bubble upper side'
+            for i, polar_point in enumerate(polar.polar_points):
+                bubble = polar_point.bubble_top
+                turbulent_separated = polar_point.is_bubble_top_turbulent_separated
+                n = name_red  if turbulent_separated else name
                 if bubble:
                     if is_xtr_plot:
                         if var.XTRT in self.xyVars:
-                            self._plot_bubble_in_xtr (bubble, x[i], y[i], name, pen_line)
+                            p = pen_red if turbulent_separated else pen
+                            self._plot_bubble_in_xtr (bubble, x[i], y[i], n, p)
                     else:
-                        self._plot_point ((x[i], y[i]), name=name, color=color_symbol, symbol='t1', size=9, brush=brush_symbol)
+                        b = brush_red if turbulent_separated else brush
+                        self._plot_point ((x[i], y[i]), name=n, color=color_symbol, symbol='t1', size=9, brush=b)
 
         if polar.has_bubble_bot:
             # plot bubble on lower side
             name = 'bubble lower side'
-            for i, bubble in enumerate(polar.bubble_bot):
+            for i, polar_point in enumerate(polar.polar_points):
+                bubble = polar_point.bubble_bot
+                turbulent_separated = polar_point.is_bubble_bot_turbulent_separated
+                n = name_red  if turbulent_separated else name
                 if bubble:
                     if is_xtr_plot:
                         if var.XTRB in self.xyVars:
-                            self._plot_bubble_in_xtr (bubble, x[i], y[i], name, pen_line)
+                            p = pen_red if turbulent_separated else pen
+                            self._plot_bubble_in_xtr (bubble,  x[i], y[i], n, p)
                     else:
-                        self._plot_point ((x[i], y[i]), name=name, color=color_symbol, symbol='t', size=9, brush=brush_symbol)
+                        b = brush_red if turbulent_separated else brush
+                        self._plot_point ((x[i], y[i]), name=n, color=color_symbol, symbol='t', size=9, brush=b)
 
 
     def _plot_bubble_in_xtr (self, bubble :tuple, x, y, name, pen_line):

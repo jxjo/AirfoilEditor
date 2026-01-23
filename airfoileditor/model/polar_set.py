@@ -267,6 +267,7 @@ class Polar_Definition:
                 |--- Polar    <-- Polar_Definition
 
     """
+    XTRIP_VLM = 0.05                            # default xtript/xtripb for VLM sims
 
     MAX_POLAR_DEFS  = 5                         # limit to check in App
 
@@ -402,7 +403,12 @@ class Polar_Definition:
     def has_xtrip (self) -> bool:
         """ True if forced transition is set on top or bottom side"""
         return (self.xtript < 1.0) or (self.xtripb < 1.0)
-    
+
+    @property
+    def is_VLM_polar (self) -> bool:
+        """ True if self is a VLM polar definition (xtript and xtripb set to default VLM values)"""
+        return (self._xtript == self.XTRIP_VLM) and (self._xtripb == self.XTRIP_VLM)    
+
 
     @property
     def specVar (self): 
@@ -541,7 +547,8 @@ class Polar_Definition:
         return f"{self.name} | {v:.1f}m/s" if v is not None else self.name
 
 
-    def is_equal_to (self, aDef: 'Polar_Definition', ignore_active=False):
+    def is_equal_to (self, aDef: 'Polar_Definition', 
+                     ignore_active=False, ignore_xtrip=False) -> bool:
         """ True if aPolarDef is equals self"""
 
         if isinstance (aDef, Polar_Definition):
@@ -550,7 +557,11 @@ class Polar_Definition:
             if ignore_active:
                 self_dict.pop('active', None)
                 aDef_dict.pop('active', None)
-                
+            if ignore_xtrip:
+                self_dict.pop('xtript', None)
+                self_dict.pop('xtripb', None)
+                aDef_dict.pop('xtript', None)
+                aDef_dict.pop('xtripb', None)
             return self_dict == aDef_dict
         else:
             return False
@@ -633,35 +644,13 @@ class Polar_Set:
         re_scale = re_scale if re_scale is not None else 1.0 
         self._re_scale = clip (re_scale, 0.001, 100)
 
-        self._polar_worker_tasks = []                       # polar generation tasks for worker 
-        self._worker_polar_sets = {}                        # polar generation job list for worker  
-
         self._add_polar_defs (polar_def, re_scale=self._re_scale, only_active=only_active)  # add initial polar def 
-
-        # not active Polar_Set.add_to_instances (self)
 
 
     def __repr__(self) -> str:
         """ nice representation of self """
         return f"<{type(self).__name__} of {self.airfoil}>"
 
-    #---------------------------------------------------------------
-
-    @classmethod
-    def add_to_instances (cls , polar_set : 'Polar_Set'):
-        """ add polar_set to instances - remove already existing polar_set for a airfoil"""
-
-        airfoil = polar_set.airfoil
-        for p in cls.instances [:]:
-            if p.airfoil == airfoil:
-                logger.warning (f"-- removing {airfoil} from polar_set instances")
-                cls.instances.remove (airfoil) 
-
-        cls.instances.append (polar_set)
-        # logger.debug (f"-- {cls.__name__} now having {len(cls.instances)} instances")
-
-
-    #---------------------------------------------------------------
 
     @property
     def airfoil (self) -> Airfoil: return self._airfoil
@@ -704,7 +693,13 @@ class Polar_Set:
     @property
     def polars_not_loaded (self) -> list ['Polar']: 
         """ not loaded polars of self """
-        return list(filter(lambda polar: not polar.isLoaded, self._polars)) 
+        return list(filter(lambda polar: not polar.isLoaded, self.polars)) 
+
+
+    @property
+    def polars_VLM (self) -> list ['Polar']: 
+        """ VLM polars of self which typically have a forced transition"""
+        return list(filter(lambda polar: polar.is_VLM_polar, self.polars))
 
 
     @property
@@ -758,6 +753,29 @@ class Polar_Set:
         return True 
 
 
+    def ensure_polars_VLM (self):
+        """ ensure that every 'normal' polar has a sister VLM polar in self """
+
+        polars_normal = list(filter(lambda polar: not polar.is_VLM_polar, self.polars))
+        polars_VLM    = self.polars_VLM
+
+        for polar in polars_normal:
+            # is there already a VLM polar for this polar def ?
+            has_vlm = False
+            for vlm_polar in polars_VLM:
+                if polar.is_equal_to (vlm_polar, ignore_active=True, ignore_xtrip=True):
+                    has_vlm = True
+                    break
+            if not has_vlm:
+                # create VLM polar def 
+                vlm_polar_def = Polar_Definition(polar._as_dict())
+                vlm_polar_def.set_xtript (Polar_Definition.XTRIP_VLM)
+                vlm_polar_def.set_xtripb (Polar_Definition.XTRIP_VLM)
+
+                # add VLM polar 
+                self._add_polar_defs (vlm_polar_def, re_scale=self._re_scale, only_active=False)
+
+
     #---------------------------------------------------------------
 
     def _add_polar_defs (self, polar_defs, 
@@ -798,11 +816,19 @@ class Polar_Set:
 
     def remove_polars (self):
         """ Removes all polars of self  """
-
         polar: Polar
-        for polar in self.polars: 
+        for polar in self.polars[:]: 
             polar.polar_set_detach ()
             self.polars.remove(polar)
+
+
+    def remove_polars_VLM (self):
+        """ remove all VLM polars from self """
+        polar: Polar
+        for polar in self.polars[:]: 
+            if polar.is_VLM_polar:
+                polar.polar_set_detach ()
+                self.polars.remove(polar)
 
 
     def load_or_generate_polars (self):
@@ -974,7 +1000,34 @@ class Polar_Point:
         else:
             raise ValueError (f"Op point variable '{op_var}' not supported")
 
+    @property
+    def is_bubble_bot_turbulent_separated (self) -> bool:
+        """ 
+        True if bottom side has turbulent separated bubble 
 
+        Laminar BL separates, transition happens while still separated (xtr), 
+        but the flow stays separated even though it’s now turbulent and only reattaches further downstream.
+
+        Effect: You now have a turbulent separated bubble over a longer chordwise distance. 
+        That thick, separated shear layer produces a big momentum deficit and a fatter wake.
+
+        Drag: Strongly higher—longer separated region, larger displacement thickness, 
+        much more pressure drag.
+        """
+        if self.bubble_bot:
+            x_start, x_end = self.bubble_bot
+            return x_end >= min(1.0, self.xtrb + 0.02) and self.xtrb < 1.0
+        else:
+            return False
+        
+    @property
+    def is_bubble_top_turbulent_separated (self) -> bool:
+        """ True if top side has turbulent separated bubble """
+        if self.bubble_top:
+            x_start, x_end = self.bubble_top
+            return x_end >= min(1.0, self.xtrt + 0.02) and self.xtrt < 1.0
+        else:
+            return False
 
 #------------------------------------------------------------------------------
 
@@ -1021,9 +1074,6 @@ class Polar (Polar_Definition):
         self._glide = None
         self._sink  = None
         self._re_calc = None
-
-        self._bubble_top = None                        # bubble top side values
-        self._bubble_bot = None                        # bubble bot side values
 
         if polar_def: 
             self.set_active     (polar_def.active)
@@ -1191,18 +1241,6 @@ class Polar (Polar_Definition):
                 return i
         return None
 
-
-    @property
-    def bubble_top (self) -> list:
-        """ returns the bubble top side values of self """
-        if self._bubble_top is None: self._bubble_top = [p.bubble_top for p in self.polar_points]
-        return self._bubble_top
-
-    @property
-    def bubble_bot (self) -> list:    
-        """ returns the bubble bot side values of self """
-        if self._bubble_bot is None: self._bubble_bot = [p.bubble_bot for p in self.polar_points]
-        return self._bubble_bot
 
     @property
     def has_bubble_top (self) -> bool:
