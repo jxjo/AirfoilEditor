@@ -690,44 +690,26 @@ class Polar_Set:
     def polars (self) -> list ['Polar']: 
         return self._polars
 
-    @property
-    def polars_not_loaded (self) -> list ['Polar']: 
-        """ not loaded polars of self """
-        return list(filter(lambda polar: not polar.isLoaded, self.polars)) 
-
 
     @property
     def polars_VLM (self) -> list ['Polar']: 
         """ VLM polars of self which typically have a forced transition"""
-        return list(filter(lambda polar: polar.is_VLM_polar, self.polars))
+        return [polar for polar in self.polars if polar.is_VLM_polar]
 
 
     @property
-    def has_polars (self): return len (self.polars) > 0 
-    
+    def polars_normal (self) -> list ['Polar']: 
+        """ normal polars of self which are not for VLM (forced transition)"""
+        return [polar for polar in self.polars if not polar.is_VLM_polar]
+
 
     @property
     def has_polars_not_loaded (self) -> bool: 
         """ are there polars which are still not lazyloadeds when async polar generation """
-        return len(self.polars_not_loaded) > 0
         
-    
-    @property
-    def has_all_polars_loaded (self) -> bool: 
-        """ all polars are loaded """
-        return not self.has_polars_not_loaded
-
-
-    def set_polars_not_loaded (self):
-        """ set all polars to not_loaded - so they will be refreshed with next access"""
-
-        for i, polar in enumerate (self.polars[:]):
-            
-            self.polars[i] = Polar (self, polar, re_scale=polar.re_scale)
-
-            # clean up old polar  
-            polar.polar_set_detach ()
-            Polar_Task.terminate_task_of_polar (polar) 
+        polars_not_loaded = [polar for polar in self.polars if not polar.isLoaded] 
+        return len(polars_not_loaded) > 0
+        
         
     @property
     def re_scale (self) -> float:
@@ -773,7 +755,7 @@ class Polar_Set:
                 vlm_polar_def.set_xtripb (Polar_Definition.XTRIP_VLM)
 
                 # add VLM polar 
-                self._add_polar_defs (vlm_polar_def, re_scale=self._re_scale, only_active=False)
+                self._add_polar_defs (vlm_polar_def, only_active=False)
 
 
     #---------------------------------------------------------------
@@ -831,19 +813,33 @@ class Polar_Set:
                 self.polars.remove(polar)
 
 
-    def load_or_generate_polars (self):
+    def load_or_generate_polars (self, normal=True, VLM=True):
         """ 
         Either loads or (if not already exist) generate polars of myAirfoil 
-            for all polars of self.
+            for normal and/or VVLM polars of self.
         """
+        # select polars to be loaded/generated
+
+        polars : list['Polar'] = []
+        if normal:
+            polars.extend (self.polars_normal)
+
+        if VLM:
+            polars.extend (self.polars_VLM)
 
         # load already existing polar files 
 
-        self.load_polars ()
+        polars_not_loaded = []
+
+        for polar in polars: 
+            if not polar.isLoaded:
+                polar.load_xfoil_polar ()
+                if not polar.isLoaded: 
+                    polars_not_loaded.append(polar)
 
         # polars missing - if not already done, create polar_task for Worker to generate polar 
 
-        if self.has_polars_not_loaded:
+        if polars_not_loaded:
 
             self.airfoil_ensure_being_saved ()                                  # a real airfoil file needed
 
@@ -853,7 +849,7 @@ class Polar_Set:
 
             new_tasks : list [Polar_Task] = []
 
-            for polar in self.polars_not_loaded: 
+            for polar in polars_not_loaded: 
 
                 if not polar in all_polars_of_tasks:                            # ensure polar isn't already in any task 
                     taken_over = False
@@ -870,23 +866,6 @@ class Polar_Set:
 
         return 
 
-
-    def load_polars (self) -> int:
-        """ 
-        loads all polars which exist (now).
-        Returns number of new loaded polars
-        """
-
-        nLoaded    = 0
-        for polar in self.polars: 
-
-            if not polar.isLoaded:
-                polar.load_xfoil_polar ()
-
-                if polar.isLoaded: 
-                    nLoaded += 1
-
-        return nLoaded
 
 
 #------------------------------------------------------------------------------
@@ -1087,7 +1066,7 @@ class Polar (Polar_Definition):
             self.set_specVar    (polar_def.specVar)
             self.set_valRange   (polar_def.valRange)
 
-            if re_scale != 1.0:                              # scale reynolds if requested
+            if re_scale is not None and re_scale != 1.0:                              # scale reynolds if requested
                 re_scaled = round (self.re * re_scale / RE_SCALE_ROUND_TO, 0)
                 re_scaled = re_scaled * RE_SCALE_ROUND_TO
                 ma_scaled = round (self.ma * re_scale,  MA_SCALE_ROUND_DEC)
@@ -1289,7 +1268,7 @@ class Polar (Polar_Definition):
 
     @property
     def min_cl (self) -> Polar_Point:
-        """ returns a Polar_Point at max cl - or None if not valid"""
+        """ returns a Polar_Point at min cl - or None if not valid"""
         if np.any(self.cl):
             ip = np.argmin (self.cl)
             # sanity for somehow valid polar 
@@ -1298,29 +1277,17 @@ class Polar (Polar_Definition):
 
 
     @property
-    def alpha_cl0_inviscid (self) -> float:
-        """ - don't use it... inviscid alpha_cl0 extrapolated from linear part of polar """
-        if not np.any(self.cl) or not np.any(self.alpha): return None
-
-        cl_alpha2 = self.get_interpolated (var.ALPHA, 2.0, var.CL)
-        cl_alpha4 = self.get_interpolated (var.ALPHA, 4.0, var.CL)
-
-        alpha_cl0 = interpolate (cl_alpha2, cl_alpha4, 2.0, 4.0, 0.0)
-        return round(alpha_cl0,2)
-
-
-    @property
-    def alpha_cl0_lr (self) -> float:
+    def alpha0_lr (self) -> float:
         """ 
         alpha at cl=0 from linear regression of polar of alpha range around alpha0
             Use forced transition at 0.05 on upper and lower for good results
-            ! no advantage in this case to alpha_cl0 (linear interpolation)  !
+            ! no advantage in this case to alpha0 (linear interpolation)  !
         """
         if not np.any(self.cl) or not np.any(self.alpha): return None
 
         # define mask range around alpha0 for linear regression
-        alpha_min = self.alpha_cl0 - 2.0
-        alpha_max = self.alpha_cl0 + 4.0
+        alpha_min = self.alpha0 - 2.0
+        alpha_max = self.alpha0 + 4.0
         mask = (self.alpha >= alpha_min) & (self.alpha <= alpha_max)
         if np.sum(mask) < 2: return None                     # not enough points for linear regression
 
@@ -1329,13 +1296,13 @@ class Polar (Polar_Definition):
 
         # do linear regression
         a, b = np.polyfit(alpha_lr, cl_lr, 1)
-        alpha_cl0 = -b / a
+        alpha0_lr = -b / a
 
-        return round(alpha_cl0, 2)
+        return round(alpha0_lr, 2)
 
 
     @property
-    def alpha_cl0 (self) -> float:
+    def alpha0 (self) -> float:
         """ 
         alpha at cl=0 from linear interpolation of polar for cl=0
             Use forced transition at 0.05 on upper and lower for good results!

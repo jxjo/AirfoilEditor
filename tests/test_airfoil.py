@@ -333,14 +333,15 @@ class Test_Worker:
 
         worker.generate_polar (airfoil_path, 'T1', 700000, 0.0, 8.0, run_async=False)
 
-        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
-
-        if polar_file:
-            print  (f"polar file found: {polar_file}")
-        else: 
-            print (f"polar file not found")
-
+        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None, None, None)
         assert polar_file
+
+        # test forced transition 
+
+        worker.generate_polar (airfoil_path, 'T1', 200000, 0.0, 8.0, xtript=0.2, run_async=False)
+        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 200000, 0.0, 8.0, 0.2, None, None, None, None, None)
+        assert polar_file
+
 
         # ------- async test ---------------------------------------------
 
@@ -355,16 +356,11 @@ class Test_Worker:
             print (f"{worker} waiting: {secs}s")
 
         if worker.finished_returncode == 0:
+            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None, None, None)
+        else:
+            polar_file = None
 
-            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
-
-            if polar_file:
-                print  (f"polar file found: {polar_file}")
-            else: 
-                print (f"polar file not found")
-        else: 
-            print (f"{worker}: {worker.finished_errortext}")
-
+        assert not worker.finished_errortext, f"Worker finished with error: {worker.finished_errortext}"
         assert polar_file
 
 

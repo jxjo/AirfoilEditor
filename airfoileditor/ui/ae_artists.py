@@ -1272,12 +1272,13 @@ class Polar_Artist (Artist):
 
         for airfoil in self.airfoils: 
             polarSet = airfoil.polarSet
-            if self.show_VLM_also:
-                polarSet.ensure_polars_VLM()
-            else:
-                polarSet.remove_polars_VLM()
             if polarSet:
-                polarSet.load_or_generate_polars ()
+                if self.show_VLM_also:
+                    polarSet.ensure_polars_VLM()
+                    polarSet.load_or_generate_polars (VLM=True)
+                else:
+                    polarSet.remove_polars_VLM()
+                    polarSet.load_or_generate_polars (VLM=False)
             else:
                 logger.debug (f"{airfoil} has no polarSet to plot")
 

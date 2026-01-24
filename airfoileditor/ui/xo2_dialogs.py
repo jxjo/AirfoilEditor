@@ -409,7 +409,7 @@ class Xo2_New_Dialog (Dialog):
                      options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs],
                      hide = lambda: not self.opPoint_defs)
         Label       (l,r,c+2, get="Waiting for polar ...", colSpan=2, style=style.COMMENT,
-                     hide = lambda: self.opPoint_defs or self.polarSet_seed.has_all_polars_loaded)
+                     hide = lambda: self.opPoint_defs or not self.polarSet_seed.has_polars_not_loaded)
         Label       (l,r,c+2, get="Creation failed", colSpan=2, 
                      style=style.ERROR, styleRole = QPalette.ColorRole.Window,
                      hide = lambda: self.opPoint_defs or self.polarSet_seed.has_polars_not_loaded)
