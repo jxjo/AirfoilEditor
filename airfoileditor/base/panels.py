@@ -620,6 +620,10 @@ class Edit_Panel (Panel_Abstract):
                 self._set_panel_layout ()
                 logger.debug (f"{self} - refresh - reinit_layout ")
 
+                # ensure disabled state after reinit e.g. when lazy init
+                if self._isDisabled:
+                    self.refresh_panel (self._isDisabled, reinit_layout=False)
+
             # normal refresh 
             else:
                 self.refresh_panel (self._isDisabled, reinit_layout=reinit_layout)
