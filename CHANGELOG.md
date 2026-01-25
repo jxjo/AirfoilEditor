@@ -4,13 +4,13 @@ All notable changes to this project will be documented in this file.
 
 
 ## 4.2.4
-This is just a maintenance release 
 
 ### Added
-- Support of forced transition in polar generation. Polar regions are marked as forced.
-Needs Worker 1.0.11
-- Show polar forced transition version as used for VLM 
-- Visualize turbulent separated bubble resulting in high drag increase 
+- Forced transition support in polar generation with visualization in polar diagrams.  
+See README for details. 
+- Polar display with forced transition as used in VLM analysis.  
+- Visualization of turbulent separation bubbles that cause significant drag increase.  
+See README for details
 
 
 ## 4.2.3

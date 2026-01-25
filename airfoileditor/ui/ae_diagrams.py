@@ -1117,10 +1117,10 @@ Try out the functionality with this example or <strong><span style="color: silve
         else:
             example = ""
 
-        new =   "- Save / Load individual airfoil settings<br>" + \
-                "- Change polar diagram variables directly in diagram<br>" + \
-                "- Maximize / minimize lower data panel<br>" + \
-                "- Revised Match Bezier UI<br>"
+        new =   "- Forced transition support in polar generation<br>" + \
+                "- Show polar version with forced transition as used for VLM.<br>" + \
+                "- Visualization of turbulent separation bubbles causing high drag<br>" + \
+                "- ...<br>"
         
         # ... can't get column width working ...
 

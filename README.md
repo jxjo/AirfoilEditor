@@ -1,6 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 4.2.3
+### Version 4.2.4
 
 ---
 
@@ -33,7 +33,7 @@ The app, developed in Python with the Qt UI framework, runs on Windows, Linux, a
 
 ## Geometry of an Airfoil
 
-The **AirfoilEditor** utilizes various strategies to represent the geometry of an airfoil.
+The AirfoilEditor utilizes various strategies to represent the geometry of an airfoil.
 
 * 'Linear interpolation' – Using the point coordinates from the airfoils '.dat' file, intermediate points are calculated through linear interpolation. Used for quick previews and simple tasks.
 
@@ -78,7 +78,7 @@ The match function fits the Bezier curve to an existing airfoil as accurately as
 
 ## Polars of an Airfoil
 
-To generate the polars of an airfoil the **AirfoilEditor** uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). On of the Worker actions is the multi-threaded creation of a polar set using Xfoil.
+To generate the polars of an airfoil the AirfoilEditor uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). On of the Worker actions is the multi-threaded creation of a polar set using Xfoil.
 
 For polar generation the auto_range feature of the Worker is applied which optimizes the alpha range of the polar to show the complete T1 polar from cl_min to cl_max of the airfoil. For T2 polars (constant lift) the range starts right above cl=0.0 to cl_max.
 
@@ -105,6 +105,28 @@ This allows to compare the airfoils of a wing with a single polar definition for
 
 ![AE](images/polars_scaled.png "Scaled polars")
 
+### Separation Bubbles
+
+The AirfoilEditor visualizes laminar separation bubbles in the polar diagrams. Xfoil identifies these regions by detecting areas of negative shear stress. In the transition diagram (Xtr), the length of a separation bubble at a certain value of cl (or alpha) is displayed.
+
+When a bubble bursts into turbulent separation - indicated by the reattachment point falling behind the laminar-to-turbulent transition point - this results in further increased drag. As this turbulent separation bubble have an high impact on airfoil design, these bubbles are highlighted.
+
+Small triangle markers in the polar diagrams indicate operating points where a bubble has formed on either the upper or lower surface of the airfoil.
+
+<img src="images/polars_bubbles_separated.png" alt="Separation bubbles" width="600">
+
+
+### Forced Transition
+
+Forced transition from laminar to turbulent flow, for example through a turbulator or trip strip, prevents the formation of separation bubbles.
+
+In the polar definition, such a forced transition point can be specified. The value corresponds to the Xfoil parameters XtripT (top) and XtripB (bottom).
+
+In the polar diagrams, the region where forced transition is effective is indicated by a dashed line.
+
+The following diagram shows the same polar as in the previous separation bubble example, but with forced transition on the upper surface at 70% chord.
+
+<img src="images/polars_forced_transition.png" alt="Forced Transition" width="600">
 
 # 1. View Mode
 
@@ -164,7 +186,7 @@ The optional match function fits the Bezier curve to an existing airfoil as accu
 
 # 3. Optimization Mode
 
-In 'Optimization Mode', the **AirfoilEditor** serves as a wrapper for [Xoptfoil2](https://github.com/jxjo/Xoptfoil2).
+In 'Optimization Mode', the AirfoilEditor serves as a wrapper for [Xoptfoil2](https://github.com/jxjo/Xoptfoil2).
 
 Xoptfoil2 is a particle swarm based airfoil optimizer which supports different 'shaping methods' to modify the airfoil during optimization: 
 
@@ -172,7 +194,7 @@ Xoptfoil2 is a particle swarm based airfoil optimizer which supports different '
 *	Bezier curve defining the shape
 *	Geometry parameters like maximum thickness and its position
 
-The **AirfoilEditor** covers all steps needed for airfoil optimization with Xoptfoil2: 
+The AirfoilEditor covers all steps needed for airfoil optimization with Xoptfoil2: 
 
 *	Define an optimization case with the objectives and boundary conditions
 *	Run, control and watch an optimization  
@@ -184,7 +206,7 @@ Compared to manual editing the input file of Xoptfoil2, the user interface great
 Multiple versions of an optimization case can be created, making it easier to finally select the best version  at the end of the optimization sessions.
 
 > [!IMPORTANT]
-> Before you start your own airfoil optimizations with the **AirfoilEditor**, you should fully understand the key concepts of Xoptfoil2 and the special terms like 'seed airfoil' or 'operating point'. 
+> Before you start your own airfoil optimizations with the AirfoilEditor, you should fully understand the key concepts of Xoptfoil2 and the special terms like 'seed airfoil' or 'operating point'. 
 > Please read carefully the chapters [Getting Started](https://jxjo.github.io/Xoptfoil2/docs/getting_started) and [Airfoil Optimization](https://jxjo.github.io/Xoptfoil2/docs/airfoil_optimization) of the Xoptfoil2  documentation. 
 >You will find the example of 'Getting Started' is ready to go in the AirfoilEditor making it easy to watch and modify your first optimization. 
 
@@ -311,4 +333,4 @@ See [CHANGELOG.md](CHANGELOG.md) for history of changes.
 
 # Finally 
 
-I hope you enjoy working with the **AirfoilEditor**.
+I hope you enjoy working with the **AirfoilEditor** 🚀

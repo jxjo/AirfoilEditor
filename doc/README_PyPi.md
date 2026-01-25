@@ -1,6 +1,6 @@
 ![AE](https://github.com/jxjo/AirfoilEditor/blob/main/images/AirfoilEditor_logo.png?raw=true)
 
-### Version 4.2.3
+### Version 4.2.4
 
 ---
 

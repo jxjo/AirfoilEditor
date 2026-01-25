@@ -105,8 +105,8 @@ class App_Model (QObject):
 
     """
 
-    WORKER_MIN_VERSION          = '1.0.10'
-    XOPTFOIL2_MIN_VERSION       = '1.0.10'
+    WORKER_MIN_VERSION          = '1.0.11'
+    XOPTFOIL2_MIN_VERSION       = '1.0.11'
 
     # --- signals
 
