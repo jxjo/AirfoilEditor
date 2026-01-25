@@ -113,7 +113,7 @@ When a bubble bursts into turbulent separation - indicated by the reattachment p
 
 Small triangle markers in the polar diagrams indicate operating points where a bubble has formed on either the upper or lower surface of the airfoil.
 
-<img src="images/polars_bubbles_separated.png" alt="Separation bubbles" width="700">
+<img src="images/polars_bubbles_separated.png" alt="Separation bubbles" width="800">
 
 
 ### Forced Transition
@@ -126,7 +126,7 @@ In the polar diagrams, the region where forced transition is effective is indica
 
 The following diagram shows the same polar as in the previous separation bubble example, but with forced transition on the upper surface at 70% chord.
 
-<img src="images/polars_forced_transition.png" alt="Forced Transition" width="700">
+<img src="images/polars_forced_transition.png" alt="Forced Transition" width="800">
 
 # 1. View Mode
 
