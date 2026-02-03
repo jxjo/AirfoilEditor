@@ -1014,8 +1014,6 @@ class Hicks_Henne_Artist (Artist):
 
  
 
-
-
 class Curvature_Artist (Artist):
     """
     Plot curvature (top or bottom) of an airfoil
@@ -1054,10 +1052,6 @@ class Curvature_Artist (Artist):
 
     def _plot (self): 
 
-        nairfoils = len(self.airfoils)
-        
-        airfoil: Airfoil
-
         for airfoil in self.airfoils:
 
             color = _color_airfoil (self.airfoils, airfoil)
@@ -1082,7 +1076,7 @@ class Curvature_Artist (Artist):
 
                 # plot derivative1 of curvature ('spikes') 
 
-                if self.show_derivative and (nairfoils == 1 or airfoil.usedAsDesign):
+                if self.show_derivative and (len(self.airfoils) == 1 or airfoil.usedAsDesign):
                     pen = QPen (pen)
                     pen.setColor (QColor('red'))
                     name = f"{side.name} - Derivative"
@@ -1129,6 +1123,89 @@ class Curvature_Artist (Artist):
 
                 self._plot_point (reversal_xy, color=color, size=2, text="R", anchor=anchor,
                                   zValue=zValue, textColor=color)
+
+
+
+class Curvature_Comb_Artist (Artist):
+    """
+    Plot curvature comb of an airfoil
+
+    A curvature comb displays lines perpendicular to the airfoil surface 
+        with lengths proportional to the local curvature value. 
+    """
+    name = 'Curvature' 
+
+    def __init__ (self, *args, show_derivative=False, **kwargs):
+ 
+        super().__init__ (*args, **kwargs)
+
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+
+    def _plot (self): 
+
+
+        for airfoil in self.airfoils:
+
+            color = _color_airfoil (self.airfoils, airfoil)
+
+            # plot outline of comb
+
+            x, y, xe, ye = airfoil.geo.curvature.as_curvature_comb ()
+            curvature = airfoil.geo.curvature.curvature
+
+            pen = pg.mkPen(color.darker(140), width=1, style=Qt.PenStyle.DotLine)
+            # pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+
+            label   = f"Curvature Comb"
+            zValue = 3 if airfoil.usedAsDesign else 1
+
+            self._plot_dataItem (xe, ye, name=label, pen=pen, zValue=zValue)
+
+            # plot comb lines - interleave base and end points for connect='pairs'
+            pen = pg.mkPen(color.darker(300), width=1, style=Qt.PenStyle.SolidLine)
+            
+            # Create arrays: [x[0], xe[0], x[1], xe[1], ...]
+            x_pairs = np.empty(len(x) * 2)
+            y_pairs = np.empty(len(y) * 2)
+            x_pairs[0::2] = x
+            x_pairs[1::2] = xe
+            y_pairs[0::2] = y
+            y_pairs[1::2] = ye
+            
+            self._plot_dataItem (x_pairs, y_pairs, pen=pen, connect='pairs', zValue=zValue-1)
+
+            # plot max points at le and te 
+
+            self._plot_le_te_max_point (curvature, xe, ye, color, zValue=zValue+1)
+
+
+    def _plot_le_te_max_point (self, curvature : np.ndarray, xe : np.ndarray, ye : np.ndarray, 
+                               color : QColor, zValue : int):
+        """ plot the max value at LE"""
+
+        # le 
+        iMax   = np.argmax (curvature)
+        max_xy = (xe[iMax], ye[iMax])
+        text   = f"{curvature[iMax]:.0f}"
+        color  = QColor (color).darker (130)
+        textFill=QColor("black").setAlphaF(0.5)
+
+        self._plot_point (max_xy, color=color, text=text, anchor=(-0.2,0.5), zValue=zValue,
+                          textColor=color, textFill=textFill)
+
+        # te upper
+        max_xy = (xe[0], ye[0])
+        text   = f"upper {curvature[0]:.0f}"
+        self._plot_point (max_xy, color=color, text=text, anchor=(-0.1,0.9), zValue=zValue,
+                          textColor=color, textFill=textFill)
+        # te lower
+        max_xy = (xe[-1], ye[-1])   
+        text   = f"lower {curvature[-1]:.0f}"
+        self._plot_point (max_xy, color=color, text=text, anchor=(-0.1,0.1), zValue=zValue,
+                          textColor=color, textFill=textFill)
 
 
 

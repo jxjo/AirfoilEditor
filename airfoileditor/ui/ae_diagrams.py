@@ -589,24 +589,26 @@ class Item_Airfoil (Diagram_Item):
         self._stretch_y         = False                 # show y stretched 
         self._stretch_y_factor  = 3                     # factor to stretch 
         self._geo_info_item     = None                  # item to show geometry info on plot
+        self._show_curvature_comb = False               # show curvature comb
 
-        self.bezier_artist      : Bezier_Artist = None                 
-        self.flap_artist        : Flap_Artist = None
-        self.line_artist        : Airfoil_Line_Artist = None
-        self.airfoil_artist     : Airfoil_Artist = None
-        self.le_artist          : LE_Radius_Artist = None
-        self.te_artist          : TE_Gap_Artist = None
+        self._bezier_artist         : Bezier_Artist = None                 
+        self._flap_artist           : Flap_Artist = None
+        self._line_artist           : Airfoil_Line_Artist = None
+        self._airfoil_artist        : Airfoil_Artist = None
+        self._le_artist             : LE_Radius_Artist = None
+        self._te_artist             : TE_Gap_Artist = None
+        self._curvaturve_comb_artist : Curvature_Comb_Artist = None
 
         super().__init__(*args, **kwargs)
 
         # connect signals of app model
 
         self.app_model.sig_airfoil_geo_changed.connect      (self.refresh_artists)
-        self.app_model.sig_airfoil_geo_te_gap.connect       (self.te_artist.set_xBlend)
-        self.app_model.sig_airfoil_geo_le_radius.connect    (self.le_artist.set_xBlend)
+        self.app_model.sig_airfoil_geo_te_gap.connect       (self._te_artist.set_xBlend)
+        self.app_model.sig_airfoil_geo_le_radius.connect    (self._le_artist.set_xBlend)
         self.app_model.sig_airfoil_geo_paneling.connect     (self._on_paneling_changed)
-        self.app_model.sig_airfoil_flap_set.connect         (self.flap_artist.set_show)
-        self.app_model.sig_airfoil_bezier.connect           (self.bezier_artist.refresh_from_side)
+        self.app_model.sig_airfoil_flap_set.connect         (self._flap_artist.set_show)
+        self.app_model.sig_airfoil_bezier.connect           (self._bezier_artist.refresh_from_side)
 
         self.app_model.sig_xo2_new_design.connect           (self._on_new_design)
 
@@ -757,6 +759,16 @@ class Item_Airfoil (Diagram_Item):
         self._stretch_y_factor = clip (aVal, 1, 50)
         self.setup_viewRange ()
 
+    @property
+    def show_curvature_comb (self) -> bool:
+        """ show curvature comb"""
+        return self._show_curvature_comb
+    
+    def set_show_curvature_comb (self, aBool : bool):
+        self._show_curvature_comb = aBool
+        self._curvature_comb_artist.set_show (aBool)
+        self.setup_viewRange ()
+
 
     @override
     def resizeEvent(self, ev):
@@ -861,37 +873,41 @@ class Item_Airfoil (Diagram_Item):
         """ create and setup the artists of self"""
         
         a = Airfoil_Artist   (self, lambda: self.airfoils, show_legend=True)
-        self.airfoil_artist = a
+        self._airfoil_artist = a
         self._add_artist (a)
 
         a = Airfoil_Line_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
         a.sig_geometry_changed.connect (self.app_model.notify_airfoil_changed)
-        self.line_artist = a
+        self._line_artist = a
         self._add_artist (a)
 
         a = Bezier_Artist (self, lambda: self.airfoils, show_legend=True)
         a.sig_bezier_changed.connect (self.app_model.notify_airfoil_changed)
-        self.bezier_artist = a
+        self._bezier_artist = a
         self._add_artist (a)
 
         a = Hicks_Henne_Artist (self, lambda: self.airfoils, show_legend=True, show=False)
-        self.hicks_henne_artist = a
+        self._hicks_henne_artist = a
         self._add_artist (a)
 
         a = Bezier_Deviation_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
-        self.bezier_devi_artist = a
+        self._bezier_devi_artist = a
         self._add_artist (a)
 
         a  = Flap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True)
-        self.flap_artist = a
+        self._flap_artist = a
         self._add_artist (a)
 
         a  = TE_Gap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=False)
-        self.te_artist = a
+        self._te_artist = a
         self._add_artist (a)
 
         a  = LE_Radius_Artist (self, lambda: self.design_airfoil, show=False, show_legend=False)
-        self.le_artist = a
+        self._le_artist = a
+        self._add_artist (a)
+
+        a = Curvature_Comb_Artist   (self, lambda: self.airfoils, show=False, show_legend=True)
+        self._curvature_comb_artist = a
         self._add_artist (a)
 
         a  = Xo2_Transition_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True,
@@ -911,7 +927,12 @@ class Item_Airfoil (Diagram_Item):
             self.viewBox.setAspectLocked(ratio= 1)
 
         self.viewBox.autoRange ()               # first ensure best range x,y 
-        self.viewBox.setXRange( 0, 1)           # then set x-Range
+
+        if self._show_curvature_comb:
+            pass
+            # self.viewBox.setXRange(-0.4, 1)
+        else:
+            self.viewBox.setXRange( 0, 1)           # then set x-Range
 
         # self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
 
@@ -923,7 +944,7 @@ class Item_Airfoil (Diagram_Item):
 
         # ensure Bezier deviation artist is switched off
         if not self._is_design_and_bezier():
-            self.bezier_devi_artist.set_show(False, refresh=False)
+            self._bezier_devi_artist.set_show(False, refresh=False)
 
         super().refresh_artists()
 
@@ -936,24 +957,31 @@ class Item_Airfoil (Diagram_Item):
             l = QGridLayout()
             r,c = 0, 0 
             CheckBox (l,r,c, text="Coordinate points", colSpan=2,
-                    get=lambda: self.airfoil_artist.show_points,
-                    set=self.airfoil_artist.set_show_points,
+                    get=lambda: self._airfoil_artist.show_points,
+                    set=self._airfoil_artist.set_show_points,
                     toolTip="Show coordinate points of airfoils") 
             r += 1
             CheckBox (l,r,c, text="Thickness && Camber", colSpan=2,
-                    get=lambda: self.line_artist.show,
-                    set=self.line_artist.set_show,
+                    get=lambda: self._line_artist.show,
+                    set=self._line_artist.set_show,
                     toolTip="Show thickness and camber line of airfoils")
             r += 1
+            CheckBox (l,r,c, text="Curvature Comb", colSpan=2,
+                    get=lambda: self.show_curvature_comb,
+                    set=self.set_show_curvature_comb,
+                    toolTip="Show curvature as a 'comb' along the airfoil surface."+\
+                            "Useful to identify curvature discontinuities and artifacts.<br>"+
+                            "The length of the comb corresponds to the squareroot of curvature.")
+            r += 1
             CheckBox (l,r,c, text="Bezier control points", colSpan=2,
-                    get=lambda: self.bezier_artist.show,
-                    set=self.bezier_artist.set_show,
+                    get=lambda: self._bezier_artist.show,
+                    set=self._bezier_artist.set_show,
                     hide=lambda : not self._is_one_airfoil_bezier(),
                     toolTip="Show control points of Bezier curves")
             r += 1
             CheckBox (l,r,c, text="Hicks Henne functions", colSpan=2,
-                    get=lambda: self.hicks_henne_artist.show,
-                    set=self.hicks_henne_artist.set_show,
+                    get=lambda: self._hicks_henne_artist.show,
+                    set=self._hicks_henne_artist.set_show,
                     hide=lambda : not self._is_one_airfoil_hicks_henne(),
                     toolTip="Show Hicks Henne functions which build the airfoil")
             r += 1
@@ -967,14 +995,13 @@ class Item_Airfoil (Diagram_Item):
                     hide=lambda: not self.stretch_y) 
             r += 1
             CheckBox (l,r,c, text="Deviation of Design", colSpan=2,
-                    get=lambda: self.bezier_devi_artist.show,
-                    set=self.bezier_devi_artist.set_show,
+                    get=lambda: self._bezier_devi_artist.show,
+                    set=self._bezier_devi_artist.set_show,
                     toolTip="Show deviation of Design airfoil to the original airfoil",
                     hide=lambda : not self._is_design_and_bezier() or isinstance (self.case, Case_Optimize)) 
             r += 1
             l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)
-            l.setRowStretch    (r,2)
 
             self._section_panel = Edit_Panel (title=self.name, layout=l, auto_height=True,
                                               switchable=True, 
@@ -992,12 +1019,9 @@ class Item_Curvature (Diagram_Item):
 
     name        = "View Curvature"
     title       = "Curvature"                 
-    subtitle    = None                                  # will be set dynamically 
+    subtitle    = None                                 # will be set dynamically 
 
-    def __init__(self, *args, just_LE=False, **kwargs):
-
-        self._just_LE = just_LE                         # only show curvature near LE
-
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # connect signals of app model
@@ -1013,28 +1037,7 @@ class Item_Curvature (Diagram_Item):
     @property
     def airfoils (self) -> list[Airfoil]: 
         return self.app_model.airfoils_to_show
-
-    @override
-    def plot_title(self, **kwargs):
-        """ plot title of self """
-
-        if self._just_LE:
-            title = "Curvature LE"
-        else:
-            title = self.title
-        super().plot_title (title=title, **kwargs)
-
-
-    @override
-    def refresh(self): 
-        """ refresh my artists and section panel """
-
-        if self._just_LE:
-            self._viewRange_set = False              # ensure refresh will setup_viewRange (autoRange)
-
-        super().refresh()
-        return
-
+        
 
     def setup_artists (self):
         """ create and setup the artists of self"""
@@ -1049,16 +1052,51 @@ class Item_Curvature (Diagram_Item):
 
         self.viewBox.setDefaultPadding(0.05)
 
-
-        if self._just_LE:
-            self.viewBox.autoRange (padding=0.2)                   # first ensure best range x,y 
-            self.viewBox.setXRange(0, 0.03)        # then set x-Range
-        else:
-            self.viewBox.autoRange ()                   # first ensure best range x,y 
-            self.viewBox.setXRange( 0, 1)           # then set x-Range
-            self.viewBox.setYRange(-2.0, 2.0)
+        self.viewBox.autoRange ()               # first ensure best range x,y 
+        self.viewBox.setXRange( 0, 1)           # then set x-Range
+        self.viewBox.setYRange(-2.0, 2.0)
 
         self.showGrid(x=True, y=True)
+
+
+    @property
+    def section_panel (self) -> Edit_Panel:
+        """ return section panel within view panel"""
+
+        if self._section_panel is None:            
+            l = QGridLayout()
+            r,c = 0, 0 
+            CheckBox (l,r,c, text="Upper side", 
+                    get=lambda: self.curvature_artist.show_upper,
+                    set=self.curvature_artist.set_show_upper,
+                    toolTip="Show curvature of the upper side")
+            r += 1
+            CheckBox (l,r,c, text="Lower side", 
+                    get=lambda: self.curvature_artist.show_lower,
+                    set=self.curvature_artist.set_show_lower,
+                    toolTip="Show curvature of the lower side")
+            r += 1
+            CheckBox (l,r,c, text="Derivative of curvature", 
+                    get=lambda: self.curvature_artist.show_derivative,
+                    set=self.curvature_artist.set_show_derivative,
+                    disable=lambda: len(self.airfoils) != 1 and \
+                                    not any (airfoil.usedAsDesign for airfoil in self.airfoils),
+                    toolTip="Show the derivative of curvature which amplifies curvature artifacts.<br>"+
+                            "Only active if one airfoil is displayed or Design airfoil is shown.")
+            r += 1
+            CheckBox (l,r,c, text=f"X axes linked to '{self._desired_xLink_name}'", 
+                    get=lambda: self.xLinked, set=self.set_xLinked,
+                    toolTip=f"Link the x axis of the curvature diagram to the x axis of {self._desired_xLink_name}")
+            r += 1
+            l.setColumnStretch (3,2)
+            l.setRowStretch    (r,2)
+
+            self._section_panel = Edit_Panel (title=self.name, layout=l, auto_height=True,
+                                              switchable=True, 
+                                              switched_on=lambda: self.show,
+                                              on_switched=lambda aBool: self.set_show (aBool))
+
+        return self._section_panel 
 
 
 
@@ -1693,17 +1731,12 @@ class Diagram_Airfoil_Polar (Diagram):
          # panels for diagram items
 
         self._panel_polar           = None 
-        self._panel_curvature       = None
         self._panel_optimization    = None 
         self._panel_airfoil_settings= None
 
         self._show_polar_points     = False                         # show polars data points 
         self._show_bubbles          = False                         # show bubbles in polars 
         self._show_VLM_polars       = False                         # show VLM polars also
-        
-        self._show_curvature_upper  = True                          # show curvature upper surface
-        self._show_curvature_lower  = True                          # show curvature lower surface
-        self._show_derivative       = False                         # show curvature derivative
 
         super().__init__(*args, **kwargs)
 
@@ -1827,24 +1860,21 @@ class Diagram_Airfoil_Polar (Diagram):
     def create_diagram_items (self):
         """ create all plot Items and add them to the layout """
 
-        # build diagram items and add to layout having 4 columns
-
         r = 0 
         if self.app_model._is_first_run:
+
             # show Welcome text if App runs the first time
             item = Item_Welcome (self, self.app_model)
-            self._add_item (item, r, 0, colspan=4)                          # item has fixed height
+            self._add_item (item, r, 0, colspan=3)                          # item has fixed height
             r += 1
 
         item = Item_Airfoil (self, self.app_model)     
-        self._add_item (item, r, 0, colspan=4, rowStretch=3)
+        self._add_item (item, r, 0, colspan=2, rowStretch=3)
 
         r += 1
-        item = Item_Curvature (self, self.app_model, just_LE=True, show=False)
-        item.name = f"{Item_Curvature.name}_LE"                             # set unique name as there a multiple items
-        self._add_item (item, r, 0, colspan=2, rowStretch=3)
         item = Item_Curvature (self, self.app_model, show=False)
-        self._add_item (item, r, 2, colspan=2, rowStretch=3)
+        item.set_desired_xLink_name (Item_Airfoil.name)             # link x axis to airfoil item
+        self._add_item (item, r, 0, colspan=2, rowStretch=3)
 
         if Worker.ready:
             r += 1
@@ -1853,9 +1883,9 @@ class Diagram_Airfoil_Polar (Diagram):
             for iItem in [0,1]:
                 # create Polar items with init values vor axes variables 
                 item = Item_Polars (self, self.app_model, show=False)
-                item.name = f"{Item_Polars.name}_{iItem+1}"                     # set unique name as there a multiple items
-                item._set_settings (default_settings[iItem])                    # set default settings first
-                self._add_item (item, r, iItem*2, colspan=2, rowStretch=4)
+                item.name = f"{Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
+                item._set_settings (default_settings[iItem])                        # set default settings first
+                self._add_item (item, r, iItem, rowStretch=4)
  
 
     @override
@@ -1881,9 +1911,6 @@ class Diagram_Airfoil_Polar (Diagram):
         for item in self.diagram_items:
             if item.section_panel is not None: 
                 l.addWidget (item.section_panel,stretch=0)
-
-        # curvature panel
-        l.addWidget (self.panel_curvature, stretch=0)
 
         # polar panel
         l.addWidget (self.panel_polar, stretch=0)
@@ -2017,82 +2044,6 @@ class Diagram_Airfoil_Polar (Diagram):
     def set_show_xo2_opPoint_result (self, aBool : bool, refresh=True):
         self._show_artist (Xo2_OpPoint_Artist, aBool, refresh=refresh)
         self._show_artist (Xo2_Transition_Artist, aBool, refresh=refresh)
-
-
-    @property
-    def show_curvature (self) -> bool:
-        """ show curvature diagrams """
-        return self._show_item (Item_Curvature)
-
-    def set_show_curvature (self, aBool : bool, silent=False):
-        self._set_show_item (Item_Curvature, aBool, silent=silent)
-
-    @property
-    def show_curvature_upper (self) -> bool:
-        """ show curvature upper side"""
-        return self._show_curvature_upper
-    
-    def set_show_curvature_upper (self, aBool : bool):
-        self._show_curvature_upper = aBool
-
-        artist : Curvature_Artist
-        for artist in self._get_artist (Curvature_Artist):
-            artist.set_show_upper (aBool)
-
-    @property
-    def show_curvature_lower (self) -> bool:
-        """ show curvature lower side"""
-        return self._show_curvature_lower
-    
-    def set_show_curvature_lower (self, aBool : bool):
-        self._show_curvature_lower = aBool
-
-        artist : Curvature_Artist
-        for artist in self._get_artist (Curvature_Artist):
-            artist.set_show_lower (aBool)
-
-    @property
-    def show_derivative (self) -> bool:
-        """ show curvature derivative"""
-        return self._show_derivative
-    def set_show_derivative (self, aBool : bool):
-        self._show_derivative = aBool
-
-        artist : Curvature_Artist
-        for artist in self._get_artist (Curvature_Artist):
-            artist.set_show_derivative (aBool)
-
-
-    @property
-    def panel_curvature (self) -> Edit_Panel:
-        """ return curvature panel within view panel"""
-
-        if self._panel_curvature is None:            
-            l = QGridLayout()
-            r,c = 0, 0 
-            CheckBox (l,r,c, text="Upper side", 
-                    obj=self, prop= Diagram_Airfoil_Polar.show_curvature_upper,
-                    toolTip="Show curvature of the upper side")
-            r += 1
-            CheckBox (l,r,c, text="Lower side", 
-                    obj=self, prop= Diagram_Airfoil_Polar.show_curvature_lower,
-                    toolTip="Show curvature of the lower side")
-            r += 1
-            CheckBox (l,r,c, text="Derivative of curvature", 
-                    obj=self, prop= Diagram_Airfoil_Polar.show_derivative,
-                    disable=lambda: len(self.app_model.airfoils_to_show) != 1 and \
-                                    not any (airfoil.usedAsDesign for airfoil in self.app_model.airfoils_to_show),
-                    toolTip="Show the derivative of curvature which amplifies curvature artifacts.<br>"+
-                            "Only active if one airfoil is displayed or Design airfoil is shown.")
-            r += 1
-            l.setColumnStretch (3,2)
-            l.setRowStretch    (r,2)
-
-            self._panel_curvature = Edit_Panel (title="View Curvature", layout=l, auto_height=True,
-                                              switchable=True, 
-                                              switched_on=lambda: self.show_curvature,
-                                              on_switched=lambda aBool: self.set_show_curvature (aBool))
-        return self._panel_curvature 
 
 
     @property
