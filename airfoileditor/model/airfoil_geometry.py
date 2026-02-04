@@ -576,7 +576,7 @@ class Curvature_Abstract:
         return self._flap_kink_x if self._flap_kink_x > 0 else None  
 
 
-    def _find_flap_kink (self) -> float:
+    def _find_flap_kink (self) -> float | None:
         """ 
         check for a flap kink which leads to a peak of curvature at upper
         and opposite lower side. 
@@ -596,7 +596,8 @@ class Curvature_Abstract:
 
         # get largest needle
 
-        upper_y_max = 0 
+        upper_y_max = 0
+        upper_x_max = None
         for needle in needles_upper: 
             y = abs (needle[1])
             if y > upper_y_max:
@@ -605,7 +606,8 @@ class Curvature_Abstract:
 
         # get largest needle
         
-        lower_y_max = 0 
+        lower_y_max = 0
+        lower_x_max = None
         for needle in needles_lower: 
             y = abs (needle[1])
             if y > lower_y_max:

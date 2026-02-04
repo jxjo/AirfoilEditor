@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "4.2.4"                  # hatch "version dynamic" - PEP440 compliant version string
+__version__      = "4.2.5-beta"                  # hatch "version dynamic" - PEP440 compliant version string
                                             # for Github use SemVer "4.2.0-beta.3"
 
 CHANGE_TEXT      = "- Switch between polar diagram variables" # + \
