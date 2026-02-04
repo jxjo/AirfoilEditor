@@ -393,7 +393,7 @@ class Curvature_Abstract:
     def __init__ (self):
 
         self._spline : Spline2D = None                  # helper spline for curvature evaluation
-        self._curvature     = None
+        self._values        = None
 
         self._upper         = None                  # upper side curvature as Side_Airfoil
         self._lower         = None                  # lower side curvature as Side_Airfoil
@@ -435,12 +435,12 @@ class Curvature_Abstract:
             return None
 
     @property
-    def curvature (self): 
+    def values (self): 
         " return the curvature at knots 0..npoints"   
 
-        if self._curvature is None: 
+        if self._values is None: 
             raise GeometryException ("Curvature of xy not initialized")
-        return self._curvature
+        return self._values
 
 
     def as_curvature_comb (self):
@@ -468,8 +468,7 @@ class Curvature_Abstract:
         ny /= nn
 
         # Scale factor based on maximum curvature magnitude
-        curvature_vals = np.sqrt(np.abs(self.curvature)) * np.sign(self.curvature) * 0.01
-        # scale = 0.1 / np.max(np.abs(self.curvature))
+        curvature_vals = np.sqrt(np.abs(self.values)) * np.sign(self.values) * 0.01
 
         # Calculate comb line endpoints along normal direction
         x,y = self._x, self._y
@@ -485,31 +484,31 @@ class Curvature_Abstract:
         return self._iLe
 
     @property
-    def max_around_le (self) -> float: 
-        """ max value of curvature around LE  (index +-3) """
-        max = np.amax(np.abs(self.curvature [self.iLe-3: self.iLe+4]))
+    def max (self) -> float: 
+        """ max value of curvature"""
+        max = np.amax(np.abs(self.values))
         return float(max)
 
     @property
     def best_around_le (self) -> float: 
         """ estimation of best value for le if maximum is not at le """
 
-        if self.max_around_le > self.at_le:                   # mean value of max and curv at le  
-            best = (self.max_around_le + 2 * self.at_le) / 3
+        if self.max > self.at_le:                   # mean value of max and curv at le  
+            best = (self.max + 2 * self.at_le) / 3
 
         elif self.bump_at_upper_le or self.bump_at_lower_le:    # mean value without bump 
             if self.bump_at_upper_le:
-                best_upper =  (self.curvature [self.iLe] + self.curvature [self.iLe-2]) / 2 
+                best_upper =  (self.values [self.iLe] + self.values [self.iLe-2]) / 2 
             else: 
                 best_upper = self.at_le
             if self.bump_at_lower_le:
-                best_lower =  (self.curvature [self.iLe] + self.curvature [self.iLe-2]) / 2 
+                best_lower =  (self.values [self.iLe] + self.values [self.iLe-2]) / 2 
             else: 
                 best_lower = self.at_le
             best = (best_upper + best_lower) / 2 
 
         elif self.bump_at_lower_le:
-            best = (self.curvature [self.iLe] + self.curvature [self.iLe+2]) / 2 
+            best = (self.values [self.iLe] + self.values [self.iLe+2]) / 2 
 
         else:                                                  # mean value of le and max 
             best = self.at_le
@@ -517,30 +516,30 @@ class Curvature_Abstract:
 
     @property
     def max_upper_le (self) -> float: 
-        """ max value of curvature around LE upper side"""
-        max = np.amax(np.abs(self.curvature [self.iLe-3: self.iLe+1]))
+        """ max value of curvature upper side"""
+        max = np.amax(np.abs(self.upper.y))
         return float(max)
 
     @property
     def max_lower_le (self) -> float: 
-        """ max value of curvature around LE lower side"""
-        max = np.amax(np.abs(self.curvature [self.iLe: self.iLe+4]))
+        """ max value of curvature lower side"""
+        max = np.amax(np.abs(self.lower.y))
         return float(max)
 
     @property
     def bump_at_upper_le (self) -> bool: 
         """ is there a curvature bump at LE upper side"""
-        return self.curvature [self.iLe-1] < self.curvature [self.iLe-2] 
+        return self.values [self.iLe-1] < self.values [self.iLe-2] 
 
     @property
     def bump_at_lower_le (self) -> bool: 
         """ is there a curvature bump at LE lower side"""
-        return self.curvature [self.iLe+1] < self.curvature [self.iLe+2] 
+        return self.values [self.iLe+1] < self.values [self.iLe+2] 
 
     @property
     def at_le (self) -> float: 
         """ max value of curvature at LE"""
-        return float(self.curvature [self.iLe])
+        return float(self.values [self.iLe])
 
     @property
     def at_upper_te (self) -> float: 
@@ -657,8 +656,8 @@ class Curvature_of_xy (Curvature_Abstract):
         uLe  = spline.u[iLe]
         u = Panelling_Spline(nPanels=500, le_bunch=0.94).new_u (spline.u, 0, uLe_target=uLe)
 
-        self._iLe = int(np.argmin(np.abs(u - uLe)))
-        self._curvature = spline.curvature (u) 
+        self._iLe    = int(np.argmin(np.abs(u - uLe)))
+        self._values = spline.curvature (u) 
 
         # for curvature comb
 
@@ -667,9 +666,9 @@ class Curvature_of_xy (Curvature_Abstract):
 
         # split curvature spline in upper and lower 
 
-        self._upper = Line (np.flip(self._x[: self._iLe+1]), np.flip(self.curvature [: self._iLe+1]), 
+        self._upper = Line (np.flip(self._x[: self._iLe+1]), np.flip(self._values [: self._iLe+1]), 
                             linetype=Line.Type.UPPER )
-        self._lower = Line (self._x[self._iLe: ], self.curvature [self._iLe: ],                       
+        self._lower = Line (self._x[self._iLe: ], self._values [self._iLe: ],                       
                             linetype=Line.Type.LOWER )
 
 
@@ -687,7 +686,7 @@ class Curvature_of_Spline (Curvature_Abstract):
         u = Panelling_Spline(nPanels=500, le_bunch=0.94).new_u (spline.u, 0, uLe_target=uLe)
 
         self._iLe = int(np.argmin(np.abs(u - uLe)))
-        self._curvature = spline.curvature (u) 
+        self._values = spline.curvature (u) 
 
         # for curvature comb
 
@@ -696,9 +695,9 @@ class Curvature_of_Spline (Curvature_Abstract):
 
         # split curvature spline in upper and lower 
 
-        self._upper = Line (np.flip(self._x[: self._iLe+1]), np.flip(self.curvature [: self._iLe+1]), 
+        self._upper = Line (np.flip(self._x[: self._iLe+1]), np.flip(self._values [: self._iLe+1]), 
                             linetype=Line.Type.UPPER )
-        self._lower = Line (self._x[self._iLe: ], self.curvature [self._iLe: ],                       
+        self._lower = Line (self._x[self._iLe: ], self._values [self._iLe: ],                       
                             linetype=Line.Type.LOWER )
 
 
@@ -714,9 +713,9 @@ class Curvature_of_Bezier (Curvature_Abstract):
         self._upper_side = upper
         self._lower_side = lower
 
-        self._curvature = np.concatenate ((np.flip(-upper.curvature.y), lower.curvature.y[1:]))  
-        self._upper     = Line (upper.x, - upper.curvature.y, linetype=Line.Type.UPPER)
-        self._lower     = Line (lower.x,   lower.curvature.y, linetype=Line.Type.LOWER)
+        self._values = np.concatenate ((np.flip(-upper.curvature.y), lower.curvature.y[1:]))  
+        self._upper  = Line (upper.x, - upper.curvature.y, linetype=Line.Type.UPPER)
+        self._lower  = Line (lower.x,   lower.curvature.y, linetype=Line.Type.LOWER)
 
         self._iLe    = len (upper.x) - 1
 

@@ -446,7 +446,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
         r += 1
         FieldF (l,r,c, lab="LE curv", width=75, dec=0, disable=True,
-                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_around_le)
+                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max)
         r += 1
         FieldF (l,r,c, lab="TE curv", width=75, dec=0, disable=True,
                 obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_te,

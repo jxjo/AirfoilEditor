@@ -348,7 +348,7 @@ class Airfoil:
                     f"</tr>" + \
                     f"<tr>" + \
                         f"<td>Curvature LE  </td>" + \
-                        f"<td>{self.geo.curvature.max_around_le:.0f}  </td>" + \
+                        f"<td>{self.geo.curvature.max:.0f}  </td>" + \
                         f"<td>TE    </td>" + \
                         f"<td>{self.geo.curvature.max_te:.0f}  </td>" + \
                     f"</tr>" + \

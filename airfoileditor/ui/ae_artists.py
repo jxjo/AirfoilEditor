@@ -1097,14 +1097,14 @@ class Curvature_Artist (Artist):
 
         # le 
         anchor = (0,1) if aSide.isUpper else (0,0)
-        text   = f"max {aSide.name} {aSide.max_xy[1]:.0f}"
+        text   = f"{aSide.name} {aSide.max_xy[1]:.0f}"
 
         self._plot_point (aSide.max_xy, color=color, text=text, anchor=anchor, zValue=zValue,
                           textColor=color)
 
         # te 
-        anchor = (1,1) if aSide.isUpper else (1,0)
-        text   = f"max {aSide.name} {aSide.te[1]:.1f}"
+        anchor = (-0.1,1) if aSide.isUpper else (-0.1,0)
+        text   = f"{aSide.name} {aSide.te[1]:.1f}"
 
         self._plot_point (aSide.te, color=color, text=text, anchor=anchor, zValue=zValue,
                           textColor=color)
@@ -1154,7 +1154,7 @@ class Curvature_Comb_Artist (Artist):
             # plot outline of comb
 
             x, y, xe, ye = airfoil.geo.curvature.as_curvature_comb ()
-            curvature = airfoil.geo.curvature.curvature
+            vals = airfoil.geo.curvature.values
 
             pen = pg.mkPen(color.darker(140), width=1, style=Qt.PenStyle.DotLine)
             # pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
@@ -1179,17 +1179,17 @@ class Curvature_Comb_Artist (Artist):
 
             # plot max points at le and te 
 
-            self._plot_le_te_max_point (curvature, xe, ye, color, zValue=zValue+1)
+            self._plot_le_te_max_point (vals, xe, ye, color, zValue=zValue+1)
 
 
-    def _plot_le_te_max_point (self, curvature : np.ndarray, xe : np.ndarray, ye : np.ndarray, 
+    def _plot_le_te_max_point (self, values : np.ndarray, xe : np.ndarray, ye : np.ndarray, 
                                color : QColor, zValue : int):
         """ plot the max value at LE"""
 
         # le 
-        iMax   = np.argmax (curvature)
-        max_xy = (xe[iMax], ye[iMax])
-        text   = f"{curvature[iMax]:.0f}"
+        imax   = np.argmax (values)
+        max_xy = (xe[imax], ye[imax])
+        text   = f"{values[imax]:.0f}"
         color  = QColor (color).darker (130)
         textFill=QColor("black").setAlphaF(0.5)
 
@@ -1198,12 +1198,12 @@ class Curvature_Comb_Artist (Artist):
 
         # te upper
         max_xy = (xe[0], ye[0])
-        text   = f"upper {curvature[0]:.0f}"
+        text   = f"Upper {values[0]:.1f}"
         self._plot_point (max_xy, color=color, text=text, anchor=(-0.1,0.9), zValue=zValue,
                           textColor=color, textFill=textFill)
         # te lower
         max_xy = (xe[-1], ye[-1])   
-        text   = f"lower {curvature[-1]:.0f}"
+        text   = f"Lower {values[-1]:.1f}"
         self._plot_point (max_xy, color=color, text=text, anchor=(-0.1,0.1), zValue=zValue,
                           textColor=color, textFill=textFill)
 
