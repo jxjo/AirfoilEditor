@@ -1237,13 +1237,7 @@ class Polar (Polar_Definition):
         """ returns a Polar_Point at min cd - or None if not valid"""
         if np.any(self.cd):
             ip = np.argmin (self.cd)
-            # sanity for somehow valid polar 
-            if self.type == polarType.T1:
-                if ip > 2 and ip < (len(self.cd) - 1):
-                    return self.polar_points [ip]
-            else:
-                if ip < (len(self.cd) - 1):
-                    return self.polar_points [ip]
+            return self.polar_points [ip]
 
 
     @property
@@ -1251,19 +1245,14 @@ class Polar (Polar_Definition):
         """ returns a Polar_Point at max glide - or None if not valid"""
         if np.any(self.glide):
             ip = np.argmax (self.glide)
-            # sanity for somehow valid polar 
-            if ip > 2 and ip < (len(self.glide) - 3):
-                return self.polar_points [ip]
-
+            return self.polar_points [ip]
 
     @property
     def max_cl (self) -> Polar_Point:
         """ returns a Polar_Point at max cl - or None if not valid"""
         if np.any(self.cl):
             ip = np.argmax (self.cl)
-            # sanity for somehow valid polar 
-            if ip > (len(self.cl) - 5):
-                return self.polar_points [ip]
+            return self.polar_points [ip]
 
 
     @property
@@ -1271,9 +1260,7 @@ class Polar (Polar_Definition):
         """ returns a Polar_Point at min cl - or None if not valid"""
         if np.any(self.cl):
             ip = np.argmin (self.cl)
-            # sanity for somehow valid polar 
-            if ip < (len(self.cl) - 5):
-                return self.polar_points [ip]
+            return self.polar_points [ip]
 
 
     @property

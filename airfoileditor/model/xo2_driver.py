@@ -59,16 +59,28 @@ def is_younger (filePath, age_in_seconds):
 
 
 def file_in_use (filePath):
-    """ returns True if file is in use by another process"""
+    """ returns True if file is in use by another process
+
+        performs one retry after 100 ms
+    """
     
     in_use = False
+    attempts = 2
+    delay_s = 0.1
 
     if os.path.exists(filePath):
-        try:
-            os.rename(filePath, filePath)
-        except OSError as e:
+        for attempt in range(attempts):
+            try:
+                os.rename(filePath, filePath)
+                in_use = False
+                break
+            except OSError:
+                in_use = True
+                if attempt < attempts - 1 and delay_s > 0:
+                    time.sleep(delay_s)
+
+        if in_use:
             logger.warning (f"File {filePath} in use by another process")
-            in_use = True 
 
     return in_use 
 
