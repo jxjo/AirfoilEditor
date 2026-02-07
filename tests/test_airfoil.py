@@ -41,15 +41,15 @@ class Test_Airfoil:
 
         # base data 
 
-        assert airfoil.nPoints == 200
-        assert airfoil.nPanels == 199
+        assert airfoil.nPoints == 161
+        assert airfoil.nPanels == 160
         assert airfoil.isNormalized
-        assert geo.te_gap == 0.03 / 100
+        assert geo.te_gap == 0.0002934
 
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.2903642, 0.0764996)
-        assert geo.camber._get_maximum()    == (0.4152061, 0.0170131)
+        assert geo.thickness._get_maximum() == (0.2909977, 0.0769996)
+        assert geo.camber._get_maximum()    == (0.4027354, 0.0167918)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -75,8 +75,8 @@ class Test_Airfoil:
         airfoil = Root_Example(geometry = GEO_BASIC)
         curv : Curvature_of_xy = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 317
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.032
+        assert round(curv.upper._get_maximum()[1],0) == 319
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.092
 
     
     def test_geo_splined (self): 
@@ -88,16 +88,16 @@ class Test_Airfoil:
 
         # base data 
 
-        assert airfoil.nPoints == 200
-        assert airfoil.nPanels == 199
+        assert airfoil.nPoints == 161
+        assert airfoil.nPanels == 160
         assert not airfoil.isNormalized       
-        assert geo.te_gap == 0.03 / 100 
-        assert geo.le_real           == (0.0, 1.29e-05)
+        assert geo.te_gap == 0.0002934 
+        assert geo.le_real           == (0.0, 1.05e-05)
 
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.2903512, 0.076502)
-        assert geo.camber._get_maximum()    == (0.4152475, 0.0170127)
+        assert geo.thickness._get_maximum() == (0.2908811, 0.0770029)
+        assert geo.camber._get_maximum()    == (0.4027112, 0.0167905)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -113,7 +113,7 @@ class Test_Airfoil:
         geo.set_max_camb_x  (0.30)
         assert round(geo.max_camb_x,3) == 0.30
 
-        assert geo.nPoints == 203, "nPoints changed with rebuild from upper and lower "
+        assert geo.nPoints == 161, "nPoints changed with rebuild from upper and lower "
 
 
         # normalize, repanel 
@@ -122,7 +122,7 @@ class Test_Airfoil:
         geo : Geometry_Splined = airfoil.geo
 
         assert geo.le == (0.0, 0.0) 
-        assert geo.le_real == (0.0, 1.29e-05)          
+        assert geo.le_real == (0.0, 1.05e-05)          
 
         assert geo.normalize(), "should be True because normalization needed"
         assert geo.isNormalized
@@ -137,9 +137,9 @@ class Test_Airfoil:
         airfoil = Root_Example(geometry = GEO_SPLINE)
         curv : Curvature_of_Spline = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 317
-        assert round(curv.lower._get_maximum()[1],0) == 372
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.032
+        assert round(curv.upper._get_maximum()[1],0) == 316
+        assert round(curv.lower._get_maximum()[1],0) == 316
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.092
 
 
 
@@ -155,7 +155,7 @@ class Test_Airfoil:
         
         # normalize, repanel 
 
-        assert airfoil.normalize(), "should be True because normalizaton needed"
+        assert airfoil.normalize(), "should be True because normalization needed"
         assert airfoil.isNormalized
 
         #todo implement repanel 
@@ -188,7 +188,7 @@ class Test_Airfoil:
         assert airfoil1.geo.max_thick == airfoil.geo.max_thick
 
         airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5)
-        assert airfoil.geo.max_thick == 7.3015 / 100
+        assert airfoil.geo.max_thick == 0.0741438
 
 
 
@@ -396,7 +396,7 @@ class Test_Worker:
         airfoil_flapped.load()
 
         assert airfoil_flapped.isFlapped
-        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.69704585
+        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7065138741381286
 
 
 # Main program for testing 
