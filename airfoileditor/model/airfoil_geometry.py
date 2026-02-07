@@ -398,7 +398,7 @@ class Curvature_Abstract:
         self._upper         = None                  # upper side curvature as Side_Airfoil
         self._lower         = None                  # lower side curvature as Side_Airfoil
         self._iLe           = None                  # index of le in curvature array
-        self._flap_kink_x   = None                  # x position of a curvature flap kink  
+        self._flap_kink_xu_xl  = None               # x position of a curvature flap kink upper, lower
 
         # for curvature comb
         self._x             = None
@@ -560,37 +560,53 @@ class Curvature_Abstract:
     def has_flap_kink (self) -> bool:
         """ True if curvature has (probably) flap kink (peek on upper and lower side)"""
 
-        if self._flap_kink_x is None: 
-            x_pos = self._find_flap_kink()
-            self._flap_kink_x = x_pos if x_pos else -1
-        return self._flap_kink_x > 0 
+        return self.flap_kink_at is not None
+
+    @property
+    def flap_kink_xu_xl (self) -> tuple[float, float] | None:
+        """ x position of a flap kink on upper and lower side or None"""
+
+        if self.has_flap_kink:
+            return self._flap_kink_xu_xl
+        else:
+            return None
 
 
     @property
     def flap_kink_at (self) -> float:
-        """ x position of a flap kink or None"""
+        """ x position (mean value of upper and lower) of a flap kink or None"""
 
-        if self._flap_kink_x is None: 
-            x_pos = self._find_flap_kink()
-            self._flap_kink_x = x_pos if x_pos else -1
-        return self._flap_kink_x if self._flap_kink_x > 0 else None  
+        if self._flap_kink_xu_xl is None: 
+            xu_xl = self._find_flap_kink()
+            self._flap_kink_xu_xl = xu_xl if xu_xl else 0       # mark as calculated
+
+        if self._flap_kink_xu_xl:
+            x = (self._flap_kink_xu_xl[0] + self._flap_kink_xu_xl[1]) / 2
+        else:
+            x = None
+
+        return x  
 
 
-    def _find_flap_kink (self) -> float | None:
+    def _find_flap_kink (self) -> tuple[float, float] | None:
         """ 
         check for a flap kink which leads to a peak of curvature at upper
         and opposite lower side. 
-        Returns x value of the kink if there is one - else None
+        Returns x value of the kink on upper and on lower side if they are close enough,
+             otherwise None
         """
+
+        wx = 0.03                       # max width of a needle
+        threshold = 1.0                 # min curvature of a needle - to be a flap kink - should be high to avoid false positives
 
         # get curvature needles on upper and lower side using high threshold  
 
-        needles_upper = self.upper.needles (xStart=0.3, xEnd=0.9, threshold=1.0)
+        needles_upper = self.upper.needles (xStart=0.3, xEnd=0.9, threshold=threshold, wx=wx)
 
         if len(needles_upper) > 0:
-            needles_lower = self.lower.needles (xStart=0.3, xEnd=0.9, threshold=1.0)
+            needles_lower = self.lower.needles (xStart=0.3, xEnd=0.9, threshold=-threshold, wx=wx)
             if len(needles_lower) == 0:
-                return None 
+                return None
         else: 
             return None    
 
@@ -617,8 +633,10 @@ class Curvature_Abstract:
         if isclose (upper_x_max, lower_x_max, abs_tol=0.015):
             # print ("upper ", upper_x_max, upper_y_max)
             # print ("lower ", lower_x_max, lower_y_max)
-            return (upper_x_max + lower_x_max) / 2
-
+            return upper_x_max, lower_x_max
+        else:
+            return None
+        
 
     @property
     def isReflexed (self) -> bool:
@@ -963,10 +981,16 @@ class Line:
         return reversals 
     
 
-    def needles (self, xStart= 0.1, xEnd=1.0, threshold=1.0) -> list [tuple]:
+    def needles (self, xStart= 0.1, xEnd=1.0, threshold=1.0, wx=0.0) -> list [tuple]:
         """ 
-        returns a list of needles which are single peaks above threshold
-        A needle is a tuple (x,y). Detetction is between xStart und xEnd.
+        returns a list of needles which are peaks beyond threshold with maximum width wx
+        A needle is a tuple (x,y). Detection is between xStart and xEnd.
+        
+        Args:
+            xStart: start x position for detection
+            xEnd: end x position for detection  
+            threshold: threshold value for peak detection (positive: peaks above, negative: peaks below)
+            wx: maximum width in x for a needle (0.0 = single-point peaks only)
         """
 
         needles = []
@@ -977,11 +1001,60 @@ class Line:
 
         if len(iToDetect) < 3: return needles
 
-        for i in iToDetect [1:-2]:
-            if y[i] >= threshold and y[i-1] < threshold and y[i+1] < threshold:              
-                needles.append((x[i], y[i])) 
-            elif y[i] <= -threshold and y[i-1] > -threshold and y[i+1] > -threshold:              
-                needles.append((x[i], y[i])) 
+        # Determine if looking for positive or negative peaks
+        looking_for_positive = threshold >= 0
+        abs_threshold = abs(threshold)
+
+        i = 0
+        while i < len(iToDetect):
+            idx = iToDetect[i]
+            
+            # Check for peak beyond threshold
+            if looking_for_positive:
+                peak_condition = y[idx] >= abs_threshold
+            else:
+                peak_condition = y[idx] <= -abs_threshold
+            
+            if peak_condition:
+                # Find end of peak region
+                j = i
+                if looking_for_positive:
+                    while j < len(iToDetect) and y[iToDetect[j]] >= abs_threshold:
+                        j += 1
+                else:
+                    while j < len(iToDetect) and y[iToDetect[j]] <= -abs_threshold:
+                        j += 1
+                
+                # Calculate peak width
+                i_start = iToDetect[i]
+                i_end = iToDetect[j-1]
+                peak_width = x[i_end] - x[i_start]
+                
+                # Check if peak width is within limit
+                if peak_width <= wx:
+                    # Find maximum (or minimum for negative) in this region
+                    peak_indices = iToDetect[i:j]
+                    if looking_for_positive:
+                        i_extreme = peak_indices[np.argmax(y[peak_indices])]
+                    else:
+                        i_extreme = peak_indices[np.argmin(y[peak_indices])]
+                    
+                    # For wx=0 (single point), verify neighbors are on opposite side of threshold
+                    if wx == 0.0:
+                        if i_extreme > 0 and i_extreme < len(y) - 1:
+                            if looking_for_positive:
+                                if y[i_extreme-1] < abs_threshold and y[i_extreme+1] < abs_threshold:
+                                    needles.append((x[i_extreme], y[i_extreme]))
+                            else:
+                                if y[i_extreme-1] > -abs_threshold and y[i_extreme+1] > -abs_threshold:
+                                    needles.append((x[i_extreme], y[i_extreme]))
+                    else:
+                        needles.append((x[i_extreme], y[i_extreme]))
+                
+                i = j
+            else:
+                i += 1
+        
         return needles 
     
 
@@ -2867,7 +2940,7 @@ class Geometry_Splined (Geometry):
         # vector 1 from te to point 
         dxTe = x - xTe
         dyTe = y - yTe
-        # verctor2 tangent at point 
+        # vector2 tangent at point 
         dx, dy = self.spline.eval(u, der=1) 
 
         dot = dx * dxTe + dy * dyTe

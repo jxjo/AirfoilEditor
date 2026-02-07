@@ -1181,6 +1181,17 @@ class Curvature_Comb_Artist (Artist):
 
             self._plot_le_te_max_point (vals, xe, ye, color, zValue=zValue+1)
 
+            # plot flap kink detected
+
+            if airfoil.geo.curvature.has_flap_kink:
+                xu, xl = airfoil.geo.curvature.flap_kink_xu_xl
+                ki = np.argmin(np.abs(x - xu))
+                kx = xe[ki]
+                ky = ye[ki]
+                self._plot_point ((kx, ky), color=color, size=0, text="Flap Kink", anchor=(0.5,1.5),
+                                  zValue=zValue+2, textColor=color.darker(130))
+
+
 
     def _plot_le_te_max_point (self, values : np.ndarray, xe : np.ndarray, ye : np.ndarray, 
                                color : QColor, zValue : int):
