@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.2.5
+
+### Added
+
+- Show curvature as an Curvature Cimb
+- Revised example airfoils  
 
 ## 4.2.4
 

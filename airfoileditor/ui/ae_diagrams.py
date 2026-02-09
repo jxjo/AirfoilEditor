@@ -1144,9 +1144,8 @@ Try out the functionality with this example or <strong><span style="color: silve
         else:
             example = ""
 
-        new =   "- Forced transition support in polar generation<br>" + \
-                "- Show polar version with forced transition as used for VLM.<br>" + \
-                "- Visualization of turbulent separation bubbles causing high drag<br>" + \
+        new =   "- Show curvature as a curvature comb along airfoil surface<br>" + \
+                "- Revised example airfoils<br>" + \
                 "- ...<br>"
         
         # ... can't get column width working ...
@@ -1870,6 +1869,10 @@ class Diagram_Airfoil_Polar (Diagram):
 
         item = Item_Airfoil (self, self.app_model)     
         self._add_item (item, r, 0, colspan=2, rowStretch=3)
+
+        # show curvature comb in new version 
+        if self.app_model._is_first_run:
+            item.set_show_curvature_comb (True)
 
         r += 1
         item = Item_Curvature (self, self.app_model, show=False)
