@@ -6,8 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Show curvature as an Curvature Cimb
-- Revised example airfoils  
+- Show curvature of the surface as a 'curvature comb'
+- New example airfoils  
+
+### Fixed
+
+- Revised flap kink detection
+- Minor bugs 
+
 
 ## 4.2.4
 

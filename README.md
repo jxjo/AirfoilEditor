@@ -1,6 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 4.2.4
+### Version 4.2.5
 
 ---
 
@@ -51,12 +51,15 @@ This method is also used to adjust the highpoint of both the upper and lower sur
 
 ## Curvature
 
-On of the major views on an airfoil in the AirfoilEditor is the curvature of the airfoils surface. It allows a quick assessment of the surface quality and to detect artifacts like a 'spoiler' at the trailing edge which is quite common.
+One of the main views in AirfoilEditor is the curvature of the airfoil surface. It enables a quick assessment of surface quality and helps detect artifacts such as a trailing-edge 'spoiler', which is fairly common.
+
+Curvature can be displayed as a 'curvature comb' directly on the surface or shown in more detail in a separate diagram.
+
+![AE](images/curvature_comb.png "curvature")
 
 > [!TIP]
 Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) for more information about an airfoils geometry.  
 
-![AE](images/curvature.png "curvature")
 
 
 ## Bezier based airfoils
