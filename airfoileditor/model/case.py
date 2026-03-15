@@ -5,11 +5,15 @@ import os
 import fnmatch      
 import shutil   
 
+import numpy as np
+
 from datetime               import datetime
 from pathlib                import Path
-from typing                 import override
+from typing                 import override, Type
 
-from .airfoil               import Airfoil, Airfoil_Bezier, GEO_SPLINE
+from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, GEO_SPLINE, usedAs
+from .airfoil_geometry      import Line, Geometry_Splined
+from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
 
 from .xo2_input             import Input_File
 from .xo2_controller        import Xo2_Controller
@@ -77,7 +81,8 @@ class Case_Abstract:
 
     def __init__(self):
 
-        self._airfoil_seed     = None                   
+        self._airfoil_seed     = None
+        self._airfoil_target   = None                   
         self._airfoil_final    = None
         self._workingDir       = None 
         self._airfoil_designs  = [] 
@@ -103,6 +108,11 @@ class Case_Abstract:
         """ seed or initial airfoil"""
         return self._airfoil_seed 
 
+    @property
+    def airfoil_target (self) -> Airfoil:
+        """ target airfoil for matching"""
+        return self._airfoil_target
+
 
     @property
     def airfoil_final (self) -> Airfoil: 
@@ -116,9 +126,12 @@ class Case_Abstract:
 
     @property
     def design_dir (self) -> str:
-        """ relative directory with airfoil designs"""
-        # to be overridden 
-        return None
+        """ relative directory with airfoil designs like 'MH30_designs'"""
+
+        if self.airfoil_seed:
+            return f"{self.airfoil_seed.fileName_stem}{self.DESIGN_DIR_EXT}"
+        else:
+            return None
 
     @property
     def airfoil_designs (self) -> list[Airfoil]: 
@@ -192,12 +205,6 @@ class Case_Direct_Design (Case_Abstract):
     def name (self) -> str:
         return self._airfoil_seed.fileName if self._airfoil_seed else "closed"
 
-    @property
-    def design_dir (self) -> str:
-        """ relative directory with airfoil designs"""
-
-        return f"{os.path.splitext(self._airfoil_seed.fileName)[0]}{self.DESIGN_DIR_EXT}"
-
 
     @property
     def design_dir_abs (self) -> str:
@@ -235,7 +242,6 @@ class Case_Direct_Design (Case_Abstract):
             self.add_design (airfoil)
 
         airfoil_copy = airfoil.asCopy_design () 
-        airfoil_copy.set_isEdited (True)
 
         return airfoil_copy
     
@@ -418,62 +424,220 @@ class Case_Direct_Design (Case_Abstract):
         return airfoils 
 
 
+# -------------------------------------------------------------------
 
-class Case_As_Bezier (Case_Direct_Design):
+
+
+class Match_Targets:
+    """ 
+    Helper Container for target values for matching 
+    - curvature at LE, max curvature at TE, max number of reversals in curvature, etc. 
     """
-    A Direct Design Case: New Bezier airfoil based on a .dat airfoil
-    """
 
-    NAME_EXT = "_bezier"
+    def __init__ (self, side : Line, curvature : Line,  
+                  ncp = 5, ncp_auto = True, min_rms = True, le_curvature = None):
 
-    def __init__(self, airfoil: Airfoil):
+        self._side              = side                              # target upper or lower Line 
+        self._curvature         = curvature                         # target curvature Line
 
-        if not isinstance(airfoil, Airfoil) or not airfoil.isDatBased:
-            raise ValueError (f"Airfoil for 'New as Bezier' must be .dat Airfoil")
-        
-        # sanity - ensure airfoil is normalized
-        if not airfoil.isNormalized:
-            seed_airfoil = airfoil.asCopy ()
-            seed_airfoil.normalize(just_basic=True, mod_string='_norm')
+        self._ncp               = ncp                               # number of control points for matching curve
+        self._ncp_auto          = ncp_auto                          # automatically ncp for best fit
+
+        self._min_rms           = min_rms                           # minimze deviation
+        self._le_curvature      = le_curvature                      # target curvature at leading edge 
+        self._max_nreversals    = np.clip(curvature.nreversals(), 0, 1)     # maximum allowed reversals in curvature
+        self._max_te_curvature  = self._get_max_te_curvature (self._max_nreversals)   # maximum curvature at trailing edge 
+
+
+    @classmethod
+    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int) -> 'Match_Targets':
+        """ create Match_Targets from an Airfoil and side name 'upper' or 'lower' """
+
+        if not isinstance (airfoil, Airfoil):
+            raise ValueError (f"{airfoil} is not an Airfoil for Match_Targets")
+
+        if sidetype not in [Line.Type.UPPER, Line.Type.LOWER]:
+            raise ValueError (f"sidetype should be 'UPPER' or 'LOWER' for Match_Targets")
+
+        if sidetype == Line.Type.UPPER :
+            side = airfoil.geo.upper
+            curv = airfoil.geo.curvature.upper
         else:
-            seed_airfoil = airfoil
+            side = airfoil.geo.lower
+            curv = airfoil.geo.curvature.lower
+            
+        le_curvature   = round(airfoil.geo.curvature.max, 1)
 
-        # create initial Bezier airfoil based on current
-        self._initial_airfoil_bez = Airfoil_Bezier.onAirfoil (seed_airfoil)
+        instance =  cls (side, curv, ncp=ncp, le_curvature=le_curvature)
 
-        # remove existing design dir - start with new designs
-        shutil.rmtree (self.design_dir, ignore_errors=True)
+        return instance
 
-        super().__init__(seed_airfoil)
+    #---------------
 
+    @property
+    def side (self) -> Line:
+        return self._side
+    
+    @property
+    def ncp (self) -> int:
+        return self._ncp
+
+    @property
+    def ncp_auto (self) -> bool:
+        return self._ncp_auto
+
+    @property
+    def min_rms (self) -> bool:
+        return self._min_rms
+    
+    @property
+    def le_curvature (self) -> float:
+        return self._le_curvature
+    
+    @property
+    def max_te_curvature (self) -> float:
+        return self._max_te_curvature
+    
+    @property
+    def max_nreversals (self) -> int:
+        return self._max_nreversals
+    
+    # --- setters ---
+
+    def set_side             (self, side: Line): self._side = side
+    def set_ncp              (self, ncp : int): self._ncp = ncp
+    def set_ncp_auto         (self, auto : bool): self._ncp_auto = auto
+    def set_le_curvature     (self, val : float): self._le_curvature     = val
+    def set_max_te_curvature (self, val : float): self._max_te_curvature = val
+    def set_max_nreversals   (self, val : int  ): 
+        self._max_nreversals    = val
+        self._max_te_curvature = self._get_max_te_curvature(val)
+
+
+    def _get_max_te_curvature(self, nreversals: int) -> float:
+        """ 
+        calc max_te_curvature depending on number of reversals 
+        - if there shall be no reversal, only small curvature at TE is allowed, otherwise it can be higher
+        """
+
+        if nreversals == 0:
+            te_curvature = round(abs(self._curvature.y[-1]),1)
+            te_curvature += 0.1                                 # allow some tolerance  
+            return np.clip (te_curvature, 0.1, 1.0)             # clip to accetable range
+        else:
+            return -2.0
+
+
+
+
+
+class Case_Match_Target (Case_Direct_Design):
+    """
+    A Direct Design Case: New Bezier of B-Spline airfoil based on a .dat airfoil
+    """
+
+    def __init__(self, airfoil: Airfoil, new_airfoil_cls : Type [Airfoil_Bezier | Airfoil_BSpline]):
+        """ new_airfoil_cls should be either Airfoil_Bezier or Airfoil_BSpline"""
+
+        if not new_airfoil_cls in [Airfoil_Bezier, Airfoil_BSpline]:
+            raise ValueError (f"new_airfoil_cls should be either Airfoil_Bezier or Airfoil_BSpline")
+        
+        # remove existing design dir - start with new designs - do it before super init, because it reads existing designs
+
+        design_dir = f"{airfoil.fileName_stem}{self.DESIGN_DIR_EXT}"
+        shutil.rmtree (design_dir, ignore_errors=True)
+
+        self._targets_upper = None
+        self._targets_lower = None
+
+        super().__init__(airfoil)
+
+        # -- 
+
+        self.airfoil_seed.set_property ("show", False)                      # don't show  both seed and target
+
+        # -- create target airfoil for matching based on current with reduced panels and normalized
+
+        airfoil_target = airfoil.asCopy (geometry=Geometry_Splined)         # target airfoil for matching 
+        airfoil_target.set_usedAs (usedAs.TARGET)
+        airfoil_target.repanel (nPanels=100, le_bunch=0.85, te_bunch=0.3, mod_string='_repan')
+
+        if not airfoil_target.isNormalized:
+            airfoil_target.normalize(mod_string='_repan_norm')              # do not modify name again
+
+        self._airfoil_target = airfoil_target
+
+        # -- create initial Bezier or B-Spline airfoil based on target airfoil
+        
+        ncp = 6 if new_airfoil_cls == Airfoil_Bezier else 8
+        airfoil_initial = new_airfoil_cls.on_airfoil (airfoil_target, ncp=ncp)
+        airfoil_initial.useAsDesign()
+        airfoil_initial.set_pathName   (self.design_dir, noCheck=True)
+        airfoil_initial.set_workingDir (self.workingDir)
+
+        self._airfoil_designs = []                                  # reset designs - start new
+        self.add_design (airfoil_initial)
+
+        # -- setup match targets 
+
+        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp)
+        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp)
+
+        self._match_result_upper = None     # last Match_Result from real optimizer run
+        self._match_result_lower = None
 
 
     @property
-    def design_dir (self) -> str:
-        """ relative directory with airfoil designs"""
+    def targets_upper (self) -> Match_Targets:
+        """ target values for upper side matching """
+        return self._targets_upper
+    
+    @property
+    def targets_lower (self) -> Match_Targets:
+        """ target values for lower side matching """
+        return self._targets_lower
 
-        return f"{os.path.splitext(self._initial_airfoil_bez.fileName)[0]}{self.DESIGN_DIR_EXT}"
+    @property
+    def match_result_upper (self):
+        """ last Match_Result from a real optimizer run for upper side (None if not yet run) """
+        return self._match_result_upper
+
+    @property
+    def match_result_lower (self):
+        """ last Match_Result from a real optimizer run for lower side (None if not yet run) """
+        return self._match_result_lower
+
+    def set_match_result (self, result):
+        """ store the latest optimizer Match_Result for the appropriate side """
+        if result.side.type == Line.Type.UPPER:
+            self._match_result_upper = result
+        else:
+            self._match_result_lower = result
 
 
     def initial_airfoil_design (self) -> Airfoil:
         """ 
-        returns first design as the working airfoil - either 
-            - normalized version of seed airfoil 
-            - last design of already existing design in design folder 
+        returns first design as the working airfoil 
         """
 
-        airfoil : Airfoil_Bezier = self._initial_airfoil_bez.asCopy ()
-        airfoil.useAsDesign()
-        airfoil.set_pathName   (self.design_dir, noCheck=True)      # no check, because workingDir is needed
-        airfoil.set_workingDir (self.workingDir)
-
-        self._airfoil_designs = []                                  # reset designs - start new
-        self.add_design (airfoil)
-
-        airfoil_copy = airfoil.asCopy_design () 
-        airfoil_copy.set_isEdited (True)
+        # Initial design was already created and added in __init__
+        airfoil_copy = self.airfoil_designs[0].asCopy_design () 
 
         return airfoil_copy
+
+
+    @override
+    def add_design (self, airfoil : Airfoil):
+        """ add a airfoil as a copy design to list - save it """
+
+        super().add_design (airfoil)
+
+        # update targets ncp - could have been changed by user 
+        if self._targets_upper and self._targets_lower:
+            geo : Geometry_Curve = airfoil.geo
+            self._targets_upper.set_ncp (geo.upper.ncp)
+            self._targets_lower.set_ncp (geo.lower.ncp)
+
 
     def get_final_from_design (self, airfoil_design : Airfoil) -> Airfoil:
         """ returns a final airfoil from airfoil_design based on original airfoil  """
@@ -481,15 +645,16 @@ class Case_As_Bezier (Case_Direct_Design):
         airfoil = airfoil_design.asCopy ()
         airfoil.set_isEdited (False)
 
-        # set new name and fileName 
+        # set new name and fileName based on seed airfoil
 
-        airfoil.set_name     (self._initial_airfoil_bez.name)
-        airfoil.set_pathName (self._initial_airfoil_bez.pathName)
-        airfoil.set_fileName (self._initial_airfoil_bez.fileName)
+        suffix = airfoil.NAME_SUFFIX
+
+        airfoil.set_name     (self.airfoil_seed.name + suffix)
+        airfoil.set_pathName (self.airfoil_seed.pathName)
+        airfoil.set_fileName (self.airfoil_seed.fileName)
+        airfoil.set_fileName_add_suffix (suffix)    
 
         return airfoil
-
-
 
 
 

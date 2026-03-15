@@ -30,7 +30,7 @@ from pyqtgraph.GraphicsScene.mouseEvents        import MouseClickEvent, MouseDra
 
 from .common_utils      import *
 from .math_util         import JPoint 
-from .spline            import Bezier 
+from .spline            import Bezier, BSpline
 from .widgets           import Icon
 
 import logging
@@ -92,6 +92,7 @@ def color_in_series (color : QColor | str, i, n, delta_hue=0.1):
 
 pg.setConfigOptions(antialias=False)
 pg.setConfigOptions(mouseRateLimit=30)
+pg.setConfigOption('background', 'k')    # black background - consistent across all systems
 
 
 
@@ -166,8 +167,7 @@ class Movable_Point (pg.TargetItem):
             size = size if size is not None else 9 
 
             color = color if color else COLOR_EDITABLE
-            brush_color = QColor(color)
-            brush_color.darker(200)
+            brush_color = QColor(color).darker (150)
 
             color = movable_color if movable_color is not None else COLOR_EDITABLE
             hoverBrush = COLOR_HOVER
@@ -182,8 +182,7 @@ class Movable_Point (pg.TargetItem):
             symbol = self._symbol_fixed
             size = size if size is not None else 9 
 
-            penColor = QColor (color)
-            penColor.darker (120)
+            penColor = QColor (color).darker (120)
 
             pen = pg.mkPen (penColor, width=1)
 
@@ -430,9 +429,10 @@ class Movable_Point (pg.TargetItem):
 
 
 
-class Movable_Bezier_Point (Movable_Point):
+class Movable_Curve_Point (Movable_Point):
     """ 
-    Represents one control point of a Side_Bezier,
+    Represents one control point of a Bezier or B-Spline curve 
+    which can be moved by mouse and shows the coordinates as label when moving.,
     """
 
     @override
@@ -461,10 +461,10 @@ class Movable_Bezier_Point (Movable_Point):
 
 
 
-class Movable_Bezier (pg.PlotCurveItem):
+class Movable_Curve (pg.PlotCurveItem):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
-    a Bezier curve which can be changed by the controlpoints
+    a Bezier or B-Spline curve which can be changed by the controlpoints
     
     Points are implemented with Movable_Points
     A Movable_Point can also be fixed ( movable=False).
@@ -480,7 +480,8 @@ class Movable_Bezier (pg.PlotCurveItem):
                   movable = False,
                   label_anchor = (0,1),
                   show_static = False,                              # plot also when not in move 
-                  movable_point_class = Movable_Bezier_Point,       # to choose an individual Movable_Point
+                  show_label = True,                                # show label P0, P1, ... for control points
+                  movable_point_class = Movable_Curve_Point,        # to choose an individual Movable_Point
                   on_changed = None, 
                   **kwargs):
 
@@ -490,7 +491,7 @@ class Movable_Bezier (pg.PlotCurveItem):
 
         # Control jpoints  
         self._jpoints : list[JPoint] = jpoints 
-        # ... as movable Bezier points 
+        # ... as movable Curve points 
         self._movable_points = []
  
 
@@ -517,7 +518,9 @@ class Movable_Bezier (pg.PlotCurveItem):
 
         for i, jpoint in enumerate (jpoints):
 
-            p = movable_point_class (jpoint, parent=self, name=f"P{str(i)}", id = i, movable=movable, 
+            name = f"P{i}" if show_label else ""
+            
+            p = movable_point_class (jpoint, parent=self, name=name, id = i, movable=movable, 
                                      color=color, symbol=symbol, size=7, label_anchor=label_anchor,  **kwargs) 
             
             p.sigPositionChanged.connect        (self._moving_point)
@@ -525,24 +528,22 @@ class Movable_Bezier (pg.PlotCurveItem):
             p.sigShiftClick.connect             (self._delete_point)
             self._movable_points.append(p)
 
+        # init temp PlotCurve to represent curve during move 
 
-        # init temp PlotCurve to represent Bezier during move 
-
-        self._bezier = None                             # a helper bezier to show during move 
-        self._u = None                                  # u distribution of helper bezier 
-        self._bezier_item = None                        # plotItem of bezier 
+        self._curve = None                              # a helper bezier or b-spline to show during move 
+        self._u = None                                  # u distribution of helper curve 
+        self._curve_item = None                         # plotItem of curve 
 
         if movable or show_static: 
 
             pen = pg.mkPen (QColor (color), width=1, style=Qt.PenStyle.DashLine)
-            self._bezier_item = pg.PlotCurveItem ([0],[0], pen=pen)
-            self._bezier_item.setParentItem (self)
+            self._curve_item = pg.PlotCurveItem ([0],[0], pen=pen)
+            self._curve_item.setParentItem (self)
 
-            self._update_bezier_item ()
+            self._update_curve_item ()
 
             if not show_static:
-                self._bezier_item.hide()
-
+                self._curve_item.hide()
 
     @property
     def id (self):
@@ -551,17 +552,17 @@ class Movable_Bezier (pg.PlotCurveItem):
 
 
     @property
-    def bezier (self) -> Bezier:
+    def curve (self) -> Bezier | BSpline:
         """ the Bezier self is working with - displayed on move  """
         # can be overloaded 
         # here - we use a helper bezier to show during move  
-        if self._bezier is None: 
-            self._bezier = Bezier (*self.jpoints_xy())
-        return self._bezier
+        if self._curve is None: 
+            self._curve = Bezier (*self.jpoints_xy())
+        return self._curve
 
     @property
     def u (self) -> list:
-        """ the Bezier paramter  """
+        """ the curve paramter  """
         # can be overloaded 
         if self._u is None: 
             self._u = np.linspace (0.0, 1.0, 50)                # only 50 points for speed
@@ -610,22 +611,22 @@ class Movable_Bezier (pg.PlotCurveItem):
         self._jpoints[i].set_xy(aPoint.xy)                  # update self point list 
         self.setData(*self.points_xy())                     # update self (polyline) 
 
-        if self._bezier_item:            
-            self.bezier.set_points(*self.points_xy())      # update of bezier
-            self._update_bezier_item ()
-            self._bezier_item.show()
+        if self._curve_item:            
+            self.curve.set_cpoints(*self.points_xy())      # update of curve
+            self._update_curve_item ()
+            self._curve_item.show()
 
 
     def _add_point (self, x: float, y: float) -> bool:
         """ 
-        handle add point - will be called when ctrl_click on Bezier
+        handle add point - will be called when ctrl_click on curve
         
         Returns: 
             inserted: True if point was added 
         """
 
         # to be overridden
-        logger.debug (f"Bezier ctrl_click at x={x} y={y} - not implemented")
+        logger.debug (f"Curve ctrl_click at x={x} y={y} - not implemented")
         return False
 
 
@@ -641,23 +642,23 @@ class Movable_Bezier (pg.PlotCurveItem):
         px, py = self.jpoints_xy()
         self.setData(px, py)                                # update self (polyline) 
 
-        self._update_bezier_item ()                         # refresh bezier plot item
+        self._update_curve_item ()                         # refresh curve plot item
 
         self._finished_point (aPoint)
         if aPoint.scene():                                  # sometimes scene get lost ... (?) 
             aPoint.scene().removeItem(aPoint)               # final delete from scene 
 
 
-    def _update_bezier_item (self):
-        """ update bezier curve item from bezier"""
+    def _update_curve_item (self):
+        """ update curve item from curve - called on move """
 
-        if self._bezier_item: 
-            x,y = self.bezier.eval(self.u)                  # update of bezier
-            self._bezier_item.setData (x, y)
-            self._bezier_item.show()
+        if self._curve_item: 
+            x,y = self.curve.eval(self.u)                  # update of curve
+            self._curve_item.setData (x, y)
+            self._curve_item.show()
 
 
-    def _finished_point (self, aPoint):
+    def _finished_point (self, aPoint=None):
         """ slot - point move is finished """
         
         if callable(self._callback_changed):

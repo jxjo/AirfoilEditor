@@ -19,7 +19,7 @@ from PyQt6.QtWidgets            import QFileDialog, QWidget
 from ..base.widgets             import * 
 from ..base.panels              import MessageBox
 
-from ..model.airfoil            import Airfoil
+from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline
 from ..model.airfoil            import GEO_BASIC
 from ..model.airfoil_examples   import Example
 
@@ -106,8 +106,9 @@ def get_airfoil_fileNames_sameDir (airfoil_or_dir : Airfoil | str | None) -> lis
     if os.path.isdir (airfoil_dir):
         dat_files = fnmatch.filter(os.listdir(airfoil_dir), '*.dat')
         bez_files = fnmatch.filter(os.listdir(airfoil_dir), '*.bez')
+        bsp_files = fnmatch.filter(os.listdir(airfoil_dir), '*.bsp')
         hh_files  = fnmatch.filter(os.listdir(airfoil_dir), '*.hicks')
-        airfoil_files = dat_files + bez_files + hh_files
+        airfoil_files = dat_files + bez_files + bsp_files + hh_files
         return sorted (airfoil_files, key=str.casefold)
     else:
         return []
@@ -295,8 +296,9 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     def _open_airfoil (self):
         """ open a new airfoil and load it"""
 
-        filters   = "Airfoil files (*.dat *.bez);;All files (*.*)"
-        directory = self._val.pathName_abs if isinstance (self._val, Airfoil) else self._initial_dir
+        extensions = f"*{Airfoil.Extension} *{Airfoil_Bezier.Extension} *{Airfoil_BSpline.Extension}"
+        filters    = f"Airfoil files ({extensions});;All files (*.*)"
+        directory  = self._val.pathName_abs if isinstance (self._val, Airfoil) else self._initial_dir
 
         # Validate directory, ensure caption - QFileDialog tends to crash with native WIndows Dialog
         if not (directory and os.path.isdir(directory)):

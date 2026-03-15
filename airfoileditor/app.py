@@ -50,7 +50,7 @@ from .ui.ae_widgets          import create_airfoil_from_path
 from .ui.ae_diagrams         import Diagram_Airfoil_Polar
 
 from .app_model              import App_Model, Mode_Id
-from .app_modes              import Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_As_Bezier
+from .app_modes              import Mode_As_BSpline, Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_As_Bezier
 
 import logging
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "4.2.5"                  # hatch "version dynamic" - PEP440 compliant version string
+__version__      = "4.3.0-dev"                  # hatch "version dynamic" - PEP440 compliant version string
                                             # for Github use SemVer "4.2.0-beta.3"
 
 CHANGE_TEXT      = "- Switch between polar diagram variables" # + \
@@ -139,6 +139,7 @@ class Main (QMainWindow):
         modes_manager.add_mode (Mode_Modify     (app_model))
         modes_manager.add_mode (Mode_Optimize   (app_model))
         modes_manager.add_mode (Mode_As_Bezier  (app_model))
+        modes_manager.add_mode (Mode_As_BSpline (app_model))
 
         modes_manager.set_mode (mode_to_start, initial)                     # set initial object in app_model
         modes_manager.sig_close_requested.connect (self.close)              # app close requested from mode view

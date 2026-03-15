@@ -9,12 +9,44 @@
 import numpy as np 
 
 # -> pyproject.toml
-# pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
 from airfoileditor.base.spline import *
 
 
 class Test_Spline:
+
+    def test_bspline_polynomial_eval (self):
+
+        spl = BSpline([0.0, 0.2, 0.65, 1.0], [0.0, 0.18, 0.08, 0.0], degree=3)
+
+        x_mid, y_mid = spl.eval(0.5)
+        x_mid_poly, y_mid_poly = spl._eval_polynomials(0.5)
+
+        np.testing.assert_allclose([x_mid_poly, y_mid_poly], [x_mid, y_mid], atol=1e-12)
+
+        u = np.linspace(0.0, 1.0, 21)
+        x, y = spl.eval(u, update_cache=False)
+        x_poly, y_poly = spl._eval_polynomials(u)
+
+        np.testing.assert_allclose(x_poly, x, atol=1e-12)
+        np.testing.assert_allclose(y_poly, y, atol=1e-12)
+
+        dx_ref, dy_ref = spl.eval(u, der=1, update_cache=False)
+        dx_poly, dy_poly = spl._eval_polynomials(u, der=1)
+        ddx_ref, ddy_ref = spl.eval(u, der=2, update_cache=False)
+        ddx_poly, ddy_poly = spl._eval_polynomials(u, der=2)
+
+        np.testing.assert_allclose(dx_poly, dx_ref, atol=1e-12)
+        np.testing.assert_allclose(dy_poly, dy_ref, atol=1e-12)
+        np.testing.assert_allclose(ddx_poly, ddx_ref, atol=1e-12)
+        np.testing.assert_allclose(ddy_poly, ddy_ref, atol=1e-12)
+
+        spl.set_cpoint(1, (0.25, 0.22))
+        x_updated, y_updated = spl.eval(u, update_cache=False)
+        x_poly_updated, y_poly_updated = spl._eval_polynomials(u)
+
+        np.testing.assert_allclose(x_poly_updated, x_updated, atol=1e-12)
+        np.testing.assert_allclose(y_poly_updated, y_updated, atol=1e-12)
 
     def test_spline_1D (self): 
 

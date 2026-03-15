@@ -8,25 +8,27 @@ UI panels
 """
 
 import logging
+import numpy as np
 
-from PyQt6.QtWidgets        import QMenu
-from PyQt6.QtGui            import QDesktopServices
-from PyQt6.QtCore           import QUrl
+from PyQt6.QtWidgets            import QMenu
+from PyQt6.QtGui                import QDesktopServices
+from PyQt6.QtCore               import QUrl
 
-from ..base.widgets         import * 
-from ..base.panels          import Edit_Panel
+from ..base.widgets             import * 
+from ..base.panels              import Edit_Panel
 
-from ..model.airfoil        import Airfoil
-from ..model.airfoil_geometry import (Geometry, Geometry_Bezier, Curvature_Abstract,
-                                    Line, Side_Airfoil_Bezier)
-from ..model.case           import Case_Abstract, Case_Direct_Design
-from ..model.xo2_driver     import Xoptfoil2
+from ..model.airfoil            import Airfoil
+from ..model.airfoil_geometry   import Geometry, Curvature_Abstract, Line 
+from ..model.geometry_curve     import Geometry_Curve, Side_Airfoil_Curve, Deviation_Line
+from ..model.case               import Case_Abstract, Case_Direct_Design, Case_Match_Target, Match_Targets
+from ..model.xo2_driver         import Xoptfoil2
 
-from .ae_widgets            import * 
-from .ae_dialogs            import (Match_Bezier_Dialog, Matcher, LE_Radius_Dialog, TE_Gap_Dialog,
-                                   Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
+from .ae_widgets                import * 
+from .ae_dialogs                import (LE_Radius_Dialog, TE_Gap_Dialog, Matcher_Run_Info,
+                                        Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
+from ..app_model                import App_Model
+from ..match_runner             import Match_Result
 
-from ..app_model            import App_Model
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.WARNING)
@@ -67,8 +69,12 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     @property
     def is_mode_modify (self) -> bool:
         """ panel in mode_modify or disabled ? """ 
-        return self.app_model.is_mode_modify or self.app_model.is_mode_as_bezier
+        return self.app_model.is_mode_modify 
 
+    @property
+    def is_mode_match (self) -> bool:
+        """ panel in mode_match or disabled ? """ 
+        return self.app_model.is_mode_as_bezier or self.app_model.is_mode_as_bspline
 
     @property
     def is_mode_optimize (self) -> bool:
@@ -76,17 +82,11 @@ class Panel_Airfoil_Abstract (Edit_Panel):
         return self.app_model.is_mode_optimize
 
 
-    @property
-    def is_bezier (self) -> bool:
-        """ True if self is in mode_modify and geo is Bezier """
-        return self.airfoil.isBezierBased if self.airfoil else False
-
-
     @override
     @property
     def _isDisabled (self) -> bool:
         """ overloaded: only enabled in edit mode of App """
-        return not self.is_mode_modify or (self.airfoil.isFlapped if self.airfoil else False)
+        return not self.is_mode_modify or (self.geo.isFlapped if self.geo else False)
     
     @override
     def _set_panel_layout (self ):
@@ -118,6 +118,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     sig_optimize = pyqtSignal()                         # wants to enter optimize mode
     sig_exit = pyqtSignal()                             # wants to exit the application
     sig_new_as_bezier = pyqtSignal()                    # wants to create new Bezier based airfoil
+    sig_new_as_bspline = pyqtSignal()                   # wants to create new B-Spline based airfoil
     sig_save_as = pyqtSignal()                          # wants to save current airfoil as new file
     sig_rename = pyqtSignal()                           # wants to rename current airfoil
     sig_delete = pyqtSignal()                           # wants to delete current airfoil
@@ -184,8 +185,11 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menu = QMenu ()
 
         menu.addAction (MenuAction ("As Bezier based", self, set=self.sig_new_as_bezier, 
-                                     disable=lambda: self.airfoil.isBezierBased,
+                                     # disable=lambda: self.airfoil.isBezierBased,
                                      toolTip="Create new Bezier based airfoil of current airfoil"))
+        menu.addAction (MenuAction ("As B-Spline based", self, set=self.sig_new_as_bspline, 
+                                     # disable=lambda: self.airfoil.isBSplineBased,
+                                     toolTip="Create new B-Spline based airfoil of current airfoil"))
         menu.addSeparator ()
         menu.addAction (MenuAction ("Save as...", self, set=self.sig_save_as.emit,
                                      toolTip="Create a copy of the current airfoil with new name and filename"))
@@ -270,7 +274,7 @@ class Panel_File_View_Small (Panel_File_View):
 class Panel_File_Modify (Panel_Airfoil_Abstract):
     """ File panel with open / save / ... """
 
-    name = 'Modify Mode'
+    name = 'Modify'
 
     sig_finish   = pyqtSignal()                                 # wants to finish modify mode - ok / cancel
     sig_cancel   = pyqtSignal()                                 # wants to cancel modify mode
@@ -281,9 +285,15 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
     @override
     def title_text (self) -> str: 
         """ returns text of title - default self.name"""
-        if self.airfoil and self.airfoil.isBezierBased:
-             return 'Bezier Mode'
-        else: 
+
+        if self.is_mode_modify:
+            if self.airfoil.geo.isCurve:
+                return self.name + " " + self.airfoil.geo.CURVE_NAME
+            else:
+                return self.name 
+        elif self.is_mode_match and self.airfoil.geo.isCurve:
+            return "As " + self.airfoil.geo.CURVE_NAME 
+        else:
             return self.name
 
     @override
@@ -404,29 +414,28 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 hide=lambda: not self.is_mode_modify or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
 
-
     def _init_layout (self): 
 
         l = QGridLayout()
         r,c = 0, 0 
         FieldF (l,r,c, lab="Thickness", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.max_thick,
-                disable=lambda: self.airfoil.isBezierBased)
+                disable=lambda: self.geo.isCurve)
         r += 1
         FieldF (l,r,c, lab="Camber", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.max_camb,
-                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
+                disable=lambda: self.geo.isCurve or self.geo.isSymmetrical)
         r += 1
         FieldF (l,r,c, lab="LE radius", width=75, unit="%", step=0.02,
                 obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_le_radius, 
-                hide=lambda: not self.is_mode_modify or self.is_bezier,
+                hide=lambda: not self.is_mode_modify or self.geo.isCurve,
                 toolTip="Set leading edge radius with a flexible blending range")
         r += 1
         FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
-                hide=lambda: not self.is_mode_modify or self.is_bezier,
+                hide=lambda: not self.is_mode_modify or self.geo.isCurve,
                 toolTip="Set trailing edge gap with a flexible blending range")
         r += 1
         SpaceR (l,r, height=5)
@@ -439,14 +448,14 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         r,c = 0,4 
         FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
                 obj=lambda: self.geo, prop=Geometry.max_thick_x,
-                disable=lambda: self.airfoil.isBezierBased)
+                disable=lambda: self.geo.isCurve)
         r += 1
         FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
                 obj=lambda: self.geo, prop=Geometry.max_camb_x,
-                disable=lambda: self.airfoil.isBezierBased or self.airfoil.isSymmetrical)
+                disable=lambda: self.geo.isCurve or self.geo.isSymmetrical)
         r += 1
         FieldF (l,r,c, lab="LE curv", width=75, dec=0, disable=True,
-                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max)
+                obj=lambda: self.geo.curvature, prop=Curvature_Abstract.at_le)
         r += 1
         FieldF (l,r,c, lab="TE curv", width=75, dec=0, disable=True,
                 obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_te,
@@ -540,13 +549,13 @@ class Panel_Geometry_Small (Panel_Geometry):
         FieldF (l,r,c, lab="LE radius", width=60, unit="%", step=0.02,
                 obj=lambda: self.geo, prop=Geometry.le_radius, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_le_radius, 
-                hide=lambda: not self.is_mode_modify or self.is_bezier,
+                hide=lambda: not self.is_mode_modify or self.geo.isCurve,
                 toolTip="Set leading edge radius with a flexible blending range")
         r += 1
         FieldF (l,r,c, lab="TE gap", width=60, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
-                hide=lambda: not self.is_mode_modify or self.is_bezier,
+                hide=lambda: not self.is_mode_modify or self.geo.isCurve,
                 toolTip="Set trailing edge gap with a flexible blending range")
         l.setColumnMinimumWidth (c,70)
         l.setColumnStretch (c+3,2)
@@ -603,7 +612,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         dialog.exec()     
 
 
-    def _on_panelling_finished (self, aSide : Side_Airfoil_Bezier):
+    def _on_panelling_finished (self, aSide):
         """ slot for panelling (dialog) finished - reset airfoil"""
 
 
@@ -680,7 +689,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is Bezier """
         isProbablyFlapped = self.airfoil.geo.isProbablyFlapped if self.airfoil else False
-        return (self.is_mode_modify or isProbablyFlapped) and not self.is_bezier
+        return (self.is_mode_modify or isProbablyFlapped) and not self.geo.isCurve and not self.geo.isHicksHenne
 
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
@@ -695,7 +704,7 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     def _set_flap_disabled (self) -> bool:
         """ True if set flap is not possible"""
 
-        if self.geo.isBezier or self.geo.isHicksHenne: 
+        if self.geo.isCurve or self.geo.isHicksHenne: 
             return True
         elif self.is_mode_modify:
             return not self.airfoil.flap_setter                       # no flapper, no set flap 
@@ -869,7 +878,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     @property
     def shouldBe_visible (self) -> bool:
         """ overloaded: only visible if geo is not Bezier """
-        return not self.is_bezier 
+        return not self.geo.isCurve 
 
 
     def _add_to_header_layout(self, l_head: QHBoxLayout):
@@ -1001,52 +1010,84 @@ class Panel_LE_TE_Small  (Panel_LE_TE):
 
 
 
-class Panel_Bezier (Panel_Airfoil_Abstract):
-    """ Info about Bezier curves upper and lower  """
+class Panel_Curve (Panel_Airfoil_Abstract):
+    """ Info about Bezier/B-Spline # control points upper and lower  """
 
-    name = 'Bezier'
+    name = 'Curve'
+
+    @override
+    def title_text(self):
+        return self.geo.CURVE_NAME
 
     @override
     @property
     def shouldBe_visible (self) -> bool:
-        """ overloaded: only visible if geo is Bezier """
-        return self.is_bezier
+        """ overloaded: only visible if geo is Curve """
+        return self.geo.isCurve
 
     @override
     @property
-    def geo (self) -> Geometry_Bezier:
+    def _isDisabled (self) -> bool:
+        return True                             # always disabled - no change of ctrl points
+    
+    @override
+    @property
+    def geo (self) -> Geometry_Curve:
         return super().geo
 
     @property
-    def upper (self) -> Side_Airfoil_Bezier:
-        if self.geo.isBezier:
-            return self.geo.upper
+    def upper (self) -> Side_Airfoil_Curve:
+        return self.geo.upper
 
     @property
-    def lower (self) -> Side_Airfoil_Bezier:
-        if self.geo.isBezier:
-            return self.geo.lower
+    def lower (self) -> Side_Airfoil_Curve:
+        return self.geo.lower
 
 
     def _init_layout (self):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Label (l,r,c, get="Bezier control Points", colSpan=4)
+        Label (l,r,c, get="# Control Points", colSpan=4)
         r += 1
-        FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.nControlPoints,  width=50, step=1, lim=(3,10),
-                         set=lambda n : self.geo.set_nControlPoints_of (self.upper, n))
+        FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.ncp,  width=40, step=1, lim=lambda: self.upper.NCP_BOUNDS,
+                         set=lambda n : self.geo.set_ncp_of (self.upper, n))
         r += 1
-        FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.nControlPoints,  width=50, step=1, lim=(3,10),
-                         set=lambda n : self.geo.set_nControlPoints_of (self.lower, n))
+        FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.ncp,  width=40, step=1, lim=lambda: self.lower.NCP_BOUNDS,
+                         set=lambda n : self.geo.set_ncp_of (self.lower, n))
+        l.setColumnMinimumWidth (0,80)
+
         r += 1
         l.setRowStretch (r,2)
-        l.setColumnMinimumWidth (0,80)
+        r += 1 
+        Label  (l,r,0,colSpan=5, get=self._message, style=style.COMMENT, height=(None,None), hide=lambda: self.is_mode_modify)
+        Label  (l,r,0,colSpan=5, get=self._hint, style=style.HINT, height=(None,None), 
+                width=(150, 150), wordWrap=True, hide=lambda: not self.is_mode_modify)
         return l
- 
 
-class Panel_Bezier_Small (Panel_Bezier):
-    """ Info about Bezier curves upper and lower - small version """
+
+    def _hint (self) -> str:
+        return f"You may change number of control points in diagram."
+
+    def _message (self)  -> str:
+
+        lines = []
+        for side in [self.upper, self.lower]:
+            side : Side_Airfoil_Curve
+            curve = side.curve
+            text = f"{side.name}: degree {curve.degree}"
+            if self.geo.isBSpline:
+                if curve.is_uniform:
+                    text += ", uniform"
+                else:
+                    text += ", non-uniform"
+            lines.append(text)
+
+        return '\n'.join(lines) 
+
+
+class Panel_Curve_Small (Panel_Curve):
+    """ Info about Bezier/B-Spline # control points upper and lower - small version """
 
     _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_MINI
 
@@ -1054,231 +1095,519 @@ class Panel_Bezier_Small (Panel_Bezier):
 
         l = QGridLayout()
         r,c = 0, 0 
-        FieldI (l,r,c,   lab="Bezier Upper", get=lambda: self.upper.nControlPoints,  width=50, step=1, lim=(3,10),
-                         set=lambda n : self.geo.set_nControlPoints_of (self.upper, n))
+        FieldI (l,r,c,   lab=lambda: f"{self.geo.CURVE_NAME} Upper", 
+                get=lambda: self.upper.ncp,  width=40, step=1, lim=lambda: self.upper.NCP_BOUNDS,
+                set=lambda n : self.geo.set_ncp_of (self.upper, n))
         r += 1
-        FieldI (l,r,c,   lab="Bezier Lower",  get=lambda: self.lower.nControlPoints,  width=50, step=1, lim=(3,10),
-                         set=lambda n : self.geo.set_nControlPoints_of (self.lower, n))
+        FieldI (l,r,c,   lab=lambda: f"{self.geo.CURVE_NAME} Lower",  
+                get=lambda: self.lower.ncp,  width=40, step=1, lim=lambda: self.lower.NCP_BOUNDS,
+                set=lambda n : self.geo.set_ncp_of (self.lower, n))
         l.setColumnMinimumWidth (0,80)
         return l
 
 
 
-class Panel_Bezier_Match (Panel_Airfoil_Abstract):
-    """ Match Bezier functions  """
+class Panel_Match_Result (Panel_Airfoil_Abstract):
+    """ Match fit info like RMS deviation, curvature at LE and TE, etc"""
 
-    name = 'Bezier Match'
+    name = 'Match Result'
+    _small = False
+
+    def __init__(self, *args, **kwargs):
+        self._result_upper: Match_Result | None = None
+        self._result_lower: Match_Result | None = None
+        super().__init__(*args, **kwargs)
+
+    @property
+    def result_upper(self) -> Match_Result:
+        """Match_Result: from last optimizer run if available, else rebuilt from current geo."""
+        stored = self.case.match_result_upper
+        if stored is not None:
+            return stored
+        if self._result_upper is None:
+            self._result_upper = Match_Result(self.geo.upper, self.case.targets_upper,
+                                              curv=self.geo.curvature.upper.y)
+        return self._result_upper
+
+    @property
+    def result_lower(self) -> Match_Result:
+        """Match_Result: from last optimizer run if available, else rebuilt from current geo."""
+        stored = self.case.match_result_lower
+        if stored is not None:
+            return stored
+        if self._result_lower is None:
+            self._result_lower = Match_Result(self.geo.lower, self.case.targets_lower,
+                                              curv=self.geo.curvature.lower.y)
+        return self._result_lower
+
+    @property
+    def case (self) -> Case_Match_Target:
+        return self.app_model.case
+
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        Label  (l,r+1,c,   get="Upper Side")
+        Label  (l,r+2,c,   get="Lower Side")
+        l.setColumnMinimumWidth (c,80)
+
+        c = 1
+        Label  (l,r,c, colSpan=3, get="# Ctrl P")
+        FieldI (l,r+1,c, width=40, get=lambda: self.result_upper.ncp,
+                style=lambda: self.result_upper.style_ncp)
+        FieldI (l,r+2,c, width=40, get=lambda: self.result_lower.ncp,
+                style=lambda: self.result_lower.style_ncp)
+        l.setColumnMinimumWidth (c+1,20)
+
+        c += 2
+        Label  (l,r,c, get="RMS", width=70, colSpan=2)
+        FieldF (l,r+1,c, width=60, dec=4, unit="%", get=lambda: self.result_upper.rms,
+                style=lambda: self.result_upper.style_deviation)
+        FieldF (l,r+2,c, width=60, dec=4, unit="%", get=lambda: self.result_lower.rms,
+                style=lambda: self.result_lower.style_deviation)
+        l.setColumnMinimumWidth (c+1,20)
+
+        c += 2
+        Label  (l,r,c, get="Max Δ", width=50)
+        FieldF (l,r+1,c, width=50, dec=3, unit="%", get=lambda: self.result_upper.max_dy,
+                style=lambda: self.result_upper.style_max_dy)
+        FieldF (l,r+2,c, width=50, dec=3, unit="%", get=lambda: self.result_lower.max_dy,
+                style=lambda: self.result_lower.style_max_dy)
+        c += 1
+        Label  (l,r,c, get="at", width=40)
+        FieldF (l,r+1,c, width=40, dec=0, unit="%", get=lambda: self.result_upper.max_dy_position)
+        FieldF (l,r+2,c, width=40, dec=0, unit="%", get=lambda: self.result_lower.max_dy_position)
+        l.setColumnMinimumWidth (c+1,20)
+
+        c += 2
+        Label  (l,r,c, colSpan=2, get="LE curv")
+        FieldF (l,r+1,c, get=lambda: self.result_upper.le_curvature, width=40, dec=0,
+                style=lambda: self.result_upper.style_curv_le)
+        FieldF (l,r+2,c, get=lambda: self.result_lower.le_curvature, width=40, dec=0,
+                style=lambda: self.result_lower.style_curv_le)
+        l.setColumnMinimumWidth (c+1,10)
+
+        c += 2
+        Label  (l,r,c, colSpan=2, get="Revers")
+        FieldF (l,r+1,c, get=lambda: self.result_upper.nreversals, width=30, dec=0,
+                style=lambda: self.result_upper.style_nreversals)
+        FieldF (l,r+2,c, get=lambda: self.result_lower.nreversals, width=30, dec=0,
+                style=lambda: self.result_lower.style_nreversals)
+        l.setColumnMinimumWidth (c+1,10)
+
+        c += 2
+        Label  (l,r,c, colSpan=2, get="TE curv")
+        FieldF (l,r+1,c, get=lambda: self.result_upper.te_curvature, width=40, dec=1,
+                style=lambda: self.result_upper.style_curv_te)
+        FieldF (l,r+2,c, get=lambda: self.result_lower.te_curvature, width=40, dec=1,
+                style=lambda: self.result_lower.style_curv_te)
+        l.setColumnMinimumWidth (c+1,20)
+
+        r,c = 3,0 
+        l.setRowStretch (r,1)
+        r += 1
+        Label  (l,r,0, colSpan=7, style=style.COMMENT, height=16,
+                get=lambda: self.result_upper.name + ": " + self._remark(self.result_upper))
+        r += 1
+        Label  (l,r,0, colSpan=7, style=style.COMMENT, height=16,
+                get=lambda: self.result_lower.name + ": " + self._remark(self.result_lower))
+        return l
+
+
+    def _remark (self, result : Match_Result) -> str: 
+
+        if not result.is_optimized:
+            text = f"Initial fit - run 'Match' to optimize..."
+        elif result.is_perfect():
+            text = f"Match is perfect"
+            if not result.is_ncp_good():
+                text += " but more control points were needed."
+            else:
+                text += "!"
+        elif result.is_good_enough():
+            text = f"Match is quite good for this difficult target."
+        else:
+            text = f"Match is not too good. Maybe tweak LE and/or TE curvature."
+        return text
+
+
+
+    @override
+    def refresh(self, reinit_layout=False):
+        """Override to clear cached results on refresh."""
+        self._result_upper = None
+        self._result_lower = None
+        return super().refresh(reinit_layout)
+
+
+
+
+
+class Panel_Match_Result_Small (Panel_Match_Result):
+    """ Match fit info like RMS deviation, curvature at LE and TE, etc - small version"""
+
+    _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_MINI
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+        r = 0
+
+        Label  (l, r, 0, get="Result Upper Side", width=100)
+        FieldI (l, r, 1, width=40, get=lambda: self.result_upper.ncp,
+                style=lambda: self.result_upper.style_ncp)
+        FieldF (l, r, 3, width=60, dec=4, unit="%", get=lambda: self.result_upper.rms,
+                style=lambda: self.result_upper.style_deviation)
+        Label  (l, r, 5, style=style.COMMENT, get=lambda: self._remark(self.result_upper))
+
+        r += 1
+        Label  (l, r, 0, get="Result Lower Side", width=100)
+        FieldI (l, r, 1, width=40, get=lambda: self.result_lower.ncp,
+                style=lambda: self.result_lower.style_ncp)
+        FieldF (l, r, 3, width=60, dec=4, unit="%", get=lambda: self.result_lower.rms,
+                style=lambda: self.result_lower.style_deviation)
+        Label  (l, r, 5, style=style.COMMENT, get=lambda: self._remark(self.result_lower))
+
+        l.setColumnMinimumWidth (2, 20)
+        l.setColumnMinimumWidth (4, 20)
+        l.setColumnStretch (5, 1)
+        return l
+
+
+
+class Panel_Match_Curve (Panel_Airfoil_Abstract):
+    """ Match BezCurveier functions  """
+
+    name = 'Match'
+
+    _small = False
+
+    @override
+    def title_text(self):
+        if self.geo.isCurve:
+            return self.name + " " + self.geo.CURVE_NAME
+        else:
+             return super().title_text()
 
     @override
     @property
-    def shouldBe_visible (self) -> bool:
-        """ overloaded: only visible if geo is Bezier """
-        return self.is_bezier
+    def _isDisabled (self) -> bool:
+        return not self.is_mode_match
+    
+    @override
+    def _on_widget_changed (self, widget):
+        """ user changed data in widget"""
+        # just refresh - no airfoil changed
+        self.refresh()
 
     @property
-    def upper (self) -> Side_Airfoil_Bezier:
-        if self.geo.isBezier: return self.geo.upper
+    def case (self) -> Case_Match_Target:
+        return self.app_model.case
 
     @property
-    def lower (self) -> Side_Airfoil_Bezier:
-        if self.geo.isBezier: return self.geo.lower
+    def geo (self) -> Geometry_Curve:
+        return super().geo
+    
+    @property
+    def upper (self) -> Side_Airfoil_Curve:
+        return self.geo.upper
 
     @property
-    def curv_upper (self) -> Line:
-        if self.geo.isBezier:
-            return self.geo.curvature.upper
+    def lower (self) -> Side_Airfoil_Curve:
+        return self.geo.lower
+    
+    @property
+    def curv_upper_nreversals (self) -> int:
+        return self.target_airfoil.geo.curvature.upper.nreversals()
 
     @property
-    def curv_lower (self) -> Line:
-        if self.geo.isBezier:
-            return self.geo.curvature.lower
-
-    @property
-    def curv (self) -> Curvature_Abstract:
-        return self.geo.curvature
+    def curv_lower_nreversals (self) -> int:
+        return self.target_airfoil.geo.curvature.lower.nreversals()
 
     @property
     def target_airfoil (self) -> Airfoil:
-        return self.app_model.airfoil_seed
-
+        return self.app_model.airfoil_target
+    
     @property
-    def target_upper (self) -> Line:
-        if self.target_airfoil: return self.target_airfoil.geo.upper
-
+    def targets_upper (self) -> Match_Targets:
+        return self.case.targets_upper
+    
     @property
-    def target_lower (self) -> Line:
-        if self.target_airfoil: return self.target_airfoil.geo.lower
+    def targets_lower (self) -> Match_Targets:
+        return self.case.targets_lower
 
     @property
     def target_curv_le (self) -> float:
-        return self.target_airfoil.geo.curvature.best_around_le
-
-    @property
-    def max_curv_te_upper (self) -> Line:
-        if self.target_airfoil: return self.target_airfoil.geo.curvature.at_upper_te
-
-    @property
-    def max_curv_te_lower (self) -> Line:
-        if self.target_airfoil: return self.target_airfoil.geo.curvature.at_lower_te
-
-    def norm2_upper (self): 
-        """ norm2 deviation of airfoil to target - upper side """
-        if self._norm2_upper is None: 
-            self._norm2_upper = Line.norm2_deviation_to (self.upper.bezier, self.target_upper) 
-        return  self._norm2_upper    
-
-
-    def norm2_lower (self): 
-        """ norm2 deviation of airfoil to target  - upper side """
-        if self._norm2_lower is None: 
-            self._norm2_lower = Line.norm2_deviation_to (self.lower.bezier, self.target_lower)  
-        return self._norm2_lower
+        return self.target_airfoil.geo.curvature.at_le
 
 
     def _init_layout (self):
 
-        self._norm2_upper = None                                # cached value of norm2 deviation 
-        self._norm2_lower = None                                # cached value of norm2 deviation 
-        self._target_curv_le = None 
-        self._target_curv_le_weighting = None
-
         l = QGridLayout()
 
-        if self.target_airfoil is not None: 
+        r,c = 0, 0 
+        Label  (l,r+1,c,   get="Upper Side")
+        Label  (l,r+2,c,   get="Lower Side")
+        l.setColumnMinimumWidth (c,80)
 
-            self._target_curv_le = self.target_airfoil.geo.curvature.best_around_le 
+        c += 1
+        Label  (l,r,c, colSpan=3, get="# Ctrl Points", hide=self._small)
+        c +=1
+        _tip = "Auto will find the optimal minimum number of control points for a good match"
+        CheckBox (l,r+1,c, text="Auto", get=lambda: self.targets_upper.ncp_auto,
+                set=lambda b: self.set_ncp_auto(self.upper, self.targets_upper, b),
+                toolTip=_tip)
+        CheckBox (l,r+2,c, text="Auto", get=lambda: self.targets_lower.ncp_auto,
+                set=lambda b: self.set_ncp_auto(self.lower, self.targets_lower, b),
+                toolTip=_tip)
+        c += 1
+        _tip = "Number of control points, the matching curve will have.\n"+ \
+               "A higher number may allow a better fit, but could cause undesired bumps. "
+        FieldI (l,r+1,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                get=lambda: self.targets_upper.ncp, 
+                set=lambda n: self.set_ncp(self.upper, self.targets_upper, n),
+                hide=lambda: self.targets_upper.ncp_auto,
+                toolTip=_tip)
+        FieldI (l,r+2,c, width=40, step=1, lim =lambda: self.lower.NCP_BOUNDS,
+                get=lambda: self.targets_lower.ncp, 
+                set=lambda n: self.set_ncp(self.lower, self.targets_lower, n),
+                hide=lambda: self.targets_lower.ncp_auto,
+                toolTip=_tip)
+        l.setColumnMinimumWidth (c+1,20)
 
-            r,c = 0, 0 
-            Label  (l,r,c+1, get="Deviation", width=70, colSpan=2)
-            r += 1
-            Label  (l,r,c,   get="Upper Side")
-            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_upper,
-                             style=lambda: Match_Bezier_Dialog.style_deviation (self.norm2_upper()))
-            r += 1
-            Label  (l,r,c,   get="Lower Side")
-            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_lower,
-                             style=lambda: Match_Bezier_Dialog.style_deviation (self.norm2_lower()))
-            l.setColumnMinimumWidth (c,80)
-            l.setColumnMinimumWidth (c+2,20)
+        c += 2
+        _tip = "Curvature at leading edge which is essential for a good fit.\n" + \
+               "Have a look at the curvature comb of the airfoil at leading edge,\n" + \
+               "if the match doesn't find a good result."
+        Label  (l,r,c, colSpan=3, get="LE curv", hide=self._small)
+        FieldF (l,r+1,c, rowSpan=2, width=45, dec=0, step=1, lim =(50,800),
+                get=lambda: self.le_curv, set=self.set_le_curv, toolTip=_tip)
+        l.setColumnMinimumWidth (c+1,5)
 
-            r,c = 0, 3 
-            Label (l,r,c, colSpan=3, get="LE curvature TE")
-            r += 1
-            FieldF (l,r,c  , get=lambda: self.curv_upper.max_xy[1], width=40, dec=0, 
-                    style=lambda: Match_Bezier_Dialog.style_curv_le(self._target_curv_le, self.curv_upper))
-            FieldF (l,r,c+1, get=lambda: self.curv_upper.te[1],     width=40, dec=1, 
-                    style=lambda: Match_Bezier_Dialog.style_curv_te(self.max_curv_te_upper, self.curv_upper))
+        c += 2
+        Label  (l,r,c, colSpan=3, get="Revers", hide=self._small)
+        _tip = "Maximum number of curvature reversals allowed for the matched airfoil.\n" + \
+               "A normal airfoil has 0 reversals.\n" + \
+               "A reflexed airfoil has 1 reversal on the upper side,\n" + \
+               "an airfoil with rear loading has 1 reversal on the lower side."
+        FieldI (l,r+1,c, width=40, step=1, lim =(0,2),
+                get=lambda: self.targets_upper.max_nreversals, 
+                set=lambda n: self.targets_upper.set_max_nreversals(n), toolTip=_tip)
+        FieldI (l,r+2,c, width=40, step=1, lim =(0,2),
+                get=lambda: self.targets_lower.max_nreversals, 
+                set=lambda n: self.targets_lower.set_max_nreversals(n), toolTip=_tip)
+        l.setColumnMinimumWidth (c+1,5)
 
-            r += 1
-            FieldF (l,r,c  , get=lambda: self.curv_lower.max_xy[1], width=40, dec=0, 
-                    style=lambda: Match_Bezier_Dialog.style_curv_le(self._target_curv_le, self.curv_lower))
-            FieldF (l,r,c+1, get=lambda: self.curv_lower.te[1],     width=40, dec=1, 
-                    style=lambda: Match_Bezier_Dialog.style_curv_te(self.max_curv_te_lower, self.curv_lower))
-            l.setColumnMinimumWidth (c+2,20)
+        c += 2
+        _tip = "Maximum curvature at TE allowed for the matched side.\n" + \
+               "A higher value may allow a better fit, \nbut could cause an undesired artefact at TE."
+        Label  (l,r,c, colSpan=3, get="TE curv", hide=self._small)
+        FieldF (l,r+1,c, width=45, dec=1, step=0.1, lim =(-9,9),
+                get=lambda: self.targets_upper.max_te_curvature, 
+                set=lambda c: self.targets_upper.set_max_te_curvature(c), toolTip=_tip)
+        FieldF (l,r+2,c, width=45, dec=1, step=0.1, lim =(-9,9),
+                get=lambda: self.targets_lower.max_te_curvature, 
+                set=lambda c: self.targets_lower.set_max_te_curvature(c), toolTip=_tip)
+        l.setColumnMinimumWidth (c+1,20)
 
-            r,c = 0, 6 
-            r += 1
-            Button (l,r,c  , text="Match...", width=70,
-                            set=lambda: self._match_bezier (self.upper, self.target_upper, 
-                                                            self.target_curv_le, self.max_curv_te_upper))
-            r += 1
-            Button (l,r,c  , text="Match...", width=70,
-                            set=lambda: self._match_bezier (self.lower, self.target_lower, 
-                                                            self.target_curv_le, self.max_curv_te_lower))
-            c = 0 
-            r += 1
-            SpaceR (l,r, height=5, stretch=2)
-            r += 1
-            Label  (l,r,0, get=self._messageText, colSpan=7, height=(40, None), style=style.COMMENT)
+        c += 2
+        _tip = "Run the matching optimizer to find\nthe best fitting curve to the target side."
+        Button (l,r+1,c  , text="Match", width=80, button_style = button_style.PRIMARY,
+                        set=lambda: self._match (self.upper.type), toolTip=_tip)
+        Button (l,r+2,c  , text="Match", width=80, button_style = button_style.PRIMARY,
+                        set=lambda: self._match (self.lower.type), toolTip=_tip)
+
+        r,c = 3,0 
+        l.setRowStretch (r,2)
+        r += 1
+        Label  (l,r,0, get=self._messageText, colSpan=10, height=(None, None), hide=self._small, style=style.COMMENT)
+    
         return l
- 
 
-    def _match_bezier (self, aSide : Side_Airfoil_Bezier, aTarget_line : Line, 
-                            target_curv_le: float, max_curv_te : float  ): 
-        """ run match bezier (dialog) """ 
 
-        diag = Match_Bezier_Dialog (self, self.app_model,
-                                    aSide, aTarget_line,
-                                    target_curv_le = target_curv_le,
-                                    max_curv_te = max_curv_te,
-                                    parentPos=(0.1, 0.05), dialogPos=(0.5,1))
-        diag.exec()
+    def _match (self, side_type : Line.Type): 
+        """ run match (dialog) """ 
 
-        if diag.made_match:
+        matcher = self.app_model.run_match (side_type)    # run match - will update airfoil and targets with results
 
-            geo : Geometry_Bezier = self.geo
-            geo.finished_change_of (aSide)              # will reset and handle changed  
+        if matcher:
+            diag = Matcher_Run_Info (self, matcher, parentPos=(0.7, 0.0), dialogPos=(0,1))
+            diag.show()
 
-            self.app_model.notify_airfoil_changed()     # notify change of airfoil - new design
-       
 
-    @override
-    def refresh (self, reinit_layout=False):
+    def set_ncp_auto (self, aSide : Side_Airfoil_Curve, targets : Match_Targets, auto: bool):
+        """ set ncp auto mode of a side and update targets with new auto mode"""
+        targets.set_ncp_auto(auto)
+        if not auto:
+            # set ncp to current value of geo 
+            targets.set_ncp (aSide.curve.ncp)
 
-        # reset cached deviations
-        self._norm2_lower = None
-        self._norm2_upper = None 
-        super().refresh(reinit_layout=reinit_layout)
-        
 
-    def _messageText (self): 
-        """ user warnings"""
-        text = []
-        r_upper_dev = Matcher.result_deviation (self.norm2_upper())
-        r_lower_dev = Matcher.result_deviation (self.norm2_lower())
+    def set_ncp (self, aSide : Side_Airfoil_Curve, targets : Match_Targets, ncp: int):
+        """ set ncp of a side and update targets with new ncp"""                
+        self.geo.set_ncp_of (aSide, ncp)                # show updated airfoil with new ncp - will reset and handle changed
+        targets.set_ncp (ncp)
+        self.app_model.notify_airfoil_changed()         # notify change of airfoil - new design
 
-        r_upper_le = Matcher.result_curv_le (self._target_curv_le, self.curv_upper)
-        r_lower_le = Matcher.result_curv_le (self._target_curv_le, self.curv_lower)
-        r_upper_te = Matcher.result_curv_te (self.max_curv_te_upper,self.curv_upper)
-        r_lower_te = Matcher.result_curv_te (self.max_curv_te_lower, self.curv_lower)
 
-        is_bad = Matcher.result_quality.BAD
-        if r_upper_dev == is_bad or r_lower_dev == is_bad:
-           text.append("- Deviation is quite high")
-        if r_upper_le == is_bad or r_lower_le == is_bad:
-           text.append(f"- Curvature at LE differs too much from target ({int(self._target_curv_le)})")
-        if r_upper_te == is_bad or r_lower_te == is_bad:
-           text.append("- Curvature at TE is quite high")
+    @property
+    def le_curv (self) -> float:
+        upper_curv =self.targets_upper.le_curvature
+        lower_curv =self.targets_lower.le_curvature
+        return round((upper_curv + lower_curv) / 2, 0)
 
-        text = '\n'.join(text)
-        return text 
+
+    def set_le_curv (self, le_curv: float):
+
+        self.targets_upper.set_le_curvature (le_curv)
+        self.targets_lower.set_le_curvature (le_curv)
+
+
+    def _messageText (self):
+        """ user info"""
+        text = f"Have a look at Curvature (comb) to tune target values."
+        return text
 
 
 
-class Panel_Bezier_Match_Small (Panel_Bezier_Match):
+class Panel_Match_Curve_Small (Panel_Match_Curve):
     """ Match Bezier functions - small version """
 
     _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_MINI
+    _small = True
+
+
+
+class Panel_Target_Curv (Panel_Airfoil_Abstract):
+    """ Curvature values of target airfoil (Match)  """
+
+    name = 'Target Curvature'
+
+    @property
+    def target_airfoil (self) -> Airfoil:
+        return self.app_model.airfoil_target
+
+    @property
+    def shouldBe_visible(self):
+        return self.target_airfoil is not None
+
+    @property
+    def curv_upper (self) -> Line:
+        return self.target_airfoil.geo.curvature.upper
+
+    @property
+    def curv_lower (self) -> Line:
+        return self.target_airfoil.geo.curvature.lower
+
+    @property
+    def target_curv_le (self) -> float:
+        return self.target_airfoil.geo.curvature.at_le
+
 
     def _init_layout (self):
 
-        self._norm2_upper = None                                # cached value of norm2 deviation 
-        self._norm2_lower = None                                # cached value of norm2 deviation 
         self._target_curv_le = None 
         self._target_curv_le_weighting = None
 
         l = QGridLayout()
 
-        if self.target_airfoil is not None: 
+        r,c = 0, 0 
+        Label  (l,r+1,c,   get="Upper Side")
+        Label  (l,r+2,c,   get="Lower Side")
+        l.setColumnMinimumWidth (c,80)
 
-            self._target_curv_le = self.target_airfoil.geo.curvature.best_around_le 
+        c += 1
+        Label  (l,r,c, colSpan=3, get="LE curv  Max")
+        FieldF (l,r+1,c  , get=lambda: self.curv_upper.y[0],  width=40, dec=0,
+                style=lambda: self._style_curv_le(self.curv_upper.y[0], self.curv_lower.y[0]))
+        FieldF (l,r+2,c  , get=lambda: self.curv_lower.y[0],  width=40, dec=0,
+                style=lambda: self._style_curv_le(self.curv_upper.y[0], self.curv_lower.y[0]))
+        
+        c += 1
+        # Label  (l,r,c, colSpan=1, get="Max")
+        FieldF (l,r+1,c  , get=lambda: self.curv_upper.max_xy[1],  width=40, dec=0,
+                style=lambda:self._style_max_curv(self.curv_upper.max_xy[1], self.target_curv_le))
+        FieldF (l,r+2,c  , get=lambda: self.curv_lower.max_xy[1],  width=40, dec=0,
+                style=lambda: self._style_max_curv(self.curv_lower.max_xy[1], self.target_curv_le))
+        l.setColumnMinimumWidth (c+1,10)
 
-            r,c = 0, 0 
-            Label  (l,r,c,   get="Deviation Upper")
-            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_upper,
-                             style=lambda: Match_Bezier_Dialog.style_deviation (self.norm2_upper()))
-            r += 1
-            Label  (l,r,c,   get="Deviation Lower")
-            FieldF (l,r,c+1, width=60, dec=3, unit="%", get=self.norm2_lower,
-                             style=lambda: Match_Bezier_Dialog.style_deviation (self.norm2_lower()))
-            l.setColumnMinimumWidth (c,90)
-            l.setColumnMinimumWidth (c+2,20)
-            r,c = 0, 3
-            Button (l,r,c  , text="Match...", width=70,
-                            set=lambda: self._match_bezier (self.upper, self.target_upper, 
-                                                            self.target_curv_le, self.max_curv_te_upper))
-            r += 1
-            Button (l,r,c  , text="Match...", width=70,
-                            set=lambda: self._match_bezier (self.lower, self.target_lower, 
-                                                            self.target_curv_le, self.max_curv_te_lower))
-            return l
+        c += 2
+        Label  (l,r,c, colSpan=2, get="Revers")
+        FieldF (l,r+1,c, get=lambda: self.curv_upper.nreversals(), width=30, dec=0,
+                style=lambda: self._style_nreversals(self.curv_upper))
+        FieldF (l,r+2,c, get=lambda: self.curv_lower.nreversals(), width=30, dec=0,
+                style=lambda: self._style_nreversals(self.curv_lower))
+        l.setColumnMinimumWidth (c+1,10)
+
+        c += 2
+        Label  (l,r,c, colSpan=2, get="TE curv")
+        FieldF (l,r+1,c, get=lambda: self.curv_upper.y[-1], width=40, dec=1,
+                style=lambda: self._style_curv_te(self.curv_upper.y[-1]))
+        FieldF (l,r+2,c, get=lambda: self.curv_lower.y[-1], width=40, dec=1,
+                style=lambda: self._style_curv_te(self.curv_lower.y[-1]))
+
+        r,c = 3,0 
+        l.setRowStretch (r,2)
+        r += 1
+        Label  (l,r,0, get=self._message, colSpan=7, height=(None, None), style=style.COMMENT)
+
+        return l
+
+
+    def _style_curv_le (self, curv_le_upper : float, curv_le_lower : float):
+        """ returns style.WARNING if curvature at LE differs too much"""
+        return style.WARNING if abs(curv_le_upper - curv_le_lower) > 0.5 else style.NORMAL
+
+    def _style_max_curv (self, max_curv: float, curv_le: float):
+        """ returns style.WARNING if max_curv is not equal curv_le"""
+        return style.WARNING if not np.isclose(max_curv, curv_le) else style.NORMAL
+
+    def _style_nreversals (self, curv : Line):
+        """ returns style.WARNING if nreversals > 1"""   
+
+        if curv.nreversals() == 0:
+            return style.NORMAL
+        else: 
+            if curv.reversals()[-1] > 0.95:
+                return style.WARNING
+            elif curv.nreversals() > 1:
+                return style.WARNING
+            else:
+                return style.NORMAL
+
+    def _style_curv_te (self, curv_te: float):
+        """ returns style.WARNING if curvature at TE is quite high"""
+        return style.WARNING if abs(curv_te) > 5 else style.NORMAL
+
+
+    def _message (self) -> str: 
+        """ user warnings"""
+        text = []
+
+        for curv in [self.curv_upper, self.curv_lower]:
+
+            if not np.isclose(curv.max_xy[1], self.target_curv_le):
+                text.append(f"- {curv.name}: Max curvature is not at LE. ")
+
+            nreversals = curv.nreversals()
+            if nreversals > 1 and nreversals <= 3:
+                text.append(f"- {curv.name}: Curvature has bumps.")
+            elif nreversals > 3:
+                text.append(f"- {curv.name}: Curvature has many bumps!")
+            elif nreversals == 1 and curv.reversals()[-1] > 0.95:
+                text.append(f"- {curv.name}: Reversal is very close to LE. Artefact?")
+
+            if abs(curv.y[-1]) > 5:
+                text.append(f"- {curv.name}: Curvature at TE is quite high.")     
+
+        if len(text) < 2:
+            if "_norm" in self.target_airfoil.name:
+                text.insert(0, "Target airfoil has been repaneled and normalized.")
+            else:
+                text.insert(0, "Target airfoil has been repaneled")
+
+        text = '\n'.join(text[:3])
+        return text 
+

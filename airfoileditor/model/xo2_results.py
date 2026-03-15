@@ -946,7 +946,6 @@ class Reader_Airfoils_Bezier (Reader_Abstract):
             airfoil.set_newSide_for (Line.Type.LOWER, px, py)
 
             airfoil.set_usedAs (usedAs.DESIGN)
-            airfoil.set_isLoaded (True)
             airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  
 
             self._results.append(airfoil)

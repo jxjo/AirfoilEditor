@@ -197,7 +197,7 @@ class Panel_Airfoils (Edit_Panel):
                                  toolTip=air.info_as_html)
                 r += 1
 
-            elif air.usedAs in [usedAs.SECOND, usedAs.SEED, usedAs.FINAL, usedAs.DESIGN]:
+            elif air.usedAs in [usedAs.SECOND, usedAs.SEED, usedAs.FINAL, usedAs.DESIGN, usedAs.TARGET]:
                 CheckBox    (l,r,c  , width=20, get=self.show_airfoil, set=self.set_show_airfoil, id=iair,
                              toolTip="Show/Hide airfoil in diagram")
                 Field       (l,r,c+1, colSpan=2, width=155, get=lambda i=iair:self.airfoil(i).fileName, 
@@ -279,6 +279,12 @@ class Panel_Airfoils (Edit_Panel):
 
     def set_show_airfoil (self, aBool, id : int):
         """ set ref airfoil with index id active"""
+
+        # at least one airfoil should be shown - prevent all off
+        if not aBool and len (self.app_model.airfoils_to_show) <= 1:
+            self.refresh_widgets(False)              # ensure checkbox is not switched off 
+            return
+
         self.airfoils[id].set_property ("show", aBool)
         self.sig_airfoils_to_show_changed.emit()
 
@@ -590,13 +596,17 @@ class Item_Airfoil (Diagram_Item):
         self._stretch_y_factor  = 3                     # factor to stretch 
         self._geo_info_item     = None                  # item to show geometry info on plot
         self._show_curvature_comb = False               # show curvature comb
+        self._show_control_points = True                # show control points of Bezier or B-spline airfoils
+        self._show_deviation    = False                 # show deviation to target line for Bezier or B-spline airfoils
 
-        self._bezier_artist         : Bezier_Artist = None                 
+        self._bezier_artist         : Bezier_Artist = None 
+        self._bspline_artist        : BSpline_Artist = None                
         self._flap_artist           : Flap_Artist = None
         self._line_artist           : Airfoil_Line_Artist = None
         self._airfoil_artist        : Airfoil_Artist = None
         self._le_artist             : LE_Radius_Artist = None
         self._te_artist             : TE_Gap_Artist = None
+        self._deviation_line_artist : Deviation_Line_Artist = None
         self._curvaturve_comb_artist : Curvature_Comb_Artist = None
 
         super().__init__(*args, **kwargs)
@@ -608,7 +618,7 @@ class Item_Airfoil (Diagram_Item):
         self.app_model.sig_airfoil_geo_le_radius.connect    (self._le_artist.set_xBlend)
         self.app_model.sig_airfoil_geo_paneling.connect     (self._on_paneling_changed)
         self.app_model.sig_airfoil_flap_set.connect         (self._flap_artist.set_show)
-        self.app_model.sig_airfoil_bezier.connect           (self._bezier_artist.refresh_from_side)
+        self.app_model.sig_airfoil_geo_curve.connect        (self._on_curve_changed)
 
         self.app_model.sig_xo2_new_design.connect           (self._on_new_design)
 
@@ -640,10 +650,10 @@ class Item_Airfoil (Diagram_Item):
         return Case_Abstract.get_iDesign (self.design_airfoil)
             
 
-    def _is_one_airfoil_bezier (self) -> bool: 
-        """ is one of airfoils Bezier based? """
+    def _is_one_airfoil_curve (self) -> bool: 
+        """ is one of airfoils Bezier or B-spline based? """
         for a in self.airfoils:
-            if a.isBezierBased: return True
+            if a.isBezierBased or a.isBSplineBased: return True
         return False 
 
 
@@ -655,11 +665,11 @@ class Item_Airfoil (Diagram_Item):
         return False 
 
 
-    def _is_design_and_bezier (self) -> bool: 
-        """ is one airfoil used as design ?"""
+    def _is_design_and_curve (self) -> bool: 
+        """ is one airfoil used as design and is Bezier or B-spline based?"""
 
         for a in self.airfoils:
-            if a.usedAsDesign and a.isBezierBased:
+            if a.usedAsDesign and (a.isBezierBased or a.isBSplineBased):
                 return True 
         return False
 
@@ -668,8 +678,8 @@ class Item_Airfoil (Diagram_Item):
         """ slot user started panelling dialog - show panels """
 
         # switch on show panels , switch off thickness, camber 
-        self.airfoil_artist.set_show_points (True)
-        self.line_artist.set_show (False)
+        self._airfoil_artist.set_show_points (True)
+        self._line_artist.set_show (False)
         self.section_panel.refresh() 
 
         logger.debug (f"{str(self)} _on_enter_panelling")
@@ -687,7 +697,13 @@ class Item_Airfoil (Diagram_Item):
         for artist in self._get_artist (Airfoil_Artist):
             artist.set_show_points (is_paneling)
 
+    def _on_curve_changed (self, side_type : Line.Type):
+        """ slot to handle curve of airfoil changed signal """
 
+        self._bezier_artist.refresh_from_side (side_type)
+        self._bspline_artist.refresh_from_side (side_type)
+
+        
     def _on_new_design (self):
         """ slot to handle new design airfoil created signal """
 
@@ -769,6 +785,25 @@ class Item_Airfoil (Diagram_Item):
         self._curvature_comb_artist.set_show (aBool)
         self.setup_viewRange ()
 
+    @property
+    def show_deviation (self) -> bool:
+        """ show deviation to target line for Bezier or B-spline airfoils"""
+        return self._show_deviation
+
+    def set_show_deviation (self, aBool : bool):
+        self._show_deviation = aBool
+        self._deviation_line_artist.set_show (aBool)
+
+
+    @property
+    def show_control_points (self) -> bool:
+        """ show control points of Bezier or B-spline airfoils"""
+        return self._show_control_points
+    
+    def set_show_control_points (self, aBool : bool):
+        self._show_control_points = aBool
+        self._bezier_artist.set_show (aBool)
+        self._bspline_artist.set_show (aBool)
 
     @override
     def resizeEvent(self, ev):
@@ -854,9 +889,9 @@ class Item_Airfoil (Diagram_Item):
         mods = ', '.join(airfoil.geo.modifications_as_list) if airfoil.usedAsDesign else None
             
         if mods:
-            subtitle = "Mods: " + mods
-        elif airfoil.isBezierBased:
-            subtitle = 'Based on 2 Bezier curves'
+            subtitle = "Mods: " + mods                          # list of modifications for design airfoil
+        elif airfoil.geo.isCurve:
+            subtitle = airfoil.geo.description                  # something like "Based on 2 Bezier"
         else: 
             # show name if it differs from name to show 
             subtitle = airfoil.name if airfoil.name != airfoil.name_to_show else ''
@@ -881,17 +916,22 @@ class Item_Airfoil (Diagram_Item):
         self._line_artist = a
         self._add_artist (a)
 
-        a = Bezier_Artist (self, lambda: self.airfoils, show_legend=True)
+        a = Bezier_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
         a.sig_bezier_changed.connect (self.app_model.notify_airfoil_changed)
         self._bezier_artist = a
+        self._add_artist (a)
+
+        a = BSpline_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
+        a.sig_bspline_changed.connect (self.app_model.notify_airfoil_changed)
+        self._bspline_artist = a
         self._add_artist (a)
 
         a = Hicks_Henne_Artist (self, lambda: self.airfoils, show_legend=True, show=False)
         self._hicks_henne_artist = a
         self._add_artist (a)
 
-        a = Bezier_Deviation_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
-        self._bezier_devi_artist = a
+        a = Deviation_Line_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
+        self._deviation_line_artist = a
         self._add_artist (a)
 
         a  = Flap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True)
@@ -942,9 +982,10 @@ class Item_Airfoil (Diagram_Item):
     @override
     def refresh_artists (self):
 
-        # ensure Bezier deviation artist is switched off
-        if not self._is_design_and_bezier():
-            self._bezier_devi_artist.set_show(False, refresh=False)
+        # ensure deviation artist is switched off
+        if not self._is_design_and_curve():
+            self._show_deviation = False
+            self._deviation_line_artist.set_show(False, refresh=False)
 
         super().refresh_artists()
 
@@ -973,11 +1014,11 @@ class Item_Airfoil (Diagram_Item):
                             "Useful to identify curvature discontinuities and artifacts.<br>"+
                             "The length of the comb corresponds to the squareroot of curvature.")
             r += 1
-            CheckBox (l,r,c, text="Bezier control points", colSpan=2,
-                    get=lambda: self._bezier_artist.show,
-                    set=self._bezier_artist.set_show,
-                    hide=lambda : not self._is_one_airfoil_bezier(),
-                    toolTip="Show control points of Bezier curves")
+            CheckBox (l,r,c, text="Curve control points", colSpan=2,
+                    get=lambda: self.show_control_points,
+                    set=self.set_show_control_points,
+                    hide=lambda : not self._is_one_airfoil_curve(),
+                    toolTip="Show control points of Bezier or B-spline curves")
             r += 1
             CheckBox (l,r,c, text="Hicks Henne functions", colSpan=2,
                     get=lambda: self._hicks_henne_artist.show,
@@ -995,10 +1036,10 @@ class Item_Airfoil (Diagram_Item):
                     hide=lambda: not self.stretch_y) 
             r += 1
             CheckBox (l,r,c, text="Deviation of Design", colSpan=2,
-                    get=lambda: self._bezier_devi_artist.show,
-                    set=self._bezier_devi_artist.set_show,
+                    get=lambda: self.show_deviation,
+                    set=self.set_show_deviation,
                     toolTip="Show deviation of Design airfoil to the original airfoil",
-                    hide=lambda : not self._is_design_and_bezier() or isinstance (self.case, Case_Optimize)) 
+                    hide=lambda : not self._is_design_and_curve() or isinstance (self.case, Case_Optimize)) 
             r += 1
             l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)
@@ -1144,8 +1185,7 @@ Try out the functionality with this example or <strong><span style="color: silve
         else:
             example = ""
 
-        new =   "- Show curvature as a curvature comb along airfoil surface<br>" + \
-                "- Revised example airfoils<br>" + \
+        new =   "- Match airfoil with B-Spline<br>" + \
                 "- ...<br>"
         
         # ... can't get column width working ...
@@ -2153,6 +2193,10 @@ class Diagram_Airfoil_Polar (Diagram):
             self.set_show_xo2_opPoint_result (True, refresh=False)          # show opPoint result
             self.section_panel.set_show_design_airfoils (False)             # don't show design airfoil initially - would be too much
             self.section_panel.reset_show_reference_airfoils ()             # show reference airfoils if there are
+
+        # remove existing help messages
+        for item in self.diagram_items:
+            item._remove_help_messages()
 
         self.refresh(also_viewRange=True)
 

@@ -9,20 +9,20 @@ Extra functions (dialogs) to modify airfoil
 
 import numpy as np
 
-from PyQt6.QtCore           import QThread, Qt
-from PyQt6.QtWidgets        import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
+from PyQt6.QtCore               import Qt
+from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 
-from ..base.math_util       import nelder_mead, derivative1
-from ..base.widgets         import * 
-from ..base.panels          import Dialog
+from ..base.widgets             import * 
+from ..base.panels              import Dialog
 
-from ..model.airfoil          import Airfoil, Flap_Setter
-from ..model.airfoil_geometry import Side_Airfoil_Bezier, Line
-from ..model.airfoil_geometry import Geometry, Geometry_Splined, Panelling_Spline
+from ..model.airfoil            import Airfoil, Flap_Setter
+from ..model.airfoil_geometry   import Geometry, Geometry_Splined, Panelling_Spline
+from ..model.case               import Match_Targets
 
-from .ae_widgets            import Airfoil_Select_Open_Widget
+from .ae_widgets                import Airfoil_Select_Open_Widget
 
-from ..app_model            import App_Model
+from ..app_model                import App_Model
+from ..match_runner             import Matcher_Base, Match_Result
 
 import logging
 logger = logging.getLogger(__name__)
@@ -371,706 +371,6 @@ class Flap_Airfoil_Dialog (Dialog):
 
 
 
-# ----- Match a Bezier curve to a Side of an airfoil  -----------
-
-class Match_Bezier_Dialog (Dialog):
-    """ Main handler represented as little tool window"""
-
-    _width  = 420
-    _height = 260
-
-    name = "Match Bezier"
-
-    sig_match_finished  = pyqtSignal (Side_Airfoil_Bezier)
-
-    MAX_PASS = 4                                            # max passes for match Bezier with increased weighting
-    INITIAL_WEIGHTING = 0.25                                # initial weighting of le curvature 
-
-
-    # ---- static members for external use 
-
-    @staticmethod
-    def style_deviation (norm2 : float) -> style:
-        """ returns color style depending of deviation"""
-        result = Matcher.result_deviation (norm2)
-        if result == Matcher.result_quality.GOOD:
-            st = style.GOOD
-        elif result == Matcher.result_quality.OK:
-            st = style.NORMAL
-        else:
-            st = style.WARNING
-        return st 
-
-
-    @staticmethod
-    def style_curv_le (target_curv_le: float, aCurv: Line | float, is_active=True) -> style:
-        """ returns color style depending if curvature at LE is too different from target"""
-        if not is_active:
-            return style.NORMAL
-        
-        result = Matcher.result_curv_le (target_curv_le, aCurv)
-        if result == Matcher.result_quality.GOOD:
-            st = style.GOOD
-        elif result == Matcher.result_quality.OK:
-            st = style.NORMAL
-        else:
-            st = style.WARNING
-        return st 
-
-
-    @staticmethod
-    def style_curv_te (max_curv_te : float, aCurv: Line | float, is_active=True)  -> style:
-        """ returns color style depending if curvature at TE is to high"""
-        if not is_active:
-            return style.NORMAL
-
-        result = Matcher.result_curv_te (max_curv_te, aCurv)
-        if result == Matcher.result_quality.GOOD:
-            st = style.GOOD
-        elif result == Matcher.result_quality.OK:
-            st = style.NORMAL
-        else:
-            st = style.WARNING
-        return st 
-
-
-
-    def __init__ (self, parent : QWidget, app_model : App_Model,
-                  side_bezier : Side_Airfoil_Bezier, target_line: Line,
-                  target_curv_le : float,
-                  max_curv_te : float,
-                  **kwargs): 
-
-        self._app_model   = app_model
-        self._side_bezier = side_bezier
-        self._target_line = target_line
-        self._curv_le = abs(side_bezier.curvature.max_xy[1]) 
-        self._curv_te = side_bezier.curvature.te[1] 
-
-        self._is_curv_le_target  = True 
-        self._is_curv_te_limited = True
-
-        self._target_curv_le = target_curv_le
-        self._max_curv_te    = max_curv_te
-
-        self._norm2 = Line.norm2_deviation_to (side_bezier.bezier, target_line) 
-        self._nevals = 0
-
-        self._target_curv_le_weighting = self.INITIAL_WEIGHTING
-        self._ipass = 0
-
-        # init matcher thread 
-
-        self._matcher = Matcher ()
-        self._matcher.finished.connect (self._on_finished)
-        self._matcher.sig_new_results [int, float, float, float].connect (self._on_results)
-
-        # init layout etc 
-
-        self._stop_btn : QPushButton = None
-        self._close_btn  : QPushButton = None 
-        self._match_btn  : QPushButton = None 
-
-        super().__init__ (parent, title=self._titletext(), **kwargs)
-
-        # handle button (signals) 
-
-        self.made_match = False
-
-        self._stop_btn.clicked.connect (self._cancel_thread)
-        self._close_btn.clicked.connect  (self.close)
-        self._match_btn.clicked.connect  (self._start_matcher)
-
-        self._stop_btn.setVisible (False) 
-        self._close_btn.setVisible (True) 
-
-        # save current background color for state dependant backgrounds
-
-        self._palette_normal = self._panel.palette()
-
-
-    def _titletext (self) -> str: 
-        """ headertext depending on state """
-        if self._matcher.isRunning():
-            return f"Match running ... Pass: {self._ipass}  Iterations: {self._nevals}"
-        elif self._matcher.isFinished():
-            return f"Match {self._side_bezier.name} side finished"
-        else: 
-            return f"Match {self._side_bezier.name} side"
-
-
-    @property
-    def is_curv_le_target(self):
-        return self._is_curv_le_target
-    def set_is_curv_le_target(self, aBool: bool):
-        self._is_curv_le_target = aBool
-
-    @property
-    def is_curv_te_limited(self):
-        return self._is_curv_te_limited
-    def set_is_curv_te_limited(self, aBool: bool):
-        self._is_curv_te_limited = aBool
-
-    @property
-    def target_curv_le (self) -> float:
-        return self._target_curv_le if self.is_curv_le_target else None
-    def set_target_curv_le (self, aVal : float):
-        self._target_curv_le = aVal
-
-    def set_target_curv_le_weighting (self, aVal : float):
-        self._target_curv_le_weighting = aVal
-
-    @property
-    def max_curv_te (self) -> float:
-        return self._max_curv_te if self.is_curv_te_limited else None
-    def set_max_curv_te (self, aVal : float):
-        self._max_curv_te = aVal
-
-    
-    def _start_matcher (self): 
-        """ start matcher thread"""
-
-        self._nevals = 0
-        self._norm2  = 0 
-        self._ipass +=1                                         # increase pass counter 
-        self._target_curv_le_weighting *= 2                     # double weighting in next pass 
-
-        self._panel.setDisabled (True)
-        self.set_background_color (color='magenta', alpha=0.2)        
-
-        self._matcher.set_match (self._side_bezier, self._target_line,
-                                self.target_curv_le, self._target_curv_le_weighting,
-                                self.max_curv_te)
-        self._matcher.start()
-
-        self._set_button_visibility ()              # after to get running state 
-        self.setWindowTitle (self._titletext())
-
-
-    def _on_widget_changed (self,*_):
-        """ slot for change of widgets"""
-        self.refresh()  
-
-
-    def _on_results (self, nevals, norm2, curv_le, curv_te):
-        """ slot to receive new results from running thread"""
-
-        self._nevals = nevals
-        self._norm2 = norm2         
-        self._curv_le = curv_le     
-        self._curv_te = curv_te     
-        self.refresh ()
-        self.setWindowTitle (self._titletext())
-
-        self._app_model.notify_airfoil_bezier (self._side_bezier.type)
-
-
-    def _result_is_good_enough (self) -> bool:
-        """ return True if match result is good enough to end """ 
-
-        good = Matcher.result_quality.GOOD
- 
-        result1 = Matcher.result_curv_le (self._target_curv_le, self._curv_le)
-        result2 = Matcher.result_curv_te (self._max_curv_te,    self._curv_te)
-        result3 = Matcher.result_deviation (self._norm2)
-
-        if result1 == good and result2 == good and result3 == good:
-            return True 
-        else: 
-            return False 
-
-
-    def _on_finished(self):
-        """ slot for thread finished """
-
-        if self._matcher.is_interrupted:
-            # user stop request - no more loops 
-            finished = True
-
-        elif self._ipass < self.MAX_PASS and self.target_curv_le is not None: 
-            # further passes to go if target_curv_le is defined?
-            finished = self._result_is_good_enough ()
-            if not finished:
-                self._app_model.notify_airfoil_geo_changed ()           # intermediate update
-
-                # start next pass after this thread has really finished 
-                timer = QTimer()                                
-                timer.singleShot(20, self._start_matcher)
-        else: 
-            finished = True 
-
-        if finished:      
-            # we really finished
-            self._norm2 = Line.norm2_deviation_to (self._side_bezier.bezier, self._target_line)
-
-            self._ipass = 0                                             # reset pass counter 
-            self._target_curv_le_weighting = self.INITIAL_WEIGHTING     # reset weighing 
-
-            self._set_button_visibility ()                              # reset UI state 
-
-            # restore old background color 
-            self._panel.setPalette(self._palette_normal)
-            self.set_background_color (color=None)    
-            self._panel.setDisabled (False)
-            self.setWindowTitle (self._titletext())
-
-            self.refresh ()
-            self._app_model.notify_airfoil_geo_changed ()               # final update
-            self.made_match = True
-
-
-    def _init_layout(self) -> QLayout:
-
-        l = QGridLayout()
-        r = 0
-        Label  (l,r,0, colSpan=5, height=50, style=style.COMMENT,
-                get=f"Run an optimization for a best fit of <b>{self._side_bezier.name} side</b> Bezier curve.<br>" +\
-                     "The initial target values are derived from target airfoil.")
-        r += 1
-        SpaceR (l, r, stretch=0, height=10) 
-        r += 1
-        Label  (l,r,0, get="Targets of Match")
-        Label  (l,r,3, get="Actual Values")
-        r += 1
-        CheckBox (l,r,0, text="Achieve Curvature at LE",
-                  obj=self, prop=Match_Bezier_Dialog.is_curv_le_target)
-        FieldF (l,r,1, width=55,  dec=0, step=10.0, lim=(10, 1000),
-                       obj=self, prop=Match_Bezier_Dialog.target_curv_le, 
-                       hide=lambda: not self.is_curv_le_target)
-        FieldF (l,r,3, width=60, dec=0, get=lambda: self._curv_le,
-                       style=lambda: Match_Bezier_Dialog.style_curv_le(
-                           self._target_curv_le, self._curv_le, is_active=self.is_curv_le_target))
-        r += 1
-        CheckBox (l,r,0, text="Limit Curvature at TE",
-                  obj=self, prop=Match_Bezier_Dialog.is_curv_te_limited)
-        FieldF (l,r,1, width=55,  dec=1, step=0.1, lim=(-9.9, 9.9),
-                       obj=self, prop=Match_Bezier_Dialog.max_curv_te, 
-                       hide=lambda: not self.is_curv_te_limited)
-        FieldF (l,r,3, width=60, dec=1, get=lambda: self._curv_te,
-                       style=lambda: Match_Bezier_Dialog.style_curv_te(
-                           self._max_curv_te, self._curv_te, is_active=self.is_curv_te_limited))
-        r += 1
-        CheckBox (l,r,0, text="Minimize Deviation to Target Line", get=True)
-        FieldF (l,r,3, width=60, dec=3, unit='%', get=lambda: self._norm2, 
-                       style=lambda: Match_Bezier_Dialog.style_deviation (self._norm2 ))
-        r += 1
-        SpaceR (l, r) 
-
-        l.setColumnMinimumWidth (1,55)
-        l.setColumnMinimumWidth (2,10)
-        l.setColumnStretch (3,1)
-        return l
-
-
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-
-        self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
-
-        self._stop_btn = QPushButton ("Stop", parent=self)
-        self._stop_btn.setFixedWidth (100)
-
-        self._match_btn = QPushButton ("Match Target", parent=self)
-        self._match_btn.setFixedWidth (100)
-
-        buttonBox.addButton (self._match_btn, QDialogButtonBox.ButtonRole.ActionRole)
-        buttonBox.addButton (self._stop_btn, QDialogButtonBox.ButtonRole.RejectRole)
-
-        return buttonBox 
-
-
-    def _set_button_visibility (self):
-        """ depending on matcher state, set button visibility """
-
-        if self._matcher.isRunning():
-            self._stop_btn.setVisible (True) 
-            self._match_btn.setVisible (False) 
-            self._close_btn.setVisible (False) 
-            self._stop_btn.setFocus ()
-        else: 
-            self._stop_btn.setVisible (False) 
-            self._match_btn.setVisible (True) 
-            self._close_btn.setVisible (True) 
-            self._match_btn.setFocus ()
-
-    def _cancel_thread (self):
-        """ request thread termination"""
-    
-        self._matcher.requestInterruption()
-
-
-    @override
-    def reject(self): 
-        """ close or x-Button pressed"""
-
-        # stop running matcher if x-Button pressed
-        if self._matcher.isRunning():
-            self._matcher.requestInterruption()
-        
-        # normal close 
-        super().reject()
-
-    
-# -----------------------------------------------------------------------------
-# Match Bezier Thread  
-# -----------------------------------------------------------------------------
-
-
-class Matcher (QThread):
-    """ 
-    Worker Thread for matching a single Side_Airfoil with Bezier
-
-    Optimizes self to best fit to target line
-    uses nelder meat root finding
-
-    """
-
-    sig_new_results = pyqtSignal (int, float, float, float)
-
-    class result_quality (Enum): 
-        """ enums for assessment of result quality """
-        VERY_GOOD     = 1
-        GOOD          = 2
-        OK            = 3
-        BAD           = 4
-        ERROR         = 5
-
-
-    # ------ static methods also for external use 
-
-    @classmethod
-    def result_curv_le (cls, target_curv_le: float, aCurv: Line | float) -> result_quality:
-        """ returns enum result_quality depending on deviation of curvature at LE"""
-        if isinstance (aCurv, float):
-            delta = abs(target_curv_le - abs(aCurv))
-        else: 
-            delta = abs(target_curv_le - abs(aCurv.y[0]))
-        if delta > 10: 
-            return cls.result_quality.BAD 
-        elif delta > 2: 
-            return cls.result_quality.OK
-        else: 
-            return cls.result_quality.GOOD
-
-
-    @classmethod
-    def result_deviation (cls, norm2 : float) -> result_quality:
-        """ returns enum result_quality depending of deviation"""
-        if norm2 < 0.001:
-            return cls.result_quality.GOOD
-        elif norm2 < 0.005:
-            return cls.result_quality.OK
-        else:
-            return cls.result_quality.BAD
-
-
-    @classmethod
-    def result_curv_te (cls, max_curv_te: float, aCurv: Line | float)  -> result_quality:
-        """ returns enum result_quality depending if curvature at TE is to high"""
-        if isinstance (aCurv, float):
-            curv_te = abs(aCurv)
-        else: 
-            curv_te = abs(aCurv.y[-1])
-        if curv_te > (abs(max_curv_te) + 2): 
-            return cls.result_quality.BAD
-        elif curv_te > (abs(max_curv_te) + 0.1):            # allow a little tolerance 
-            return cls.result_quality.OK
-        else: 
-            return cls.result_quality.GOOD
-
-
-    # ------------------
-
-    def __init__ (self, parent = None):
-        """ use .set_match(...) to put data into thread 
-        """
-        super().__init__(parent)
-
-        self._exiting = False 
-        self._is_interrupted = False 
-
-        # nelder mead results 
-        self._niter      = 0                        # number of iterations needed
-        self._nevals     = 0                        # current number of objective function evals
-
-
-    def __del__(self):  
-        """ ensure that self stops processing before destroyed"""  
-        self._exiting = True
-        self.wait()     
-
-
-    def set_match (self,  side : Side_Airfoil_Bezier, 
-                            target_line: Line,
-                            target_curv_le : float|None = None,
-                            target_curv_le_weighting : float = 1.0,
-                            max_curv_te : float|None = None):
-        """ set initial data for match"""
-
-        self._side    = side 
-        self._bezier  = side.bezier
-        self._ncp     = self._bezier.npoints
-        self._nvar    =  (self._ncp - 2) * 2 - 1    #  number of design variables
-        self._isLower = target_line.isLower         # lower side? - dv will be inverted
-        self._max_iter = self._nvar * 250           # max number of interactions - depending on number of control points
-
-        # selected target points for objective function
-
-        self._target_line  = Line._reduce_target_points (target_line)
-        self._target_y_te = target_line.y[-1]        
-
-        # curvature targets - may be None (is not a target)
-
-        self._target_curv_le = target_curv_le       # also take curvature at le into account
-        self._target_curv_le_weighting = target_curv_le_weighting   
-        self._max_curv_te    = max_curv_te          # also take curvature at te into account
-
-        # re-arrange initial Bezier as start bezier 
-        #    ensure a standard (start) position of control points 
-
-        controlPoints = Side_Airfoil_Bezier.estimated_controlPoints (target_line, self._ncp) 
-        self._bezier.set_points (controlPoints)      # a new Bezier curve 
- 
-    # --------------------
-
-    def run (self) :
-        # Note: This is never called directly. It is called by Qt once the
-        # thread environment has been set up.s
-
-        self._niter      = 0                        # number of iterations needed
-        self._nevals     = 0                        # current number of objective function evals
-
-        #-- map control point x,y to optimization variable 
-
-        variables_start, bounds = self._map_bezier_to_variables ()
-
-        # ----- objective function
-
-        f = lambda variables : self._objectiveFn (variables) 
-
-        # -- initial step size 
-
-        step = 0.16                      # big enough to explore solution space 
-                                         #  ... but not too much ... 
-
-        # ----- nelder mead find minimum --------
-
-        res, niter = nelder_mead (f, variables_start,
-                    step=step, no_improve_thr=1e-5,             
-                    no_improv_break_beginning=60, 
-                    no_improv_break=20, 
-                    max_iter=self._max_iter,         
-                    bounds = bounds,
-                    stop_callback=self.isInterruptionRequested)     # QThread method 
-
-        variables = res[0]
-
-        #-- evaluate the new y values on Bezier for the target x-coordinate
-
-        self._map_variables_to_bezier (variables)
-
-        self._niter      = niter
-        self._evals      = 0 
-
-        if self.isInterruptionRequested():
-            self._is_interrupted = True 
-
-        return 
-
-    @property
-    def is_interrupted (self) -> bool:
-        """ True if thread has finished and was interrupted"""
-        return self._is_interrupted
-
-    # --------------------
-
-    def _map_bezier_to_variables (self): 
-        """ 
-        Maps bezier control points to design variables of objective function
-
-        Returns: 
-            list of design variables  
-            bounds: list of bound tuples of variables """
-
-        vars   = [None] * self._nvar
-        bounds = [None] * self._nvar
-        cp_x, cp_y = self._bezier.points_x, self._bezier.points_y
-        ncp = self._bezier.npoints
-
-        ivar = 0
-        for icp in range (ncp): 
-            if icp == 0: 
-                pass                                    # skip leading edge
-            elif icp == ncp-1:                      
-                pass                                    # skip trailing edge
-            elif icp == 1: 
-                if self._isLower:
-                    y = -cp_y[icp]             # - >pos. solution space
-                else:
-                    y = cp_y[icp] 
-                vars[ivar] = y                
-                ivar += 1                  
-            else:                                       
-                vars[ivar] = cp_x[icp]                  # x value of control point
-                bounds[ivar] = (0.005, 0.95)            # right bound not too close to TE
-                ivar += 1                               #    to avoid curvature peaks 
-                if self._isLower:
-                    y = -cp_y[icp]             # - >pos. solution space
-                else:
-                    y = cp_y[icp]   
-                vars[ivar] = y           
-                ivar += 1                  
-        return vars, bounds 
-
-
-    def _map_variables_to_bezier (self, vars: list): 
-        """ maps design variables to bezier (control points)"""
-
-        cp_x, cp_y = self._bezier.points_x, self._bezier.points_y
-        ncp = self._bezier.npoints
-        ivar = 0
-        for icp in range (ncp): 
-            if icp == 0: 
-                pass                                    # skip leading edge
-            elif icp == ncp-1:                      
-                pass                                    # skip trailing edge
-            elif icp == 1:    
-                if self._isLower:
-                    y = - vars[ivar]            # solution space was y inverted 
-                else:
-                    y = vars[ivar] 
-                cp_y[icp] = y       
-                ivar += 1                  
-            else:                                       
-                cp_x[icp] = vars[ivar]
-                ivar += 1                  
-                if self._isLower:
-                    y = - vars[ivar]            # solution space was y inverted 
-                else:
-                    y = vars[ivar] 
-                cp_y[icp] = y               
-                ivar += 1                  
-        self._bezier.set_points (cp_x, cp_y)
-
-
-
-    def _objectiveFn (self, variables : list ):  
-        """ returns norm2 value of y deviations of self to target y at x """
-        
-        # rebuild Bezier 
-
-        self._map_variables_to_bezier (variables)
-        # print (' '.join(f'{p:8.4f}' for p in self._bezier.points_y))   
-          
-        # norm2 of deviations to target
-        norm2 = Line.norm2_deviation_to (self._bezier, self._target_line, reduce_points=False)
-        obj_norm2 = norm2 * 1000                                # 1.0   is ok, 0.2 is good 
-
-        # --- LE curvature 
-
-        curv_le = abs(self._bezier.curvature(0.0)) 
-         
-        # highpoint of curvature must be at LE
-
-        obj_le_hp = 0.0 
-        curv_after_le = abs(self._bezier.curvature(0.005)) 
-        if (curv_le - curv_after_le) < 0: 
-            obj_le_hp = abs( (curv_le - curv_after_le))  / 4
-
-        # difference to target le curvature 
-
-        obj_le = 0.0 
-        if self._target_curv_le:
-            target  = abs(self._target_curv_le)
-            diff = abs(target - curv_le)                        # 1% is like 1 
-            obj_le += (diff / 30) * self._target_curv_le_weighting  # #40 #80 apply optional weighting      
-
-        # --- TE curvature 
-
-        # limit max te curvature - ! curvature on bezier side_upper is negative !
-
-        obj_te = 0  
-        curv_te =  self._bezier.curvature(1.0) if self._isLower else -self._bezier.curvature(1.0)
-
-        if self._max_curv_te is not None:
-            # current should be between 0.0 and target te curvature 
-            if self._max_curv_te >= 0.0: 
-                if curv_te >= 0.0: 
-                    delta = curv_te - self._max_curv_te 
-                else:
-                    delta = - curv_te * 3.0                 # te curvature shouldn't result in reversal
-            else: 
-                if curv_te < 0.0:  
-                    delta = - (curv_te - self._max_curv_te)
-                else:
-                    delta = curv_te * 3.0                   # te curvature shouldn't result in reversal
-            if delta > 0.1:                                     # delta < 0.3 is ok,  0
-                obj_te = delta - 0.1   
-
-        # calculate derivative of curvature for detection of curvature artifacts 
-
-        u = np.concatenate ((np.linspace (0.2, 0.95, 15, endpoint=False),
-                             np.linspace (0.95, 1.0, 10)))          # higher density at te     
-        x,_    = self._bezier.eval(u)
-        curv   = self._bezier.curvature(u)
-        deriv1 = derivative1 (x, curv)
-
-        # derivative of curvature at te 
-    	    # try to avoid that curvature slips away at TE when control point 
-            # is getting closer to TE 
-
-        obj_te_deriv = 0 
-        lim_curv_deriv_te = 0
-        max_curv_deriv_te = np.max (abs(deriv1[-10:]))              # check the last 10 points  
-
-        if self._max_curv_te is not None:
-            # if max_curv_te is 0.0 take a not too low value for derivative at te                 
-            lim_curv_deriv_te = 20 * (abs(self._max_curv_te) if self._max_curv_te else 0.1)
-            lim_curv_deriv_te = max (lim_curv_deriv_te, 2)             # derivative limit depending on curv at te
-
-            if max_curv_deriv_te > lim_curv_deriv_te: 
-                obj_te_deriv = (max_curv_deriv_te - lim_curv_deriv_te) / 20  # 0 is good, > 0 ..50 is bad 
-
-        # ---- penalty for reversals in derivative of curvature - avoid bumps 
-
-        obj_revers = 0 
-        nrevers = 0 
-        yold    = deriv1[0]
-        for i in range(len(x)):
-            if abs(deriv1[i]) >= 0.02:                              #  threshold for reversal detetction
-                if (deriv1[i] * yold < 0.0):                        # yes - changed + - 
-                    nrevers += 1                             
-                yold = deriv1[i]
-        obj_revers = nrevers ** 2 * 0.4                             #  2+ reversals are really bad
-
-        # objective function is sum of single objectives 
-
-        # take norm2 of deviation and le curvature to get balanced result 
-        obj = np.linalg.norm ([obj_norm2, obj_le]) + obj_le_hp + obj_te + obj_revers + obj_te_deriv
-
-        # counter of objective evaluations (for entertainment)
-        self._nevals += 1
-
-        # if self._nevals%100 == 0:           
-        #     print (f"{self._nevals:4} " +
-        #                    f" obj:{obj:5.2f}   norm2:{obj_norm2:5.2f}" +
-        #                    f"  le:{obj_le:5.2f}   le_hp:{obj_le_hp:5.2f}   te:{obj_te:5.2f}" +
-        #                    f"  rev:{obj_revers:5.2f}  te_der:{obj_te_deriv:5.2f}")
-        #     print (f"{lim_curv_deriv_te}, {max_curv_deriv_te}")
-
-        # signal parent with new results 
-        if self._nevals%10 == 0:  
-
-            self.sig_new_results.emit (self._nevals, norm2, curv_le, curv_te)
-            self.msleep(2)                      # give parent some time to do updates
-
-        return obj 
-
-
-
 class TE_Gap_Dialog (Dialog):
     """ Dialog to set TE gap of airfoil"""
 
@@ -1319,4 +619,144 @@ class LE_Radius_Dialog (Dialog):
 
         return buttonBox 
 
+
+
+class Matcher_Run_Info (Dialog):
+    """ Little Info dialog (with stop button) show information durig match run"""
+
+    _width  = 230
+    _height = 230
+
+    name = "Match Curve"
+
+    def __init__ (self, parent : QWidget, 
+                  matcher : Matcher_Base, 
+                  **kwargs): 
+
+        self._result : Match_Result | None = None  # Current match result
+
+        self._ncp       = 0                     
+        self._ipass     = 1
+        self._nevals    = 0
+
+        # connect to matcher siganls to get updates during optimization
+
+        matcher.finished.connect (self._on_finished)
+        matcher.sig_pass_start.connect (self._on_pass_start)
+        matcher.sig_new_results.connect (self._on_results)
+
+        self._matcher = matcher
+
+        # init layout etc 
+
+        self._stop_btn : QPushButton = None
+
+        super().__init__ (parent, title=self._titletext(),
+                          flags = Qt.WindowType.Dialog  
+                                | Qt.WindowType.CustomizeWindowHint        # take full control of title bar
+                                | Qt.WindowType.WindowTitleHint,           # show title text
+                           **kwargs)
+
+        self._stop_btn.clicked.connect (self._cancel_thread)    # after super init to get button instance
+        self.set_background_color (color='magenta', alpha=0.2)        
+
+        # start matcher after dialog is shown 
+
+        QTimer.singleShot(0, self._matcher.start)     
+
+
+    def _titletext (self) -> str: 
+        """ headertext depending on state """
+        return f"Match {self._matcher._side.name} side"
+
+    @property
+    def targets (self) -> Match_Targets:
+        return self._matcher._targets
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r = 0
+        Label  (l,r,0, colSpan=3, height=30, fontSize=size.HEADER_SMALL,
+                get=lambda: f"Pass {self._ipass} with {self._ncp} Control Points")
+        # Label  (l,r,1, colSpan=2, height=30, fontSize=size.HEADER_SMALL,
+        #         get=lambda: f"{self._ncp} Ctrl Points")
+        r += 1
+        SpaceR (l, r, stretch=0, height=10) 
+        r += 1
+        FieldI (l,r,0, width=60, lab="Evaluations", get=lambda: self._nevals), 
+        r += 1
+        FieldF (l,r,0, width=60, dec=4, lab="Deviation RMS",unit='%', 
+                    get=lambda: self._result.rms if self._result else 0.0, 
+                    style=lambda: self._result.style_deviation if self._result else style.NORMAL)
+        r += 1
+        FieldF (l,r,0, width=60, dec=0, lab="LE curvature",
+                    get=lambda: self._result.le_curvature if self._result else 0.0,
+                    style=lambda: self._result.style_curv_le if self._result else style.NORMAL)
+        r += 1
+        FieldF (l,r,0, width=60, dec=1, lab="TE curvature",
+                    get=lambda: self._result.te_curvature if self._result else 0.0,
+                    style=lambda: self._result.style_curv_te if self._result else style.NORMAL)
+        r += 1
+        SpaceR (l, r) 
+
+        l.setColumnMinimumWidth (0,100)
+        l.setColumnStretch (2,1)
+        return l
+
+
+    def _button_box (self):
+        """ returns the QButtonBox with the buttons of self"""
+
+
+        self._stop_btn = QPushButton ("Stop", parent=self)
+        self._stop_btn.setFixedWidth (80)
+
+        buttonBox = QDialogButtonBox()
+        buttonBox.addButton (self._stop_btn, QDialogButtonBox.ButtonRole.RejectRole)
+
+        return buttonBox 
+
+    # --------------------
+
+    def _on_results (self, ipass, nevals, result : Match_Result):
+        """ slot to receive new results from running thread"""
+
+        self._ipass   = ipass
+        self._ncp     = result.ncp
+        self._nevals  = nevals
+        self._result  = result  # Store the entire result object
+        self.refresh ()
+
+
+    def _on_pass_start (self, ipass, ncp):
+        """ slot for pass start - could be new ncp or new weighting """
+
+        self._ipass = ipass
+        self._ncp = ncp
+        self.refresh()
+
+    def _on_finished(self):
+        """ slot for thread finished """
+
+        self.close()
+
+
+    def _cancel_thread (self):
+        """ request thread termination"""
+    
+        self._matcher.requestInterruption()
+
+
+    @override
+    def reject(self): 
+        """ close or x-Button pressed"""
+
+        # stop running matcher if x-Button pressed
+        if self._matcher.isRunning():
+            self._matcher.requestInterruption()
+        
+        # normal close 
+        super().reject()
 

@@ -657,25 +657,21 @@ class Polar_Set:
 
     @property
     def airfoil_pathFileName_abs (self) -> str:
-        """ returns absolute path of airfoil"""
-        abs_path = None
+        """ returns absolute path of airfoil used for polar generation"""
+
         if self.airfoil:
-            abs_path = self.airfoil.pathFileName_abs
-
-            # in case of Bezier we'll write only the .bez file 
-            if self.airfoil.isBezierBased:
-                abs_path = os.path.splitext(abs_path)[0] + Airfoil_Bezier.Extension
-
-            # in case of hicks henne .dat is used 
-            elif self.airfoil.isHicksHenneBased:
-                abs_path = os.path.splitext(abs_path)[0] + Airfoil.Extension
-
-        return abs_path
+            if self.airfoil.isBezierBased:          # in case of Bezier we'll write only the .bez file 
+                return self.airfoil.pathFileName_abs
+            else:                                   # in all other cases .dat
+                return self.airfoil.pathFileName_abs_dat
+        else:
+            return None     
 
 
     def airfoil_ensure_being_saved (self):
         """ check and ensure that airfoil is saved to file (Worker needs it)"""
 
+        # worker can handle .dat and .bez files 
         if os.path.isfile (self.airfoil_pathFileName_abs) and not self.airfoil.isModified:
             pass 
         else: 

@@ -588,8 +588,9 @@ class Edit_Panel (Panel_Abstract):
     def refresh(self, reinit_layout=False):
         """ refreshes all Widgets on self """
 
-        hide = not self.shouldBe_visible and     self.isVisible()
-        show =     self.shouldBe_visible and not self.isVisible()
+        # use isHidden to be independent of visibility set by parent panels
+        hide = not self.shouldBe_visible and not self.isHidden()
+        show =     self.shouldBe_visible and     self.isHidden()
 
         # hide / show self 
 

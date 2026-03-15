@@ -20,7 +20,7 @@ import stat
 from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
-from PyQt6.QtCore            import pyqtSignal, QObject, QThread
+from PyQt6.QtCore            import pyqtSignal, QObject, QThread, QTimer
 
 from .resources              import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
@@ -29,11 +29,14 @@ from .base.app_utils         import Settings
 # --- the real model imports
 from .model.airfoil          import Airfoil, usedAs
 from .model.airfoil_examples import Example
-from .model.airfoil_geometry import Panelling_Spline, Panelling_Bezier, Line
+from .model.airfoil_geometry import Panelling_Spline, Line
+from .model.geometry_bezier  import Panelling_Bezier
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.xo2_input        import OpPoint_Definition, Input_File
-from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_As_Bezier
+from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_Match_Target
+
+from .match_runner           import Matcher_Bezier, Matcher_BSpline
 
 import logging
 logger = logging.getLogger(__name__)
@@ -44,10 +47,11 @@ logger = logging.getLogger(__name__)
 
 class Mode_Id(Enum):
     """ Application Mode Identifiers """
-    VIEW      = auto()
-    MODIFY    = auto()
-    OPTIMIZE  = auto()
-    AS_BEZIER = auto()
+    VIEW       = auto()
+    MODIFY     = auto()
+    OPTIMIZE   = auto()
+    AS_BEZIER  = auto()
+    AS_BSPLINE = auto()
 
 
 # -----------------------------------------------------------------------------
@@ -126,7 +130,7 @@ class App_Model (QObject):
     sig_airfoil_geo_le_radius   = pyqtSignal(object)    # le radius is fast changing / moving
     sig_airfoil_geo_paneling    = pyqtSignal(bool)      # airfoil panelling is fast changing / moving
     sig_airfoil_flap_set        = pyqtSignal(bool)      # flap setting (Flapper) changed / moving
-    sig_airfoil_bezier          = pyqtSignal(Line.Type) # new bezier curve during match bezier 
+    sig_airfoil_geo_curve       = pyqtSignal(Line.Type) # new curve (Bezier or B-Spline) during match curve 
 
     sig_xo2_run_started         = pyqtSignal()          # optimization run started
     sig_xo2_run_finished        = pyqtSignal()          # optimization run finished
@@ -294,6 +298,33 @@ class App_Model (QObject):
         self.sig_xo2_new_state.emit()
 
 
+    def _on_match_results (self, ipass, nevals, result):
+        """ slot to handle new match results signaled by Matcher"""
+
+        if self._matcher:
+            line_type = self._matcher._side.type
+            self.sig_airfoil_geo_curve.emit (line_type)     # update diagram
+
+
+    def _on_match_finished (self, result):
+        """ slot to handle match finished signaled by Matcher"""
+
+        if self._matcher:
+            self._matcher.sig_finished.disconnect ()
+            self._matcher.sig_pass_start.disconnect ()                      # disconnect all 
+            self._matcher.sig_new_results.disconnect ()
+
+            aSide = self._matcher._side
+            self.airfoil.geo.finished_change_of (aSide, mod_info='matched') # will reset geo and handle changed  
+
+            self.case.set_match_result (result)
+
+            self.notify_airfoil_changed()                                   # notify change of airfoil - new design
+
+            self._matcher = None
+
+
+
     # --- properties
 
     def set_app_info (self, version: str, change_text: str, is_first_run: bool):
@@ -319,7 +350,9 @@ class App_Model (QObject):
             ok = True
         elif mode_id == Mode_Id.MODIFY      and isinstance (case, Case_Direct_Design):
             ok = True
-        elif mode_id == Mode_Id.AS_BEZIER   and isinstance (case, Case_As_Bezier):
+        elif mode_id == Mode_Id.AS_BEZIER   and isinstance (case, Case_Match_Target):
+            ok = True
+        elif mode_id == Mode_Id.AS_BSPLINE  and isinstance (case, Case_Match_Target):
             ok = True
         elif mode_id == Mode_Id.VIEW and case is None:
             ok = True
@@ -357,6 +390,12 @@ class App_Model (QObject):
     def is_mode_as_bezier (self) -> bool:
         """ is current mode as bezier """
         return self._mode_id == Mode_Id.AS_BEZIER
+
+
+    @property
+    def is_mode_as_bspline (self) -> bool:
+        """ is current mode as bspline """
+        return self._mode_id == Mode_Id.AS_BSPLINE
 
 
     @property
@@ -515,6 +554,18 @@ class App_Model (QObject):
             return None
 
     @property
+    def airfoil_target (self) -> Airfoil | None:
+        """ target airfoil for matching"""
+        if self.case and self.case.airfoil_target:
+            target =  self.case.airfoil_target
+            if not target.polarSet:
+               target.set_polarSet (Polar_Set (target, polar_def=self.polar_definitions, only_active=True))
+            return target
+        else:
+            return None
+
+
+    @property
     def airfoil_design (self) -> Airfoil:
         """ the current design airfoil if available"""
         for airfoil in self.airfoils:
@@ -601,6 +652,7 @@ class App_Model (QObject):
         if self.airfoil_final:      airfoils.append (self.airfoil_final)
         if self.airfoil:            airfoils.append (self.airfoil)
         if self.airfoil_seed:       airfoils.append (self.airfoil_seed)
+        if self.airfoil_target:     airfoils.append (self.airfoil_target)
         if self.airfoil_2:          airfoils.append (self.airfoil_2)
         if self.airfoils_ref:       airfoils.extend (self.airfoils_ref)
 
@@ -633,16 +685,13 @@ class App_Model (QObject):
             elif airfoil.get_property("show",True):                 # individual show property
                 airfoils.append (airfoil)
 
-        # at least one airfoil should be there - take first 
-        if not airfoils and self.airfoils: 
-            first_airfoil = self.airfoils[0]
-            first_airfoil.set_property("show", True)
-            airfoils = [first_airfoil]
+        # sanity - show at least selef airfoil (in Match self.airrfoil is switched off)
+        if not airfoils and self.airfoil:
+            self.airfoil.set_property ("show", True)
+            airfoils.append (self.airfoil)
 
         return  airfoils 
 
-    # --- Xoptfoil2
-    
 
     @property
     def cur_opPoint_def (self) -> OpPoint_Definition:
@@ -971,6 +1020,50 @@ class App_Model (QObject):
             # let's go
 
             case.run()
+
+
+    def run_match (self, side_type : Line.Type) -> Matcher_Bezier|Matcher_BSpline:
+        """ run match airfoil. Returns Matcher thread.
+            Note: Matcher will signal results and finished, but is not watched by watchdog 
+            - it is expected to run fast and not have a complex state to watch. 
+        """
+
+        case : Case_Match_Target = self.case
+
+        # sanity check
+
+        if not isinstance (case, Case_Match_Target):
+            raise ValueError (f"{self} cannot run match with case {case}")
+        if side_type not in [Line.Type.UPPER, Line.Type.LOWER]:
+            raise ValueError (f"{self} cannot run match with side type {side_type}")
+
+        # get side and targets for match 
+
+        if side_type == Line.Type.UPPER:
+            side = self.airfoil.geo.upper
+            targets = case.targets_upper
+        else:
+            side = self.airfoil.geo.lower
+            targets = case.targets_lower
+
+        # set matcher and start thread
+
+        if self.airfoil.isBezierBased:
+            self._matcher = Matcher_Bezier ()
+        elif self.airfoil.isBSplineBased:
+            self._matcher = Matcher_BSpline ()
+        else:
+            raise ValueError (f"{self} cannot run match with airfoil {self.airfoil} - not supported type")
+
+        self._matcher.set_match (side, targets)
+
+        self._matcher.sig_pass_start.connect    (self.sig_airfoil_geo_changed.emit)
+        self._matcher.sig_new_results.connect   (self._on_match_results)
+        self._matcher.sig_finished.connect        (self._on_match_finished)
+
+        QTimer.singleShot(0, self._matcher.start)
+
+        return self._matcher
 
 # -----------------------------------------------------------------------------
 

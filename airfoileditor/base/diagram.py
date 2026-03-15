@@ -635,6 +635,14 @@ class Diagram_Item (pg.PlotItem):
             self._help_message_items[artist] = p1
             i +=1
 
+    def _remove_help_messages (self):
+        """ remove all help messages"""
+        for item in self._help_message_items.values():
+            self.scene().removeItem (item)                             # was added directly to the scene via setParentItem
+        self._help_message_items = {}
+        self._help_messages = {}
+        self._help_messages_shown = {}
+
 
     def set_desired_xLink_name (self, aName : str | None):
         """ set the name of the item to xlink to """

@@ -18,7 +18,7 @@ from pathlib            import Path
 from typing             import override
 from enum               import Enum
 
-from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer
+from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QEvent
 
 from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
 from PyQt6.QtWidgets    import (QApplication, QWidget, QPushButton, QMenu,
@@ -709,6 +709,14 @@ class Widget:
         # set width and height 
         Widget._set_width  (widget, self._width)
         Widget._set_height (widget, self._height)
+
+
+    def event (self, e: QEvent) -> bool:
+        """ override to suppress tooltip propagation to parent when no toolTip is defined """
+        if e.type() == QEvent.Type.ToolTip and self._toolTip is None:
+            e.accept()                      # accept = handled; prevents propagating to parent
+            return True
+        return super().event(e)
 
 
     def _set_QWidget_toolTip (self):

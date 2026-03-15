@@ -7,20 +7,27 @@
 """
 import os
 import ast
+import json
 import logging
 from datetime               import datetime, timedelta
 from copy                   import copy
 from typing                 import Type, override
 from enum                   import StrEnum
 from pathlib                import Path
+from timeit                 import default_timer as timer
 
 import numpy as np
 
-from ..base.common_utils      import fromDict, toDict, clip 
-from ..base.spline            import HicksHenne
+from ..base.common_utils    import fromDict, toDict, clip 
+from ..base.spline          import HicksHenne
 
-from .airfoil_geometry      import (Geometry_Splined, Geometry, Geometry_Bezier, Geometry_HicksHenne,
-                                    Line, Side_Airfoil_Bezier, GeometryException)
+from .airfoil_geometry      import (Geometry_Splined, Geometry,
+                                    Line, GeometryException, Panelling_Spline)
+from .geometry_hicks_henne  import Geometry_HicksHenne
+
+from .geometry_curve        import Geometry_Curve
+from .geometry_bezier       import Geometry_Bezier
+from .geometry_bspline      import Geometry_BSpline, Side_Airfoil_BSpline
 
 from .xo2_driver            import Worker
 
@@ -63,12 +70,18 @@ class Airfoil:
     """
     isBlendAirfoil      = False
     isEdited            = False
-    isExample           = False                      # vs. Example_Airfoil 
+    isExample           = False                     # vs. Example_Airfoil 
+
+    _geometry_class     = GEO_SPLINE                # geometry startegy 
+
     isBezierBased       = False
+    isBSplineBased      = False
     isHicksHenneBased   = False
-    isDatBased          = not isBezierBased and not isHicksHenneBased
+    isDatBased          = not isBezierBased and not isHicksHenneBased and not isBSplineBased
 
     Extension           = '.dat'
+    NAME_SUFFIX         = ""                        # will be added to name and filename if not already there
+
 
     def __init__(self, x= None, y = None, name = None,
                  geometry : Type[Geometry]  = None, 
@@ -102,10 +115,8 @@ class Airfoil:
         self._isEdited       = False 
         self._isBlendAirfoil = False                        # is self blended from two other airfoils 
 
-        if geometry is None: 
-            self._geometry_class  = GEO_SPLINE              # geometry startegy 
-        else:
-            self._geometry_class  = geometry                # geometry startegy 
+        if geometry is not None: 
+            self._geometry_class  = geometry                # geometry startegy - default class _geometry_class
         self._geo            = None                         # selfs instance of geometry
 
         self._polarSet       = None                         # polarSet which is defined from outside 
@@ -183,9 +194,12 @@ class Airfoil:
 
         elif ext == Airfoil_Hicks_Henne.Extension: 
             return Airfoil_Hicks_Henne (pathFileName=pathFileName, workingDir=workingDir)
+        
+        elif ext == Airfoil_BSpline.Extension: 
+            return Airfoil_BSpline (pathFileName=pathFileName, workingDir=workingDir)
+        
         else:
             raise ValueError (f"Unknown file extension '{ext}' for new airfoil")
-
 
 
     def _save (self, airfoilDict):
@@ -240,6 +254,23 @@ class Airfoil:
 
         self.set_isModified (True)
         logger.debug (f"{self} - geometry changed: {modifications} ")
+
+
+    def _set_name_postfix (self, postfix : str):
+        """ 
+        set name and fileNameof self with postfix like '_norm' 
+        - will use original name and filename if possible
+        """
+
+        if not self._name_org: 
+            self._name_org = self.name
+        self.set_name (f"{self._name_org}{postfix}")
+
+        if self._fileName_org is None: 
+            self._fileName_org = self.fileName
+        fileName_stem = os.path.splitext(self._fileName_org)[0]
+        fileName_ext  = os.path.splitext(self._fileName_org)[1]
+        self.set_fileName (fileName_stem + postfix + fileName_ext)
 
 
     # ----------  Properties ---------------
@@ -362,7 +393,7 @@ class Airfoil:
 
     @property
     def info_as_html (self) -> str:
-        """ comprlonger  info about self as formatted html string"""
+        """ longer info about self as formatted html string"""
 
         info = "<p style='white-space:pre'>"                     # no word wrap 
 
@@ -584,6 +615,15 @@ class Airfoil:
         return pathFileName_abs
 
 
+    @property
+    def pathFileName_abs_dat (self) -> str: 
+        """ abs pathfileName with .dat extension - for Bezier and BSpline airfoils """
+        if self.pathFileName_abs:  
+            return os.path.splitext(self.pathFileName_abs)[0] + Airfoil.Extension
+        else: 
+            return None 
+
+
     def set_pathName (self, aDir : str, noCheck=False):
         """
         Set fullpaths of airfoils directory  
@@ -765,7 +805,7 @@ class Airfoil:
             for Hicks-Henne and Bezier 'onlyShapeFile' will write no .dat file 
         """
         if self.isLoaded: 
-            self._write_dat_to_file ()
+            self._write_dat ()
             self.set_isModified (False)
 
             logger.debug (f"{self} save to {self.fileName}")
@@ -842,21 +882,26 @@ class Airfoil:
         Args:
             pathFileName: optional - string new fileName
         """
+        start = timer()
+
         pathFileName = pathFileName if pathFileName else self.pathFileName 
         name         = self.name 
         geometry     = self._geometry_class
 
         airfoil = self.asCopy (pathFileName=pathFileName, name=name, geometry=geometry)
 
-        airfoil.set_usedAs (self.usedAs)
-        airfoil.set_isEdited (self.isEdited)
+        airfoil.set_usedAs   (usedAs.DESIGN)
+        airfoil.set_isEdited (True)
         airfoil.geo._modification_dict = copy (self.geo._modification_dict)
         airfoil._name_org = self._name_org
-        
+
+        end = timer()
+        logger.debug (f"{self} Design copy created in {end - start:.4f} seconds")
+
         return airfoil 
 
 
-    def _write_dat_to_file (self):
+    def _write_dat (self):
         """ writes .dat file of to self.pathFileName"""
 
         # ensure extension .dat (in case of Bezier) 
@@ -869,9 +914,7 @@ class Airfoil:
             file.close()
 
 
-    def normalize (self, 
-                   just_basic=False, 
-                   mod_string=None):
+    def normalize (self, just_basic=False, mod_string=None):
         """
         Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y
         Returns True/False if normalization was done 
@@ -882,15 +925,38 @@ class Airfoil:
         """
         normalize_done = self.geo.normalize(just_basic=just_basic)
 
-        if normalize_done: 
-
-            if mod_string:
-                fileName_stem = os.path.splitext(self._fileName_org)[0]
-                fileName_ext  = os.path.splitext(self._fileName_org)[1]
-                self.set_fileName (fileName_stem + mod_string + fileName_ext)  
-                self.set_name     (self._name_org + mod_string)
+        if normalize_done and mod_string is not None:
+            self._set_name_postfix (mod_string)
 
         return normalize_done  
+
+
+    def repanel (self, nPanels : int, le_bunch : float = None, te_bunch : float = None, 
+                 mod_string=None):   
+        """ 
+        Repanels self to nPanels and updates geometry 
+
+        Args:
+            nPanels: number of panels for repaneling 
+            le_bunch: optional bunching factor for leading edge - see Panelling
+            te_bunch: optional bunching factor for trailing edge - see Pannelling
+            mod_string: optional modification identifier for fileName and name
+        """
+
+        panelling : Panelling_Spline = self.geo.panelling
+
+        if panelling is None:
+            raise GeometryException (f"{self} has no panelling - cannot repanel")
+
+        if le_bunch is not None:
+            panelling.set_le_bunch (le_bunch)
+        if te_bunch is not None:
+            panelling.set_te_bunch (te_bunch)
+
+        self.geo.repanel (nPanels)
+
+        if mod_string is not None:
+            self._set_name_postfix (mod_string)
 
 
     def do_blend (self, 
@@ -958,45 +1024,53 @@ class Airfoil:
             self.geo.set_flapped_data (x,y, flap_angle, x_flap)
 
 
-#------------------------------------------------------
+#--------------------------------------------------------------------------------------
 
-class Airfoil_Bezier(Airfoil):
+
+class Airfoil_Curve (Airfoil):
     """ 
 
-    Airfoil based on Bezier curves for upper and lower side 
+    Base class for Airfoils based on Bezier or B-Spline curves for upper and lower side 
 
     """
 
-    isBezierBased       = True
+    isBezierBased       = False
+    isBSplineBased      = False
 
-    Extension           = ".bez"
+    Extension           = ""
+    NAME_SUFFIX         = "_curve"                      # will be added to name and filename if not already there
 
+    _geometry_class     = Geometry_Curve                # Geometry base class- will be Geometry_Bezier or Geometry_BSpline
+        
 
     def __init__(self, name = None, pathFileName=None, workingDir= None,
                  cp_upper = None,
                  cp_lower = None):
         """
-        Main constructor for new Bezier Airfoil
+        Main constructor for new Airfoil based on curves (Bezier or B-Spline)
 
         Args:
             pathFileName: optional - string of existinng airfoil path and name 
             name: optional - name of airfoil - no checks performed 
+            workingDir: optional - working directory for pathFileName
+            cp_upper: optional - control points for upper side 
+            cp_lower: optional - control points for lower side
         """
         super().__init__( name = name, pathFileName=None, workingDir=workingDir)
 
-        self._pathFileName   = pathFileName         # after super() as checks would hit 
-        self._geometry_class = Geometry_Bezier      # geometry startegy 
-        self._isLoaded       = False                # bezier definition loaded? 
+        self._pathFileName   = pathFileName                             # after super() as checks would hit 
 
         if cp_upper is not None: 
-            self.geo.upper.set_controlPoints (cp_upper)
+            self.geo.set_newSide_for (Line.Type.UPPER, cp_upper)
         if cp_lower is not None: 
-            self.geo.lower.set_controlPoints (cp_lower)
+            self.geo.set_newSide_for (Line.Type.LOWER, cp_lower)
+
+        self._isLoaded = cp_upper is not None and cp_lower is not None  # curve definition loaded? 
 
         # pathFileName must exist if no coordinates were given 
 
         if (pathFileName is not None) and  (cp_upper is None or cp_lower is None): 
-            pathFileName = os.path.normpath(pathFileName)       # make all slashes to double back
+            pathFileName = os.path.normpath(pathFileName)               # make all slashes to double back
             if os.path.isabs (pathFileName):
                 checkPath = pathFileName
             else:
@@ -1005,8 +1079,8 @@ class Airfoil_Bezier(Airfoil):
                 raise ValueError (f"Airfoil '{checkPath}' does not exist.")
 
 
-    @staticmethod
-    def onAirfoil (anAirfoil : Airfoil):
+    @classmethod
+    def on_airfoil (cls, anAirfoil : Airfoil, ncp=6) -> 'Airfoil_Curve':
         """
         Alternate constructor for new Airfoil based on another airfoil 
 
@@ -1014,49 +1088,46 @@ class Airfoil_Bezier(Airfoil):
         which have to be optimized with 'match bezier'
         """
 
+        # sanity - only normalized airfoils should be converted to Bezier 
+        if not anAirfoil.isNormalized:
+            raise ValueError (f"Airfoil '{anAirfoil}' should be normalized before conversion to Bezier")
+
+        # class of new side 
+        side_class = cls._geometry_class.side_class
+
+        # create upper, lower bezier curves based on airfoil coordinates
+        upper = side_class.on_side (anAirfoil.geo.upper, ncp=ncp, linetype=Line.Type.UPPER)
+        lower = side_class.on_side (anAirfoil.geo.lower, ncp=ncp, linetype=Line.Type.LOWER)
+
         # new name and filename
-        name = anAirfoil.name + '_bezier'
- 
-        # get estimated controlpoints for upper and lower 
-        cp_upper = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.upper, 5)
-        cp_lower = Side_Airfoil_Bezier.estimated_controlPoints (anAirfoil.geo.lower, 5)
-
-        # sanity - ensure TE is symmetric and at x=1.0
-        avg_y = (cp_upper[-1][1] - cp_lower[-1][1]) / 2
-        cp_upper[-1] = (1.0,  avg_y)
-        cp_lower[-1] = (1.0, -avg_y)
-
-        airfoil_new =  Airfoil_Bezier (name=name, cp_upper=cp_upper, cp_lower=cp_lower)
+        airfoil_new =  cls (name=anAirfoil.name + cls.NAME_SUFFIX)
+        airfoil_new.geo.set_upper (upper, mod_info="initial fit")
+        airfoil_new.geo.set_lower (lower, mod_info="initial fit")
 
         # new pathFileName
         fileName_stem = anAirfoil.fileName_stem
-        # fileName_ext  = anAirfoil.fileName_ext
-        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + '_bezier' + Airfoil_Bezier.Extension)
+        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + cls.NAME_SUFFIX + cls.Extension)
         airfoil_new.set_pathFileName (pathFileName, noCheck=True)
         airfoil_new.set_workingDir   (anAirfoil.workingDir)
-
-        airfoil_new.set_isLoaded (True)
-
         return airfoil_new 
 
 
     @property
-    def pathFileName_shape (self) -> str: 
-        """ abs pathfileName of the Bezier definition file """
+    def pathFileName_abs_shape (self) -> str: 
+        """ abs pathfileName of the Bezier/B-Spline definition file """
         if self.pathFileName_abs:  
-            return os.path.splitext(self.pathFileName_abs)[0] + Airfoil_Bezier.Extension
+            return os.path.splitext(self.pathFileName_abs)[0] + self.Extension
         else: 
             return None 
 
+    @override
     @property
     def isLoaded (self): 
-        # overloaded
-        return self._isLoaded
-    def set_isLoaded (self, aBool: bool):
-        self._isLoaded = aBool
+        return self.geo._upper is not None and self.geo._lower is not None
 
+    @override
     @property
-    def geo (self) -> Geometry_Bezier:
+    def geo (self) -> Geometry_Curve:
         """ the geometry strategy of self"""
         if self._geo is None: 
             self._geo = self._geometry_class (onChange = self._handle_geo_changed)
@@ -1066,31 +1137,32 @@ class Airfoil_Bezier(Airfoil):
     @property
     def flap_setter (self) -> 'Flap_Setter':
         """ proxy controller to flap self using Worker"""
-        # do not flap Bezier
+        # do not flap Curve based airfoils - only basic ones - so return None
         return None 
 
 
+    @override
     def set_xy (self, x, y):
-        """ Bezier - do nothing """
-
-        # overloaded - Bezier curve in Geometry is master of data 
+        """ Curve - do nothing """
         pass
 
 
-    def set_newSide_for (self, curveType, px,py): 
+    def set_newSide_for (self, line_type: Line.Type, cpx, cpy): 
         """creates either a new upper or lower side in self"""
-        self.geo.set_newSide_for (curveType, px,py)
+
+        self.geo.set_newSide_for (line_type, cpx,cpy)
         self.set_isModified (True)
 
+
+    @override
     @property
     def x (self):
-        # overloaded  - take from bezier 
-        return self.geo.x
+        return self.geo.x                               #take from curve
 
+    @override
     @property
     def y (self):
-        # overloaded  - take from bezier 
-        return self.geo.y
+        return self.geo.y                                #take from curve  
 
     # -----------------
 
@@ -1106,7 +1178,7 @@ class Airfoil_Bezier(Airfoil):
 
         if os.path.isfile (self.pathFileName_abs):
 
-            self.load_bezier(fromPath=self.pathFileName_abs)
+            self._load(fromPath=self.pathFileName_abs)
 
             # first geometry check
             
@@ -1122,12 +1194,116 @@ class Airfoil_Bezier(Airfoil):
             self._file_datetime = datetime.fromtimestamp(ts)            # convert timestamp into DateTime object
 
 
-    def load_bezier (self, fromPath=None):
+    def _load (self, fromPath=None):
+        """
+        Loads curve definition from file. 
+        pathFileName must be set before or fromPath must be defined.
+        Load doesn't change self pathFileName
+        """    
+
+        raise NotImplementedError ("_load method must be implemented in child class")
+
+
+    @override
+    def save (self, onlyShapeFile=False):
+        """
+        Basic save of self to its pathFileName
+
+        Args:
+             onlyShapeFile: if True, only the bez file will be written - no .dat
+        """
+        if self.isLoaded: 
+            self._write_shape ()
+            if not onlyShapeFile:
+                super ().save ()
+
+            self.set_isModified (False)
+
+            logger.debug (f"{self} save to {self.fileName}")
+
+
+
+    def _write_shape (self):
+        """ write Bezier/B-Spline data to bez file """
+
+        raise NotImplementedError ("_write_shape method must be implemented in child class")
+    
+
+    @override
+    def asCopy (self, pathFileName = None, 
+                name=None, nameExt=None, geometry=None) -> 'Airfoil_Curve':
+        """
+        returns a copy of self 
+
+        Args:
+            pathFileName: optional - string of existinng airfoil path and name 
+            name: optional         - name of airfoil - no checks performed 
+            nameExt: -optional     - will be appended to self.name (if name is not provided)
+            geometry: - not supported for Bezier/B-Spline - will be ignored if given
+        """
+        # override as Bezier/B-Spline needs a special copy, no other geometry supported
+
+        if pathFileName is None and name is None: 
+            pathFileName = self.pathFileName
+
+        workingDir = None if os.path.isabs (pathFileName) else self.workingDir
+
+        if name is None:
+            name = self.name + nameExt if nameExt else self.name
+
+        airfoil =  self.__class__ (name = name, pathFileName = pathFileName,
+                       workingDir=workingDir, 
+                       cp_upper = self.geo.upper.controlPoints,
+                       cp_lower = self.geo.lower.controlPoints)
+
+        # copy target_definition - as it is not part of geometry but important for design airfoils
+        if self.geo.upper.target_deviation is not None:
+            airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
+        if self.geo.lower.target_deviation is not None:
+            airfoil.geo.lower.set_target_deviation_from (self.geo.lower.target_deviation)
+
+        return airfoil 
+
+
+    # @override
+    # def asCopy_design (self, pathFileName = None) -> 'Airfoil_Curve':
+    #     """
+    #     returns a copy of self - same as asCopy with additional properties
+    #         of a DESIGN airfoil
+
+    #     Args:
+    #         pathFileName: optional - string new fileName
+    #     """
+    #     airfoil : Airfoil_Curve = super().asCopy_design (pathFileName=pathFileName)     # will set name and geometry for copy
+
+    #     return airfoil 
+
+
+#------------------------------------------------------
+
+class Airfoil_Bezier (Airfoil_Curve):
+    """ 
+
+    Airfoil based on Bezier curves for upper and lower side 
+
+    """
+
+    isBezierBased       = True
+
+    Extension           = ".bez"
+    NAME_SUFFIX         = "_bezier"                     # will be added to name and filename if not already there
+
+    _geometry_class     = Geometry_Bezier
+        
+
+    def _load (self, fromPath=None):
         """
         Loads bezier definition from file. 
         pathFileName must be set before or fromPath must be defined.
         Load doesn't change self pathFileName
         """    
+
+        file_lines : list[str] = []
 
         with open(fromPath, 'r') as file:            
 
@@ -1148,7 +1324,7 @@ class Airfoil_Bezier(Airfoil):
         self._geo = None                                        # reset geometry 
 
         try: 
-            px, py = [], []
+            cpx, cpy = [], []
             for i, line in enumerate(file_lines):
                 if i == 0:
                     new_name = line.strip()
@@ -1159,25 +1335,26 @@ class Airfoil_Bezier(Airfoil):
                             side = Line.Type.UPPER
                         else:
                             side = Line.Type.LOWER 
-                        px, py = [], []
+                        cpx, cpy = [], []
                     elif "end" in line:
-                        if not px : raise ValueError("Start line missing")
+                        if not cpx : raise ValueError("Start line missing")
                         if "top"    in line and side == Line.Type.LOWER: raise ValueError ("Missing 'Bottom End'")  
                         if "bottom" in line and side == Line.Type.UPPER: raise ValueError ("Missing 'Bottom Top'") 
-                        self.set_newSide_for (side, px,py)
+
+                        self.set_newSide_for (side, cpx,cpy)
+
                     else:     
                         splitline = line.strip().split()
                         if len(splitline) == 1:                        # couldn't split line - try tab as separator
                             splitline = line.strip().split("\t")
                         if len(splitline) >= 2:                     
-                            px.append (float(splitline[0].strip()))
-                            py.append (float(splitline[1].strip()))
+                            cpx.append (float(splitline[0].strip()))
+                            cpy.append (float(splitline[1].strip()))
         except ValueError as e:
             logger.error ("While reading Bezier file '%s': %s " %(fromPath,e )) 
             return  
          
         self._name = new_name
-        self._isLoaded = True 
         self._isModified = False                            # set_newSide_for will set isModified True
 
         logger.debug (f"Bezier definition for {self.name} loaded")
@@ -1185,28 +1362,10 @@ class Airfoil_Bezier(Airfoil):
         return   
 
 
-    @override
-    def save (self, onlyShapeFile=False):
-        """
-        Basic save of self to its pathFileName
-            for Hicks-Henne and Bezier 'onlyShapeFile' will write no .dat file 
-        """
-        if self.isLoaded: 
-            self._write_bez_to_file ()
-            if not onlyShapeFile:
-                self._write_dat_to_file ()
-
-            self.set_isModified (False)
-
-            logger.debug (f"{self} save to {self.fileName}")
-
-
-
-    def _write_bez_to_file (self):
+    def _write_shape (self):
         """ write Bezier data to bez file """
-        #  .bez-format for CAD etc and 
 
-        with open(self.pathFileName_shape, 'w+') as file:
+        with open(self.pathFileName_abs_shape, 'w+') as file:
 
             # airfoil name 
             file.write("%s\n" % self.name)
@@ -1224,41 +1383,80 @@ class Airfoil_Bezier(Airfoil):
             file.close()
 
 
-    def asCopy (self, pathFileName = None, 
-                name=None, nameExt=None,
-                geometry=None) -> 'Airfoil':
+
+#------------------------------------------------------
+
+class Airfoil_BSpline (Airfoil_Curve):
+    """ 
+
+    Airfoil based on B-Splines for upper and lower side 
+
+    """
+
+    isBSplineBased      = True
+    isBezierBased       = False
+
+    Extension           = ".bsp"
+    NAME_SUFFIX         = "_bspline"                      # will be added to name and filename if not already there
+
+    _geometry_class     = Geometry_BSpline
+        
+
+    @override
+    @property
+    def geo (self) -> Geometry_BSpline:
+        """ the geometry strategy of self"""
+        return super().geo
+
+
+    @override
+    def _load (self, fromPath=None):
         """
-        returns a copy of self 
+        Loads B-Spline definition from file. 
+        pathFileName must be set before or fromPath must be defined.
+        Load doesn't change self pathFileName
+        """    
 
-        Args:
-            pathFileName: optional - string of existinng airfoil path and name 
-            name: optional         - name of airfoil - no checks performed 
-            nameExt: -optional     - will be appended to self.name (if name is not provided)
-            geometry: - not supported - 
-        """
-        # overloaded as Bezier needs a special copy, no other geometry supported
+        start = timer()
 
-        if pathFileName is None and name is None: 
-            pathFileName = self.pathFileName
+        fromPath = fromPath if fromPath else self.pathFileName_abs
 
-        if os.path.isabs (pathFileName):
-            workingDir = None
-        else: 
-            workingDir = self.workingDir 
+        with open(fromPath, 'r') as file:            
 
-        if name is None:
-            name = self.name + nameExt if nameExt else self.name
+            d = json.load (file)
+            file.close()
 
-        if geometry is not None and geometry != Geometry_Bezier: 
-            raise ValueError (f"Airfoil_Bezier does not support new geometry {geometry}")
+        d_upper = fromDict (d, "upper", None)
+        d_lower = fromDict (d, "lower", None)
 
-        airfoil =  Airfoil_Bezier (name = name, pathFileName = pathFileName,
-                                   workingDir=workingDir, 
-                                   cp_upper = self.geo.upper.controlPoints,
-                                   cp_lower = self.geo.lower.controlPoints)
-        airfoil.set_isLoaded (True)
+        self._geo = None                                            # reset geometry 
 
-        return airfoil 
+        self.geo.set_side (Side_Airfoil_BSpline.on_dict (d_upper, linetype=Line.Type.UPPER))
+        self.geo.set_side (Side_Airfoil_BSpline.on_dict (d_lower, linetype=Line.Type.LOWER))
+
+        self._name = fromDict (d, "name", 'B-Spline_Airfoil')       # default name 
+        self._isLoaded = True 
+        self._isModified = False                             
+
+        end = timer()
+        logger.debug (f"B-Spline definition for {self.fileName} loaded in {end - start:.4f} seconds")
+
+        return   
+
+
+    def _write_shape (self):
+        """ write B-Spline data to bsp file """
+
+        # write as json with upper and lower bspline having px, py, knots
+
+        d = {}
+        toDict (d, "name", self.name)
+        toDict (d, "upper", self.geo.upper._as_dict())
+        toDict (d, "lower", self.geo.lower._as_dict())
+
+        with open(self.pathFileName_abs_shape, 'w+') as file:
+            json.dump (d, file, indent=4)
+            file.close()
 
 
 #------------------------------------------------------
@@ -1289,10 +1487,10 @@ class Airfoil_Hicks_Henne(Airfoil):
         self._isLoaded       = False                # hicks henne definition loaded? 
 
     @property
-    def pathFileName_shape (self) -> str: 
+    def pathFileName_abs_shape (self) -> str: 
         """ abs pathfileName of the hh definition file """
         if self.pathFileName_abs:  
-            return os.path.splitext(self.pathFileName_abs)[0] + Airfoil_Hicks_Henne.Extension
+            return os.path.splitext(self.pathFileName_abs)[0] + self.Extension
         else: 
             return None 
 

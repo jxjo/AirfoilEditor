@@ -16,7 +16,7 @@ from .base.panels            import Container_Panel, Toaster
 from .base.app_utils         import Settings
 
 from .model.xo2_driver       import Worker, Xoptfoil2
-from .model.case             import Case_Direct_Design, Case_As_Bezier
+from .model.case             import Case_Direct_Design, Case_Match_Target
 
 from .ui.util_dialogs        import Airfoil_Save_Dialog
 from .ui.ae_panels           import *
@@ -222,6 +222,7 @@ class Mode_View (Mode_Abstract):
             p.sig_modify.connect                (self.modify)
             p.sig_optimize.connect              (self.optimize)
             p.sig_new_as_bezier.connect         (self.new_as_Bezier)
+            p.sig_new_as_bspline.connect        (self.new_as_BSpline)
             p.sig_save_as.connect               (self.save_as)
             p.sig_rename.connect                (self.rename)
             p.sig_delete.connect                (self.delete)
@@ -232,7 +233,7 @@ class Mode_View (Mode_Abstract):
             l.addWidget (Panel_Geometry        (self, self._app_model, lazy=True))
             l.addWidget (Panel_Panels          (self, self._app_model, lazy=True))
             l.addWidget (Panel_LE_TE           (self, self._app_model, lazy=True))
-            l.addWidget (Panel_Bezier          (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Curve          (self, self._app_model, lazy=True))
             l.addWidget (Panel_Flap            (self, self._app_model, lazy=True))
 
             self._panel = Data_Panel (self, self._app_model, layout=l)
@@ -253,6 +254,7 @@ class Mode_View (Mode_Abstract):
             p.sig_modify.connect                (self.modify)
             p.sig_optimize.connect              (self.optimize)
             p.sig_new_as_bezier.connect         (self.new_as_Bezier)
+            p.sig_new_as_bspline.connect        (self.new_as_BSpline)
             p.sig_save_as.connect               (self.save_as)
             p.sig_rename.connect                (self.rename)
             p.sig_delete.connect                (self.delete)
@@ -263,7 +265,7 @@ class Mode_View (Mode_Abstract):
             l.addWidget (Panel_Geometry_Small   (self, self._app_model, has_head=False, lazy=True))
             l.addWidget (Panel_Panels_Small     (self, self._app_model, has_head=False, lazy=True))
             l.addWidget (Panel_LE_TE_Small      (self, self._app_model, has_head=False, lazy=True))
-            l.addWidget (Panel_Bezier_Small     (self, self._app_model, has_head=False, lazy=True))
+            l.addWidget (Panel_Curve_Small     (self, self._app_model, has_head=False, lazy=True))
             l.addWidget (Panel_Flap_Small       (self, self._app_model, has_head=False, lazy=True))
 
             self._panel_small = Data_Panel (self, self._app_model, layout=l)
@@ -400,6 +402,10 @@ class Mode_View (Mode_Abstract):
         self.switch_mode (Mode_Id.AS_BEZIER)
 
 
+    def new_as_BSpline (self):
+        """ create new B-Spline airfoil based on current airfoil, create Case, switch to modify mode """
+
+        self.switch_mode (Mode_Id.AS_BSPLINE)
 
 
 class Mode_Modify (Mode_Abstract):
@@ -507,8 +513,7 @@ class Mode_Modify (Mode_Abstract):
             l.addWidget (Panel_Panels          (self, self._app_model, lazy=True))
             l.addWidget (Panel_LE_TE           (self, self._app_model, lazy=True))
             l.addWidget (Panel_Flap            (self, self._app_model, lazy=True))
-            l.addWidget (Panel_Bezier          (self, self._app_model, lazy=True))
-            l.addWidget (Panel_Bezier_Match    (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Curve           (self, self._app_model, lazy=True))
 
             self._panel    = Data_Panel (self, self._app_model, layout = l)
 
@@ -532,10 +537,8 @@ class Mode_Modify (Mode_Abstract):
             l.addWidget (Panel_Geometry_Small       (self, self._app_model, lazy=True, has_head=False))
             l.addWidget (Panel_Panels_Small         (self, self._app_model, lazy=True, has_head=False))
             l.addWidget (Panel_LE_TE_Small          (self, self._app_model, lazy=True, has_head=False))
-            l.addWidget (Panel_Bezier_Small         (self, self._app_model, lazy=True, has_head=False))
-            l.addWidget (Panel_Bezier_Match_Small   (self, self._app_model, lazy=True, has_head=False))
+            l.addWidget (Panel_Curve_Small          (self, self._app_model, lazy=True, has_head=False))
             l.addWidget (Panel_Flap_Small           (self, self._app_model, lazy=True, has_head=False))
-
             self._panel_small = Data_Panel (self, self._app_model, layout=l)
 
         return self._panel_small
@@ -553,13 +556,6 @@ class Mode_As_Bezier (Mode_Abstract):
     def prepare_check_enter(self, on_arg = None) -> Airfoil | None:
         """ Check if the mode can be entered. Override in subclasses if needed. """
 
-        if not self._app_model.airfoil.isNormalized:
-
-            text = f"{self._app_model.airfoil.fileName} is not normalized.\n\n" + \
-                   "Match Bezier will work on a normalized copy of the airfoil."
-            button = MessageBox.confirm (self.stacked_panel, "New As Bezier", text)
-            if button == QMessageBox.StandardButton.Cancel:
-                return None
         return self._app_model.airfoil
 
 
@@ -570,7 +566,7 @@ class Mode_As_Bezier (Mode_Abstract):
             airfoil.save()
 
         # switch app_model to this mode with new Design Case - will get/create first design
-        self._app_model.set_mode_and_case (self.mode_id, Case_As_Bezier (airfoil))
+        self._app_model.set_mode_and_case (self.mode_id, Case_Match_Target (airfoil, new_airfoil_cls=Airfoil_Bezier))
 
         # show airfoil design initially
         self._app_model.set_show_airfoil_design (True)
@@ -607,7 +603,7 @@ class Mode_As_Bezier (Mode_Abstract):
 
         # create new, final airfoil based on actual design and path from airfoil org 
 
-        case : Case_As_Bezier = self._app_model.case
+        case : Case_Match_Target = self._app_model.case
         new_airfoil = case.get_final_from_design (self._app_model.airfoil)
 
         # dialog to edit name, choose path, ..
@@ -641,10 +637,9 @@ class Mode_As_Bezier (Mode_Abstract):
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
 
-            l.addWidget (Panel_Geometry        (self, self._app_model, lazy=True))
-            l.addWidget (Panel_Panels          (self, self._app_model, lazy=True))
-            l.addWidget (Panel_Bezier          (self, self._app_model, lazy=True))
-            l.addWidget (Panel_Bezier_Match    (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Target_Curv     (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Match_Curve     (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Match_Result    (self, self._app_model, lazy=True))
 
             self._panel    = Data_Panel (self, self._app_model, layout = l)
 
@@ -665,14 +660,139 @@ class Mode_As_Bezier (Mode_Abstract):
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
 
-            l.addWidget (Panel_Geometry_Small       (self, self._app_model, lazy=True, has_head=False))
-            l.addWidget (Panel_Panels_Small         (self, self._app_model, lazy=True, has_head=False))
-            l.addWidget (Panel_Bezier_Small         (self, self._app_model, lazy=True, has_head=False))
-            l.addWidget (Panel_Bezier_Match_Small   (self, self._app_model, lazy=True, has_head=False))
+            l.addWidget (Panel_Match_Curve_Small   (self, self._app_model, lazy=True, has_head=False))
+            l.addWidget (Panel_Match_Result_Small  (self, self._app_model, lazy=True, has_head=False))
 
             self._panel_small = Data_Panel (self, self._app_model, layout=l)
 
         return self._panel_small
+
+
+
+
+class Mode_As_BSpline (Mode_Abstract):
+    """
+    Application mode for create new airfoil based on BSpline curves.
+    """
+
+    mode_id = Mode_Id.AS_BSPLINE                       # the id of the mode
+
+            
+    def prepare_check_enter(self, on_arg = None) -> Airfoil | None:
+        """ Check if the mode can be entered. Override in subclasses if needed. """
+
+        return self._app_model.airfoil
+
+
+    def on_enter(self, airfoil: Airfoil):
+
+        # ensure example airfoil is saved to file to ease consistent further handling in widgets
+        if airfoil.isExample:
+            airfoil.save()
+
+        # switch app_model to this mode with new Design Case - will get/create first design
+        self._app_model.set_mode_and_case (self.mode_id, Case_Match_Target (airfoil, new_airfoil_cls=Airfoil_BSpline))
+
+        # show airfoil design initially
+        self._app_model.set_show_airfoil_design (True)
+
+        super().on_enter()
+
+
+    def on_leave(self):
+        """ Actions to perform when exiting the mode. Override in subclasses if needed. """
+
+        if self._app_model.case.airfoil_final:
+            next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
+        else:
+            next_airfoil = self._app_model.case.airfoil_seed
+
+        self._app_model.case.close()                                 # shut down case
+        self._app_model.set_case (None)
+        self._app_model.set_airfoil (next_airfoil, silent=True)      # we'll continue with set airfoil to final or seed
+
+        super().on_leave()
+
+
+    def cancel(self):
+        """ User action: Cancel current mode and request exit. """
+
+        self._app_model.case.set_airfoil_final (None)                 # just sanity
+
+        # rest will be done in on_leave
+        super().cancel()
+
+
+    def finish(self):
+        """ User action: Finish current mode and request exit. """
+
+        # create new, final airfoil based on actual design and path from airfoil org 
+
+        case : Case_Match_Target = self._app_model.case
+        new_airfoil = case.get_final_from_design (self._app_model.airfoil)
+
+        # dialog to edit name, choose path, ..
+
+        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil,
+                                   parentPos=(0.25,-1), dialogPos=(0,1))
+        ok = dlg.exec()
+        if not ok: return                                       # save was cancelled - return to modify mode 
+
+        # set final airfoil in case - rest will be done in on_leave
+        self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
+        self._app_model.case.set_airfoil_final (new_airfoil)
+
+        self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
+        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
+
+        super().finish()
+    
+
+    @property
+    def panel (self) -> Data_Panel:
+        """ lower UI main panel - modify mode """
+
+        if self._panel is None: 
+
+            l = QHBoxLayout()
+
+            p = Panel_File_Modify (self, self._app_model, width=250, lazy=True)
+            p.sig_cancel.connect                (self.cancel)
+            p.sig_finish.connect                (self.finish)
+            p.sig_toggle_panel_size.connect     (self.toggle_minimized)
+            l.addWidget (p)
+
+            l.addWidget (Panel_Target_Curv     (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Match_Curve     (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Match_Result    (self, self._app_model, lazy=True))
+
+            self._panel    = Data_Panel (self, self._app_model, layout = l)
+
+        return self._panel
+
+
+    @property
+    def panel_small (self) -> Data_Panel:
+        """ lower UI view panel - small version"""
+
+        if self._panel_small is None: 
+
+            l = QHBoxLayout()
+
+            p = Panel_File_Modify_Small (self, self._app_model, width=250, lazy=True, has_head=False)
+            # p.sig_cancel.connect                (self.cancel)
+            p.sig_finish.connect                (self.finish)
+            p.sig_toggle_panel_size.connect     (self.toggle_minimized)
+            l.addWidget (p)
+
+            l.addWidget (Panel_Match_Curve_Small   (self, self._app_model, lazy=True, has_head=False))
+            l.addWidget (Panel_Match_Result_Small  (self, self._app_model, lazy=True, has_head=False))
+
+            self._panel_small = Data_Panel (self, self._app_model, layout=l)
+
+        return self._panel_small
+
+
 
 
 # ------------------------------------------------------------------------------

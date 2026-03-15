@@ -137,7 +137,7 @@ class JPoint:
         if isinstance (a, float) and isinstance (b, float):
             x_new = a 
             y_new = b 
-        elif isinstance (a, tuple):
+        elif isinstance (a, tuple | list | np.ndarray) and len(a) == 2 and b is None:
             x_new = float (a[0])
             y_new = float (a[1])
         elif isinstance (a, JPoint):
@@ -770,7 +770,7 @@ def nelder_mead (f,
                 max_iter : int =50,
                 bounds = None,                                   
                 alpha=1., gamma=2., rho=-0.5, sigma=0.5,
-                stop_callback : bool =False):
+                stop_callback : bool =False) -> tuple [tuple [np.ndarray, float], int]:
     '''
         Nelder-Mead optimization algorithm to determine the minimum of a fuction
 
@@ -797,13 +797,19 @@ def nelder_mead (f,
         """
 
     '''
+
     def penalty (x, bounds):
-        if bounds is None: return 0.0
-        
-        if x < bounds[0] or x > bounds[1]:
-            return 9999.9
-        else:
+        """ return 0.0 if x is within bounds, otherwise return a penality value (9999.9)"""
+
+        if bounds is None: 
             return 0.0
+        
+        if bounds[0] is not None and x < bounds[0]:
+            return 9999.9
+        if bounds[1] is not None and x > bounds[1]:
+            return 9999.9
+        return 0.0
+
 
     def fn_penalty (f, x, bounds):
         # return function value - if x outside bounds return penality value 
@@ -854,7 +860,7 @@ def nelder_mead (f,
         best = res[0][1]
 
         # stop request?
-        if stop_callback(): 
+        if stop_callback and stop_callback(): 
             return res[0], iters
         
         # break after max_iter

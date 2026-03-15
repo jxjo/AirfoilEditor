@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.3.0 dev 
+
+### Added
+
+- B-Spline based airfoils
+- Match airfoil with B-Spline 
+
+### Fixed
+
+- Revision of Match airfoil optimization and UI 
+- Several minor fixes
+
 ## 4.2.5
 
 ### Added

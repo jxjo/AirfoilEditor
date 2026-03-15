@@ -10,10 +10,13 @@ import html
 
 from ..base.math_util           import derivative1
 from ..base.artist              import *
-from ..base.spline              import Bezier, HicksHenne
+from ..base.spline              import Bezier, HicksHenne, BSpline
 
-from ..model.airfoil            import Airfoil, Airfoil_Bezier, usedAs, Geometry, Flap_Setter
-from ..model.airfoil_geometry   import Line, Side_Airfoil_Bezier, Side_Airfoil_HicksHenne
+from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline, usedAs, Geometry, Flap_Setter
+from ..model.airfoil_geometry   import Line
+from ..model.geometry_bezier    import Geometry_Bezier,  Side_Airfoil_Bezier
+from ..model.geometry_bspline   import Geometry_BSpline, Side_Airfoil_BSpline
+from ..model.geometry_hicks_henne import Side_Airfoil_HicksHenne
 from ..model.polar_set          import * 
 
 from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath
@@ -143,8 +146,8 @@ class Movable_Highpoint (Movable_Point):
         # symmetrical and camber? 
         if line.type == Line.Type.CAMBER and geo.isSymmetrical: 
             movable = False 
-        # Bezier is changed via control points ? 
-        elif geo.isBezier:
+        # Bezier and BSpline is changed via control points 
+        elif geo.isCurve:
             movable = False 
 
         self.name = 'max '+ line.name
@@ -215,8 +218,8 @@ class Movable_TE_Point (Movable_Point):
                   movable = False, 
                   **kwargs):
 
-        # Bezier is changed via control points ? 
-        if geo.isBezier:
+        # Bezier is changed via control points 
+        if geo.isCurve:
             movable = False 
 
         self._geo = geo
@@ -305,8 +308,8 @@ class Movable_LE_Point (Movable_Point):
                   movable = False, 
                   **kwargs):
 
-        # Bezier is changed via control points ? 
-        if geo.isBezier:
+        # Bezier and BSpline is changed via control points  
+        if geo.isCurve:
             movable = False 
 
         self._show_label_static_with_value = show_label_static_with_value
@@ -364,9 +367,7 @@ class Movable_LE_Point (Movable_Point):
 
 
 
-
-
-class Movable_Side_Bezier (Movable_Bezier):
+class Movable_Side_Bezier (Movable_Curve):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
     an airfoil Side_Bezier. 
@@ -386,18 +387,19 @@ class Movable_Side_Bezier (Movable_Bezier):
 
         self._airfoil = airfoil
         self._side = side 
-        points = side.controlPoints_as_points
+        jpoints = side.controlPoints_as_jpoints
 
         if side.isUpper:
             label_anchor = (0,1) 
         else: 
             label_anchor = (0,0)
 
-        super().__init__(points, label_anchor=label_anchor, **kwargs)
+        super().__init__(jpoints, label_anchor=label_anchor, **kwargs)
 
+    @override
     @property
-    def bezier (self) -> Bezier:
-        """ the Bezier  self is working with """
+    def curve (self) -> Bezier:
+        """ the curve self is working with """
         # here - take Bezier of the 'side' 
         return self._side.bezier
 
@@ -411,31 +413,37 @@ class Movable_Side_Bezier (Movable_Bezier):
     def refresh (self):
         """ refresh control points from side control points """
 
+        # when matching, thread could have changed ncp - race condition ...
+        if len (self._movable_points) != len(self._side.controlPoints):
+            return
+
         # update all my movable points at once 
-        movable_point : Movable_Bezier_Point
+        movable_point : Movable_Curve_Point
         for i, point_xy in enumerate(self._side.controlPoints): 
             movable_point = self._movable_points[i]
             movable_point.setPos_silent (point_xy)              # silent - no change signal 
 
         self.setData(*self.points_xy())                         # update self (polyline) 
 
-        # if self._bezier_item is not None:   	                # update bezier item to be dispalyed
-        #     x,y = self.bezier.eval (self.u) 
-        #     self._bezier_item.setData (x, y)
-        #     self._bezier_item.show()
-
 
 
     def _add_point (self, pos_x, pos_y):
-       """ add controlpoint to Bezier curve - called by mouse ctrl_click on Bezier line """ 
+        """ add controlpoint to Bezier curve - called by mouse ctrl_click on Bezier line """ 
 
-       index, point = self._side.check_new_controlPoint_at (pos_x, pos_y)
+        if self._side.ncp >= self._side.NCP_BOUNDS[1]: 
+            return
        
-       if index is not None: 
+        self.curve.elevate_degree()
 
-            self._side.add_controlPoint (index, point)
-            # _finished will do the rest - and init complete refresh
-            self._finished_point()
+        self._finished_point()
+
+        # index, point = self._side.check_new_controlPoint_at (pos_x, pos_y)
+       
+        # if index is not None: 
+
+        #     self._side.add_controlPoint (index, point)
+        #     # _finished will do the rest - and init complete refresh
+        #     self._finished_point()
  
 
     def _delete_point (self, aPoint : Movable_Point):
@@ -459,6 +467,121 @@ class Movable_Side_Bezier (Movable_Bezier):
 
         super()._finished_point(aPoint)
 
+
+
+
+class Movable_Side_BSpline (Movable_Curve):
+    """
+    pg.PlotCurveItem/UIGraphicsItem which represents 
+    an airfoil Side_BSpline. 
+    The BSpline curve which can be changed by the controllpoints
+    
+    Points are implemented with Moveable_Points
+    A Moveable_Point can also be fixed ( movable=False).
+    See pg.TargetItem for all arguments 
+
+    Callback 'on_changed' will return the (new) list of 'points'
+
+    """
+    def __init__ (self, 
+                  airfoil : Airfoil_BSpline,
+                  side : Side_Airfoil_BSpline,
+                  **kwargs):
+
+        self._airfoil = airfoil
+        self._side = side 
+        jpoints = side.controlPoints_as_jpoints
+
+        if side.isUpper:
+            label_anchor = (0,1) 
+        else: 
+            label_anchor = (0,0)
+
+        super().__init__(jpoints, label_anchor=label_anchor, **kwargs)
+
+        # make the helper curve_item clickable to add control points by ctrl_click on line
+        if self.movable and self._curve_item is not None:
+            self._curve_item.setClickable (True)     # to add control points by ctrl_click on line
+            self._curve_item.sigClicked.connect (self._on_curve_clicked)
+
+    @override
+    @property
+    def curve (self) -> BSpline:
+        """ the BSpline  self is working with """
+        # here - take BSpline of the 'side' 
+        return self._side.bspline
+
+    @property
+    def u (self) -> list:
+        """ the BSpline parameter  """
+        # here - take BSpline of the 'side' 
+        return self._side._u
+
+
+    def refresh (self):
+        """ refresh control points from side control points """
+
+        # when matching, thread could have changed ncp - race condition ...
+        if len (self._movable_points) != len(self._side.controlPoints):
+            return
+
+        # update all my movable points at once 
+        movable_point : Movable_Curve_Point
+        for i, point_xy in enumerate(self._side.controlPoints): 
+            movable_point = self._movable_points[i]
+            movable_point.setPos_silent (point_xy)              # silent - no change signal 
+
+        self.setData(*self.points_xy())                         # update self (polyline) 
+
+
+    @override
+    def _add_point (self, pos_x, pos_y):
+        """ add controlpoint to BSpline curve - called by mouse ctrl_click on BSpline line """ 
+
+        if self._side.ncp >= self._side.NCP_BOUNDS[1]: 
+            return
+        
+        self.curve.insert_knot (pos_x)
+
+        # _finished will do the rest - and init complete refresh
+        super()._finished_point()
+ 
+
+    @override
+    def _delete_point (self, aPoint : Movable_Point):
+        """ slot - point is should be deleted """
+
+        ncp = self.curve.ncp 
+        icp = aPoint.id
+
+        # only control points > 1 and < ncp-2 can be deleted - to avoid problems with LE and TE control points
+        if icp <= 1 or icp >= ncp-1:
+            return
+
+        self.curve.remove_cpoint (icp)
+
+        # _finished will do the rest - and init complete refresh
+        super()._finished_point()
+
+
+    def _on_curve_clicked (self, curve_item, event : MouseClickEvent):
+        """ slot - curve is clicked - check if ctrl_click to add point """
+        if curve_item == self._curve_item and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+
+            x = round (event.pos().x(), 10)
+            self.curve.insert_knot (x)
+
+            # _finished will do the rest - and init complete refresh
+            self._finished_point()
+
+
+    def _finished_point (self, aPoint = None):
+        """ slot - point move is finished """
+
+        # overloaded - update airfoil geometry 
+        self._airfoil.geo.finished_change_of (self._side)      
+
+        super()._finished_point(aPoint)
 
 
 # -------- concrete sub classes ------------------------
@@ -865,7 +988,7 @@ class Bezier_Artist (Artist):
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
-    def refresh_from_side (self, aLinetype):
+    def refresh_from_side (self, aLinetype : Line.Type):
 
         p : Movable_Side_Bezier
         for p in self._plots: 
@@ -874,7 +997,8 @@ class Bezier_Artist (Artist):
 
     def _plot (self): 
     
-        one_airfoil_movable = False
+        # is there on airfoil with editable bezier curve?
+        one_airfoil_movable = any(airfoil.isBezierBased and airfoil.isEdited for airfoil in self.airfoils)
 
         for airfoil in self.airfoils:
             if airfoil.isBezierBased and airfoil.isLoaded:
@@ -885,22 +1009,130 @@ class Bezier_Artist (Artist):
                 side : Side_Airfoil_Bezier
                 for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
 
-                    p = Movable_Side_Bezier (airfoil, side, color=color, movable=movable,
-                                              on_changed=self.sig_bezier_changed.emit) 
+                    # Show labels only for the movable airfoil when there's one editable, otherwise show all
+                    show_label = movable or not one_airfoil_movable
+
+                    p = Movable_Side_Bezier (airfoil, side, color=color, 
+                                             movable=movable,
+                                             show_label=show_label,
+                                             on_changed=self.sig_bezier_changed.emit) 
                     self._add(p)
 
-                if movable:
-                    one_airfoil_movable = True
 
         # show mouse helper message
         if one_airfoil_movable:
-            msg = "Bezier control points: shift-click to remove,  ctrl-click to add"
+            msg = "Bezier: shift-click on control point to remove,  ctrl-click somewhere on control polygon to elevate degree"
             self.set_help_message (msg)
 
 
 
-class Bezier_Deviation_Artist (Artist):
-    """Plot deviation of Bezier curves to target airfoil """
+
+class BSpline_Artist (Artist):
+    """Plot and edit airfoils BSpline control points """
+
+    sig_bspline_changed     = pyqtSignal()           # bspline curve changed 
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+    def refresh_from_side (self, aLinetype : Line.Type):
+
+        p : Movable_Side_BSpline
+        for p in self._plots: 
+            if isinstance (p, Movable_Side_BSpline) and p._side.type == aLinetype:
+                p.refresh()
+
+    def _plot (self): 
+    
+        # is there on airfoil with editable bspline curve?
+        one_airfoil_movable = any(airfoil.isBSplineBased and airfoil.isEdited for airfoil in self.airfoils)
+
+        for airfoil in self.airfoils:
+            if airfoil.isBSplineBased and airfoil.isLoaded:
+
+                color = _color_airfoil (self.airfoils, airfoil)
+                movable = airfoil.isEdited and self.show_mouse_helper
+
+                # Show labels only for the movable airfoil when there's one editable, otherwise show all
+                show_label = movable or not one_airfoil_movable
+
+                side : Side_Airfoil_BSpline
+                for side in [airfoil.geo.lower, airfoil.geo.upper]:     # paint upper on top 
+
+                    p = Movable_Side_BSpline (airfoil, side, color=color, movable=movable,
+                                              show_static=movable,      # make helper curve visible to ctrl-click
+                                              show_label=show_label,
+                                              on_changed=self.sig_bspline_changed.emit) 
+                    self._add(p)
+
+                    # plot knot points as small vertical lines
+                    zValue = 3 if airfoil.usedAsDesign else 1
+
+                    self._plot_knots (side, color, zValue)
+
+
+        # show mouse helper message
+        if one_airfoil_movable:
+            msg = "BSpline: shift-click on control point to remove,  ctrl-click on curve to add a knot"
+            self.set_help_message (msg)
+
+
+    def _plot_knots (self, side : Side_Airfoil_BSpline, color : QColor, zValue=1):
+        """ plot knot points of a BSpline as small perpendicular lines """
+
+        pen    = pg.mkPen(color.darker(130), width=1.5, style=Qt.PenStyle.SolidLine)
+        length = 0.015
+
+        # remove duplicate knots (u-value) and start/end from knot vector
+        u_knots = np.unique(side.bspline.knots)
+        u_knots = u_knots[(u_knots != 0.0) & (u_knots != 1.0)]
+
+        if len(u_knots) == 0:
+            return
+
+        # Evaluate knot positions and tangents in one vectorized pass
+        x, y   = side.bspline.eval(u_knots,        update_cache=False) # leave current cache as is - we are in a thread
+        dx, dy = side.bspline.eval(u_knots, der=1, update_cache=False)
+
+        tangent_length = np.sqrt(dx**2 + dy**2)
+        valid = tangent_length > 1e-10
+        if not np.any(valid):
+            return
+
+        x = x[valid]
+        y = y[valid]
+        dx = dx[valid]
+        dy = dy[valid]
+        tangent_length = tangent_length[valid]
+
+        dx_unit = dx / tangent_length
+        dy_unit = dy / tangent_length
+
+        # Perpendicular direction (rotate tangent by 90 degrees)
+        perp_dx = -dy_unit
+        perp_dy = dx_unit
+
+        half_length = length / 2
+        x_start = x - perp_dx * half_length
+        y_start = y - perp_dy * half_length
+        x_end   = x + perp_dx * half_length
+        y_end   = y + perp_dy * half_length
+
+        # Interleave start/end points for a single connect='pairs' plot call
+        x_pairs = np.empty(len(x) * 2)
+        y_pairs = np.empty(len(y) * 2)
+        x_pairs[0::2] = x_start
+        x_pairs[1::2] = x_end
+        y_pairs[0::2] = y_start
+        y_pairs[1::2] = y_end
+
+        self._plot_dataItem(x_pairs, y_pairs, pen=pen,
+                            antialias=True, zValue=zValue, connect='pairs')
+
+
+
+class Deviation_Line_Artist (Artist):
+    """Plot deviation of curves to its target_line """
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -908,37 +1140,30 @@ class Bezier_Deviation_Artist (Artist):
 
     def _plot (self): 
     
-        # check - is there a design airfoil and a target (normal) airfoil 
+        # get geo of design airfoil - if it is Bezier or BSpline based
 
-        geo_from   : Geometry = None 
-        geo_target : Geometry = None 
-
+        geo : Geometry_BSpline | Geometry_Bezier = None
         for airfoil in self.airfoils:
-            if airfoil.usedAsDesign:
-                geo_from = airfoil.geo 
-            elif airfoil.usedAs == usedAs.NORMAL:
-                geo_target = airfoil.geo
+            if airfoil.usedAsDesign and (airfoil.isBSplineBased or airfoil.isBezierBased):
+                geo = airfoil.geo 
 
-        if not geo_from or not geo_target: return 
+        if geo is None: return 
 
         # plot difference as thick lines at deviation check coordinates 
 
         label = "Deviation x 10"
         color = COLOR_WARNING  
-        color.setAlphaF (0.6)
+        color.setAlphaF (0.8)
 
-        for side in [Line.Type.UPPER, Line.Type.LOWER]:     
+        for side in [geo.upper, geo.lower]:     
 
-            if side == Line.Type.UPPER:
-                from_line   = geo_from.upper  
-                target_line = geo_target.upper
-            else:
-                from_line   = geo_from.lower  
-                target_line = geo_target.lower
+            dev_line   = geo.upper.target_deviation if side.isUpper else geo.lower.target_deviation 
 
             # get deviation from Matcher 
 
-            x, y, devi = Line.deviation_to (from_line, target_line, reduce_points=False, fast=True)
+            x = dev_line.x
+            y = dev_line.y
+            devi = dev_line.dy
 
             # build array of coordinate pairs for fast plot -> connect='pairs'
 
@@ -962,6 +1187,17 @@ class Bezier_Deviation_Artist (Artist):
                 self._plot_dataItem  (x_dbl, y_dbl, pen=pg.mkPen(color, width=3), name=label, 
                                         antialias=False, zValue=1, connect='pairs')    
 
+            # plot max deviation points
+            i_max = np.argmax (np.abs(dev_line.dy))
+            x_max = dev_line.x[i_max]
+            y_max = dev_line.y[i_max]
+            dev_max = abs(dev_line.dy[i_max])
+
+            anchor = (0.5,2.0) if side.isUpper else (0.5,-1.2)
+            text   = f"Δ  {dev_max:.3%}"
+
+            self._plot_point ((x_max, y_max), color=color, size=0, text=text, anchor=anchor, zValue=1,
+                          textColor=COLOR_WARNING)
 
 
 
@@ -1074,11 +1310,11 @@ class Curvature_Artist (Artist):
 
                 self._plot_dataItem (x, y, name=label, pen=pen, zValue=zValue)
 
-                # plot derivative1 of curvature ('spikes') 
+                # plot derivative1 of curvature 
 
                 if self.show_derivative and (len(self.airfoils) == 1 or airfoil.usedAsDesign):
                     pen = QPen (pen)
-                    pen.setColor (QColor('red'))
+                    pen.setColor (color.darker(160))
                     name = f"{side.name} - Derivative"
                     self._plot_dataItem (x, -derivative1(x,y), name=name, pen=pen)
 
@@ -1116,13 +1352,10 @@ class Curvature_Artist (Artist):
         color   = QColor (color).darker (130)
         zValue  = 5 if usedAsDesign else 3
 
-        reversals = side.reversals()
-        if reversals:
-            for reversal_xy in reversals: 
-                anchor = (1,1.2) if side.isUpper else (1,-0.2)
-
-                self._plot_point (reversal_xy, color=color, size=2, text="R", anchor=anchor,
-                                  zValue=zValue, textColor=color)
+        for reversal_x in side.reversals(): 
+            anchor = (0.5,1.2) if side.isUpper else (0.5,-0.2)
+            self._plot_point (reversal_x, 0.0, color=color, size=2, text="R", anchor=anchor,
+                                zValue=zValue, textColor=color)
 
 
 
@@ -1153,8 +1386,7 @@ class Curvature_Comb_Artist (Artist):
 
             # plot outline of comb
 
-            x, y, xe, ye = airfoil.geo.curvature.as_curvature_comb ()
-            vals = airfoil.geo.curvature.values
+            x, y, xe, ye, vals = airfoil.geo.curvature.as_curvature_comb ()
 
             pen = pg.mkPen(color.darker(140), width=1, style=Qt.PenStyle.DotLine)
             # pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)

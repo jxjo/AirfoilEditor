@@ -12,13 +12,14 @@ import numpy as np
 import os
 
 # -> pyproject.toml
-# pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
 from airfoileditor.resources              import get_assets_dir
 from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
-from airfoileditor.model.airfoil_geometry import Geometry, Geometry_Splined, Geometry_Bezier
-from airfoileditor.model.airfoil_geometry import Curvature_of_xy, Curvature_of_Spline, Curvature_of_Bezier
+from airfoileditor.model.airfoil_geometry import Geometry, Geometry_Splined
+from airfoileditor.model.airfoil_geometry import Curvature_of_xy, Curvature_of_Spline 
+from airfoileditor.model.geometry_curve   import Curvature_of_Curve
+from airfoileditor.model.geometry_bezier  import Geometry_Bezier
 from airfoileditor.model.xo2_driver       import Worker
 from airfoileditor.base.common_utils      import PathHandler
 
@@ -76,7 +77,7 @@ class Test_Airfoil:
         curv : Curvature_of_xy = airfoil.geo.curvature
 
         assert round(curv.upper._get_maximum()[1],0) == 319
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.092
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.090
 
     
     def test_geo_splined (self): 
@@ -139,7 +140,7 @@ class Test_Airfoil:
 
         assert round(curv.upper._get_maximum()[1],0) == 316
         assert round(curv.lower._get_maximum()[1],0) == 316
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.092
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.090
 
 
 
@@ -286,7 +287,7 @@ class Test_Airfoil_Bezier:
         # curvature
 
         airfoil = Airfoil_Bezier()
-        curv : Curvature_of_Bezier = airfoil.geo.curvature
+        curv : Curvature_of_Curve = airfoil.geo.curvature
 
         assert round(curv.upper._get_maximum()[1],0) == 61.0
         assert round(curv.lower._get_maximum()[1],0) == 105.0
@@ -396,7 +397,7 @@ class Test_Worker:
         airfoil_flapped.load()
 
         assert airfoil_flapped.isFlapped
-        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7065138741381286
+        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7046935677178569
 
 
 # Main program for testing 

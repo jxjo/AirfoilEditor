@@ -8,9 +8,6 @@ import pytest
 import os
 import shutil
 
-# -> pyproject.toml
-# pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
-
 from airfoileditor.model.case import Case_Direct_Design, Case_Abstract
 from airfoileditor.model.airfoil import Airfoil, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example
