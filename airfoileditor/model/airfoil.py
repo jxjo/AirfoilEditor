@@ -664,10 +664,6 @@ class Airfoil:
         """ set current fileName as name of airfoil """
         self.set_fileName (self.name + self.fileName_ext) 
 
-    def set_fileName_add_suffix (self, aSuffix : str):
-        """ extend current fileName_stem with suffix """
-        self.set_fileName (self.fileName_stem + aSuffix + self.fileName_ext)
-
 
     @property
     def pathName (self):

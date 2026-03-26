@@ -994,6 +994,27 @@ class Line:
         return y
 
 
+    def angle_in_range (self, x_min=0.95, x_max=1.0) -> float:
+        """
+        Computes the tangent angle (in degrees) of surface
+        by fitting a straight line to the points in the x-range [x_min, x_max].
+        """
+        # Select points within the chosen x-range
+        mask = (self.x >= x_min) & (self.x <= x_max)
+        x_sel = self.x[mask]
+        y_sel = self.y[mask]
+
+        if len(x_sel) < 2:
+            raise ValueError(f"{self} - Not enough points in the selected x-range.")
+
+        # Linear regression: y = a*x + b
+        a, b = np.polyfit(x_sel, y_sel, 1)
+
+        # Tangent angle in degrees
+        angle_rad = np.arctan(a)
+        angle_deg = np.degrees(angle_rad)
+
+        return angle_deg
 
     # ------------------ private ---------------------------
 
@@ -1468,6 +1489,15 @@ class Geometry ():
     def te_gap (self) -> float: 
         """ trailing edge gap"""
         return  round(float (self.y[0] - self.y[-1]),7)
+    
+    @property
+    def te_angle (self) -> float: 
+        """ trailing edge angle in degrees"""
+
+        x_min = 0.95                        # to avoid noise at TE - take angle at x=0.95..1.0
+        upper = self.upper.angle_in_range (x_min=x_min)     # negative
+        lower = self.lower.angle_in_range (x_min=x_min)     # positive
+        return abs (upper - lower)
 
     @property
     def le_radius (self) -> float: 

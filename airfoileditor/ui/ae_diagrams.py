@@ -890,11 +890,12 @@ class Item_Airfoil (Diagram_Item):
             
         if mods:
             subtitle = "Mods: " + mods                          # list of modifications for design airfoil
-        elif airfoil.geo.isCurve:
-            subtitle = airfoil.geo.description                  # something like "Based on 2 Bezier"
         else: 
             # show name if it differs from name to show 
             subtitle = airfoil.name if airfoil.name != airfoil.name_to_show else ''
+
+            if not subtitle and airfoil.geo.isCurve:
+                subtitle = airfoil.geo.description                  # something like "Based on 2 Bezier"
 
         super().plot_title (title=airfoil.name_to_show, subtitle=subtitle, **kwargs)
 

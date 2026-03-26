@@ -170,6 +170,8 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
 class Airfoil_Select_Open_Widget (Widget, QWidget):
     """ 
     Compound widget to either select or open new airfoil 
+
+    _last_dir : str | None = None                   # class-level LRU: last directory opened via dialog
         - ComboBox (optional with spin) with files in same directory
         - optional Open button to select new airfoil 
         - optional Delete button to delete current   
@@ -296,10 +298,17 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     def _open_airfoil (self):
         """ open a new airfoil and load it"""
 
+        directory  = None
         extensions = f"*{Airfoil.Extension} *{Airfoil_Bezier.Extension} *{Airfoil_BSpline.Extension}"
         filters    = f"Airfoil files ({extensions});;All files (*.*)"
-        directory  = self._val.pathName_abs if isinstance (self._val, Airfoil) else self._initial_dir
 
+        if isinstance (self.airfoil, Airfoil):
+            directory = self.airfoil.pathName_abs
+        if directory is None:
+            directory = self._initial_dir
+        if directory is None:
+            directory = Airfoil_Select_Open_Widget._last_dir
+        
         # Validate directory, ensure caption - QFileDialog tends to crash with native WIndows Dialog
         if not (directory and os.path.isdir(directory)):
             directory = ""
@@ -323,6 +332,8 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                 else:
                     self.set_airfoil (airfoil)
 
+            # set last dir for next time
+            Airfoil_Select_Open_Widget._last_dir = os.path.dirname (newPathFilename)
 
 
     def no_files_here (self) -> bool:

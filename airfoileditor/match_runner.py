@@ -9,7 +9,7 @@
 """
 
 import numpy as np
-from typing                         import Type
+from typing                         import Type, override
 
 from PyQt6.QtCore                   import QThread, pyqtSignal, QEventLoop
 
@@ -65,45 +65,11 @@ class Matcher_Base (QThread):
 
 
     def _y1_from_curvature (self, le_curvature: float, curve : Bezier| BSpline, cp_x2: float) -> float:
-        """Compute the second control-point y value from the target LE curvature.
-
-        Assume a leading-edge control-point layout of:
-            P0 = (0, 0)
-            P1 = (0, y1)
-            P2 = (x2, y2)
-
-        This gives a vertical start tangent and solves analytically for ``y1`` so
-        that the start curvature matches ``le_curvature``.
-
-        The formulas used are:
-
-        Bézier:
-            |kappa(0)| = (degree - 1) / degree * |x2| / y1^2
-
-        B-spline (open-uniform):
-            |kappa(0)| = (degree - 1) / (2 * degree) * |x2| / y1^2
-
-        Args:
-            le_curvature: Desired curvature magnitude at the start point.
-            curve: Curve instance used to determine the correct leading-edge formula.
-            cp_x2: x coordinate of the third control point ``P2``.
-
-        Returns:
-            float: ``y1`` that produces the requested leading-edge curvature.
+        """
+        Compute the second control-point y value from the target LE curvature.
         """
 
-        if isinstance(curve, Bezier):
-            degree = curve.degree
-            factor = (degree - 1) / degree
-        elif isinstance(curve, BSpline):
-            degree = curve.degree
-            factor = (degree - 1) / (2 * degree)
-        else:
-            raise ValueError("curve must be an instance of Bezier or BSpline.") 
-
-        y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
-
-        return y1
+        raise NotImplementedError ("must be implemented in child classes ")
 
 
     def _set_penalty_control (self):
@@ -596,11 +562,80 @@ class Matcher_Bezier (Matcher_Base):
     STEP_SIZE = 0.10                                    # initial step size for nelder mead
 
 
+    @override
+    def _y1_from_curvature (self, le_curvature: float, curve : Bezier| BSpline, cp_x2: float) -> float:
+        """Compute the second control-point y value from the target LE curvature.
+
+        Assume a leading-edge control-point layout of:
+            P0 = (0, 0)
+            P1 = (0, y1)
+            P2 = (x2, y2)
+
+        This gives a vertical start tangent and solves analytically for ``y1`` so
+        that the start curvature matches ``le_curvature``.
+
+        The formulas used are:
+
+        Bézier:
+            |kappa(0)| = (degree - 1) / degree * |x2| / y1^2
+
+        Args:
+            le_curvature: Desired curvature magnitude at the start point.
+            curve: Curve instance used to determine the correct leading-edge formula.
+            cp_x2: x coordinate of the third control point ``P2``.
+
+        Returns:
+            float: ``y1`` that produces the requested leading-edge curvature.
+        """
+
+        degree = curve.degree
+        factor = (degree - 1) / degree
+
+        y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
+
+        return y1
+
+
+
 class Matcher_BSpline (Matcher_Base):
     """Matcher worker specialized for B-spline airfoil-side curves."""
 
     NCP_AUTO_RANGE = (5, 10)                            # range of ncp for auto mode 
     STEP_SIZE = 0.02                                     # initial step size for nelder mead
+
+    @override
+    def _y1_from_curvature (self, le_curvature: float, curve : Bezier| BSpline, cp_x2: float) -> float:
+        """Compute the second control-point y value from the target LE curvature.
+
+        Assume a leading-edge control-point layout of:
+            P0 = (0, 0)
+            P1 = (0, y1)
+            P2 = (x2, y2)
+
+        This gives a vertical start tangent and solves analytically for ``y1`` so
+        that the start curvature matches ``le_curvature``.
+
+        The formulas used are:
+
+        B-spline (open-uniform):
+            |kappa(0)| = (degree - 1) / (2 * degree) * |x2| / y1^2
+
+        Args:
+            le_curvature: Desired curvature magnitude at the start point.
+            curve: Curve instance used to determine the correct leading-edge formula.
+            cp_x2: x coordinate of the third control point ``P2``.
+
+        Returns:
+            float: ``y1`` that produces the requested leading-edge curvature.
+        """
+
+        degree = curve.degree
+        factor = (degree - 1) / (2 * degree)
+
+        y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
+
+        return y1
+
 
 
 # --------------------

@@ -651,8 +651,7 @@ class Case_Match_Target (Case_Direct_Design):
 
         airfoil.set_name     (self.airfoil_seed.name + suffix)
         airfoil.set_pathName (self.airfoil_seed.pathName)
-        airfoil.set_fileName (self.airfoil_seed.fileName)
-        airfoil.set_fileName_add_suffix (suffix)    
+        airfoil.set_fileName (self.airfoil_seed.fileName_stem + suffix + airfoil.fileName_ext)
 
         return airfoil
 
