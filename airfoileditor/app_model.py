@@ -31,6 +31,7 @@ from .model.airfoil          import Airfoil, usedAs
 from .model.airfoil_examples import Example
 from .model.airfoil_geometry import Panelling_Spline, Line
 from .model.geometry_bezier  import Panelling_Bezier
+from .model.geometry_bspline import Panelling_BSpline
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.xo2_input        import OpPoint_Definition, Input_File
@@ -847,23 +848,13 @@ class App_Model (QObject):
             logger.info (f"{self} Settings loaded: {s.pathFileName}")
 
         # panelling 
-        nPanels  = s.get ('spline_nPanels', None)
-        le_bunch = s.get ('spline_le_bunch', None)
-        te_bunch = s.get ('spline_te_bunch', None)
 
-        if nPanels:                 Panelling_Spline._nPanels  = nPanels
-        if le_bunch is not None:    Panelling_Spline._le_bunch = le_bunch
-        if te_bunch is not None:    Panelling_Spline._te_bunch = te_bunch
-
-        nPanels  = s.get ('bezier_nPanels', None)
-        le_bunch = s.get ('bezier_le_bunch', None)
-        te_bunch = s.get ('bezier_te_bunch', None)
-
-        if nPanels:                 Panelling_Bezier._nPanels  = nPanels
-        if le_bunch is not None:    Panelling_Bezier._le_bunch = le_bunch
-        if te_bunch is not None:    Panelling_Bezier._te_bunch = te_bunch
+        Panelling_Spline.from_dict(s)
+        Panelling_Bezier.from_dict(s)
+        Panelling_BSpline.from_dict(s)
 
         # polar definitions 
+
         self._polar_definitions : list [Polar_Definition] = []
         for def_dict in s.get('polar_definitions', []):
             self._polar_definitions.append(Polar_Definition(dataDict=def_dict))
@@ -933,13 +924,10 @@ class App_Model (QObject):
             s.clear()                                       # new rebuild of settings
 
         # save panelling values 
-        s.set ('spline_nPanels',  Panelling_Spline().nPanels)
-        s.set ('spline_le_bunch', Panelling_Spline().le_bunch)
-        s.set ('spline_te_bunch', Panelling_Spline().te_bunch)
+        Panelling_Spline.to_dict(s)
+        Panelling_Bezier.to_dict(s)
+        Panelling_BSpline.to_dict(s)
 
-        s.set ('bezier_nPanels',  Panelling_Bezier().nPanels)
-        s.set ('bezier_le_bunch', Panelling_Bezier().le_bunch)
-        s.set ('bezier_te_bunch', Panelling_Bezier().te_bunch)
 
         # add reference airfoils 
         ref_list = []

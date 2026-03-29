@@ -35,60 +35,21 @@ class Panelling_Curve (Panelling_Abstract):
     """ 
 
     @override
-    def _get_panels_of_side (self, nPanels_per_side) -> np.ndarray:
+    def _get_u (self, nPanels_per_side) -> np.ndarray:
         """ 
         returns numpy array of u having an adapted panel distribution for one curve based side  
             - running from 0..1
             - having nPanels+1 points        
         """
 
-        nPoints = nPanels_per_side + 1
-        le_bunch = self.le_bunch                    # bunch 0..1 
-        te_bunch = self.te_bunch
+        # must be implemented in the specific curve based panelling class (Bezier or B-Spline)
+        raise NotImplementedError
 
-        # a special distribution for Bezier curve to achieve a similar bunching to splined airfoils
-
-        # for a constant du the resulting arc length of a curve section (panel) is proportional the 
-        # reverse of the curvature, so it fits naturally the need of airfoil paneling especially
-        # at LE. For LE and TE a little extra bunching is done ...
-
-        te_du_end = 1.0 - 0.8 * te_bunch            # size of last du compared to linear du
-        te_du_growth = 1.2                          # how fast panel size will grow 
-
-        # le_bunch 0..1  
-        le_du_start = 1.0 - 0.6 * le_bunch          # size of first du compared to linear du 
-        le_du_growth = 1.2                          # how fast panel size will grow 
-
-        u  = np.zeros(nPoints)
-        du = np.ones(nPoints - 1)
-
-        # start from LE backward - increasing du 
-        du_ip = le_du_start 
-        ip = 0
-        while du_ip < 1.0:
-            du[ip] = du_ip
-            ip += 1
-            du_ip *= le_du_growth
-
-        # run from TE forward - increasing du 
-        du_ip = te_du_end
-        ip = len(du) - 1
-        while du_ip < 1.0:
-            du[ip] = du_ip
-            ip -= 1
-            du_ip *= te_du_growth
-
-        # build u array and normalized to 0..1
-        for ip, du_ip in enumerate(du):
-            u[ip+1] = u[ip] + du_ip 
-        u = u / u[-1]
-
-        return u 
 
 
     def new_u (self, nPanels : int|None = None ):
         """ 
-        Returns new panel distribution u of a Bezier airfoil upper and lower side  
+        Returns new panel distribution u of a curve based airfoil upper and lower side  
             - 'nPanels' will overwrite the default self.nPanels    
             - running from 0..1
         """
@@ -99,8 +60,8 @@ class Panelling_Curve (Panelling_Abstract):
         nPan_upper = self.nPanels_upper (nPanels)
         nPan_lower = self.nPanels_lower (nPanels)
         
-        u_new_upper = self._get_panels_of_side (nPan_upper)
-        u_new_lower = self._get_panels_of_side (nPan_lower)
+        u_new_upper = self._get_u (nPan_upper)
+        u_new_lower = self._get_u (nPan_lower)
 
         logger.debug (f"{self} _repanel {nPan_upper} {nPan_lower}")
 
@@ -198,11 +159,8 @@ class Side_Airfoil_Curve (Line):
     @property
     def u (self ) -> list [float]:
         """ Bezier panel distribution equals curve parameter u of Bezier"""
-        if self._u is None:
-            panelling = Panelling_Curve()
-            nPanels = panelling.nPanels_default_of (self.type)
-            self._u = panelling._get_panels_of_side (nPanels)
-        return self._u
+        # has to be implemented in the specific curve based side class (Bezier or B-Spline)
+        raise NotImplementedError    
 
 
     def set_panel_distribution  (self, u_new : int ):
@@ -710,10 +668,8 @@ class Geometry_Curve (Geometry):
     @property 
     def panelling (self) -> Panelling_Curve:
         """ returns the target panel distribution / helper """
-        if self._panelling is None:
-            self._panelling = Panelling_Curve()  
-        return self._panelling
-
+        raise NotImplementedError    # has to be implemented in Bezier or B-Spline
+    
 
     def repanel (self,  nPanels : int = None, just_finalize = False):
         """

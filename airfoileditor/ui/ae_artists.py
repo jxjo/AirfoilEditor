@@ -13,7 +13,7 @@ from ..base.artist              import *
 from ..base.spline              import Bezier, HicksHenne, BSpline
 
 from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline, usedAs, Geometry, Flap_Setter
-from ..model.airfoil_geometry   import Line
+from ..model.airfoil_geometry   import Line, Panelling_Abstract
 from ..model.geometry_bezier    import Geometry_Bezier,  Side_Airfoil_Bezier
 from ..model.geometry_bspline   import Geometry_BSpline, Side_Airfoil_BSpline
 from ..model.geometry_hicks_henne import Side_Airfoil_HicksHenne
@@ -1527,6 +1527,34 @@ class Airfoil_Line_Artist (Artist, QObject):
                                     movable=airfoil.usedAsDesign, color=color,
                                     on_changed=self.sig_geometry_changed.emit )
             self._add(pl) 
+
+
+
+class Panelling_Du_Artist (Artist):
+    """
+    Artist to plot the normalised panel-spacing distribution (Δu × n per side)
+    for the current panelling settings.  A value of 1.0 corresponds to a
+    perfectly uniform distribution; values < 1 indicate denser panels.
+    """
+
+    name = "Panel Distribution"
+
+    def _plot (self):
+
+        panelling : Panelling_Abstract = self.data_object
+        if panelling is None: return
+
+        n = max (panelling.nPanels // 2, 10)
+        u  = panelling._get_u (n)
+        du = np.diff (u) * n                    # normalised: uniform → 1.0
+
+        pen = pg.mkPen (QColor('dodgerblue'), width=1.0)
+        self._plot_dataItem (u[:-1], du, pen=pen, antialias=True)
+
+        # dashed reference line at 1.0 (uniform)
+        pen_ref = pg.mkPen (QColor ("gray"), width=1, style=Qt.PenStyle.DashLine)
+        self._plot_dataItem (np.array ([0.0, 1.0]), np.array ([1.0, 1.0]), pen=pen_ref)
+
 
 
 

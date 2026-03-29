@@ -58,7 +58,7 @@ from enum                   import Enum
 from typing                 import override
 from math                   import isclose
 
-from ..base.common_utils    import clip
+from ..base.common_utils    import clip, Parameters
 from ..base.math_util       import * 
 from ..base.spline          import Spline1D, Spline2D
 
@@ -85,9 +85,13 @@ class Panelling_Abstract:
     The class variables are the default values used for repaneling 
     """ 
 
-    _le_bunch = 0.84
-    _te_bunch = 0.7 
-    _nPanels  = 160
+    LE_BUNCH_DEFAULT = 0.84
+    TE_BUNCH_DEFAULT = 0.7
+    N_PANELS_DEFAULT  = 160
+    
+    _le_bunch = LE_BUNCH_DEFAULT
+    _te_bunch = TE_BUNCH_DEFAULT 
+    _nPanels  = N_PANELS_DEFAULT
 
     def __init__ (self, nPanels : int|None = None,
                         le_bunch : float | None = None,
@@ -170,7 +174,7 @@ class Panelling_Abstract:
         self.__class__._te_bunch = self.te_bunch
 
 
-    def _get_panels_of_side (self, nPanels_per_side) -> np.ndarray:
+    def _get_u (self, nPanels_per_side) -> np.ndarray:
         """ 
         returns numpy array of u for one side 
             - running from 0..1
@@ -190,50 +194,74 @@ class Panelling_Spline (Panelling_Abstract):
     achieve the leading edge of the spline (uLe) being leading edge of coordinates (iLe)
     """ 
 
+    @classmethod    
+    def to_dict (cls, d:dict) :
+        """ save current values of panelling parameters to dict"""
+
+        # save panelling values 
+        if cls._nPanels != cls.N_PANELS_DEFAULT:
+            d["spline_nPanels"] = cls._nPanels
+        else: 
+            d.pop ("spline_nPanels", None)
+
+        if cls._le_bunch != cls.LE_BUNCH_DEFAULT:
+            d["spline_le_bunch"] = cls._le_bunch
+        else:
+            d.pop ("spline_le_bunch", None) 
+
+        if cls._te_bunch != cls.TE_BUNCH_DEFAULT:
+            d["spline_te_bunch"] = cls._te_bunch
+        else:
+            d.pop ("spline_te_bunch", None)
+
+
+    @classmethod
+    def from_dict (cls, d:dict) :
+        """ load panelling parameters from dict and set them as class variables"""
+
+        # load panelling values 
+        if "spline_nPanels" in d:
+            cls._nPanels = d["spline_nPanels"]
+        if "spline_le_bunch" in d:
+            cls._le_bunch = d["spline_le_bunch"]
+        if "spline_te_bunch" in d:
+            cls._te_bunch = d["spline_te_bunch"]
+
+
     @override
-    def _get_panels_of_side (self, nPanels_per_side) -> np.ndarray:
+    def _get_u (self, nPanels_per_side) -> np.ndarray:
         """ 
         returns numpy array of u having cosinus similar distribution for one side 
             - running from 0..1
             - having nPanels+1 points 
         """
-        # first leading edge - take a cosinus distribution
-
-        nPoints = nPanels_per_side + 1
+        nPoints  = nPanels_per_side + 1
         le_bunch = self.le_bunch
         te_bunch = self.te_bunch
-        
-        ufacStart = 0.1 - le_bunch * 0.1
-        ufacStart = max(0.0, ufacStart)
-        ufacStart = min(0.5, ufacStart)
-        ufacEnd   = 0.65  # slightly more        # 0.25 = constant size towards te 
 
-        beta = np.linspace(ufacStart, ufacEnd , nPoints) * np.pi
+        # cosine LE bunching:
+        # ufacStart=0.0 → beta starts at 0 → zero slope at LE → maximum bunching
+        # ufacStart=0.5 → beta starts at π/2 → cosine is near-linear → near-uniform
+        # le_bunch=0 → ufacStart=0.5 (uniform); le_bunch=1 → ufacStart=0.0 (max bunch)
+
+        ufacStart = 0.1 - le_bunch * 0.1           # original mapping: 0.1 (no bunch) ... 0.0 (max)
+        ufacStart = np.clip(ufacStart, 0.0, 0.5)
+        ufacEnd   = 0.65
+
+        beta = np.linspace(ufacStart, ufacEnd, nPoints) * np.pi
         u    = (1.0 - np.cos(beta)) * 0.5
+        u    = u - u[0]                             # shift so first point is exactly 0
+        u    = u / u[-1]                            # normalize to 0..1
 
-        # trailing edge area 
+        # trailing edge - power-law bunching on top of cosine LE distribution
+        # te_bunch=0 → exponent=1.0 → identity → uniform TE spacing
 
-        te_du_end = 1 - te_bunch * 0.9          # relative size of the last panel - smallest 0.1
-        te_du_growth = 1.2                      # growth rate going towars le 
+        if te_bunch > 0:
+            te_exponent = 1.0 + te_bunch * 0.15    # 1.0 (no bunch) ... ~1.20 (max)
+            u = 1.0 - (1.0 - u) ** te_exponent
 
-        du = np.diff(u,1)                       # the differences  
-        
-        ip = len(du) - 1
-        du_ip = te_du_end * du[ip]              # size of the last panel  
-        while du_ip < du[ip]:                   # run forward until size reaches normal size
-            du[ip] = du_ip
-            ip -= 1
-            du_ip *= te_du_growth
-
-        # rebuild u array and normalize to 0..1
-        u  = np.zeros(nPoints)
-        for ip, du_ip in enumerate(du):
-            u[ip+1] = u[ip] + du_ip 
-        u = u / u[-1]
-
-        # ensure 0.0 and 1.0 
-        u[0]  = u[0].round(10)
-        u[-1] = u[-1].round(10)
+        u[0]  = 0.0
+        u[-1] = 1.0
 
         return u
 
@@ -262,10 +290,10 @@ class Panelling_Spline (Panelling_Abstract):
            
             # new distribution for upper and lower - points = +1 
             # ensuring LE is at uLe_target 
-            u_cos_upper = self._get_panels_of_side (nPan_upper)
+            u_cos_upper = self._get_u (nPan_upper)
             u_new_upper = np.abs (np.flip(u_cos_upper) -1) * uLe_target
 
-            u_cos_lower = self._get_panels_of_side (nPan_lower)
+            u_cos_lower = self._get_u (nPan_lower)
             u_new_lower = u_cos_lower * (1- uLe_target) + uLe_target
 
         else: 

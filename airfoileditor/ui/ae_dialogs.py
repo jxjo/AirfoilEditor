@@ -9,17 +9,20 @@ Extra functions (dialogs) to modify airfoil
 
 import numpy as np
 
+import pyqtgraph as pg
+
 from PyQt6.QtCore               import Qt
 from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 
 from ..base.widgets             import * 
 from ..base.panels              import Dialog
-
+from ..base.diagram             import Diagram, Diagram_Item
 from ..model.airfoil            import Airfoil, Flap_Setter
 from ..model.airfoil_geometry   import Geometry, Geometry_Splined, Panelling_Spline
 from ..model.case               import Match_Targets
 
 from .ae_widgets                import Airfoil_Select_Open_Widget
+from .ae_artists                import Panelling_Du_Artist
 
 from ..app_model                import App_Model
 from ..match_runner             import Matcher_Base, Match_Result
@@ -141,10 +144,48 @@ class Blend_Airfoil_Dialog (Dialog):
 class Repanel_Airfoil_Dialog (Dialog):
     """ Dialog to repanel an airfoil"""
 
-    _width  = 480
-    _height = 240
+    _width  = 460
+    _height = 400
 
     name = "Repanel Airfoil"
+
+    class Item_Du_Distribution (Diagram_Item):
+        """ Compact Diagram_Item to embed Δu distribution in a dialog """
+
+        name         = "Panel du Distribution"
+        title        = None
+        subtitle     = None
+        min_width    = 200
+        min_height   = 80
+        show_buttons = False
+        show_coords  = False
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.setContentsMargins ( 0,10,0,0)
+
+        def setup_artists (self):
+            self._add_artist (Panelling_Du_Artist (self, self._dataObject))
+
+        def setup_viewRange (self):
+            self.viewBox.setDefaultPadding (0.0)
+            self.viewBox.setXRange (0, 1, padding=0.05)
+            self.viewBox.setYRange (0, 1.5, padding=0.0)
+            self.showGrid (x=True, y=True)
+
+
+    class Diagram_Du_Distribution (Diagram):
+        """ Tiny diagram widget that wraps Item_Du_Distribution for dialog embedding """
+
+        name = "Panel Distribution"
+
+        def create_view_panel (self):
+            pass                                            # no side panel for embedded use
+
+        def create_diagram_items (self):
+            self.graph_layout.setContentsMargins (0, 0, 10, 0)
+            item = Repanel_Airfoil_Dialog.Item_Du_Distribution (self, self._dataObject)
+            self._add_item (item, row=0, col=0, rowStretch=1)
 
 
     def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
@@ -203,10 +244,16 @@ class Repanel_Airfoil_Dialog (Dialog):
         FieldF (l,r,4, width=60, step=0.02, lim=(0, 1),
                         obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
         r += 1
-        Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)        
-        SpaceC (l,5, width=5)
+        Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)  
+        l.setColumnStretch (5,1)      
         r += 1
-        SpaceR (l, r, height=5) 
+        Label  (l,r,0, colSpan=5, style=style.COMMENT,
+                get=f"Mapping of evenly spaced {self.geo.CURVE_NAME} curve parameter")  
+        r += 1
+        self._du_diagram = Repanel_Airfoil_Dialog.Diagram_Du_Distribution (self, lambda: self.geo.panelling,
+                                                    height=(100, 120))
+        l.addWidget (self._du_diagram, r, 0, 1, 5)
+        l.setRowStretch (r, 1)
 
         return l
 
@@ -229,6 +276,15 @@ class Repanel_Airfoil_Dialog (Dialog):
             return style.NORMAL
 
 
+    def _set_default_values (self):
+        """ reset to default values"""
+
+        self.geo.panelling.set_le_bunch (self.geo.panelling.LE_BUNCH_DEFAULT)
+        self.geo.panelling.set_te_bunch (self.geo.panelling.TE_BUNCH_DEFAULT)
+        self.geo.panelling.set_nPanels  (self.geo.panelling.N_PANELS_DEFAULT)
+        self._on_widget_changed()     # repanel and refresh
+
+
     @override
     def _on_widget_changed (self):
         """ slot a input field changed - repanel and refresh"""
@@ -238,6 +294,8 @@ class Repanel_Airfoil_Dialog (Dialog):
         self._app_model.notify_airfoil_geo_paneling (True)
 
         self._has_been_repaneled = True                      # for change detection 
+
+        self._du_diagram.refresh (also_viewRange=False)     # update Δu chart live
 
 
     def close(self):
@@ -259,6 +317,13 @@ class Repanel_Airfoil_Dialog (Dialog):
         buttons = QDialogButtonBox.StandardButton.Close
         buttonBox = QDialogButtonBox(buttons)
         buttonBox.rejected.connect(self.close)
+
+        default_btn = QPushButton ("Default", parent=self)
+        default_btn.setFixedWidth (80)
+        default_btn.setToolTip    ("Reset to default values")
+        default_btn.clicked.connect  (self._set_default_values)
+        buttonBox.addButton (default_btn, QDialogButtonBox.ButtonRole.ActionRole)
+
 
         return buttonBox 
 

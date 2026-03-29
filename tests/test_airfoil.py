@@ -243,7 +243,7 @@ class Test_Airfoil_Bezier:
         # u default distribution  
 
         assert len(geo.upper._u) == 81
-        assert round(sum(geo.upper._u),6) == 40.688019
+        assert round(sum(geo.upper._u),6) == 43.400141
 
         # eval y on u
 
@@ -268,8 +268,8 @@ class Test_Airfoil_Bezier:
         
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.3140431, 0.1110653)
-        assert geo.camber._get_maximum()    == (0.3974017, 0.0140231)
+        assert geo.thickness._get_maximum() == (0.3140368, 0.1110651)
+        assert geo.camber._get_maximum()    == (0.3974105, 0.0140232)
 
         with pytest.raises(NotImplementedError):
             geo.set_maxThick  (0.08)
@@ -397,7 +397,7 @@ class Test_Worker:
         airfoil_flapped.load()
 
         assert airfoil_flapped.isFlapped
-        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7046935677178569
+        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7059056128521686
 
 
 # Main program for testing 

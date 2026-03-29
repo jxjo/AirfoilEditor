@@ -38,6 +38,74 @@ class Panelling_BSpline (Panelling_Curve):
     Calculates new panel distribution u for an airfoil side (B-Spline curve)  
     """ 
 
+    @classmethod    
+    def to_dict (cls, d:dict) :
+        """ save current values of panelling parameters to dict"""
+
+        # save panelling values 
+        if cls._nPanels != cls.N_PANELS_DEFAULT:
+            d["bspline_nPanels"] = cls._nPanels
+        else: 
+            d.pop ("bspline_nPanels", None)
+
+        if cls._le_bunch != cls.LE_BUNCH_DEFAULT:
+            d["bspline_le_bunch"] = cls._le_bunch
+        else:
+            d.pop ("bspline_le_bunch", None) 
+
+        if cls._te_bunch != cls.TE_BUNCH_DEFAULT:
+            d["bspline_te_bunch"] = cls._te_bunch
+        else:
+            d.pop ("bspline_te_bunch", None)
+
+
+    @classmethod
+    def from_dict (cls, d:dict) :
+        """ load panelling parameters from dict and set them as class variables"""
+
+        # load panelling values 
+        if "bspline_nPanels" in d:
+            cls._nPanels = d["bspline_nPanels"]
+        if "bspline_le_bunch" in d:
+            cls._le_bunch = d["bspline_le_bunch"]
+        if "bspline_te_bunch" in d:
+            cls._te_bunch = d["bspline_te_bunch"]
+
+
+    @override
+    def _get_u (self, nPanels_per_side) -> np.ndarray:
+        """ 
+        returns numpy array of u having an adapted panel distribution for one curve based side  
+            - running from 0..1
+            - having nPanels+1 points        
+        """
+
+        nPoints  = nPanels_per_side + 1
+        le_bunch = self.le_bunch                    # bunch 0..1 
+        te_bunch = self.te_bunch
+
+        # map bunch 0..1 to exponent
+        # t^α with α>1 bunches near u=0 (LE); 1-(1-t)^α with α>1 bunches near u=1 (TE)
+
+        # as b_spline already bunches naturally at the leading edge, 
+        # we want to have a smaller effect of bunching there and 
+        # a stronger effect at the trailing edge where the b_spline does not bunch naturally
+        le_exponent = 1.0 + le_bunch * 0.15        # 1.0 (no bunch) ... 1.12 (max)
+        te_exponent = 1.0 + te_bunch * 0.40        # 1.0 (no bunch) ... 1.45 (max)
+
+        u = np.linspace(0.0, 1.0, nPoints)
+
+        if le_exponent != 1.0:
+            u = u ** le_exponent
+
+        if te_exponent != 1.0:
+            u = 1.0 - (1.0 - u) ** te_exponent
+
+        u[0]  = 0.0
+        u[-1] = 1.0
+
+        return u 
+
 
 # -----------------------------------------------------------------------------
 #  Curvature  
@@ -158,6 +226,16 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         """ returns the B-Spline object of self"""
         return self._curve 
 
+    @override
+    @property
+    def u (self ) -> list [float]:
+        """ B-Spline panel distribution equals curve parameter u of B-Spline"""
+        if self._u is None:
+            panelling = Panelling_BSpline()
+            nPanels = panelling.nPanels_default_of (self.type)
+            self._u = panelling._get_u (nPanels)
+        return self._u
+
 
     @override
     def re_fit_curve (self, target_side : Line = None, ncp = None): 
@@ -202,11 +280,11 @@ class Geometry_BSpline (Geometry_Curve):
 
     CURVE_NAME      = "B-Spline"                  
     MOD_CURVE       = CURVE_NAME                 # modification string overritten from Geometry
-    
+
+    @override
     @property
     def upper(self) -> 'Side_Airfoil_BSpline' : 
         """upper side as Side_Airfoil_BSpline object"""
-        # overloaded
         if self._upper is None: 
             raise ValueError ("Upper side not set for Geometry_BSpline")
         return self._upper 
@@ -216,7 +294,6 @@ class Geometry_BSpline (Geometry_Curve):
     @property
     def lower(self) -> 'Side_Airfoil_BSpline' : 
         """lower side as Side_Airfoil_BSpline object"""
-        # overloaded
         if self._lower is None: 
             raise ValueError ("Lower side not set for Geometry_BSpline")        
         return self._lower 

@@ -35,6 +35,74 @@ class Panelling_Bezier (Panelling_Curve):
     Calculates new panel distribution u for an airfoil side (Bezier curve)  
     """ 
 
+    @classmethod    
+    def to_dict (cls, d:dict) :
+        """ save current values of panelling parameters to dict"""
+
+        # save panelling values 
+        if cls._nPanels != cls.N_PANELS_DEFAULT:
+            d["bezier_nPanels"] = cls._nPanels
+        else: 
+            d.pop ("bezier_nPanels", None)
+
+        if cls._le_bunch != cls.LE_BUNCH_DEFAULT:
+            d["bezier_le_bunch"] = cls._le_bunch
+        else:
+            d.pop ("bezier_le_bunch", None) 
+
+        if cls._te_bunch != cls.TE_BUNCH_DEFAULT:
+            d["bezier_te_bunch"] = cls._te_bunch
+        else:
+            d.pop ("bezier_te_bunch", None)
+
+
+    @classmethod
+    def from_dict (cls, d:dict) :
+        """ load panelling parameters from dict and set them as class variables"""
+
+        # load panelling values 
+        if "bezier_nPanels" in d:
+            cls._nPanels = d["bezier_nPanels"]
+        if "bezier_le_bunch" in d:
+            cls._le_bunch = d["bezier_le_bunch"]
+        if "bezier_te_bunch" in d:
+            cls._te_bunch = d["bezier_te_bunch"]
+
+
+    @override
+    def _get_u (self, nPanels_per_side) -> np.ndarray:
+        """ 
+        returns numpy array of u having an adapted panel distribution for one curve based side  
+            - running from 0..1
+            - having nPanels+1 points        
+        """
+
+        nPoints  = nPanels_per_side + 1
+        le_bunch = self.le_bunch                    # bunch 0..1 
+        te_bunch = self.te_bunch
+
+        # map bunch 0..1 to exponent
+        # t^α with α>1 bunches near u=0 (LE); 1-(1-t)^α with α>1 bunches near u=1 (TE)
+
+        # as b_spline already bunches naturally at the leading edge, 
+        # we want to have a smaller effect of bunching there and 
+        # a stronger effect at the trailing edge where the b_spline does not bunch naturally
+        le_exponent = 1.0 + le_bunch * 0.15        # 1.0 (no bunch) ... 1.12 (max)
+        te_exponent = 1.0 + te_bunch * 0.45        # 1.0 (no bunch) ... 1.45 (max)
+
+        u = np.linspace(0.0, 1.0, nPoints)
+
+        if le_exponent != 1.0:
+            u = u ** le_exponent
+
+        if te_exponent != 1.0:
+            u = 1.0 - (1.0 - u) ** te_exponent
+
+        u[0]  = 0.0
+        u[-1] = 1.0
+
+        return u 
+
 
 # -----------------------------------------------------------------------------
 #  Curvature  
@@ -130,6 +198,17 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         """ returns the bezier object of self"""
         return self.curve
 
+    @override
+    @property
+    def u (self ) -> list [float]:
+        """ Bezier panel distribution equals curve parameter u of Bezier"""
+        if self._u is None:
+            panelling = Panelling_Bezier()
+            nPanels = panelling.nPanels_default_of (self.type)
+            self._u = panelling._get_u (nPanels)
+        return self._u
+    
+    
     # ------------------
 
     @override
@@ -264,5 +343,11 @@ class Geometry_Bezier (Geometry_Curve):
         return self._lower 
 
 
-
+    @override
+    @property 
+    def panelling (self) -> Panelling_Bezier:
+        """ returns the target panel distribution / helper """
+        if self._panelling is None:
+            self._panelling = Panelling_Bezier()  
+        return self._panelling
 

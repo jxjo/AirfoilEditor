@@ -564,22 +564,6 @@ class Spline2D:
 #------------ Bezier -----------------------------------
 
 
-# core functions 
-#       from 'Create a BEZIER CURVE in PYTHON || TUTORIAL'
-#       https://www.youtube.com/watch?v=klbQT2OilCU
-
-
-# Binomial Coefficients 
-def Ni(n,i): 
-    return math.factorial(n) / (math.factorial(i) * math.factorial(n-i))
-
-# Bernstein Basis Polynomial 
-def basisFunction (n, i, u):
-    J = np.array (Ni(n, i) * (u ** i) * (1 - u) ** (n - i))
-    return J 
-
-
-
 class Bezier: 
     """
     Bézier curve defined by its control points.
@@ -756,6 +740,12 @@ class Bezier:
         self.set_cpoints(new_cpx, new_cpy)
 
 
+    @staticmethod
+    def _basisFunction (n, i, u):
+        """Bernstein basis polynomial."""
+        return np.array (math.comb(n, i) * (u ** i) * (1 - u) ** (n - i))
+
+
     @property
     def has_u (self) -> bool: 
         """Whether cached evaluations exist for parameter values ``u``."""
@@ -792,6 +782,7 @@ class Bezier:
             y = self._eval_1D (self._cpy, u, der=der)
 
             if not np.isscalar(u):
+                self._clear_cache()  # clear cache if u is array and thus not reusable for other calls
                 self._u = u 
                 if der == 0:         # cache result for der=0 if u is array
                     self._x, self._y = x, y
@@ -1070,7 +1061,7 @@ class Bezier:
         B = np.zeros((n_data, ncp))
         for i, u in enumerate(u_data):
             for j in range(ncp):
-                B[i, j] = basisFunction(degree, j, u)
+                B[i, j] = Bezier._basisFunction(degree, j, u)
         
         # Solve constrained least-squares for x control points
         if le_tangent_vertical and ncp > 2:
@@ -1151,7 +1142,7 @@ class Bezier:
             
             # collect bernstein Polynomial self.basisFn.append (basisFunction(n, i, u))  
 
-            bezier += basisFunction(n, i, u) * weights[i] 
+            bezier += Bezier._basisFunction(n, i, u) * weights[i] 
 
         n = len(u) if not np.isscalar(u) else 1
         logger.debug(f"Bezier eval 1D: nu={n}, der={der}, time={timer() - start:.6f}s")
@@ -2002,6 +1993,7 @@ class BSpline:
             x,y = self._eval_polynomials(u, der=der)  
 
             if update_cache and not np.isscalar(u):
+                self._clear_cache()  # clear any previous cache if u has changed
                 self._u = u 
                 if der == 0:         # cache result for der=0 if u is array
                     self._x, self._y = x, y
