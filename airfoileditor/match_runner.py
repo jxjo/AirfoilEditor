@@ -48,11 +48,7 @@ class Matcher_Base (QThread):
         self._niter  = 0
         self._nevals = 0
 
-        # bump and reversal detetcion parameters - will be adjusted
-        self._body_region       = (None, None)          # body region for curvature derivative calculation
-        self._body_thres_deriv  = None                  # threshold for curvature derivative 
-        self._te_region         = (None, None)          # te region for curvature derivative calculation
-        self._te_thres_deriv    = None                  # threshold for curvature derivative 
+
 
 
     def __del__(self):  
@@ -70,25 +66,6 @@ class Matcher_Base (QThread):
         """
 
         raise NotImplementedError ("must be implemented in child classes ")
-
-
-    def _set_penalty_control (self):
-        """Configure penalty regions and thresholds from the match targets."""
-
-        if self._targets.max_nreversals == 0:
-
-            self._body_region       = (0.3, 0.8)            # body region for curvature derivative calculation
-            self._body_thres_deriv  = 1.0                   # strong suppress of bumps
-
-            self._te_region         = (0.8, 1.0)            # te region for curvature derivative calculation
-            self._te_thres_deriv    = 5.0                   # avoid curv slipping away at te
-        else:
-            # reflexed or rearload - more curvature in rear part
-            self._body_region       = (0.3, 0.7)            # typical reversal is earlier
-            self._body_thres_deriv  = 5.0                   # danger of bump is less
-
-            self._te_region         = (0.7, 1.0)            # te region for curvature derivative calculation
-            self._te_thres_deriv    = 10.0                  # allow narrow curve change
 
 
     def _penalty_reversals (self, xb: np.ndarray, curv: np.ndarray,
@@ -373,23 +350,22 @@ class Matcher_Base (QThread):
 
         # -- penalty for curvature derivative to avoid bumps 
 
-        if self._body_thres_deriv is not None:
+        if targets.bump_control:
+            no_revers = targets.max_nreversals == 0
             penalty_curv_deriv = self._penalty_curv_deriv (x, curv,
-                                        region    = self._body_region,
-                                        threshold = self._body_thres_deriv,
-                                        scale     = 0.001)
-        else:
-            penalty_curv_deriv = 0.0
+                                        region    = (0.3, 0.8) if no_revers else (0.3, 0.7),
+                                        threshold = 1.0        if no_revers else 5.0,
+                                        scale     = 0.005)
 
         # -- te derivative of curvature limit 
 
-        if self._te_thres_deriv is not None:
             penalty_te_curv_deriv = self._penalty_curv_deriv (x, curv,
-                                        region    = self._te_region,
-                                        threshold = self._te_thres_deriv,
-                                        scale     = 0.0001)
+                                        region    = (0.8, 1.0) if no_revers else (0.7, 1.0),
+                                        threshold = 5.0        if no_revers else 10.0,
+                                        scale     = 0.0005)
         else:
             penalty_te_curv_deriv = 0.0
+            penalty_curv_deriv = 0.0
 
         # -- penalty for curvature reversals (bumps)
 
@@ -493,8 +469,6 @@ class Matcher_Base (QThread):
         self._targets = targets
         self._side    = side
         self._ncp     = side.curve.ncp
-    
-        self._set_penalty_control()                              # set penalty control parameters for matching based on targets
 
 
     def run (self):

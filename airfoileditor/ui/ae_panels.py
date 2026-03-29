@@ -1375,7 +1375,7 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
                 set=lambda n: self.set_ncp(self.lower, self.targets_lower, n),
                 hide=lambda: self.targets_lower.ncp_auto,
                 toolTip=_tip)
-        l.setColumnMinimumWidth (c+1,20)
+        l.setColumnMinimumWidth (c+1,10)
 
         c += 2
         _tip = "Curvature at leading edge which is essential for a good fit.\n" + \
@@ -1410,6 +1410,19 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         FieldF (l,r+2,c, width=45, dec=1, step=0.1, lim =(-9,9),
                 get=lambda: self.targets_lower.max_te_curvature, 
                 set=lambda c: self.targets_lower.set_max_te_curvature(c), toolTip=_tip)
+        l.setColumnMinimumWidth (c+1,5)
+
+        c += 2
+        _tip = "Suppress bumps of curvature to get a smooth airfoil.\n" + \
+               "Bumps are controlled by limiting the derivate of curvature.\n" + \
+               "Show 'Derivative of curvature' in the Curvature diagram to watch the effect."
+        Label  (l,r,c, colSpan=2, get="Bumps", hide=self._small)
+        CheckBox (l,r+1,c, text="No", get=lambda: self.targets_upper.bump_control,
+                set=lambda b: self.targets_upper.set_bump_control(b),
+                toolTip=_tip)
+        CheckBox (l,r+2,c, text="No", get=lambda: self.targets_lower.bump_control,
+                set=lambda b: self.targets_lower.set_bump_control(b),
+                toolTip=_tip)
         l.setColumnMinimumWidth (c+1,20)
 
         c += 2

@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - B-Spline based airfoils
 - Match airfoil with B-Spline 
+- Revised Repaneling für Cubic Spline, Bezier, B-Spline
 
 ### Fixed
 

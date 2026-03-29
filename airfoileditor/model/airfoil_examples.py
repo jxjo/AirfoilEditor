@@ -244,7 +244,7 @@ class Example (Airfoil_Example_Abstract):
 
 
 class Root_Example (Airfoil_Example_Abstract):
-    """ An example airfoil for root - JX-GT-15v2"""
+    """ An example airfoil for root - JX-GT3-100"""
 
     def __init__(self, geometry = GEO_BASIC, pathFileName='Root_Example.dat', **kwargs):
         super().__init__(geometry = geometry, pathFileName=pathFileName, **kwargs)
@@ -425,7 +425,7 @@ class Root_Example (Airfoil_Example_Abstract):
 
 
 class Tip_Example (Airfoil_Example_Abstract):
-    """ An example airfoil for tip - JX-GT-05v2"""
+    """ An example airfoil for tip - JX-GT3-30"""
 
     def __init__(self, geometry = GEO_BASIC, pathFileName='Tip_Example.dat', **kwargs):
         super().__init__(geometry = geometry, pathFileName=pathFileName, **kwargs)

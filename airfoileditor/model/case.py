@@ -448,6 +448,7 @@ class Match_Targets:
         self._max_nreversals    = np.clip(curvature.nreversals(), 0, 1)     # maximum allowed reversals in curvature
         self._max_te_curvature  = self._get_max_te_curvature (self._max_nreversals)   # maximum curvature at trailing edge 
 
+        self._bump_control      = True                              # avoid bumps in curvature
 
     @classmethod
     def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int) -> 'Match_Targets':
@@ -501,7 +502,11 @@ class Match_Targets:
     @property
     def max_nreversals (self) -> int:
         return self._max_nreversals
-    
+
+    @property
+    def bump_control (self) -> bool:
+        return self._bump_control
+        
     # --- setters ---
 
     def set_side             (self, side: Line): self._side = side
@@ -512,6 +517,7 @@ class Match_Targets:
     def set_max_nreversals   (self, val : int  ): 
         self._max_nreversals    = val
         self._max_te_curvature = self._get_max_te_curvature(val)
+    def set_bump_control      (self, val : bool ): self._bump_control = val
 
 
     def _get_max_te_curvature(self, nreversals: int) -> float:
