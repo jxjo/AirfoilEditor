@@ -243,7 +243,7 @@ class Test_Airfoil_Bezier:
         # u default distribution  
 
         assert len(geo.upper._u) == 81
-        assert round(sum(geo.upper._u),6) == 43.400141
+        assert round(sum(geo.upper._u),6) == 45.622499
 
         # eval y on u
 
@@ -268,8 +268,8 @@ class Test_Airfoil_Bezier:
         
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.3140368, 0.1110651)
-        assert geo.camber._get_maximum()    == (0.3974105, 0.0140232)
+        assert geo.thickness._get_maximum() == (0.3140447, 0.1110653)
+        assert geo.camber._get_maximum()    == (0.3973535, 0.0140229)
 
         with pytest.raises(NotImplementedError):
             geo.set_maxThick  (0.08)
@@ -290,7 +290,7 @@ class Test_Airfoil_Bezier:
         curv : Curvature_of_Curve = airfoil.geo.curvature
 
         assert round(curv.upper._get_maximum()[1],0) == 61.0
-        assert round(curv.lower._get_maximum()[1],0) == 105.0
+        assert round(curv.lower._get_maximum()[1],0) == 104.0
 
         te_curv = curv.lower.y[-10:]
         assert round(np.min (np.abs(te_curv)),3) == 0.062

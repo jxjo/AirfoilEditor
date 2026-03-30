@@ -35,37 +35,38 @@ class Panelling_Curve (Panelling_Abstract):
     """ 
 
     @override
-    def _get_u (self, nPanels_per_side) -> np.ndarray:
+    def _get_u (self, nPanels_per_side, curve=None) -> np.ndarray:
         """ 
         returns numpy array of u having an adapted panel distribution for one curve based side  
             - running from 0..1
-            - having nPanels+1 points        
+            - having nPanels+1 points
+            - when 'curve' is provided, applies cosine distribution in arc-length space
+              (decouples point spacing from curve curvature, same concept as cubic spline)
         """
 
         # must be implemented in the specific curve based panelling class (Bezier or B-Spline)
         raise NotImplementedError
 
 
-
-    def new_u (self, nPanels : int|None = None ):
-        """ 
-        Returns new panel distribution u of a curve based airfoil upper and lower side  
-            - 'nPanels' will overwrite the default self.nPanels    
-            - running from 0..1
+    @staticmethod
+    def _u_of_arc_fractions (curve, arc_fractions: np.ndarray) -> np.ndarray:
         """
+        Maps target arc-length fractions [0,1] back to curve parameter u [0,1].
 
-        nPanels = nPanels if nPanels is not None else self._nPanels
-
-        # in case of odd number of panels, upper side will have +1 panels 
-        nPan_upper = self.nPanels_upper (nPanels)
-        nPan_lower = self.nPanels_lower (nPanels)
-        
-        u_new_upper = self._get_u (nPan_upper)
-        u_new_lower = self._get_u (nPan_lower)
-
-        logger.debug (f"{self} _repanel {nPan_upper} {nPan_lower}")
-
-        return u_new_upper, u_new_lower
+        Samples the curve densely with uniform u, computes cumulative arc length,
+        then uses linear interpolation to invert the arc-length → u mapping.
+        This allows any desired distribution in arc-length space to be expressed
+        as the corresponding curve parameter values.
+        """
+        u_dense = np.linspace(0.0, 1.0, 1000)
+        x_d, y_d = curve.eval(u_dense)
+        ds = np.sqrt(np.diff(x_d)**2 + np.diff(y_d)**2)
+        s  = np.concatenate([[0.0], np.cumsum(ds)])
+        s /= s[-1]                                      # normalize to 0..1
+        u = np.interp(arc_fractions, s, u_dense)
+        u[0]  = 0.0                                     # ensure exact endpoints
+        u[-1] = 1.0
+        return u
 
 
 # -----------------------------------------------------------------------------
@@ -696,9 +697,14 @@ class Geometry_Curve (Geometry):
         Inner repanel without change handling
         """
 
-        u_upper, u_lower = self.panelling.new_u (nPanels)
-        self.upper.set_panel_distribution(u_upper)
-        self.lower.set_panel_distribution(u_lower)
+        nPanels   = nPanels if nPanels is not None else self.panelling.nPanels
+        nPan_upper = self.panelling.nPanels_upper (nPanels)
+        nPan_lower = self.panelling.nPanels_lower (nPanels)
+
+        logger.debug (f"{self.panelling} _repanel {nPan_upper} {nPan_lower}")
+
+        self.upper.set_panel_distribution (self.panelling._get_u (nPan_upper, curve=self.upper.curve))
+        self.lower.set_panel_distribution (self.panelling._get_u (nPan_lower, curve=self.lower.curve))
 
         return True
 

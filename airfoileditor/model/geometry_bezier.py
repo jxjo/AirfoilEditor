@@ -70,44 +70,17 @@ class Panelling_Bezier (Panelling_Curve):
 
 
     @override
-    def _get_u (self, nPanels_per_side) -> np.ndarray:
+    def _get_u (self, nPanels_per_side, curve=None) -> np.ndarray:
         """ 
-        returns numpy array of u having an adapted panel distribution for one curve based side  
+        returns numpy array of u having arc-length based cosine distribution for one curve side  
             - running from 0..1
-            - having nPanels+1 points        
+            - having nPanels+1 points
         """
 
-        nPoints  = nPanels_per_side + 1
-        le_bunch = self.le_bunch                    # bunch 0..1 
-        te_bunch = self.te_bunch
+        nPoints = nPanels_per_side + 1
 
-        # map bunch 0..1 to exponent
-        # t^α with α>1 bunches near u=0 (LE); 1-(1-t)^α with α>1 bunches near u=1 (TE)
-
-        # as b_spline already bunches naturally at the leading edge, 
-        # we want to have a smaller effect of bunching there and 
-        # a stronger effect at the trailing edge where the b_spline does not bunch naturally
-        le_exponent = 1.0 + le_bunch * 0.15        # 1.0 (no bunch) ... 1.12 (max)
-        te_exponent = 1.0 + te_bunch * 0.45        # 1.0 (no bunch) ... 1.45 (max)
-
-        u = np.linspace(0.0, 1.0, nPoints)
-
-        if le_exponent != 1.0:
-            u = u ** le_exponent
-
-        if te_exponent != 1.0:
-            u = 1.0 - (1.0 - u) ** te_exponent
-
-        u[0]  = 0.0
-        u[-1] = 1.0
-
-        return u 
-
-
-# -----------------------------------------------------------------------------
-#  Curvature  
-# -----------------------------------------------------------------------------
-
+        u_cos = self._cosine_distribution (nPoints, self.le_bunch, self.te_bunch)
+        return self._u_of_arc_fractions(curve, u_cos)
 
 
 # -----------------------------------------------------------------------------
@@ -205,7 +178,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         if self._u is None:
             panelling = Panelling_Bezier()
             nPanels = panelling.nPanels_default_of (self.type)
-            self._u = panelling._get_u (nPanels)
+            self._u = panelling._get_u (nPanels, curve=self.curve)
         return self._u
     
     

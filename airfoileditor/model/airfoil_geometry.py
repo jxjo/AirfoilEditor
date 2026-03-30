@@ -174,6 +174,36 @@ class Panelling_Abstract:
         self.__class__._te_bunch = self.te_bunch
 
 
+    def _cosine_distribution (self, nPoints: int,
+                               le_bunch: float,
+                               te_bunch: float) -> np.ndarray:
+        """
+        Returns a cosine-based distribution array of length nPoints over [0, 1].
+
+        Bunching near LE is controlled by le_bunch, bunching near TE by te_bunch.
+        Used by Panelling_Spline directly as u, and by curve-based pannelling
+        (Bezier, B-Spline) as arc-length fractions that are subsequently mapped
+        to curve parameter u via arc-length inversion.
+        """
+
+        ufacStart = 0.1 - le_bunch * 0.1            # 0.1 (no bunch) ... 0.0 (max LE bunch)
+        ufacStart = np.clip(ufacStart, 0.0, 0.5)
+        ufacEnd   = 0.65
+
+        beta = np.linspace(ufacStart, ufacEnd, nPoints) * np.pi
+        u    = (1.0 - np.cos(beta)) * 0.5
+        u    = u - u[0]                              # shift so first point is exactly 0
+        u    = u / u[-1]                             # normalize to 0..1
+
+        if te_bunch > 0:
+            te_exponent = 1.0 + te_bunch * 0.15     # 1.0 (no bunch) ... ~1.15 (max)
+            u = 1.0 - (1.0 - u) ** te_exponent
+
+        u[0]  = 0.0
+        u[-1] = 1.0
+        return u
+
+
     def _get_u (self, nPanels_per_side) -> np.ndarray:
         """ 
         returns numpy array of u for one side 
@@ -235,35 +265,7 @@ class Panelling_Spline (Panelling_Abstract):
             - running from 0..1
             - having nPanels+1 points 
         """
-        nPoints  = nPanels_per_side + 1
-        le_bunch = self.le_bunch
-        te_bunch = self.te_bunch
-
-        # cosine LE bunching:
-        # ufacStart=0.0 → beta starts at 0 → zero slope at LE → maximum bunching
-        # ufacStart=0.5 → beta starts at π/2 → cosine is near-linear → near-uniform
-        # le_bunch=0 → ufacStart=0.5 (uniform); le_bunch=1 → ufacStart=0.0 (max bunch)
-
-        ufacStart = 0.1 - le_bunch * 0.1           # original mapping: 0.1 (no bunch) ... 0.0 (max)
-        ufacStart = np.clip(ufacStart, 0.0, 0.5)
-        ufacEnd   = 0.65
-
-        beta = np.linspace(ufacStart, ufacEnd, nPoints) * np.pi
-        u    = (1.0 - np.cos(beta)) * 0.5
-        u    = u - u[0]                             # shift so first point is exactly 0
-        u    = u / u[-1]                            # normalize to 0..1
-
-        # trailing edge - power-law bunching on top of cosine LE distribution
-        # te_bunch=0 → exponent=1.0 → identity → uniform TE spacing
-
-        if te_bunch > 0:
-            te_exponent = 1.0 + te_bunch * 0.15    # 1.0 (no bunch) ... ~1.20 (max)
-            u = 1.0 - (1.0 - u) ** te_exponent
-
-        u[0]  = 0.0
-        u[-1] = 1.0
-
-        return u
+        return self._cosine_distribution (nPanels_per_side + 1, self.le_bunch, self.te_bunch)
 
 
     def new_u (self, 

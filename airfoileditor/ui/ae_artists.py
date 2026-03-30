@@ -699,10 +699,15 @@ class Airfoil_Artist (Artist):
 
                 pen = pg.mkPen(color, width=width)
 
-                sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
-                s = 'o' if self.show_points else None 
-
                 x,y = airfoil.geo.x, airfoil.geo.y 
+
+                # optional symbol for points
+
+                if airfoil.usedAsDesign:
+                    sPen, sBrush, sSize = pg.mkPen(color, width=1.5), 'black', 9
+                else:
+                    sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
+                s = 'o' if self.show_points else None 
 
                 # apply optional scale value for reference airfoils 
 

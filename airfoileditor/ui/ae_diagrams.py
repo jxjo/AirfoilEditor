@@ -693,9 +693,10 @@ class Item_Airfoil (Diagram_Item):
             if artist.show: artist.set_show (False)
 
         # switch on show points
-        artist : Airfoil_Artist
-        for artist in self._get_artist (Airfoil_Artist):
-            artist.set_show_points (is_paneling)
+        if is_paneling:
+            artist : Airfoil_Artist
+            for artist in self._get_artist (Airfoil_Artist):
+                artist.set_show_points (True)
 
     def _on_curve_changed (self, side_type : Line.Type):
         """ slot to handle curve of airfoil changed signal """
