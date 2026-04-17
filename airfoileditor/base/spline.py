@@ -752,13 +752,14 @@ class Bezier:
         return self._u is not None 
 
 
-    def eval (self, u, der=0):
+    def eval (self, u, der=0, update_cache=True):
         """
         Evaluate the curve or one of its derivatives.
 
         Args:
             u: Scalar or array of parameter values in ``[0, 1]``.
             der: Derivative order ``0``, ``1``, or ``2``.
+            update_cache: Whether to update the cache with the evaluated values.
 
         Returns:
             tuple[float, float] | tuple[np.ndarray, np.ndarray]: Evaluated x and y values.
@@ -781,7 +782,7 @@ class Bezier:
             x = self._eval_1D (self._cpx, u, der=der)   # recalc 
             y = self._eval_1D (self._cpy, u, der=der)
 
-            if not np.isscalar(u):
+            if not np.isscalar(u) and update_cache:
                 self._clear_cache()  # clear cache if u is array and thus not reusable for other calls
                 self._u = u 
                 if der == 0:         # cache result for der=0 if u is array

@@ -17,7 +17,8 @@ from .base.math_util                import nelder_mead, derivative1
 from .base.spline                   import Bezier
 from .base.widgets                  import style 
 from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline
-from .model.airfoil_geometry        import Line, Geometry_Splined
+from .model.geometry                import Line
+from .model.geometry_spline         import Geometry_Splined
 from .model.geometry_curve          import BSpline, Side_Airfoil_Curve, Geometry_Curve
 from .model.geometry_bezier         import Side_Airfoil_Bezier
 from .model.geometry_bspline        import Side_Airfoil_BSpline
@@ -35,8 +36,8 @@ class Matcher_Base (QThread):
     sig_pass_start      = pyqtSignal (int, int)         # ipass, new ncp
     sig_finished        = pyqtSignal(object)            # final Match_Result (is_optimized=True)
 
-    NCP_AUTO_RANGE = (4, 8)                             # range of ncp for auto mode 
-    STEP_SIZE = 0.25                                    # initial step size for nelder mead
+    NCP_AUTO_RANGE = (None, None)                       # range of ncp for auto mode - to be overridden in child classes
+    STEP_SIZE = None                                    # initial step size for nelder mead - to be overridden in child classes
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -145,7 +146,9 @@ class Matcher_Base (QThread):
         return penalty
 
 
-    def _penalty_te_curv (self, curv_te : float, max_curv_te: float,
+    def _penalty_te_curv (self, curv_te : float, 
+                          max_curv_te: float,
+                          max_reversals: int,
                           threshold: float = 0.01,
                           scale: float = 0.01) -> float:
         """ 
@@ -161,6 +164,9 @@ class Matcher_Base (QThread):
             float: Trailing-edge curvature penalty contribution.
         """
 
+        # sign of max_curv_te depends on reversals 
+        max_curv_te = abs(max_curv_te) * (-1) ** max_reversals   # if max_reversals is odd, max_curv_te is negative; if even, positive (or zero)
+
         # Define the allowed range: between 0.0 and max_curv_te
         min_allowed = min(0.0, max_curv_te)
         max_allowed = max(0.0, max_curv_te)
@@ -173,7 +179,7 @@ class Matcher_Base (QThread):
             penalty = (abs(curv_te - max_allowed) - threshold) * scale
 
         # if penalty > 0.0:
-        #     print (f"curv_te: {curv_te:.3f}   penalty: {penalty:.5f}")
+        #     print (f"curv_te: {curv_te:.3f}  min_allowed: {min_allowed:.3f}  max_allowed: {max_allowed:.3f}  penalty: {penalty:.5f}")
         return penalty
 
 
@@ -294,6 +300,8 @@ class Matcher_Base (QThread):
         cp_y[1] = sign * self._y1_from_curvature (self._targets.le_curvature, self._curve, cp_x[2])    # negative for lower side
 
         self._curve.set_cpoints (cp_x, cp_y)
+        # Note: _u (panel distribution) is NOT reset here for performance - it's set once per optimization pass
+        # and stays fixed. Arc-length recalculation on every objective evaluation would be too expensive.
 
 
     def _result_is_good_enough (self) -> bool:
@@ -343,14 +351,16 @@ class Matcher_Base (QThread):
         if targets.max_te_curvature is not None:
             penalty_te_curv = self._penalty_te_curv (curv[-1], 
                                         targets.max_te_curvature, 
+                                        targets.max_nreversals,
                                         threshold = 0.01, 
-                                        scale     = 0.01)
+                                        scale     = 0.02)
         else:
             penalty_te_curv = 0.0
 
         # -- penalty for curvature derivative to avoid bumps 
 
         if targets.bump_control:
+
             no_revers = targets.max_nreversals == 0
             penalty_curv_deriv = self._penalty_curv_deriv (x, curv,
                                         region    = (0.3, 0.8) if no_revers else (0.3, 0.7),
@@ -532,7 +542,7 @@ class Matcher_Base (QThread):
 class Matcher_Bezier (Matcher_Base):
     """Matcher worker specialized for Bezier airfoil-side curves."""
 
-    NCP_AUTO_RANGE = (4, 8)                             # range of ncp for auto mode 
+    NCP_AUTO_RANGE = (5, 8)                             # range of ncp for auto mode 
     STEP_SIZE = 0.10                                    # initial step size for nelder mead
 
 
@@ -741,9 +751,14 @@ class Match_Result:
     @property
     def style_curv_te(self) -> style:
         """UI style for this result's TE curvature."""
-        min_allowed = min(0.0, self._targets.max_te_curvature)
-        max_allowed = max(0.0, self._targets.max_te_curvature)
-        
+
+        # sign of max_curv_te depends on reversals
+        # if max_reversals is odd, max_curv_te is negative; if even, positive (or zero) 
+        max_curv_te = abs(self._targets.max_te_curvature) * (-1) ** self._targets.max_nreversals  
+
+        min_allowed = min(0.0, max_curv_te)
+        max_allowed = max(0.0, max_curv_te)
+
         delta = 0.0
         if self._te_curvature < min_allowed:
             delta = abs(self._te_curvature - min_allowed) 

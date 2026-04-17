@@ -18,7 +18,7 @@ from ..base.widgets             import *
 from ..base.panels              import Edit_Panel
 
 from ..model.airfoil            import Airfoil
-from ..model.airfoil_geometry   import Geometry, Curvature_Abstract, Line 
+from ..model.geometry   import Geometry, Curvature_Abstract, Line 
 from ..model.geometry_curve     import Geometry_Curve, Side_Airfoil_Curve, Deviation_Line
 from ..model.case               import Case_Abstract, Case_Direct_Design, Case_Match_Target, Match_Targets
 from ..model.xo2_driver         import Xoptfoil2

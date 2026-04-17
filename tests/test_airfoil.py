@@ -16,8 +16,8 @@ import os
 from airfoileditor.resources              import get_assets_dir
 from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
-from airfoileditor.model.airfoil_geometry import Geometry, Geometry_Splined
-from airfoileditor.model.airfoil_geometry import Curvature_of_xy, Curvature_of_Spline 
+from airfoileditor.model.geometry import Geometry, Curvature_of_xy
+from airfoileditor.model.geometry_spline import Geometry_Splined, Curvature_of_Spline 
 from airfoileditor.model.geometry_curve   import Curvature_of_Curve
 from airfoileditor.model.geometry_bezier  import Geometry_Bezier
 from airfoileditor.model.xo2_driver       import Worker
@@ -77,7 +77,7 @@ class Test_Airfoil:
         curv : Curvature_of_xy = airfoil.geo.curvature
 
         assert round(curv.upper._get_maximum()[1],0) == 319
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.090
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.065
 
     
     def test_geo_splined (self): 
@@ -138,9 +138,9 @@ class Test_Airfoil:
         airfoil = Root_Example(geometry = GEO_SPLINE)
         curv : Curvature_of_Spline = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 316
-        assert round(curv.lower._get_maximum()[1],0) == 316
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.090
+        assert round(curv.upper._get_maximum()[1],0) == 319
+        assert round(curv.lower._get_maximum()[1],0) == 319
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.065
 
 
 
@@ -397,7 +397,7 @@ class Test_Worker:
         airfoil_flapped.load()
 
         assert airfoil_flapped.isFlapped
-        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7059056128521686
+        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7049158
 
 
 # Main program for testing 

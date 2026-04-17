@@ -18,7 +18,8 @@ from ..base.widgets             import *
 from ..base.panels              import Dialog
 from ..base.diagram             import Diagram, Diagram_Item
 from ..model.airfoil            import Airfoil, Flap_Setter
-from ..model.airfoil_geometry   import Geometry, Geometry_Splined, Panelling_Spline
+from ..model.geometry           import Geometry, Panelling
+from ..model.geometry_spline    import Geometry_Splined, Panelling_Spline
 from ..model.case               import Match_Targets
 
 from .ae_widgets                import Airfoil_Select_Open_Widget
@@ -234,15 +235,15 @@ class Repanel_Airfoil_Dialog (Dialog):
 
         r += 1
         FieldF (l,r,0, width=60, step=0.02, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch,
+                        obj=self.geo.panelling, prop=Panelling.le_bunch,
                         style=self._le_bunch_style)
         Slider (l,r,1, width=100, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch)
+                        obj=self.geo.panelling, prop=Panelling.le_bunch)
 
         Slider (l,r,3, width=100, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
+                        obj=self.geo.panelling, prop=Panelling.te_bunch)
         FieldF (l,r,4, width=60, step=0.02, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
+                        obj=self.geo.panelling, prop=Panelling.te_bunch)
         r += 1
         Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)  
         l.setColumnStretch (5,1)      

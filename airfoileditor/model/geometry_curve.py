@@ -16,7 +16,7 @@ from timeit                 import default_timer as timer
 from ..base.math_util       import * 
 from ..base.spline          import Bezier, BSpline
 
-from .airfoil_geometry      import (Geometry, Line, Panelling_Abstract, Curvature_Abstract)
+from .geometry      import (Geometry, Line, Panelling, Curvature_Abstract)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -26,48 +26,6 @@ logger.setLevel(logging.DEBUG)
 # -----------------------------------------------------------------------------
 #  Panel Distribution  
 # -----------------------------------------------------------------------------
-
-class Panelling_Curve (Panelling_Abstract):
-    """
-    Helper class which represents the target panel distribution of a curve based airfoil 
-
-    Calculates new panel distribution u for an airfoil side (Bezier or B-Spline curve)  
-    """ 
-
-    @override
-    def _get_u (self, nPanels_per_side, curve=None) -> np.ndarray:
-        """ 
-        returns numpy array of u having an adapted panel distribution for one curve based side  
-            - running from 0..1
-            - having nPanels+1 points
-            - when 'curve' is provided, applies cosine distribution in arc-length space
-              (decouples point spacing from curve curvature, same concept as cubic spline)
-        """
-
-        # must be implemented in the specific curve based panelling class (Bezier or B-Spline)
-        raise NotImplementedError
-
-
-    @staticmethod
-    def _u_of_arc_fractions (curve, arc_fractions: np.ndarray) -> np.ndarray:
-        """
-        Maps target arc-length fractions [0,1] back to curve parameter u [0,1].
-
-        Samples the curve densely with uniform u, computes cumulative arc length,
-        then uses linear interpolation to invert the arc-length → u mapping.
-        This allows any desired distribution in arc-length space to be expressed
-        as the corresponding curve parameter values.
-        """
-        u_dense = np.linspace(0.0, 1.0, 1000)
-        x_d, y_d = curve.eval(u_dense)
-        ds = np.sqrt(np.diff(x_d)**2 + np.diff(y_d)**2)
-        s  = np.concatenate([[0.0], np.cumsum(ds)])
-        s /= s[-1]                                      # normalize to 0..1
-        u = np.interp(arc_fractions, s, u_dense)
-        u[0]  = 0.0                                     # ensure exact endpoints
-        u[-1] = 1.0
-        return u
-
 
 # -----------------------------------------------------------------------------
 #  Curvature  
@@ -138,7 +96,14 @@ class Side_Airfoil_Curve (Line):
 
 
         self._curve = None                          # curve object of self (Bezier or B-Spline)
-        self._u = None                              # panel distribution of self - equals curve parameter u of Bezier or B-Spline
+        
+        # Panel distribution state - owned by side
+        self._nPanels = None                        # per-side number of panels
+        self._le_bunch = Panelling.LE_BUNCH_DEFAULT
+        self._te_bunch = Panelling.TE_BUNCH_DEFAULT
+        self._u = None                              # cached panel distribution
+        self._u_cpoints_hash = None                 # hash of control points when u was calculated
+        
         self._target_deviation = None               # deviation to target side for fitting - will be
 
 
@@ -157,16 +122,80 @@ class Side_Airfoil_Curve (Line):
         raise NotImplementedError
 
 
+    def set_panelling(self, nPanels: int, le_bunch: float = None, te_bunch: float = None):
+        """
+        Set panel distribution parameters for this side.
+        Called by geometry when repaneling, pushes new parameters from geometry to side.
+        
+        Args:
+            nPanels: Number of panels for this side (per-side count, not total)
+            le_bunch: Leading edge bunching factor (optional, keeps current if None)
+            te_bunch: Trailing edge bunching factor (optional, keeps current if None)
+        """
+        self._nPanels = nPanels
+        if le_bunch is not None:
+            self._le_bunch = le_bunch
+        if te_bunch is not None:
+            self._te_bunch = te_bunch
+
+
     @property
     def u (self ) -> list [float]:
-        """ Bezier panel distribution equals curve parameter u of Bezier"""
-        # has to be implemented in the specific curve based side class (Bezier or B-Spline)
-        raise NotImplementedError    
+        """ 
+        Panel distribution as curve parameter u values.
+        Computed on demand with automatic hash-based invalidation on control point or panelling parameter changes.
+        """
+        if self._nPanels is None:
+            raise ValueError(f"{self}: nPanels not set - call set_panelling first")
+        
+        # Check if recalculation needed
+        if self._u is None or self._u_cpoints_hash != self._compute_panelling_hash():
+            self._u = self._get_u(self._nPanels, self.curve, self._le_bunch, self._te_bunch)
+            self._u_cpoints_hash = self._compute_panelling_hash()
+            
+        return self._u
 
 
-    def set_panel_distribution  (self, u_new : int ):
-        """ set new Bezier panel distribution"""
-        self._u = u_new
+    def _compute_panelling_hash(self) -> int:
+        """Compute hash of all parameters that affect panel distribution."""
+        return hash((
+            tuple(float(v) for cp in self.curve.cpoints for v in cp),
+            self._nPanels,
+            self._le_bunch,
+            self._te_bunch
+        ))
+
+
+    def _get_u (self, nPanels_per_side: int, curve, le_bunch: float, te_bunch: float) -> np.ndarray:
+        """ 
+        Returns numpy array of u having an adapted panel distribution for one curve based side.
+        Must be implemented in subclass (Side_Airfoil_Bezier or Side_Airfoil_BSpline).
+            - running from 0..1
+            - having nPanels+1 points
+            - applies cosine distribution in arc-length space
+        """
+        raise NotImplementedError
+
+
+    @staticmethod
+    def _u_of_arc_fractions (curve, arc_fractions: np.ndarray) -> np.ndarray:
+        """
+        Maps target arc-length fractions [0,1] back to curve parameter u [0,1].
+
+        Samples the curve densely with uniform u, computes cumulative arc length,
+        then uses linear interpolation to invert the arc-length → u mapping.
+        This allows any desired distribution in arc-length space to be expressed
+        as the corresponding curve parameter values.
+        """
+        u_dense = np.linspace(0.0, 1.0, 1000)
+        x_d, y_d = curve.eval (u_dense,update_cache=False)  # get dense points on curve
+        ds = np.sqrt(np.diff(x_d)**2 + np.diff(y_d)**2)
+        s  = np.concatenate([[0.0], np.cumsum(ds)])
+        s /= s[-1]                                      # normalize to 0..1
+        u = np.interp(arc_fractions, s, u_dense)
+        u[0]  = 0.0                                     # ensure exact endpoints
+        u[-1] = 1.0
+        return u    
 
 
     @property
@@ -320,7 +349,7 @@ class Side_Airfoil_Curve (Line):
             x = max (x, 0.01)       
             x = min (x, 0.99)
 
-        self.curve.set_cpoint (index, x,y) 
+        self.curve.set_cpoint (index, x,y)
 
         return x, y 
 
@@ -335,9 +364,6 @@ class Side_Airfoil_Curve (Line):
         cpx = self.curve.cpoints_x
         self.curve.set_cpoint (-1, cpx[-1], y) 
 
-
-# -----------------------------------------------------------------------------
-#  Deviation Line of a Side_Curve to a target x,y line  
 # -----------------------------------------------------------------------------
 
 
@@ -667,7 +693,7 @@ class Geometry_Curve (Geometry):
 
     @override
     @property 
-    def panelling (self) -> Panelling_Curve:
+    def panelling (self) -> Panelling:
         """ returns the target panel distribution / helper """
         raise NotImplementedError    # has to be implemented in Bezier or B-Spline
     
@@ -698,13 +724,16 @@ class Geometry_Curve (Geometry):
         """
 
         nPanels   = nPanels if nPanels is not None else self.panelling.nPanels
-        nPan_upper = self.panelling.nPanels_upper (nPanels)
-        nPan_lower = self.panelling.nPanels_lower (nPanels)
+        logger.debug (f"{self} _repanel {nPanels}")
 
-        logger.debug (f"{self.panelling} _repanel {nPan_upper} {nPan_lower}")
-
-        self.upper.set_panel_distribution (self.panelling._get_u (nPan_upper, curve=self.upper.curve))
-        self.lower.set_panel_distribution (self.panelling._get_u (nPan_lower, curve=self.lower.curve))
+        # Calculate per-side panel counts
+        nPanels_upper = Panelling.nPanels_for(Line.Type.UPPER, nPanels)
+        nPanels_lower = Panelling.nPanels_for(Line.Type.LOWER, nPanels)
+        
+        # Update panelling parameters on both sides
+        # Pass bunching parameters from geometry's panelling settings
+        self.upper.set_panelling(nPanels_upper, self.panelling.le_bunch, self.panelling.te_bunch)
+        self.lower.set_panelling(nPanels_lower, self.panelling.le_bunch, self.panelling.te_bunch)
 
         return True
 

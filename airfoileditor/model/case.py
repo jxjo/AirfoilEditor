@@ -12,7 +12,8 @@ from pathlib                import Path
 from typing                 import override, Type
 
 from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, GEO_SPLINE, usedAs
-from .airfoil_geometry      import Line, Geometry_Splined
+from .geometry              import Line
+from .geometry_spline       import Geometry_Splined
 from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
 
 from .xo2_input             import Input_File
@@ -512,8 +513,8 @@ class Match_Targets:
     def set_side             (self, side: Line): self._side = side
     def set_ncp              (self, ncp : int): self._ncp = ncp
     def set_ncp_auto         (self, auto : bool): self._ncp_auto = auto
-    def set_le_curvature     (self, val : float): self._le_curvature     = val
-    def set_max_te_curvature (self, val : float): self._max_te_curvature = val
+    def set_le_curvature     (self, val : float): self._le_curvature     = abs(val)
+    def set_max_te_curvature (self, val : float): self._max_te_curvature = abs(val)
     def set_max_nreversals   (self, val : int  ): 
         self._max_nreversals    = val
         self._max_te_curvature = self._get_max_te_curvature(val)
@@ -522,8 +523,9 @@ class Match_Targets:
 
     def _get_max_te_curvature(self, nreversals: int) -> float:
         """ 
-        calc max_te_curvature depending on number of reversals 
+        calc abs max_te_curvature depending on number of reversals 
         - if there shall be no reversal, only small curvature at TE is allowed, otherwise it can be higher
+        - sign of value will be fixed in matcher depending on reversals and side
         """
 
         if nreversals == 0:
@@ -531,7 +533,7 @@ class Match_Targets:
             te_curvature += 0.1                                 # allow some tolerance  
             return np.clip (te_curvature, 0.1, 1.0)             # clip to accetable range
         else:
-            return -2.0
+            return 2.0
 
 
 

@@ -21,8 +21,8 @@ import numpy as np
 from ..base.common_utils    import fromDict, toDict, clip 
 from ..base.spline          import HicksHenne
 
-from .airfoil_geometry      import (Geometry_Splined, Geometry,
-                                    Line, GeometryException, Panelling_Spline)
+from .geometry      import (Geometry, Line, GeometryException)
+from .geometry_spline       import Geometry_Splined, Panelling_Spline
 from .geometry_hicks_henne  import Geometry_HicksHenne
 
 from .geometry_curve        import Geometry_Curve

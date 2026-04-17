@@ -13,7 +13,7 @@ from ..base.artist              import *
 from ..base.spline              import Bezier, HicksHenne, BSpline
 
 from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline, usedAs, Geometry, Flap_Setter
-from ..model.airfoil_geometry   import Line, Panelling_Abstract
+from ..model.geometry   import Line, Panelling
 from ..model.geometry_bezier    import Geometry_Bezier,  Side_Airfoil_Bezier
 from ..model.geometry_bspline   import Geometry_BSpline, Side_Airfoil_BSpline
 from ..model.geometry_hicks_henne import Side_Airfoil_HicksHenne
@@ -406,8 +406,8 @@ class Movable_Side_Bezier (Movable_Curve):
     @property
     def u (self) -> list:
         """ the Bezier parameter  """
-        # here - take Bezier of the 'side' 
-        return self._side._u
+        # here - take from the 'side' property which delegates to panelling
+        return self._side.u
 
 
     def refresh (self):
@@ -514,8 +514,8 @@ class Movable_Side_BSpline (Movable_Curve):
     @property
     def u (self) -> list:
         """ the BSpline parameter  """
-        # here - take BSpline of the 'side' 
-        return self._side._u
+        # here - take from the 'side' property which delegates to panelling
+        return self._side.u
 
 
     def refresh (self):
@@ -1546,11 +1546,13 @@ class Panelling_Du_Artist (Artist):
 
     def _plot (self):
 
-        panelling : Panelling_Abstract = self.data_object
+        panelling : Panelling = self.data_object
         if panelling is None: return
 
         n = max (panelling.nPanels // 2, 10)
-        u  = panelling._get_u (n)
+        nPoints = n + 1
+        # Use cosine distribution directly (no arc-length mapping needed for visualization)
+        u  = panelling._cosine_distribution(nPoints, panelling.le_bunch, panelling.te_bunch)
         du = np.diff (u) * n                    # normalised: uniform → 1.0
 
         pen = pg.mkPen (QColor('dodgerblue'), width=1.0)

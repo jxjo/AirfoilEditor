@@ -18,9 +18,10 @@ from ..base.common_utils    import toDict, fromDict
 from ..base.math_util       import * 
 from ..base.spline          import BSpline
 
-from .airfoil_geometry      import Line
-from .geometry_curve        import (Panelling_Curve, Geometry_Curve, Side_Airfoil_Curve,
+from .geometry      import Line
+from .geometry_curve        import (Geometry_Curve, Side_Airfoil_Curve,
                                     Deviation_Line)
+from .geometry      import Panelling
 
 import logging
 logger = logging.getLogger(__name__)
@@ -31,11 +32,10 @@ logger.setLevel(logging.DEBUG)
 #  Panel Distribution  
 # -----------------------------------------------------------------------------
 
-class Panelling_BSpline (Panelling_Curve):
+class Panelling_BSpline (Panelling):
     """
-    Helper class which represents the target panel distribution of a B-Spline based airfoil 
-
-    Calculates new panel distribution u for an airfoil side (B-Spline curve)  
+    Helper class which represents the target panel distribution of a B-Spline based airfoil.
+    Stores parameters and handles serialization.
     """ 
 
     @classmethod    
@@ -70,20 +70,6 @@ class Panelling_BSpline (Panelling_Curve):
             cls._le_bunch = d["bspline_le_bunch"]
         if "bspline_te_bunch" in d:
             cls._te_bunch = d["bspline_te_bunch"]
-
-
-    @override
-    def _get_u (self, nPanels_per_side, curve=None) -> np.ndarray:
-        """ 
-        returns numpy array of u having arc-length based cosine distribution for one curve side  
-            - running from 0..1
-            - having nPanels+1 points
-        """
-
-        nPoints = nPanels_per_side + 1
-
-        u_cos = self._cosine_distribution (nPoints, self.le_bunch, self.te_bunch)
-        return self._u_of_arc_fractions(curve, u_cos)
 
 
 # -----------------------------------------------------------------------------
@@ -121,8 +107,19 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
 
         self._curve = BSpline(cpx_or_cp, cpy, degree=degree, knots=knots)  
 
-        # panel distribution for this side will be based on nPanels default of airfoil 
-        self._u         = None
+        # Auto-detect side type from control points if not already set
+        # and initialize _nPanels with default value
+        if self.type is None:
+            # Auto-detect: positive y → UPPER, negative y → LOWER
+            cpy_vals = self._curve.cpoints_y
+            self._linetype = Line.Type.UPPER if cpy_vals[1] > 0 else Line.Type.LOWER
+        
+        # Initialize nPanels to default per-side value based on type
+        self._nPanels = Panelling.nPanels_for(self.type)
+
+        # lazy filling B-Spline cached values for x,y
+        if not self._curve.has_u:
+            self._curve.eval(self.u)
 
         # for fitting - store target coordinates to fit to - used for curvature comb and error calculation
         self._target_side : Line = None
@@ -199,15 +196,21 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         """ returns the B-Spline object of self"""
         return self._curve 
 
+
     @override
-    @property
-    def u (self ) -> list [float]:
-        """ B-Spline panel distribution equals curve parameter u of B-Spline"""
-        if self._u is None:
-            panelling = Panelling_BSpline()
-            nPanels = panelling.nPanels_default_of (self.type)
-            self._u = panelling._get_u (nPanels, curve=self.curve)
-        return self._u
+    def _get_u (self, nPanels_per_side: int, curve: BSpline, le_bunch: float, te_bunch: float) -> np.ndarray:
+        """ 
+        Returns numpy array of u having arc-length based cosine distribution for B-Spline curve.
+            - running from 0..1
+            - having nPanels+1 points
+        """
+        nPoints = nPanels_per_side + 1
+
+        # Get cosine distribution in arc-length space
+        u_cos = Panelling._cosine_distribution(nPoints, le_bunch, te_bunch)
+        
+        # Map to curve parameter space via arc-length inversion
+        return self._u_of_arc_fractions(curve, u_cos)
 
 
     @override

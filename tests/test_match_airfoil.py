@@ -9,9 +9,9 @@ import pytest
 from airfoileditor.match_runner         import Match_Airfoil, Match_Result, Matcher_Bezier, Matcher_BSpline
 from airfoileditor.model.airfoil        import Airfoil, Airfoil_Bezier, Airfoil_BSpline
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
-from airfoileditor.model.airfoil_geometry import Geometry_Splined
+from airfoileditor.model.geometry_spline import Geometry_Splined
 from airfoileditor.model.case           import Match_Targets
-from airfoileditor.model.airfoil_geometry import Line
+from airfoileditor.model.geometry import Line
 from airfoileditor.base.widgets         import style
 
 

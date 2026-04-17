@@ -14,7 +14,7 @@ import numpy as np
 from ..base.math_util       import * 
 from ..base.spline          import HicksHenne
 
-from .airfoil_geometry      import Geometry, Line
+from .geometry      import Geometry, Line
 
 import logging
 logger = logging.getLogger(__name__)

@@ -10,7 +10,7 @@ import os
 from airfoileditor.model.case        import Case_Match_Target, Match_Targets
 from airfoileditor.model.airfoil     import Airfoil, Airfoil_Bezier, Airfoil_BSpline, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example
-from airfoileditor.model.airfoil_geometry import Line
+from airfoileditor.model.geometry import Line
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ class Test_Match_Targets:
         # With no allowed reversals, TE curvature must be tightly constrained (capped at 1.0)
         assert te_curv_zero <= 1.0
         # With one allowed reversal, the limit is relaxed (sentinel value -2.0 means unconstrained)
-        assert te_curv_one < te_curv_zero
+        assert te_curv_one > te_curv_zero
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -29,7 +29,8 @@ from .base.app_utils         import Settings
 # --- the real model imports
 from .model.airfoil          import Airfoil, usedAs
 from .model.airfoil_examples import Example
-from .model.airfoil_geometry import Panelling_Spline, Line
+from .model.geometry import Line
+from .model.geometry_spline  import Panelling_Spline
 from .model.geometry_bezier  import Panelling_Bezier
 from .model.geometry_bspline import Panelling_BSpline
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
