@@ -145,27 +145,33 @@ class Curvature_of_Spline (Curvature_Abstract):
     Curvature of geometry spline - - using existing spline for evaluation
     """
 
-    def __init__ (self, spline: Spline2D, uLe: float):
+    def __init__ (self, spline: Spline2D):
         super().__init__()
 
-        # high res repanelling for curvature evaluation
+        # curvature of a cubic spline is exactly linear between knots,
+        # so one midpoint per interval is sufficient to capture all kinks (C3 discontinuities at knots)
 
-        # u = Panelling_Spline(nPanels=400, le_bunch=0.98).new_u (spline.u, 0, uLe_target=uLe)
-        u = spline.u
+        u_in    = spline.u
+        u_mid   = (u_in[:-1] + u_in[1:]) / 2                        # midpoints between consecutive u values
+        u       = np.empty(len(u_in) + len(u_mid))
+        u[0::2] = u_in
+        u[1::2] = u_mid
 
-        iLe = int(np.argmin(np.abs(u - uLe)))
-        self._iLe = iLe
-        self._values = spline.curvature (u) 
+        # new evaluation of spline
+
+        x, y = spline.eval (u)
+        iLe  = int(np.argmin (x))
+        curv = spline.curvature (u) 
 
         # split curvature spline in upper and lower 
-        x, y    = spline.eval (u)
 
-        self._upper = Line (np.flip(x[: iLe+1]), np.flip(self._values [: iLe+1]), 
-                            linetype=Line.Type.UPPER )
-        self._lower = Line (x[iLe: ], self._values [iLe: ],                       
-                            linetype=Line.Type.LOWER )
+        self._upper  = Line (np.flip(x[: iLe+1]), np.flip(curv[: iLe+1]), linetype=Line.Type.UPPER )
+        self._lower  = Line (x[iLe: ], curv [iLe: ], linetype=Line.Type.LOWER )
+        self._values = curv
+        self._iLe    = iLe
 
         # for curvature comb
+
         self._upper_side = Line (np.flip(x[: iLe+1]), np.flip(y [: iLe+1]), linetype=Line.Type.UPPER )
         self._lower_side = Line (x[iLe: ], y [iLe: ], linetype=Line.Type.LOWER )
 
@@ -174,6 +180,7 @@ class Curvature_of_Spline (Curvature_Abstract):
         self._upper_dy = -np.flip(dy[: iLe+1])
         self._lower_dx = dx[iLe: ]
         self._lower_dy = dy[iLe: ]
+
 
 
 # -----------------------------------------------------------------------------
@@ -302,7 +309,7 @@ class Geometry_Splined (Geometry):
     def curvature (self) -> Curvature_of_Spline: 
         " return the curvature object"
         if self._curvature is None: 
-            self._curvature = Curvature_of_Spline (self.spline, self.uLe)  
+            self._curvature = Curvature_of_Spline (self.spline)  
         return self._curvature 
 
     @property

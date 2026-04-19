@@ -401,7 +401,9 @@ class Deviation_Line (Line):
 
         if u is not None:
             u_mid = (u[:-1] + u[1:]) / 2                        # midpoints between consecutive u values
-            self._u_dense = np.sort(np.concatenate([u, u_mid]))        
+            self._u_dense = np.empty(len(u) + len(u_mid))
+            self._u_dense[0::2] = u
+            self._u_dense[1::2] = u_mid        
 
         # calc deviation to target line 
 

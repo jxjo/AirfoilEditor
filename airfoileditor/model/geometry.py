@@ -32,8 +32,7 @@
             |-- Geometry_BSpline                    - B-Spline based (in geometry_bspline)
 
         Curvature_Abstract    
-            |-- Curvature_of_xy                     - based on x,y coordinates
-            |-- Curvature_of_Spline                 - based on existing spline (in geometry_spline)
+            |-- Curvature_of_Spline                 - based on spline (in geometry_spline)
             |-- Curvature_of_Curve                  - based on Bezier/B-Spline geo upper and lower side 
 
         Side_Airfoil (Line)                         - basic with linear interpolation
@@ -233,8 +232,7 @@ class Curvature_Abstract:
 
     def __init__ (self):
 
-        self._spline : Spline2D = None                  # helper spline for curvature evaluation
-        self._values        = None
+        self._values        = None                  # curvature values at knots 0..npoints    
 
         self._upper         = None                  # upper side curvature as Side_Airfoil
         self._lower         = None                  # lower side curvature as Side_Airfoil
@@ -465,47 +463,6 @@ class Curvature_Abstract:
         nReverse_lower = self.lower.nreversals (x_start=0.5, x_end=0.95)
 
         return nReverse_upper == 0 and nReverse_lower == 1
-
-
-
-class Curvature_of_xy (Curvature_Abstract):
-    """
-    Curvature of (x,y) - using a new cubic spline for evaluation
-    """
-
-    def __init__ (self,  x : np.ndarray, y: np.ndarray):
-        super().__init__()
-
-        spline = Spline2D (x, y)
-
-        # high res repanelling for curvature evaluation
-
-        iLe  = int(np.argmin (x))
-        # uLe  = spline.u[iLe]
-        # u = Panelling_Spline(nPanels=400, le_bunch=0.98).new_u (spline.u, 0, uLe_target=uLe)
-
-        # iLe = int(np.argmin(np.abs(u - uLe)))
-        u = spline.u
-        self._iLe    = iLe
-        self._values = spline.curvature (u) 
-
-        # split curvature spline in upper and lower 
-        x, y    = spline.eval (u)
-
-        self._upper = Line (np.flip(x[: iLe+1]), np.flip(self._values [: iLe+1]), 
-                            linetype=Line.Type.UPPER )
-        self._lower = Line (x[iLe: ], self._values [iLe: ],                       
-                            linetype=Line.Type.LOWER )
-
-        # for curvature comb
-        self._upper_side = Line (np.flip(x[: iLe+1]), np.flip(y [: iLe+1]), linetype=Line.Type.UPPER )
-        self._lower_side = Line (x[iLe: ], y [iLe: ], linetype=Line.Type.LOWER )
-
-        dx, dy  = spline.eval (u, der=1)
-        self._upper_dx = -np.flip(dx[: iLe+1])
-        self._upper_dy = -np.flip(dy[: iLe+1])
-        self._lower_dx = dx[iLe: ]
-        self._lower_dy = dy[iLe: ]
 
 
 
@@ -1439,10 +1396,11 @@ class Geometry ():
 
 
     @property
-    def curvature (self) -> Curvature_of_xy: 
+    def curvature (self) -> Curvature_Abstract: 
         " return the curvature object"
         if self._curvature is None: 
-            self._curvature = Curvature_of_xy (self.x, self.y)  
+            from .geometry_spline import Curvature_of_Spline
+            self._curvature = Curvature_of_Spline (Spline2D (self.x, self.y))  
         return self._curvature 
 
 
@@ -1597,7 +1555,7 @@ class Geometry ():
         x = np.concatenate ((np.flip(self.upper.x), self.lower.x[1:]))
         y = np.concatenate ((np.flip(self.upper.y), self.lower.y[1:]))
 
-        self._curvature = Curvature_of_xy (x, y) 
+        self._curvature = None
 
 
     def set_flapped_data (self, x : np.ndarray, y : np.ndarray, 

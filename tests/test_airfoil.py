@@ -16,8 +16,8 @@ import os
 from airfoileditor.resources              import get_assets_dir
 from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
-from airfoileditor.model.geometry import Geometry, Curvature_of_xy
-from airfoileditor.model.geometry_spline import Geometry_Splined, Curvature_of_Spline 
+from airfoileditor.model.geometry         import Geometry
+from airfoileditor.model.geometry_spline  import Geometry_Splined
 from airfoileditor.model.geometry_curve   import Curvature_of_Curve
 from airfoileditor.model.geometry_bezier  import Geometry_Bezier
 from airfoileditor.model.xo2_driver       import Worker
@@ -74,10 +74,10 @@ class Test_Airfoil:
         # curvature
 
         airfoil = Root_Example(geometry = GEO_BASIC)
-        curv : Curvature_of_xy = airfoil.geo.curvature
+        curv = airfoil.geo.curvature
 
         assert round(curv.upper._get_maximum()[1],0) == 319
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.065
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.086
 
     
     def test_geo_splined (self): 
@@ -136,11 +136,11 @@ class Test_Airfoil:
         # curvature
 
         airfoil = Root_Example(geometry = GEO_SPLINE)
-        curv : Curvature_of_Spline = airfoil.geo.curvature
+        curv = airfoil.geo.curvature
 
         assert round(curv.upper._get_maximum()[1],0) == 319
         assert round(curv.lower._get_maximum()[1],0) == 319
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.065
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.086
 
 
 
