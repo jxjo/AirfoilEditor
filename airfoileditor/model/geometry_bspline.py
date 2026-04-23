@@ -214,7 +214,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
 
 
     @override
-    def re_fit_curve (self, target_side : Line = None, ncp = None): 
+    def re_fit_curve (self, target_side : Line = None, ncp = None, **kwargs): 
         """ re-fit the B-Spline curve to the target coordinates - used after control point changes to update curve"""
 
         if ncp is None:

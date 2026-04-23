@@ -416,7 +416,7 @@ class Matcher_Base (QThread):
 
         # -- reset Bezier to standard start position before each run  
 
-        self._side.re_fit_curve(self._targets.side, self._targets.le_curvature, ncp=ncp)   # reset bezier to standard start position before each run - important for optimization behavior
+        self._side.re_fit_curve(self._targets.side, le_curvature=self._targets.le_curvature, ncp=ncp)   # reset bezier to standard start position before each run - important for optimization behavior
 
         self.sig_pass_start.emit (self._ipass, ncp) # dialog can update UI, new ncp
         self.msleep(10)                             # give parent some time to do updates

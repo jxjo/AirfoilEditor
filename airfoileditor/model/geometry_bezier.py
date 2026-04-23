@@ -273,7 +273,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
     # ------------------
 
     @override
-    def re_fit_curve (self, target_side : Line, le_curvature : float, ncp = None): 
+    def re_fit_curve (self, target_side : Line, le_curvature : float = None, ncp = None): 
         """ re-fit the Bezier curve to the target coordinates - used after control point changes to update curve"""
 
         if ncp is None:
