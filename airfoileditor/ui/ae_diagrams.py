@@ -1122,10 +1122,8 @@ class Item_Curvature (Diagram_Item):
             CheckBox (l,r,c, text="Derivative of curvature", 
                     get=lambda: self.curvature_artist.show_derivative,
                     set=self.curvature_artist.set_show_derivative,
-                    disable=lambda: len(self.airfoils) != 1 and \
-                                    not any (airfoil.usedAsDesign for airfoil in self.airfoils),
                     toolTip="Show the derivative of curvature which amplifies curvature artifacts.<br>"+
-                            "Only active if one airfoil is displayed or Design airfoil is shown.")
+                            "Only for the first airfoil or the Design airfoil.")
             r += 1
             CheckBox (l,r,c, text=f"X axes linked to '{self._desired_xLink_name}'", 
                     get=lambda: self.xLinked, set=self.set_xLinked,

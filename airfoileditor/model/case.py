@@ -447,7 +447,7 @@ class Match_Targets:
         self._min_rms           = min_rms                           # minimze deviation
         self._le_curvature      = le_curvature                      # target curvature at leading edge 
         self._max_nreversals    = np.clip(curvature.nreversals(), 0, 1)     # maximum allowed reversals in curvature
-        self._max_te_curvature  = self._get_max_te_curvature (self._max_nreversals)   # maximum curvature at trailing edge 
+        self._max_te_curvature  = self._get_max_te_curvature (curvature.y, self._max_nreversals)   # maximum curvature at trailing edge 
 
         self._bump_control      = True                              # avoid bumps in curvature
 
@@ -517,11 +517,11 @@ class Match_Targets:
     def set_max_te_curvature (self, val : float): self._max_te_curvature = abs(val)
     def set_max_nreversals   (self, val : int  ): 
         self._max_nreversals    = val
-        self._max_te_curvature = self._get_max_te_curvature(val)
+        self._max_te_curvature = self._get_max_te_curvature(self._curvature.y, val)
     def set_bump_control      (self, val : bool ): self._bump_control = val
 
 
-    def _get_max_te_curvature(self, nreversals: int) -> float:
+    def _get_max_te_curvature(self, curvature: np.ndarray, nreversals: int) -> float:
         """ 
         calc abs max_te_curvature depending on number of reversals 
         - if there shall be no reversal, only small curvature at TE is allowed, otherwise it can be higher
@@ -529,8 +529,7 @@ class Match_Targets:
         """
 
         if nreversals == 0:
-            te_curvature = round(abs(self._curvature.y[-1]),1)
-            te_curvature += 0.1                                 # allow some tolerance  
+            te_curvature = round(abs(curvature[-1]),1)
             return np.clip (te_curvature, 0.1, 1.0)             # clip to accetable range
         else:
             return 2.0

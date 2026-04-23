@@ -655,11 +655,8 @@ class Airfoil_Artist (Artist):
 
         # are there many airfoils - one of them is DESIGN? 
 
-        airfoils_with_design = False 
-        for airfoil in self.airfoils:
-            if airfoil.usedAsDesign:
-                airfoils_with_design = True 
-                break
+        there_is_design = any(a.usedAsDesign for a in self.airfoils) 
+
 
         for iair, airfoil in enumerate (self.airfoils):
             if (airfoil.isLoaded):
@@ -686,7 +683,7 @@ class Airfoil_Artist (Artist):
                     width = 2
                     antialias = True
                     zValue = 5                                      # final top most 
-                elif airfoils_with_design:
+                elif there_is_design:
                     if airfoil.usedAsDesign:
                         width = 2
                         antialias = True
@@ -1293,6 +1290,9 @@ class Curvature_Artist (Artist):
 
     def _plot (self): 
 
+        # Determine which airfoil(s) should show derivative: design airfoil(s) if any, otherwise the first one
+        has_design_airfoil = any(a.usedAsDesign for a in self.airfoils)
+
         for airfoil in self.airfoils:
 
             color = _color_airfoil (self.airfoils, airfoil)
@@ -1317,11 +1317,22 @@ class Curvature_Artist (Artist):
 
                 # plot derivative1 of curvature 
 
-                if self.show_derivative and (len(self.airfoils) == 1 or airfoil.usedAsDesign):
+                should_plot_derivative = (has_design_airfoil and airfoil.usedAsDesign) or \
+                                        (not has_design_airfoil and airfoil == self.airfoils[0])
+                
+                if self.show_derivative and should_plot_derivative:
                     pen = QPen (pen)
                     pen.setColor (color.darker(160))
                     name = f"{side.name} - Derivative"
-                    self._plot_dataItem (x, -derivative1(x,y), name=name, pen=pen)
+                    deriv = -derivative1(x,y)
+                    self._plot_dataItem (x, deriv, name=name, pen=pen)
+
+                    # dev: derivative of derivative 
+                    # deriv2 = - derivative1(x, deriv) / 5  # scale down for better visibility
+                    # name2 = f"{side.name} - 2nd Derivative / 5"
+                    # pen2 = QPen (pen)
+                    # pen2.setColor (QColor("darkorange"))
+                    # self._plot_dataItem (x, deriv2, name=name2, pen=pen2)
 
                 # plot max points at le and te and reversals
 
@@ -1695,9 +1706,7 @@ class Polar_Artist (Artist):
     def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color : QColor): 
         """ plot a single polar"""
 
-        airfoils_with_design = False 
-        for a in airfoils:
-            if a.usedAsDesign: airfoils_with_design = True 
+        there_is_design = any(a.usedAsDesign for a in airfoils) 
 
         # build nice label 
 
@@ -1718,7 +1727,7 @@ class Polar_Artist (Artist):
         elif airfoil.usedAs == usedAs.DESIGN:  
             linewidth=1.5
             antialias = True
-        elif airfoil.usedAs == usedAs.NORMAL and not airfoils_with_design:  
+        elif airfoil.usedAs == usedAs.NORMAL and not there_is_design:  
             linewidth=1.5
             antialias = True
         else:

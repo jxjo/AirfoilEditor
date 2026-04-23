@@ -415,7 +415,7 @@ class Deviation_Line (Line):
     def set_fast (self, fast : bool):
         """ set fast mode for deviation calculation and re-calc"""
 
-        if fast and fast != self._fast:
+        if fast != self._fast:
             self._fast = fast 
             self.calc_deviation ()
 

@@ -16,7 +16,7 @@ from PyQt6.QtCore                   import QThread, pyqtSignal, QEventLoop
 from .base.math_util                import nelder_mead, derivative1
 from .base.spline                   import Bezier
 from .base.widgets                  import style 
-from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline
+from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline, clip
 from .model.geometry                import Line
 from .model.geometry_spline         import Geometry_Splined
 from .model.geometry_curve          import BSpline, Side_Airfoil_Curve, Geometry_Curve
@@ -36,7 +36,6 @@ class Matcher_Base (QThread):
     sig_pass_start      = pyqtSignal (int, int)         # ipass, new ncp
     sig_finished        = pyqtSignal(object)            # final Match_Result (is_optimized=True)
 
-    NCP_AUTO_RANGE = (None, None)                       # range of ncp for auto mode - to be overridden in child classes
     STEP_SIZE = None                                    # initial step size for nelder mead - to be overridden in child classes
 
     def __init__(self, parent=None):
@@ -206,51 +205,60 @@ class Matcher_Base (QThread):
         return (delta - threshold) * scale
 
 
-    def _penalty_curv_deriv (self, x : np.ndarray, curv : np.ndarray, 
-                                region : tuple = (0.3, 1.0),
-                                threshold: float = 1,
-                                scale: float = 0.0001) -> float:
-        """ 
-        Penalize large curvature derivatives in a given x region.
+    def _penalty_bumps (self, x : np.ndarray, curv : np.ndarray, 
+                        max_reversals: int,
+                        scale: float = 0.01) -> float:
+        """
+        Penalize reversals of derivative of curvature derivatives in a given x region.
 
-        This acts as a smoothness term that suppresses bumps while using a
-        Huber-hinge style response to keep the objective well behaved near the
-        threshold.
+        This acts as a smoothness term that suppresses bumps 
         
         Args:
             x: x coordinates.
             curv: Curvature values sampled at ``x``.
-            region: x range in which the derivative is checked.
-            threshold: Allowed curvature-derivative magnitude.
+            max_reversals: Maximum allowed curvature reversals (sign changes).
             scale: Scaling factor for the returned penalty.
-
-        Returns:
-            float: Curvature-derivative penalty contribution.
         """
 
-        x_start, x_end = region
-        mask = (x >= x_start) & (x <= x_end)
-        x_masked = x[mask]
-        curv_masked = curv[mask]
+        # Compute derivative of derivative
+        curv_d   = derivative1 (x, curv)
+        curv_d_d = derivative1 (x, curv_d)
 
-        deriv1 = derivative1(x_masked, curv_masked)
-        excess      = np.abs (deriv1) - threshold           # hinge: zero below threshold
+        x_start, x_end = (0.2, 1.0)
+        body_mask = (x >= x_start) & (x <= x_end)
 
-        # Huber delta: transition from quadratic to linear
-        huber_delta = threshold * 0.5
+        x_body   = x [body_mask]
+        d_body   = curv_d   [body_mask]
+        d_d_body = curv_d_d [body_mask]
+        
+        if len(x_body) < 2:
+            return 0.0
 
-        # vectorized Huber-Hinge:
-        #   excess <= 0            → 0          (hinge: no penalty below threshold)
-        #   0 < excess <= delta    → excess²/2  (quadratic: smooth near threshold)
-        #   excess > delta         → delta*(excess - delta/2)  (linear: robust far away)
+        # curvature should montonically decrease in body region 
+        #  - also becoming negative (reversal of ucvature)
+        # -> avoid reversals of derivative of curvature 
 
-        penalty_vals = np.where (excess <= 0,          0.0,
-                       np.where (excess <= huber_delta, 0.5 * excess**2,
-                                                        huber_delta * (excess - 0.5 * huber_delta)))
+        signs = np.sign(d_body)
+        signs[signs == 0] = 1  # treat zero as positive to avoid ambiguity       
+        sign_changes_idx = np.where(np.diff(signs) != 0)[0] + 1
 
-        penalty = np.mean (penalty_vals) * scale
+        n_d = len(sign_changes_idx)
 
-        # print (f"max_deriv1: {np.max(abs(deriv1)):.3f}   penalty: {penalty:.7f}")
+        # derivative of curvature decreases and may increase again
+        # -> allow one reveresal of derivative of derivative  
+
+        signs = np.sign(d_d_body)
+        signs[signs == 0] = 1  # treat zero as positive to avoid ambiguity
+        sign_changes_idx = np.where(np.diff(signs) != 0)[0] + 1
+
+        n_d_d = len(sign_changes_idx)
+
+        n_d_d = n_d_d - 1 - max_reversals       # allow one reversal + one per curve reversal
+        n_d_d = max (n_d_d, 0)                  # don't allow negative reversal count
+ 
+        # print (f" n_changes_d: {n_d}  n_changes_d_d: {n_d_d}")
+
+        penalty = n_d * scale + n_d_d * scale
 
         return penalty
 
@@ -304,16 +312,10 @@ class Matcher_Base (QThread):
         # and stays fixed. Arc-length recalculation on every objective evaluation would be too expensive.
 
 
-    def _result_is_good_enough (self) -> bool:
-        """Return whether the current match already satisfies the quality targets.""" 
-        result = Match_Result(self._side, self._targets)
-        return result.is_good_enough() 
-
-
     # ------ core run --------------
 
 
-    def _objectiveFn (self, variables : list ) -> float:  
+    def _objectiveFn (self, variables : list, show_info = False ) -> float:  
         """Evaluate the objective value for the current optimization variables."""
         
         targets = self._targets
@@ -353,54 +355,45 @@ class Matcher_Base (QThread):
                                         targets.max_te_curvature, 
                                         targets.max_nreversals,
                                         threshold = 0.01, 
-                                        scale     = 0.02)
+                                        scale     = 0.02) # 0.02
         else:
             penalty_te_curv = 0.0
+
 
         # -- penalty for curvature derivative to avoid bumps 
 
         if targets.bump_control:
 
-            no_revers = targets.max_nreversals == 0
-            penalty_curv_deriv = self._penalty_curv_deriv (x, curv,
-                                        region    = (0.3, 0.8) if no_revers else (0.3, 0.7),
-                                        threshold = 1.0        if no_revers else 5.0,
-                                        scale     = 0.005)
+            # penalty_bumps = self._penalty_bumps (x, curv, targets.max_nreversals, targets.max_te_curvature, scale=0.001) #0.05
+            penalty_bumps = self._penalty_bumps (x, curv, targets.max_nreversals, scale=0.0001) 
 
-        # -- te derivative of curvature limit 
-
-            penalty_te_curv_deriv = self._penalty_curv_deriv (x, curv,
-                                        region    = (0.8, 1.0) if no_revers else (0.7, 1.0),
-                                        threshold = 5.0        if no_revers else 10.0,
-                                        scale     = 0.0005)
         else:
-            penalty_te_curv_deriv = 0.0
-            penalty_curv_deriv = 0.0
+            penalty_bumps = 0.0
 
-        # -- penalty for curvature reversals (bumps)
+        # -- penalty for curvature reversals
 
         penalty_reversals = self._penalty_reversals (x, curv, 
                                         region = (0.2, 1.0),
                                         max_reversals = targets.max_nreversals,
-                                        scale = 0.1)
+                                        scale = 0.1) # 0.1
 
         # objective function is sum of single objectives and penalties - should be as low as possible
         
-        obj = obj_rms + penalty_le_curv + penalty_te_curv + penalty_te_curv_deriv + penalty_reversals + penalty_curv_deriv
+        obj = obj_rms + penalty_le_curv + penalty_te_curv + penalty_bumps + penalty_reversals
 
-        if self._nevals%50 == 0:  
-            logger.info (f"obj: {obj:.6f}   "
+        if self._nevals%100 == 0 or show_info:  
+            logger.info (f"{self._nevals:4d}:  "
+                    f"obj: {obj:.6f}   "
                     f"{('rms: '        + f'{obj_rms:.6f}   ') if obj_rms > 1e-9 else ''}"
                     f"{('le_curv: '    + f'{penalty_le_curv:.6f}   ') if penalty_le_curv > 1e-9 else ''}"
                     f"{('te_curv: '    + f'{penalty_te_curv:.6f}   ') if penalty_te_curv > 1e-9 else ''}"
-                    f"{('curv_deriv: ' + f'{penalty_curv_deriv:.6f}   ') if penalty_curv_deriv > 1e-9 else ''}"
-                    f"{('te_deriv: '   + f'{penalty_te_curv_deriv:.6f}   ') if penalty_te_curv_deriv > 1e-9 else ''}"
-                    f"{('reversals: '  + f'{penalty_reversals:.6f}') if penalty_reversals > 1e-9 else ''}")
+                    f"{('bumps: '      + f'{penalty_bumps:.6f}   ')   if penalty_bumps > 1e-9 else ''}"
+                    f"{('reversals: '  + f'{penalty_reversals:.6f}')  if penalty_reversals > 1e-9 else ''}")
 
         self._nevals += 1                       # counter of objective evaluations (for entertainment)
 
         # signal parent with new results 
-        if self._nevals%50 == 0:  
+        if self._nevals%100 == 0 or show_info:  
             result = Match_Result(self._side, self._targets, rms=obj_rms, objective=obj, curv=curv)
             self.sig_new_results.emit (self._ipass, self._nevals, result)
             self.msleep(2)                      # give parent some time to do updates
@@ -423,18 +416,18 @@ class Matcher_Base (QThread):
 
         # -- reset Bezier to standard start position before each run  
 
-        self._side.re_fit_curve(target_side=self._targets.side, ncp=ncp)   # reset bezier to standard start position before each run - important for optimization behavior
+        self._side.re_fit_curve(self._targets.side, self._targets.le_curvature, ncp=ncp)   # reset bezier to standard start position before each run - important for optimization behavior
 
         self.sig_pass_start.emit (self._ipass, ncp) # dialog can update UI, new ncp
         self.msleep(10)                             # give parent some time to do updates
 
         #-- map control point x,y to optimization variable 
 
-        variables_start, bounds = self._map_curve_to_variables ()
+        dv_start, bounds = self._map_curve_to_variables ()
 
         # ----- objective function
 
-        f = lambda variables : self._objectiveFn (variables) 
+        f = lambda dv : self._objectiveFn (dv) 
 
         # -- initial step size 
 
@@ -442,24 +435,26 @@ class Matcher_Base (QThread):
 
         # -- calculate max_iter based on current number of variables
 
-        max_iter = len(variables_start) * 300
+        max_iter = len(dv_start) * 300
 
         # ----- nelder mead find minimum --------
 
-        res, niter = nelder_mead (f, variables_start,
-                    step=self.STEP_SIZE, no_improve_thr=1e-6,             
-                    no_improv_break_beginning=50, 
-                    no_improv_break=10, 
+        res, niter = nelder_mead (f, dv_start,
+                    step=self.STEP_SIZE, no_improve_thr=1e-7,             
+                    no_improv_break_beginning=100, 
+                    no_improv_break=20, 
                     max_iter=max_iter,         
                     bounds = bounds,
                     stop_callback=self.isInterruptionRequested)     # QThread method 
 
-        objective = res[1]
-        logger.info (f"Finished after {niter} iterations and {self._nevals} evaluations. Final objective: {objective:.6f}") 
+        dv = res[0]
+
+        logger.info (f"Finished after {niter} iterations and {self._nevals} evaluations.") 
+        objective = self._objectiveFn (dv, show_info=True)          # final evaluation with info printout
 
         #-- evaluate the new y values on Bezier for the target x-coordinate
 
-        self._map_variables_to_curve (res[0])
+        self._map_variables_to_curve (dv)
 
         self._niter      = niter
         self._nevals     = 0 
@@ -495,40 +490,43 @@ class Matcher_Base (QThread):
                             f"   max_reversals: {self._targets.max_nreversals}")
 
         self._ipass    = 0
-        prev_objective = float('inf')                           # improvement detection 
-        prev_cp        = None
 
         self._side.target_deviation.set_fast (True)             # needed for fast rms evaluation
 
         # set ncp for auto mode 
         if self._targets.ncp_auto:
-            npc_list = range(self.NCP_AUTO_RANGE[0], self.NCP_AUTO_RANGE[1] + 1)  
+            npc_list = range(self._side.NCP_BOUNDS[0], self._side.NCP_BOUNDS[1] + 1)  
         else:
             npc_list = [self._ncp]
+
+        # Dictionary to store all results: {objective: control_points}
+        results = {}
 
         for ncp in npc_list:
 
             self._ipass += 1
+            logger.info (f"---- Pass {self._ipass}  ncp: {ncp} ")
 
             # run single nelder mead optimization 
 
-            logger.info (f"---- Pass {self._ipass}  ncp: {ncp} ")
-
             objective = self._run_single_pass (ncp=ncp)
 
-            # evaluate current result and decide if good enough to end 
+            # Store result and decide if good enough to end 
 
-            if self._result_is_good_enough ():
+            results[objective] = self._curve.cpoints.copy()
+
+            if objective < 0.000030:                
                 break
             elif self.isInterruptionRequested():
                 break
-            elif objective >= prev_objective * 1.1:             # allow pass be 10% worse than previous 
-                # if it is much worse, likely overfitting or bad local minimum - stop and keep previous result
-                self._side.set_controlPoints(prev_cp)           # revert to previous cp to avoid overfitting - reset deviation
-                break
 
-            prev_objective = objective
-            prev_cp        = self._curve.cpoints
+        # Select best result (minimum objective)
+        if results:
+            best_objective = min(results.keys())
+            best_cpoints = results[best_objective]
+            self._side.set_controlPoints(best_cpoints)
+            if self._targets.ncp_auto:
+                logger.info (f"Selected best result: ncp={len(best_cpoints)}, objective={best_objective:.6f}")
 
         self._side.target_deviation.set_fast (False)            # needed for accurate rms evaluation
 
@@ -542,8 +540,7 @@ class Matcher_Base (QThread):
 class Matcher_Bezier (Matcher_Base):
     """Matcher worker specialized for Bezier airfoil-side curves."""
 
-    NCP_AUTO_RANGE = (5, 8)                             # range of ncp for auto mode 
-    STEP_SIZE = 0.10                                    # initial step size for nelder mead
+    STEP_SIZE = 0.05                                    # initial step size for nelder mead
 
 
     @override
@@ -584,7 +581,6 @@ class Matcher_Bezier (Matcher_Base):
 class Matcher_BSpline (Matcher_Base):
     """Matcher worker specialized for B-spline airfoil-side curves."""
 
-    NCP_AUTO_RANGE = (5, 10)                            # range of ncp for auto mode 
     STEP_SIZE = 0.02                                     # initial step size for nelder mead
 
     @override
@@ -601,8 +597,11 @@ class Matcher_BSpline (Matcher_Base):
 
         The formulas used are:
 
-        B-spline (open-uniform):
-            |kappa(0)| = (degree - 1) / (2 * degree) * |x2| / y1^2
+        B-spline (open-uniform/clamped, degree=4):
+            ncp=5 (minimal): |kappa(0)| = (degree - 1) / degree * |x2| / y1^2
+            ncp≥6: |kappa(0)| = (degree - 1) / (2 * degree) * |x2| / y1^2
+            
+        The factor changes because additional control points dilute cp[2]'s influence.
 
         Args:
             le_curvature: Desired curvature magnitude at the start point.
@@ -614,7 +613,15 @@ class Matcher_BSpline (Matcher_Base):
         """
 
         degree = curve.degree
-        factor = (degree - 1) / (2 * degree)
+        ncp = curve.ncp
+        
+        # Factor depends on number of control points for clamped B-splines
+        # With minimal ncp (degree+1), cp[2] has maximum influence
+        # With more control points, influence is diluted
+        if ncp <= degree + 1:  # minimal case (ncp=5 for degree=4)
+            factor = (degree - 1) / degree
+        else:
+            factor = (degree - 1) / (2 * degree)
 
         y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
 
@@ -819,7 +826,6 @@ class Match_Result:
             self.style_curv_le,
             self.style_curv_te,
             self.style_deviation,
-            self.style_max_dy
         ))
 
     def is_perfect (self) -> bool:

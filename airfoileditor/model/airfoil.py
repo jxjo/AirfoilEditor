@@ -1092,8 +1092,9 @@ class Airfoil_Curve (Airfoil):
         side_class = cls._geometry_class.side_class
 
         # create upper, lower bezier curves based on airfoil coordinates
-        upper = side_class.on_side (anAirfoil.geo.upper, ncp=ncp, linetype=Line.Type.UPPER)
-        lower = side_class.on_side (anAirfoil.geo.lower, ncp=ncp, linetype=Line.Type.LOWER)
+        le_curvature = anAirfoil.geo.curvature.at_le
+        upper = side_class.on_side (anAirfoil.geo.upper, le_curvature=le_curvature, ncp=ncp, linetype=Line.Type.UPPER)
+        lower = side_class.on_side (anAirfoil.geo.lower, le_curvature=le_curvature, ncp=ncp, linetype=Line.Type.LOWER)
 
         # new name and filename
         airfoil_new =  cls (name=anAirfoil.name + cls.NAME_SUFFIX)

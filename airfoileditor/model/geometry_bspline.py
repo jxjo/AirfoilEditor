@@ -87,7 +87,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
     _te_exponent         = 1.0          # fitting: exponent for trailing edge clustering of control points
 
     NCP_DEFAULT    = 8                  # default number of control points for B-Spline curve
-    NCP_BOUNDS     = (4,10)             # reasonable range for number of control points for fitting
+    NCP_BOUNDS     = (5,10)             # reasonable range for number of control points for fitting
 
 
 
@@ -167,7 +167,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
                     ncp = ncp,
                     le_exponent=cls._le_exponent, te_exponent=cls._te_exponent )
         
-        instance = cls(cp, knots=None, degree=degree, **kwargs)
+        instance = cls(cp, knots=None, degree=degree)
         
         # deviation to target side 
         instance.set_target_deviation_from (target_side)
