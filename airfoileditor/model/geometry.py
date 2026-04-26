@@ -495,6 +495,9 @@ class Line:
     isBSpline       = False
     isHicksHenne    = False
 
+    CURV_THRESHOLD = 0.01       # threshold for curvature to be counted as reversal 
+    
+
     # --------------- static methods also for external use 
 
     @staticmethod
@@ -626,11 +629,11 @@ class Line:
 
 
 
-    def reversals (self, x_start= 0.1, x_end=1.0, smooth=True, tolerance=0.02) -> np.ndarray:
+    def reversals (self, x_start= 0.1, x_end=1.0, smooth=True, threshold=CURV_THRESHOLD) -> np.ndarray:
         """ 
         returns the x positions of reversals (change of y sign) on self. 
         Smoothing with a moving average can be applied to avoid false positives.
-        Take only y values > tolerance into account to avoid noise driven sign changes.
+        Take only y values > threshold into account to avoid noise driven sign changes.
         """
 
         mask  = (self.x >= x_start) & (self.x <= x_end)
@@ -646,8 +649,8 @@ class Line:
             curv_body = curv_body [n//2 : -n//2]
             x_body    = x_body    [n//2 : -n//2]            
 
-        if tolerance > 0.0:
-            mask      = np.abs(curv_body) > tolerance
+        if threshold > 0.0:
+            mask      = np.abs(curv_body) > threshold
             x_body    = x_body    [mask]
             curv_body = curv_body [mask]
 
@@ -657,14 +660,14 @@ class Line:
         return sign_change_x
 
 
-    def nreversals (self, x_start= 0.1, x_end=1.0, smooth=True, tolerance=0.02) -> int:
+    def nreversals (self, x_start= 0.1, x_end=1.0, smooth=True, threshold=CURV_THRESHOLD) -> int:
         """ 
         returns the number of reversals (change of y sign) on self. 
         Smoothing with a moving average can be applied to avoid false positives.
-        Take only y values > tolerance into account to avoid noise driven sign changes.
+        Take only y values > threshold into account to avoid noise driven sign changes.
         """
 
-        return len (self.reversals (x_start, x_end, smooth, tolerance))
+        return len (self.reversals (x_start, x_end, smooth, threshold))
 
     
 

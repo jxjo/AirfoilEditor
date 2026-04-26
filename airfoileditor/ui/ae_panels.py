@@ -1162,7 +1162,7 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
         l.setColumnMinimumWidth (c+1,20)
 
         c += 2
-        Label  (l,r,c, get="RMS", width=70, colSpan=2)
+        Label  (l,r,c, get="Δ RMS", width=70, colSpan=2)
         FieldF (l,r+1,c, width=60, dec=4, unit="%", get=lambda: self.result_upper.rms,
                 style=lambda: self.result_upper.style_deviation)
         FieldF (l,r+2,c, width=60, dec=4, unit="%", get=lambda: self.result_lower.rms,
@@ -1170,7 +1170,7 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
         l.setColumnMinimumWidth (c+1,20)
 
         c += 2
-        Label  (l,r,c, get="Max Δ", width=50)
+        Label  (l,r,c, get="Δ Max", width=50)
         FieldF (l,r+1,c, width=50, dec=3, unit="%", get=lambda: self.result_upper.max_dy,
                 style=lambda: self.result_upper.style_max_dy)
         FieldF (l,r+2,c, width=50, dec=3, unit="%", get=lambda: self.result_lower.max_dy,
@@ -1203,6 +1203,14 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
                 style=lambda: self.result_upper.style_curv_te)
         FieldF (l,r+2,c, get=lambda: self.result_lower.te_curvature, width=40, dec=1,
                 style=lambda: self.result_lower.style_curv_te)
+        l.setColumnMinimumWidth (c+1,10)
+
+        c += 2
+        Label  (l,r,c, colSpan=2, get="Bumps")
+        FieldF (l,r+1,c, get=lambda: self.result_upper.bumps, width=40, dec=2,
+                style=lambda: self.result_upper.style_bumps)
+        FieldF (l,r+2,c, get=lambda: self.result_lower.bumps, width=40, dec=2,
+                style=lambda: self.result_lower.style_bumps)
         l.setColumnMinimumWidth (c+1,20)
 
         r,c = 3,0 
@@ -1229,7 +1237,7 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
         elif result.is_good_enough():
             text = f"Match is quite good for this difficult target."
         else:
-            text = f"Match is not too good. Maybe tweak LE and/or TE curvature."
+            text = f"Match is not too good. Maybe tweak LE or TE curvature or Reversals"
         return text
 
 
@@ -1580,12 +1588,13 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
     def _style_nreversals (self, curv : Line):
         """ returns style.WARNING if nreversals > 1"""   
 
-        if curv.nreversals() == 0:
+        reversals = curv.reversals()
+        if len(reversals) == 0:
             return style.NORMAL
         else: 
-            if curv.reversals()[-1] > 0.95:
+            if reversals[-1] > 0.95:
                 return style.WARNING
-            elif curv.nreversals() > 1:
+            elif len(reversals) > 1:
                 return style.WARNING
             else:
                 return style.NORMAL

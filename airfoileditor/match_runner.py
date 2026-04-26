@@ -68,9 +68,11 @@ class Matcher_Base (QThread):
         raise NotImplementedError ("must be implemented in child classes ")
 
 
-    def _penalty_reversals (self, xb: np.ndarray, curv: np.ndarray,
-                            region : tuple = (0.2, 1.0),
+    @staticmethod
+    def _penalty_reversals (xb: np.ndarray, curv: np.ndarray,
+                            region : tuple | None = None,
                             max_reversals: int = 0,
+                            threshold: float = Line.CURV_THRESHOLD,
                             scale: float = 0.01) -> float:
         """ 
         Penalize curvature sign changes beyond the allowed reversal count.
@@ -89,14 +91,23 @@ class Matcher_Base (QThread):
             curv: Curvature values sampled at ``xb``.
             region: x range in which reversals are checked.
             max_reversals: Maximum allowed sign changes.
+            threshold: Tolerance around zero to avoid noise-driven sign changes.
             scale: Scaling factor for the returned penalty.
             
         Returns:
             float: Reversal penalty contribution.
         """
-        x_start, x_end = region
-        body_mask = (xb >= x_start) & (xb <= x_end)
-        curv_body = curv[body_mask]
+        if isinstance(region, tuple):
+            x_start, x_end = region
+            body_mask = (xb >= x_start) & (xb <= x_end)
+            curv_body = curv[body_mask]
+        else:
+            curv_body = curv
+
+        # take only values above threshold to avoid false positives from small oscillations around zero
+        if threshold > 0.0:
+            mask      = np.abs(curv_body) > threshold
+            curv_body = curv_body [mask]
         
         if len(curv_body) < 2:
             return 0.0
@@ -112,32 +123,30 @@ class Matcher_Base (QThread):
         penalty_sum = 0.0
         
         # Unified logic for all max_reversals values
-        if n_changes <= max_reversals:
-            # Number of changes is within allowed limit - no penalty
-            penalty_sum = 0.0
-        else:
-            # Too many changes - penalize violations from appropriate starting point
+
+        if n_changes > max_reversals:
+            # Too many changes - penalize all values from the violation point onward
             if max_reversals == 0:
-                # Lock to positive from the beginning (entire region)
+                # No reversals allowed - penalize from the beginning
                 violation_start_idx = 0
-                locked_sign = 1  # positive
             else:
-                # Lock to sign after the (max_reversals)-th change
+                # Start penalizing from the (max_reversals+1)-th change onward
                 violation_start_idx = sign_changes_idx[max_reversals]
-                locked_sign = signs[violation_start_idx]
             
             after_limit = curv_body[violation_start_idx:]
             
-            # Penalty for values with opposite sign to locked_sign
-            if locked_sign > 0:
-                # Locked to positive, penalize negative values
-                violations = np.where(after_limit < 0, -after_limit, 0.0)
-            else:
-                # Locked to negative, penalize positive values
-                violations = np.where(after_limit > 0, after_limit, 0.0)
-            
+            # Penalize ALL absolute values beyond the allowed reversals
+            # This captures any further oscillations regardless of sign
+            violations = np.abs(after_limit)
+
+            #  normalize by peak curvature -> violations in [0,1], penalty in [0,1] for scale=1
+            # ref = np.max (np.abs(curv_body))
+            # violations = violations / ref if ref > 0 else violations
+
+            penalty_sum = np.mean (violations) 
+
             # Apply sqrt to each violation for aggressiveness on small values, then take mean for normalization
-            penalty_sum = np.mean(np.sqrt(violations + 1e-10))
+            # penalty_sum = np.mean(np.sqrt(violations))
         
         # Apply scaling
         penalty = penalty_sum * scale
@@ -145,10 +154,11 @@ class Matcher_Base (QThread):
         return penalty
 
 
-    def _penalty_te_curv (self, curv_te : float, 
+    @staticmethod
+    def _penalty_te_curv (curv_te : float, 
                           max_curv_te: float,
                           max_reversals: int,
-                          threshold: float = 0.01,
+                          threshold: float = Line.CURV_THRESHOLD,
                           scale: float = 0.01) -> float:
         """ 
         Penalize trailing-edge curvature outside the allowed range.
@@ -182,8 +192,9 @@ class Matcher_Base (QThread):
         return penalty
 
 
-    def _penalty_le_curv (self, curv_le: float, target_curv_le: float,
-                          threshold: float = 0.01,
+    @staticmethod
+    def _penalty_le_curv (curv_le: float, target_curv_le: float,
+                          threshold: float = Line.CURV_THRESHOLD,
                           scale: float = 0.0001) -> float:
         """
         Penalize deviation from the target leading-edge curvature.
@@ -205,7 +216,32 @@ class Matcher_Base (QThread):
         return (delta - threshold) * scale
 
 
-    def _penalty_bumps (self, x : np.ndarray, curv : np.ndarray, 
+    @staticmethod
+    def _penalty_le_curv_monoton (curv : np.ndarray, scale: float = 0.01) -> float:
+        """
+        Penalize non-monotonic curvature in the leading-edge region.
+
+        This ensures that highest curvature is exactly at the leading edge.
+
+        Args:
+            curv: Curvature values sampled at the leading-edge region.
+            scale: Scaling factor for the returned penalty.
+        """
+
+        # sanity 
+        if len(curv) < 10:
+            return 0.0
+
+        # sum up all positive differences (where curvature increases) and scale the penalty
+
+        curv_diff = np.diff(np.abs(curv[:10]))
+        pen_le_curv_monoton = (np.sum(curv_diff[curv_diff > 0]) / np.abs(curv[0])) * scale
+
+        return pen_le_curv_monoton
+    
+
+    @staticmethod
+    def _penalty_bumps (x : np.ndarray, curv : np.ndarray, 
                         max_reversals: int,
                         scale: float = 0.01) -> float:
         """
@@ -220,47 +256,36 @@ class Matcher_Base (QThread):
             scale: Scaling factor for the returned penalty.
         """
 
-        # Compute derivative of derivative
-        curv_d   = derivative1 (x, curv)
-        curv_d_d = derivative1 (x, curv_d)
-
-        x_start, x_end = (0.2, 1.0)
+        x_start, x_end = 0.2, 1.0
         body_mask = (x >= x_start) & (x <= x_end)
 
-        x_body   = x [body_mask]
-        d_body   = curv_d   [body_mask]
-        d_d_body = curv_d_d [body_mask]
-        
-        if len(x_body) < 2:
-            return 0.0
+        x_body    = x    [body_mask]
+        curv_body = curv [body_mask]
+
+        # Compute derivative of derivative
+        curv_d  = derivative1 (x_body, curv_body)
+        curv_dd = derivative1 (x_body, curv_d)
+
 
         # curvature should montonically decrease in body region 
         #  - also becoming negative (reversal of ucvature)
         # -> avoid reversals of derivative of curvature 
 
-        signs = np.sign(d_body)
-        signs[signs == 0] = 1  # treat zero as positive to avoid ambiguity       
-        sign_changes_idx = np.where(np.diff(signs) != 0)[0] + 1
-
-        n_d = len(sign_changes_idx)
+        pen_d = Matcher_Base._penalty_reversals (x_body, curv_d, threshold=0.01, scale=scale*0.02)  
 
         # derivative of curvature decreases and may increase again
         # -> allow one reveresal of derivative of derivative  
 
-        signs = np.sign(d_d_body)
-        signs[signs == 0] = 1  # treat zero as positive to avoid ambiguity
-        sign_changes_idx = np.where(np.diff(signs) != 0)[0] + 1
+        max_n = 1 + max_reversals    # allow one reversal of derivative of derivative 
 
-        n_d_d = len(sign_changes_idx)
+        pen_dd = Matcher_Base._penalty_reversals (x_body, curv_dd, threshold=0.01, max_reversals=max_n, scale=scale*0.02)  
 
-        n_d_d = n_d_d - 1 - max_reversals       # allow one reversal + one per curve reversal
-        n_d_d = max (n_d_d, 0)                  # don't allow negative reversal count
- 
-        # print (f" n_changes_d: {n_d}  n_changes_d_d: {n_d_d}")
+        pen = pen_d + pen_dd
 
-        penalty = n_d * scale + n_d_d * scale
+        # if pen > 0.0:
+        #     print (f"    pen_d: {pen_d:.6f}  pen_dd: {pen_dd:.6f}  pen: {pen:.6f}")
 
-        return penalty
+        return pen
 
     #--------------------
 
@@ -341,51 +366,48 @@ class Matcher_Base (QThread):
         # -- le curvature is analytically enforced via cp_y[1] - but for low ncp it could be wrong
 
         if targets.le_curvature is not None:
-            penalty_le_curv = self._penalty_le_curv (curv[0], 
-                                        targets.le_curvature, 
-                                        threshold = 0.01, 
-                                        scale     = 0.00001)
+            penalty_le_curv = self._penalty_le_curv (curv[0], targets.le_curvature, threshold = 0.01, 
+                                        scale = 0.00001)
         else:
             penalty_le_curv = 0.0
+
+
+        # -- le curvature should be monotonically decreasing in the leading-edge region 
+
+        penalty_le_curv_monoton = self._penalty_le_curv_monoton (curv, scale=0.1)
 
         # -- te curvature limit
 
         if targets.max_te_curvature is not None:
-            penalty_te_curv = self._penalty_te_curv (curv[-1], 
-                                        targets.max_te_curvature, 
-                                        targets.max_nreversals,
-                                        threshold = 0.01, 
-                                        scale     = 0.02) # 0.02
+            penalty_te_curv = self._penalty_te_curv (curv[-1], targets.max_te_curvature, targets.max_nreversals,
+                                        scale = 0.02)
         else:
             penalty_te_curv = 0.0
-
 
         # -- penalty for curvature derivative to avoid bumps 
 
         if targets.bump_control:
-
-            # penalty_bumps = self._penalty_bumps (x, curv, targets.max_nreversals, targets.max_te_curvature, scale=0.001) #0.05
-            penalty_bumps = self._penalty_bumps (x, curv, targets.max_nreversals, scale=0.0001) 
-
+            penalty_bumps = self._penalty_bumps (x, curv, targets.max_nreversals, 
+                                                 scale=0.001) 
         else:
             penalty_bumps = 0.0
 
         # -- penalty for curvature reversals
 
-        penalty_reversals = self._penalty_reversals (x, curv, 
-                                        region = (0.2, 1.0),
+        penalty_reversals = self._penalty_reversals (x, curv, region = (0.2, 1.0),
                                         max_reversals = targets.max_nreversals,
-                                        scale = 0.1) # 0.1
+                                        scale = 0.001) 
 
         # objective function is sum of single objectives and penalties - should be as low as possible
         
-        obj = obj_rms + penalty_le_curv + penalty_te_curv + penalty_bumps + penalty_reversals
+        obj = obj_rms + penalty_le_curv + penalty_le_curv_monoton + penalty_te_curv + penalty_bumps + penalty_reversals
 
         if self._nevals%100 == 0 or show_info:  
             logger.info (f"{self._nevals:4d}:  "
                     f"obj: {obj:.6f}   "
                     f"{('rms: '        + f'{obj_rms:.6f}   ') if obj_rms > 1e-9 else ''}"
                     f"{('le_curv: '    + f'{penalty_le_curv:.6f}   ') if penalty_le_curv > 1e-9 else ''}"
+                    f"{('le_monoton: ' + f'{penalty_le_curv_monoton:.6f}   ') if penalty_le_curv_monoton > 1e-9 else ''}"
                     f"{('te_curv: '    + f'{penalty_te_curv:.6f}   ') if penalty_te_curv > 1e-9 else ''}"
                     f"{('bumps: '      + f'{penalty_bumps:.6f}   ')   if penalty_bumps > 1e-9 else ''}"
                     f"{('reversals: '  + f'{penalty_reversals:.6f}')  if penalty_reversals > 1e-9 else ''}")
@@ -540,7 +562,7 @@ class Matcher_Base (QThread):
 class Matcher_Bezier (Matcher_Base):
     """Matcher worker specialized for Bezier airfoil-side curves."""
 
-    STEP_SIZE = 0.05                                    # initial step size for nelder mead
+    STEP_SIZE = 0.1 # 0.05                                    # initial step size for nelder mead
 
 
     @override
@@ -657,15 +679,13 @@ class Match_Result:
         self._ncp = side.curve.ncp
         
         # Use provided curv (already has correct sign) or calculate from side
-        if curv is not None:
-            self._le_curvature = abs(curv[0])
-            self._te_curvature = curv[-1]
-            self._nreversals   = Line(x=side.x, y=curv).nreversals() 
-        else:
-            curv_line = side.curvature()
-            self._le_curvature = abs(curv_line.y[0])
-            self._te_curvature = curv_line.y[-1] if side.isLower else -curv_line.y[-1]
-            self._nreversals   = curv_line.nreversals() 
+        if curv is None: 
+            curv = side.curvature().y if side.isLower else -side.curvature().y  # curve for upper side has to be negated
+        
+        self._le_curvature = abs(curv[0])
+        self._te_curvature = curv[-1]
+        self._nreversals   = Line(x=side.x, y=curv).nreversals() 
+        self._bumps        = Matcher_Base._penalty_bumps (side.x, curv, targets.max_nreversals, scale=1.0)
         
         self._max_dy_tuple = side.target_deviation.max_dy()  # (position, value)
         
@@ -706,22 +726,22 @@ class Match_Result:
     @property
     def le_curvature(self) -> float:
         """Leading-edge curvature."""
-        return round(self._le_curvature, 1) if self._le_curvature is not None else None
+        return round(self._le_curvature, 1) 
     
     @property
     def te_curvature(self) -> float:
         """Trailing-edge curvature."""
-        return round(self._te_curvature, 2) if self._te_curvature is not None else None
+        return round(self._te_curvature, 2) 
     
     @property
     def max_dy_position(self) -> float:
         """Position (x-coordinate) of maximum y deviation."""
-        return round(self._max_dy_tuple[0], 2) if self._max_dy_tuple[0] is not None else None
+        return round(self._max_dy_tuple[0], 2) 
     
     @property
     def max_dy(self) -> float:
         """Maximum y deviation from the target."""
-        return round(self._max_dy_tuple[1], 6) if self._max_dy_tuple[1] is not None else None
+        return round(self._max_dy_tuple[1], 6) 
     
     @property
     def objective(self) -> float | None:
@@ -732,6 +752,11 @@ class Match_Result:
     def nreversals(self) -> int | None:
         """Number of curvature reversals."""
         return self._nreversals
+    
+    @property 
+    def bumps (self) -> float | None:
+        """Bump penalty value - unscaled"""
+        return round(self._bumps, 6) 
     
     @property
     def style_deviation(self) -> style:
@@ -801,6 +826,18 @@ class Match_Result:
             return style.GOOD
         else:
             return style.WARNING
+
+    @property
+    def style_bumps(self) -> style:
+        """UI style for this result's bump penalty."""
+        
+        if self._bumps <= 0.01:
+            return style.GOOD
+        elif self._bumps <= 0.3:
+            return style.NORMAL
+        else:
+            return style.WARNING
+
 
     def is_ncp_good(self) -> bool:
         """Determine if the number of control points is good based on targets."""
