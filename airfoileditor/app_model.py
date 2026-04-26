@@ -687,7 +687,7 @@ class App_Model (QObject):
             elif airfoil.get_property("show",True):                 # individual show property
                 airfoils.append (airfoil)
 
-        # sanity - show at least selef airfoil (in Match self.airrfoil is switched off)
+        # sanity - show at least self airfoil (in Match self.airrfoil is switched off)
         if not airfoils and self.airfoil:
             self.airfoil.set_property ("show", True)
             airfoils.append (self.airfoil)

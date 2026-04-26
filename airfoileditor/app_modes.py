@@ -565,6 +565,9 @@ class Mode_As_Bezier (Mode_Abstract):
         if airfoil.isExample:
             airfoil.save()
 
+        # don't show  both seed and target
+        airfoil.set_property ("show", False)                      
+
         # switch app_model to this mode with new Design Case - will get/create first design
         self._app_model.set_mode_and_case (self.mode_id, Case_Match_Target (airfoil, new_airfoil_cls=Airfoil_Bezier))
 
@@ -581,6 +584,9 @@ class Mode_As_Bezier (Mode_Abstract):
             next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
         else:
             next_airfoil = self._app_model.case.airfoil_seed
+
+        # ensure this will be shown (again) 
+        next_airfoil.set_property ("show", True)                      
 
         self._app_model.case.close()                                 # shut down case
         self._app_model.set_case (None)
@@ -690,6 +696,9 @@ class Mode_As_BSpline (Mode_Abstract):
         if airfoil.isExample:
             airfoil.save()
 
+        # don't show  both seed and target
+        airfoil.set_property ("show", False)                      
+
         # switch app_model to this mode with new Design Case - will get/create first design
         self._app_model.set_mode_and_case (self.mode_id, Case_Match_Target (airfoil, new_airfoil_cls=Airfoil_BSpline))
 
@@ -706,6 +715,9 @@ class Mode_As_BSpline (Mode_Abstract):
             next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
         else:
             next_airfoil = self._app_model.case.airfoil_seed
+
+        # ensure this will be shown (again) 
+        next_airfoil.set_property ("show", True)                      
 
         self._app_model.case.close()                                 # shut down case
         self._app_model.set_case (None)

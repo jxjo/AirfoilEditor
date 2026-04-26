@@ -559,10 +559,6 @@ class Case_Match_Target (Case_Direct_Design):
 
         super().__init__(airfoil)
 
-        # -- 
-
-        self.airfoil_seed.set_property ("show", False)                      # don't show  both seed and target
-
         # -- create target airfoil for matching based on current with reduced panels and normalized
 
         airfoil_target = airfoil.asCopy (geometry=Geometry_Splined)         # target airfoil for matching 
