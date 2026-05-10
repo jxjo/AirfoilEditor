@@ -497,43 +497,6 @@ class Line:
 
     CURV_THRESHOLD = 0.01       # threshold for curvature to be counted as reversal 
     
-
-    # --------------- static methods also for external use 
-
-    @staticmethod
-    def _reduce_target_points (target_line: 'Line') -> 'Line':
-        """ 
-        Returns a new target Line with a reduced number of points 
-        to increase speed of deviation evaluation
-
-        The reduction tries to get best points which represent an airfoil side 
-        """
-        # based on delta x
-        # we do not take every coordinate point - define different areas of point intensity 
-        x1  = 0.02 # 0.03                               # a le le curvature is master 
-        dx1 = 0.020 # 0.025                              # now lower density at nose area
-        x2  = 0.25 
-        dx2 = 0.04
-        x3  = 0.8                                       # no higher density at te
-        dx3 = 0.03 # 0.03                               # to handle reflexed or rear loading
-
-        targ_x = []
-        targ_y = []
-        x = x1
-        while x < 1.0: 
-            i = find_closest_index (target_line.x, x)
-            targ_x.append(float(target_line.x[i]))
-            targ_y.append(float(target_line.y[i]))
-            if x > x3:
-                x += dx3
-            elif x > x2:                             
-                x += dx2
-            else: 
-                x += dx1
-
-        return Line(targ_x, targ_y)
-
-
     # ----------------------------------------------
 
     def __init__ (self, x,y, 

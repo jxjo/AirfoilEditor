@@ -80,12 +80,9 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
 
     isBezier        = True
 
-    _le_weight = 3.0                    # fitting: eight at LE for fitting, can be adjusted
-    _le_weight_distance = 0.1           # fitting: x position where weight transitions to 1 for fitting, can be adjusted
-    _le_tangent_vertical = True         # fitting: whether to enforce vertical tangent at leading edge
-
-    NCP_DEFAULT     = 6                 # default number of control points for Bezier curve
-    NCP_BOUNDS     = (4, 8)             # reasonable range for number of control points for fitting
+    NCP_DEFAULT     = 6                # default number of control points for Bezier curve
+    NCP_BOUNDS      = (4,8)            # allowed range for number of control points for Bezier curve 
+    NCP_AUTO_RANGE  = (5,8)            # range for automatic ncp selection match result
 
 
     def __init__ (self, cpx_or_cp, cpy=None, **kwargs):
@@ -122,7 +119,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         self._target_deviation : Deviation_Line = None
 
 
-
+    @override
     @staticmethod
     def _get_initial_control_points(x_data, y_data, ncp, le_curvature=None):
         """
@@ -187,7 +184,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         
         # Calculate py[1] (LE tangent point y) from LE curvature using analytical formula
         # |py[1]| = sqrt((ncp-2) * px[2] / ((ncp-1) * le_curv))
-        py[1] = np.sqrt((ncp - 2) * px[2] / ((ncp - 1) * abs(le_curvature)))
+        py[1] = Bezier.cp_y1_from_curvature(le_curvature, px[2], ncp=ncp)    # negative for lower side
         if is_bottom:
             py[1] = -py[1]
         py[1] = np.clip(py[1], -0.2, 0.2)
@@ -206,40 +203,11 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
             
             # Extra scaling for first interior point
             if icp == 2:
-                y_fac = y_fac * 1.2
+                y_fac = y_fac * 1.3
             
             py[icp] = py[icp] * y_fac
         
         return list(zip(px, py))
-
-
-    @classmethod
-    def on_side (cls, target_side : Line, le_curvature : float=200, ncp=None,  **kwargs):
-        """
-        Simple alternate constructor for Bezier based on direct control point placement.
-        
-        This is simpler than fit_curve() but provides a good starting point.
-        Based on the Fortran implementation from Xoptfoil2.
-
-        Args:
-            target_side: Line object representing the target side
-            le_curvature: leading edge curvature
-            ncp: number of control points for the Bezier curve
-        """
-
-        ncp = ncp if ncp is not None else cls.NCP_DEFAULT
-        
-        # Get initial control points
-        cp = cls._get_initial_control_points(
-            target_side.x, target_side.y, ncp, le_curvature)
-        
-        # Create instance with control points
-        instance = cls(cp, **kwargs)
-        
-        # Set target deviation
-        instance.set_target_deviation_from(target_side)
-        
-        return instance
 
 
     @override
@@ -271,20 +239,6 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
     
     
     # ------------------
-
-    @override
-    def re_fit_curve (self, target_side : Line, le_curvature : float = None, ncp = None): 
-        """ re-fit the Bezier curve to the target coordinates - used after control point changes to update curve"""
-
-        if ncp is None:
-            ncp = self.ncp
-        
-        # Get initial control points using simple direct placement
-        cp = self._get_initial_control_points(
-            target_side.x, target_side.y, ncp, le_curvature)
-
-        # update control points of self
-        self.set_controlPoints(cp)
 
 
     def add_controlPoint (self, index, point : JPoint | tuple):

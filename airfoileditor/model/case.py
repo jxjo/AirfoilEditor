@@ -16,6 +16,7 @@ from .geometry              import Line
 from .geometry_spline       import Geometry_Splined
 from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
 
+from .xo2_driver            import Worker
 from .xo2_input             import Input_File
 from .xo2_controller        import Xo2_Controller
 from .xo2_results           import Xo2_Results
@@ -468,7 +469,7 @@ class Match_Targets:
             side = airfoil.geo.lower
             curv = airfoil.geo.curvature.lower
             
-        le_curvature   = round(airfoil.geo.curvature.max, 1)
+        le_curvature   = round(airfoil.geo.curvature.max, 0)
 
         instance =  cls (side, curv, ncp=ncp, le_curvature=le_curvature)
 
@@ -563,7 +564,7 @@ class Case_Match_Target (Case_Direct_Design):
 
         airfoil_target = airfoil.asCopy (geometry=Geometry_Splined)         # target airfoil for matching 
         airfoil_target.set_usedAs (usedAs.TARGET)
-        airfoil_target.repanel (nPanels=100, le_bunch=0.85, te_bunch=0.3, mod_string='_repan')
+        airfoil_target.repanel (nPanels=100, le_bunch=0.98, te_bunch=0.7, mod_string='_repan')
 
         if not airfoil_target.isNormalized:
             airfoil_target.normalize(mod_string='_repan_norm')              # do not modify name again
@@ -572,8 +573,7 @@ class Case_Match_Target (Case_Direct_Design):
 
         # -- create initial Bezier or B-Spline airfoil based on target airfoil
         
-        ncp = 6 if new_airfoil_cls == Airfoil_Bezier else 8
-        airfoil_initial = new_airfoil_cls.on_airfoil (airfoil_target, ncp=ncp)
+        airfoil_initial = new_airfoil_cls.on_airfoil (airfoil_target)
         airfoil_initial.useAsDesign()
         airfoil_initial.set_pathName   (self.design_dir, noCheck=True)
         airfoil_initial.set_workingDir (self.workingDir)
@@ -583,7 +583,10 @@ class Case_Match_Target (Case_Direct_Design):
 
         # -- setup match targets 
 
+        ncp = airfoil_initial.geo.upper.ncp
         self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp)
+
+        ncp = airfoil_initial.geo.lower.ncp
         self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp)
 
         self._match_result_upper = None     # last Match_Result from real optimizer run
@@ -612,9 +615,13 @@ class Case_Match_Target (Case_Direct_Design):
 
     def set_match_result (self, result):
         """ store the latest optimizer Match_Result for the appropriate side """
-        if result.side.type == Line.Type.UPPER:
+
+        if result is None:
+            self._match_result_upper = None
+            self._match_result_lower = None
+        elif result.isUpper:
             self._match_result_upper = result
-        else:
+        elif not result.isUpper:
             self._match_result_lower = result
 
 
@@ -658,7 +665,19 @@ class Case_Match_Target (Case_Direct_Design):
 
         return airfoil
 
+    @override
+    def close (self):
+        """ shut down activities"""
 
+        # remove target airfoil - it is only a copy of seed and not needed anymore
+        if self.airfoil_target:
+            try:
+                os.remove (self.airfoil_target.pathFileName_abs)
+            except OSError:
+                pass
+            Worker.remove_polarDir (self.airfoil_target.pathFileName_abs)                
+
+        super().close()
 
 
 # -------------------------------------------------------------------

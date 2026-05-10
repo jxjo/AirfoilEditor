@@ -232,7 +232,7 @@ class Panel_Airfoils (Edit_Panel):
                                     get=self.airfoil, set=self.set_airfoil, id=iair,
                                     initialDir=self.airfoils[-1], addEmpty=False,       # initial dir not from DESIGN
                                     dialog_parent=self,                                 # needed as layout is transient
-                                    toolTip=air.info_as_html)
+                                    toolTip=lambda a=air: a.info_as_html)
 
                     ToolButton (l,r,c+3, icon=Icon.DELETE, set=self.delete_airfoil, id=iair,
                                 toolTip="Remove this airfoil as reference")

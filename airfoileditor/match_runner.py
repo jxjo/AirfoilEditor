@@ -9,11 +9,12 @@
 """
 
 import numpy as np
+from timeit                         import default_timer as timer
 from typing                         import Type, override
 
 from PyQt6.QtCore                   import QThread, pyqtSignal, QEventLoop
 
-from .base.math_util                import nelder_mead, derivative1
+from .base.math_util                import nelder_mead, derivative1, interpolate, differential_evolution
 from .base.spline                   import Bezier
 from .base.widgets                  import style 
 from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline, clip
@@ -29,14 +30,13 @@ logger = logging.getLogger(__name__)
 
 #--------------------
 
-class Matcher_Base (QThread):
+class Matcher (QThread):
     """Base worker thread for Bezier and B-spline airfoil matching."""
 
     sig_new_results     = pyqtSignal(int, int, object)  # ipass, nevals, Match_Result
-    sig_pass_start      = pyqtSignal (int, int)         # ipass, new ncp
-    sig_finished        = pyqtSignal(object)            # final Match_Result (is_optimized=True)
+    sig_pass_start      = pyqtSignal (int, int, bool)   # ipass, new ncp
+    sig_finished        = pyqtSignal(object)            # final Match_Result
 
-    STEP_SIZE = None                                    # initial step size for nelder mead - to be overridden in child classes
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -45,11 +45,11 @@ class Matcher_Base (QThread):
         self._targets : Match_Targets = None
 
         self._ncp    = None
-        self._niter  = 0
         self._nevals = 0
 
-
-
+        # dev 
+        self._penalty_bumps_min = 999999
+        self._penalty_bumps_max = -999999
 
     def __del__(self):  
         self.wait()
@@ -60,12 +60,23 @@ class Matcher_Base (QThread):
         return self._side.curve
 
 
-    def _y1_from_curvature (self, le_curvature: float, curve : Bezier| BSpline, cp_x2: float) -> float:
-        """
-        Compute the second control-point y value from the target LE curvature.
-        """
+    def _step_size (self, ncp: int) -> float:
+        """Calculate step size for Nelder-Mead based on number of control points."""
 
-        raise NotImplementedError ("must be implemented in child classes ")
+        # For curves with less control points, the solution may be farther from the initial guess, 
+        # so we can use a larger step size. For more control points, we can use a smaller step size to fine-tune the solution.
+
+        if self._side.isBezier:
+
+            step = interpolate ( 5, 8, 0.3, 0.1, ncp)  # linear interpolation  
+
+        elif self._side.isBSpline:
+
+            step = interpolate ( 5, 10, 0.2, 0.4, ncp)  # linear interpolation between (5, 0.2) and (10, 0.4)
+
+        else:
+            step = 0.1
+        return step
 
 
     @staticmethod
@@ -73,6 +84,7 @@ class Matcher_Base (QThread):
                             region : tuple | None = None,
                             max_reversals: int = 0,
                             threshold: float = Line.CURV_THRESHOLD,
+                            smooth: bool = False,
                             scale: float = 0.01) -> float:
         """ 
         Penalize curvature sign changes beyond the allowed reversal count.
@@ -111,7 +123,8 @@ class Matcher_Base (QThread):
         
         if len(curv_body) < 2:
             return 0.0
-        
+
+
         # Track sign changes from left to right
         signs = np.sign(curv_body)
         signs[signs == 0] = 1  # treat zero as positive to avoid ambiguity
@@ -125,32 +138,36 @@ class Matcher_Base (QThread):
         # Unified logic for all max_reversals values
 
         if n_changes > max_reversals:
-            # Too many changes - penalize all values from the violation point onward
-            if max_reversals == 0:
-                # No reversals allowed - penalize from the beginning
-                violation_start_idx = 0
-            else:
-                # Start penalizing from the (max_reversals+1)-th change onward
-                violation_start_idx = sign_changes_idx[max_reversals]
+            # Too many changes - penalize least significant segments
+            # Split curvature into segments based on sign changes
+            segment_bounds = [0] + list(sign_changes_idx) + [len(curv_body)]
             
-            after_limit = curv_body[violation_start_idx:]
+            # Calculate the "area" (sum of absolute values) for each segment
+            segment_maxs = []
+            for i in range(len(segment_bounds) - 1):
+
+                start_idx = segment_bounds[i]
+                end_idx   = segment_bounds[i + 1]
+                segment = curv_body[start_idx:end_idx]
+
+                max_val = np.max(np.abs(segment))
+                segment_maxs.append(max_val)
             
-            # Penalize ALL absolute values beyond the allowed reversals
-            # This captures any further oscillations regardless of sign
-            violations = np.abs(after_limit)
-
-            #  normalize by peak curvature -> violations in [0,1], penalty in [0,1] for scale=1
-            # ref = np.max (np.abs(curv_body))
-            # violations = violations / ref if ref > 0 else violations
-
-            penalty_sum = np.mean (violations) 
-
-            # Apply sqrt to each violation for aggressiveness on small values, then take mean for normalization
-            # penalty_sum = np.mean(np.sqrt(violations))
+            # Sort segments by area (largest to smallest)
+            segment_maxs.sort(reverse=True)
+            # We want to keep (max_reversals + 1) most significant segments
+            # The smaller rest should be penalized
+            n_segments_to_keep = max_reversals + 1
+            segments_to_penalize = segment_maxs[n_segments_to_keep:]
+            
+            # Sum the max values of the segments we're penalizing
+            penalty_sum = sum(segments_to_penalize)
         
         # Apply scaling
-        penalty = penalty_sum * scale
-            
+        if penalty_sum > 1.0:
+            penalty_sum = penalty_sum ** 0.3                # damp very high penalties to avoid instability
+        penalty = penalty_sum * scale                     
+
         return penalty
 
 
@@ -158,7 +175,7 @@ class Matcher_Base (QThread):
     def _penalty_te_curv (curv_te : float, 
                           max_curv_te: float,
                           max_reversals: int,
-                          threshold: float = Line.CURV_THRESHOLD,
+                          threshold: float = 0.05,
                           scale: float = 0.01) -> float:
         """ 
         Penalize trailing-edge curvature outside the allowed range.
@@ -238,14 +255,14 @@ class Matcher_Base (QThread):
         pen_le_curv_monoton = (np.sum(curv_diff[curv_diff > 0]) / np.abs(curv[0])) * scale
 
         return pen_le_curv_monoton
-    
+
 
     @staticmethod
-    def _penalty_bumps (x : np.ndarray, curv : np.ndarray, 
-                        max_reversals: int,
-                        scale: float = 0.01) -> float:
+    def _penalty_bumpiness (x : np.ndarray, curv : np.ndarray, 
+                            max_reversals: int = 0,
+                            scale: float = 0.01) -> float:
         """
-        Penalize reversals of derivative of curvature derivatives in a given x region.
+        Penalize bumbiness by integrating the curvature derivatives in the body region.
 
         This acts as a smoothness term that suppresses bumps 
         
@@ -256,72 +273,162 @@ class Matcher_Base (QThread):
             scale: Scaling factor for the returned penalty.
         """
 
-        x_start, x_end = 0.2, 1.0
-        body_mask = (x >= x_start) & (x <= x_end)
+        # define a weighting window that focuses on the body region and smoothly reduces the penalty 
+        # towards the leading and trailing edges as high values of curvature derivative 
+        # would interfere with smoothing 
+        x0      = 0.05                
+        width0  = 0.45 # 0.3
+        x1      = 1.0   
+        width1  = 0.3 # 0.15 if max_reversals == 0 else 0.3     # limit - as high values at te could confuse damping
+        w       = np.zeros_like(x)
 
-        x_body    = x    [body_mask]
-        curv_body = curv [body_mask]
+        # Middle region
+        mid_mask = (x >= x0 + width0) & (x <= x1 - width1)
+        w[mid_mask] = 1.0
+
+        # Left smooth ramp
+        left_mask = (x >= x0) & (x < x0 + width0)
+        t = (x[left_mask] - x0) / width0
+        w[left_mask] = 0.5 * (1 - np.cos(np.pi * t))
+
+        # Right smooth ramp
+        right_mask = (x > x1 - width1) & (x <= x1)
+        t = (x1 - x[right_mask]) / width1
+        w[right_mask] = 0.5 * (1 - np.cos(np.pi * t))
+
+        # Compute derivative of derivative
+
+        curv_d  = derivative1 (x, curv)
+        curv_dd = derivative1 (x, curv_d)
+        
+        # Penalty = integral of (k'')^2
+        # we just look at second derivative to be smooth - no square as we have normal high values in range
+        # pen_d  = np.trapezoid (w * np.abs(curv_d),  x)  / 1e3
+        pen_dd = np.trapezoid (w * np.abs(curv_dd), x)  / 1e4 # second derivative of curvature should also be smooth
+
+        pen = pen_dd * scale   # sqrt to limit to high values
+
+        # print ( f"Smoothness penalty: {pen:.6f}  pen_dd: {pen_dd:.6f} " )
+
+        return pen
+
+
+    @staticmethod
+    def _penalty_bumps (x : np.ndarray, curv : np.ndarray, 
+                        region : tuple | None = (0.05, 0.9),    
+                        max_reversals: int = 0,
+                        scale: float = 0.01) -> float:
+        """
+        Penalize reversals of derivative of curvature derivatives in a given x region.
+
+        This is a measure of real bumps
+        
+        Args:
+            x: x coordinates.
+            curv: Curvature values sampled at ``x``.
+            max_reversals: Maximum allowed curvature reversals (sign changes).
+            scale: Scaling factor for the returned penalty.
+        """
+
+        # mask region of interest
+        if isinstance(region, tuple):
+            x_start, x_end = region
+            body_mask = (x >= x_start) & (x <= x_end)
+            x_body    = x    [body_mask]
+            curv_body = curv[body_mask]
+        else:
+            x_body    = x
+            curv_body = curv
 
         # Compute derivative of derivative
         curv_d  = derivative1 (x_body, curv_body)
         curv_dd = derivative1 (x_body, curv_d)
 
 
+        # noramlize to be similar to curv values and avoid scale issues with penalty threshold
+        curv_d = np.abs(curv_d) / 10.0
+        curv_dd = curv_dd/ 100.0
+
         # curvature should montonically decrease in body region 
-        #  - also becoming negative (reversal of ucvature)
+        #  - also becoming negative (reversal of curvature)
         # -> avoid reversals of derivative of curvature 
 
-        pen_d = Matcher_Base._penalty_reversals (x_body, curv_d, threshold=0.01, scale=scale*0.02)  
+        # pen_d = Matcher._penalty_reversals (x_body, curv_d, threshold=0.3, scale=scale*0.01)  
+        pen_d = Matcher._penalty_reversals (x_body, curv_d, threshold=0.03, scale=2.0)  
 
         # derivative of curvature decreases and may increase again
-        # -> allow one reveresal of derivative of derivative  
+        # -> allow max_reversals of derivative of derivative  
 
-        max_n = 1 + max_reversals    # allow one reversal of derivative of derivative 
+        pen_dd = Matcher._penalty_reversals (x_body, curv_dd, threshold=0.02, 
+                                             max_reversals=max_reversals, scale=1.0)  
 
-        pen_dd = Matcher_Base._penalty_reversals (x_body, curv_dd, threshold=0.01, max_reversals=max_n, scale=scale*0.02)  
-
-        pen = pen_d + pen_dd
-
-        # if pen > 0.0:
-        #     print (f"    pen_d: {pen_d:.6f}  pen_dd: {pen_dd:.6f}  pen: {pen:.6f}")
+        pen = (pen_d + pen_dd) * scale
 
         return pen
 
+
     #--------------------
 
-    def _map_curve_to_variables (self): 
+    def _calc_dv_bounds (self, ncp : int,  max_thickness: float) -> list [tuple]: 
         """ 
-        Map curve control points to the optimization variable vector.
+        determine a good estimate for the design variable bounds.
+            LE (cp0), cp1 and TE (cp-1) are fixed, 
+            so only the inner control points are design variables.
+        Args:
+            ncp: number of control points
+            max_thickness: maximum thickness of the airfoil (for y bounds)
+            
+        Returns:
+            list[tuple]: List of bound tuples for each design variable.
+        """
+
+        bounds = []
+
+        x_max = 0.98
+        x_min = 0.0005
+        y_max = abs(max_thickness) * 2.5           # solution space is positive
+        y_min = -0.02                              # SA7036i needs negative cp-2 
+
+        for icp in range (2, ncp-1):                
+
+            bounds.append ((x_min, x_max))
+            bounds.append ((y_min, y_max))             
+
+        return bounds 
+
+
+
+    def _map_curve_to_dv (self) -> list [float]: 
+        """ 
+        Map curve control points to the optimization designvariable vector.
+            LE (cp0), cp1 and TE (cp-1) are fixed, 
+            so only the inner control points are design variables.
 
         Returns:
             tuple[list, list]: Variable values and matching bound tuples.
         """
 
-        sign   = -1 if self._side.isLower else 1         # lower side: y is inverted in solution space
+        sign   = -1 if self._side.isLower else 1        # lower side: y is inverted in solution space
         cp_x   = self._curve.cpoints_x
-        cp_y   = self._curve.cpoints_y
-        ncp    = self._curve.ncp
+        cp_y   = self._curve.cpoints_y 
+        ncp    = len( cp_x )
         vars   = []
-        bounds = []
 
-        for icp in range (2, ncp-1):                # skip LE (0), cp1 (1) and TE (ncp-1)
-                                                    # cp1: x is 0.0 (vertical tangent), y is analytical from target LE curvature
-                                                    # solution space is always positive (sign handles upper/lower)
+        for icp in range (2, ncp-1):               
+                                                   
             vars.append   (cp_x[icp])
-            bounds.append ((0.005, 0.95))
-            vars.append   (sign * cp_y[icp])
-            bounds.append ((-0.1, 0.5))             # allow slight negative for reflex, limit upward
+            vars.append   (sign * cp_y[icp])            # solution space is always positive (sign handles upper/lower)
 
-        return vars, bounds 
+        return vars 
 
 
-    def _map_variables_to_curve (self, vars: list): 
+    def _map_dv_to_curve (self, vars: list): 
         """Map optimization variables back to curve control points."""
 
         sign   = -1 if self._side.isLower else 1         # lower side: y is inverted in solution space
         cp_x   = self._curve.cpoints_x
         cp_y   = self._curve.cpoints_y
-        ncp    = self._curve.ncp
+        ncp    = len( cp_x )
         ivar   = 0
 
         for icp in range (2, ncp-1):                # skip LE (0), cp1 (1) and TE (ncp-1)
@@ -330,7 +437,8 @@ class Matcher_Base (QThread):
 
         # cp_y[1] is determined analytically from target LE curvature and current cp_x[2]
 
-        cp_y[1] = sign * self._y1_from_curvature (self._targets.le_curvature, self._curve, cp_x[2])    # negative for lower side
+        cp_y[1] = sign * self._curve.cp_y1_from_curvature (self._targets.le_curvature, cp_x[2], 
+                                                           degree=self._curve.degree, ncp=ncp)    # negative for lower side
 
         self._curve.set_cpoints (cp_x, cp_y)
         # Note: _u (panel distribution) is NOT reset here for performance - it's set once per optimization pass
@@ -346,12 +454,20 @@ class Matcher_Base (QThread):
         targets = self._targets
 
         # rebuild BSpline 
-
-        self._map_variables_to_curve (variables)
+        self._map_dv_to_curve (variables)
 
         # get needed values from current bspline
-
         x      = self._side.x                                       # single vectorized call
+
+        # fast check if x is monoton 
+
+        x_diff = np.diff(x)
+        if not np.all(x_diff > 0):
+            # Return high penalty - optimizer should avoid these regions entirely
+            # logger.info (f"Non-monotonic x detected - returning high penalty")
+            return 10.0
+
+        # get curvature of current curve 
         c_line = self._side.curvature ()
         curv   = -c_line.y if self._side.isUpper else c_line.y      # curve for upper side has to be negated
 
@@ -371,30 +487,30 @@ class Matcher_Base (QThread):
         else:
             penalty_le_curv = 0.0
 
-
         # -- le curvature should be monotonically decreasing in the leading-edge region 
 
-        penalty_le_curv_monoton = self._penalty_le_curv_monoton (curv, scale=0.1)
+        penalty_le_curv_monoton = self._penalty_le_curv_monoton (curv, scale=0.1) 
 
         # -- te curvature limit
 
         if targets.max_te_curvature is not None:
             penalty_te_curv = self._penalty_te_curv (curv[-1], targets.max_te_curvature, targets.max_nreversals,
-                                        scale = 0.02)
+                                        scale = 0.0001)   # 0.01
         else:
             penalty_te_curv = 0.0
 
-        # -- penalty for curvature derivative to avoid bumps 
+        # -- penalty for curvature derivatives not being smooth to avoid bumps 
 
         if targets.bump_control:
-            penalty_bumps = self._penalty_bumps (x, curv, targets.max_nreversals, 
-                                                 scale=0.001) 
+            penalty_bumps = self._penalty_bumpiness (x, curv, 
+                                        max_reversals=targets.max_nreversals, 
+                                        scale=0.0500)  
         else:
             penalty_bumps = 0.0
 
         # -- penalty for curvature reversals
 
-        penalty_reversals = self._penalty_reversals (x, curv, region = (0.2, 1.0),
+        penalty_reversals = self._penalty_reversals (x, curv, region = (0.1, 1.0),
                                         max_reversals = targets.max_nreversals,
                                         scale = 0.001) 
 
@@ -402,7 +518,7 @@ class Matcher_Base (QThread):
         
         obj = obj_rms + penalty_le_curv + penalty_le_curv_monoton + penalty_te_curv + penalty_bumps + penalty_reversals
 
-        if self._nevals%100 == 0 or show_info:  
+        if self._nevals%50 == 0 or show_info:  
             logger.info (f"{self._nevals:4d}:  "
                     f"obj: {obj:.6f}   "
                     f"{('rms: '        + f'{obj_rms:.6f}   ') if obj_rms > 1e-9 else ''}"
@@ -415,7 +531,7 @@ class Matcher_Base (QThread):
         self._nevals += 1                       # counter of objective evaluations (for entertainment)
 
         # signal parent with new results 
-        if self._nevals%100 == 0 or show_info:  
+        if self._nevals%50 == 0 or show_info:  
             result = Match_Result(self._side, self._targets, rms=obj_rms, objective=obj, curv=curv)
             self.sig_new_results.emit (self._ipass, self._nevals, result)
             self.msleep(2)                      # give parent some time to do updates
@@ -426,62 +542,78 @@ class Matcher_Base (QThread):
 
     def _run_single_pass (self, ncp = 6) -> float: 
         """Run one Nelder-Mead optimization pass for a fixed control-point count."""
-
-        self._niter      = 0                        # number of iterations needed
-        self._nevals     = 0                        # current number of objective function evals
-
-        # sanity - ncp=3: fully determined analytically 
-
-        if ncp == 3:
-            self._map_variables_to_curve ([])      # just applies the analytical cp_y[1]
-            return 0.0
-
-        # -- reset Bezier to standard start position before each run  
-
-        self._side.re_fit_curve(self._targets.side, le_curvature=self._targets.le_curvature, ncp=ncp)   # reset bezier to standard start position before each run - important for optimization behavior
-
-        self.sig_pass_start.emit (self._ipass, ncp) # dialog can update UI, new ncp
-        self.msleep(10)                             # give parent some time to do updates
-
-        #-- map control point x,y to optimization variable 
-
-        dv_start, bounds = self._map_curve_to_variables ()
-
+    
         # ----- objective function
 
         f = lambda dv : self._objectiveFn (dv) 
 
-        # -- initial step size 
+        bounds      = self._calc_dv_bounds (ncp, self._targets._side.max_xy[1])   
 
-        # step = 0.25                      # big enough to explore solution space 
+        # -- reset Bezier/B-Spline to standard start position before each run 
+        #       Golbal search don't need it - but cp arrays must be resized to ncp
 
-        # -- calculate max_iter based on current number of variables
+        self._side.re_fit_curve(self._targets.side, le_curvature=self._targets.le_curvature, ncp=ncp)   
 
-        max_iter = len(dv_start) * 300
+        # ----- optional global search differential evolution find dv_start --------
+
+        if ncp < 5:
+
+            self._nevals     = 0                                # current number of objective function evals
+
+            self.sig_pass_start.emit (self._ipass, ncp, True)   # dialog can update UI, new ncp, global search
+            self.msleep(10)                                     # give parent some time to do updates
+    
+            n_vars      = len(bounds)
+            pop_size    = max(20,  n_vars * 5)                  # 10-15x the number of variables
+            generations = max(300, n_vars * 100)                # Scale with problem complexity
+
+            dv_start, _, gen = differential_evolution (
+                    f, bounds,
+                    bound_mode='reflect',
+                    pop_size=pop_size, mutation_factor=0.6, crossover_rate=0.9,
+                    generations=generations,
+                    no_improve_break=30, no_improve_thr=1e-3,   # Threshold for improvement
+                    stop_callback=self.isInterruptionRequested, # QThread method 
+                    seed=42)                                    # Reproducible results
+        
+            objective = self._objectiveFn (dv_start, show_info=True)  # final evaluation with info printout
+            logger.info (f"Finished DE within {gen} generations, {self._nevals} evals, objective: {objective:.6f}")
+
+            step_size = 0.1                                     # fixed step size for Nelder-Mead after global search 
+
+        else:
+
+            step_size = self._step_size(ncp)                    # step size based on number of control points
+
+            dv_start = self._map_curve_to_dv ()
 
         # ----- nelder mead find minimum --------
 
+        self.sig_pass_start.emit (self._ipass, ncp, False)      # dialog can update UI, new ncp
+        self.msleep(10)                                         # give parent some time to do updates
+
+        self._nevals = 0 
+
+        max_iter  = len(dv_start) * 300                         # max_iter based on current number of variables
+
         res, niter = nelder_mead (f, dv_start,
-                    step=self.STEP_SIZE, no_improve_thr=1e-7,             
-                    no_improv_break_beginning=100, 
-                    no_improv_break=20, 
-                    max_iter=max_iter,         
+                    step=step_size, no_improve_thr=1e-7,             
+                    no_improv_break_beginning=150, no_improv_break=100, #20
+                    min_iter=200, max_iter=max_iter,        
                     bounds = bounds,
-                    stop_callback=self.isInterruptionRequested)     # QThread method 
+                    stop_callback=self.isInterruptionRequested)  # QThread method 
 
         dv = res[0]
 
-        logger.info (f"Finished after {niter} iterations and {self._nevals} evaluations.") 
         objective = self._objectiveFn (dv, show_info=True)          # final evaluation with info printout
+        logger.info (f"Finished nelder mead after {niter} iterations and {self._nevals} evaluations.") 
 
         #-- evaluate the new y values on Bezier for the target x-coordinate
 
-        self._map_variables_to_curve (dv)
-
-        self._niter      = niter
-        self._nevals     = 0 
+        self._map_dv_to_curve (dv)
 
         return objective
+
 
     # ------ Public Methods --------------
 
@@ -517,12 +649,13 @@ class Matcher_Base (QThread):
 
         # set ncp for auto mode 
         if self._targets.ncp_auto:
-            npc_list = range(self._side.NCP_BOUNDS[0], self._side.NCP_BOUNDS[1] + 1)  
+            npc_list = range(self._side.NCP_AUTO_RANGE[0], self._side.NCP_AUTO_RANGE[1] + 1)  
         else:
             npc_list = [self._ncp]
 
         # Dictionary to store all results: {objective: control_points}
         results = {}
+        ncp_devaluation = 1.0
 
         for ncp in npc_list:
 
@@ -535,9 +668,11 @@ class Matcher_Base (QThread):
 
             # Store result and decide if good enough to end 
 
-            results[objective] = self._curve.cpoints.copy()
+            objective_devaluated = objective * ncp_devaluation
+            results[objective_devaluated] = self._curve.cpoints.copy()
+            ncp_devaluation *= 1.05   # slightly devalue higher ncp results to prefer simpler solutions if objective is similar
 
-            if objective < 0.000030:                
+            if objective < 0.000040:                
                 break
             elif self.isInterruptionRequested():
                 break
@@ -552,103 +687,8 @@ class Matcher_Base (QThread):
 
         self._side.target_deviation.set_fast (False)            # needed for accurate rms evaluation
 
-        result = Match_Result (self._side, self._targets, is_optimized=True)
+        result = Match_Result (self._side, self._targets)
         self.sig_finished.emit (result)
-
-
-# --------------------
-
-
-class Matcher_Bezier (Matcher_Base):
-    """Matcher worker specialized for Bezier airfoil-side curves."""
-
-    STEP_SIZE = 0.1 # 0.05                                    # initial step size for nelder mead
-
-
-    @override
-    def _y1_from_curvature (self, le_curvature: float, curve : Bezier| BSpline, cp_x2: float) -> float:
-        """Compute the second control-point y value from the target LE curvature.
-
-        Assume a leading-edge control-point layout of:
-            P0 = (0, 0)
-            P1 = (0, y1)
-            P2 = (x2, y2)
-
-        This gives a vertical start tangent and solves analytically for ``y1`` so
-        that the start curvature matches ``le_curvature``.
-
-        The formulas used are:
-
-        Bézier:
-            |kappa(0)| = (degree - 1) / degree * |x2| / y1^2
-
-        Args:
-            le_curvature: Desired curvature magnitude at the start point.
-            curve: Curve instance used to determine the correct leading-edge formula.
-            cp_x2: x coordinate of the third control point ``P2``.
-
-        Returns:
-            float: ``y1`` that produces the requested leading-edge curvature.
-        """
-
-        degree = curve.degree
-        factor = (degree - 1) / degree
-
-        y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
-
-        return y1
-
-
-
-class Matcher_BSpline (Matcher_Base):
-    """Matcher worker specialized for B-spline airfoil-side curves."""
-
-    STEP_SIZE = 0.02                                     # initial step size for nelder mead
-
-    @override
-    def _y1_from_curvature (self, le_curvature: float, curve : Bezier| BSpline, cp_x2: float) -> float:
-        """Compute the second control-point y value from the target LE curvature.
-
-        Assume a leading-edge control-point layout of:
-            P0 = (0, 0)
-            P1 = (0, y1)
-            P2 = (x2, y2)
-
-        This gives a vertical start tangent and solves analytically for ``y1`` so
-        that the start curvature matches ``le_curvature``.
-
-        The formulas used are:
-
-        B-spline (open-uniform/clamped, degree=4):
-            ncp=5 (minimal): |kappa(0)| = (degree - 1) / degree * |x2| / y1^2
-            ncp≥6: |kappa(0)| = (degree - 1) / (2 * degree) * |x2| / y1^2
-            
-        The factor changes because additional control points dilute cp[2]'s influence.
-
-        Args:
-            le_curvature: Desired curvature magnitude at the start point.
-            curve: Curve instance used to determine the correct leading-edge formula.
-            cp_x2: x coordinate of the third control point ``P2``.
-
-        Returns:
-            float: ``y1`` that produces the requested leading-edge curvature.
-        """
-
-        degree = curve.degree
-        ncp = curve.ncp
-        
-        # Factor depends on number of control points for clamped B-splines
-        # With minimal ncp (degree+1), cp[2] has maximum influence
-        # With more control points, influence is diluted
-        if ncp <= degree + 1:  # minimal case (ncp=5 for degree=4)
-            factor = (degree - 1) / degree
-        else:
-            factor = (degree - 1) / (2 * degree)
-
-        y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
-
-        return y1
-
 
 
 # --------------------
@@ -659,8 +699,7 @@ class Match_Result:
 
     def __init__(self, side: Side_Airfoil_Curve, targets: Match_Targets, 
                  *, rms: float | None = None, objective: float | None = None, 
-                 curv: np.ndarray | None = None,
-                 is_optimized: bool = False):
+                 curv: np.ndarray | None = None):
         """Initialize match result with calculated or provided metrics.
         
         Args:
@@ -669,14 +708,17 @@ class Match_Result:
             rms: Pre-calculated RMS deviation (calculated if None).
             objective: Objective function value (optional).
             curv: Pre-calculated curvature array with correct sign (calculated if None).
-            is_optimized: True if result comes from a real optimizer run, not the initial fit.
         """
-        self._side = side
+
         self._targets = targets
+
+        self._cpoints = side.curve.cpoints.copy()           # store control points of the final curve
+        self._name    = f"{side.name}"
+        self._isUpper = side.isUpper
+        self._ncp_default = side.NCP_DEFAULT
         
         # Calculate and store all metrics
         self._rms = rms if rms is not None else side.target_deviation.rms()
-        self._ncp = side.curve.ncp
         
         # Use provided curv (already has correct sign) or calculate from side
         if curv is None: 
@@ -685,29 +727,24 @@ class Match_Result:
         self._le_curvature = abs(curv[0])
         self._te_curvature = curv[-1]
         self._nreversals   = Line(x=side.x, y=curv).nreversals() 
-        self._bumps        = Matcher_Base._penalty_bumps (side.x, curv, targets.max_nreversals, scale=1.0)
+        self._bumps        = Matcher._penalty_bumps (side.x, curv, 
+                                                     max_reversals=targets.max_nreversals, scale=1.0)
         
         self._max_dy_tuple = side.target_deviation.max_dy()  # (position, value)
         
         # Optional fields
         self._objective    = objective
-        self._is_optimized = is_optimized
 
     @property
     def name(self) -> str:
         """Name of the result, e.g. for labeling in the UI."""
-        return f"{self._side.name}"
-    
-    @property
-    def is_optimized(self) -> bool:
-        """True if this result is from a real optimizer run, not the initial fit."""
-        return self._is_optimized
+        return self._name
 
     @property
-    def side(self) -> Side_Airfoil_Curve:
-        """The airfoil side being matched."""
-        return self._side
-    
+    def isUpper(self) -> bool:
+        """Whether this result is for the upper side of the airfoil."""
+        return self._isUpper
+         
     @property
     def targets(self) -> Match_Targets:
         """The match targets for this optimization."""
@@ -721,7 +758,7 @@ class Match_Result:
     @property
     def ncp(self) -> int:
         """Number of control points."""
-        return self._ncp
+        return len(self._cpoints) 
     
     @property
     def le_curvature(self) -> float:
@@ -763,7 +800,7 @@ class Match_Result:
         """UI style for this result's deviation."""
         if self._rms < 0.0001:                          # equals .01% deviation
             return style.GOOD
-        elif self._rms < 0.0005:
+        elif self._rms < 0.0003:
             return style.NORMAL
         else:
             return style.WARNING
@@ -771,7 +808,7 @@ class Match_Result:
     @property
     def style_curv_le(self) -> style:
         """UI style for this result's LE curvature."""
-        delta = abs(self._targets.le_curvature - self._le_curvature)
+        delta = abs(self.targets.le_curvature - self._le_curvature)
         
         if delta > 10: 
             return style.WARNING
@@ -786,7 +823,7 @@ class Match_Result:
 
         # sign of max_curv_te depends on reversals
         # if max_reversals is odd, max_curv_te is negative; if even, positive (or zero) 
-        max_curv_te = abs(self._targets.max_te_curvature) * (-1) ** self._targets.max_nreversals  
+        max_curv_te = abs(self.targets.max_te_curvature) * (-1) ** self.targets.max_nreversals  
 
         min_allowed = min(0.0, max_curv_te)
         max_allowed = max(0.0, max_curv_te)
@@ -822,7 +859,7 @@ class Match_Result:
         if self._nreversals is None:
             return style.NORMAL
         
-        if self._nreversals <= self._targets.max_nreversals:
+        if self._nreversals <= self.targets.max_nreversals:
             return style.GOOD
         else:
             return style.WARNING
@@ -841,14 +878,14 @@ class Match_Result:
 
     def is_ncp_good(self) -> bool:
         """Determine if the number of control points is good based on targets."""
-        if self._targets.max_nreversals:
+        if self.targets.max_nreversals:
             # reflexed or rearload - more complex shapes - allow higher ncp
-            good_ncp = self._side.NCP_DEFAULT + 1
+            good_ncp = self._ncp_default + 1
         else:
             # simple shapes - lower ncp is sufficient and more robust
-            good_ncp = self._side.NCP_DEFAULT
+            good_ncp = self._ncp_default
 
-        return self.ncp <= good_ncp and self.is_optimized
+        return self.ncp <= good_ncp
 
     @property
     def style_ncp(self) -> style:
@@ -859,11 +896,22 @@ class Match_Result:
 
     def is_good_enough(self) -> bool:
         """Return whether this result satisfies the quality targets."""
-        return all(s == style.GOOD for s in (
+
+        # return good if max one styles is normal, the rest is good
+
+        styles = [
+            self.style_deviation,
+            self.style_max_dy,
             self.style_curv_le,
             self.style_curv_te,
-            self.style_deviation,
-        ))
+            self.style_nreversals,
+            self.style_bumps
+        ]
+        normal_count = sum(1 for s in styles if s == style.NORMAL)
+        good = normal_count <= 1 and all(s == style.GOOD for s in styles if s != style.NORMAL)  
+        
+        return good
+        
 
     def is_perfect (self) -> bool:
         """Return whether this result is perfect (meets all targets with good style)."""
@@ -872,7 +920,8 @@ class Match_Result:
             self.style_curv_te,
             self.style_deviation,
             self.style_max_dy,
-            self.style_nreversals
+            self.style_nreversals,
+            self.style_bumps
         ))
 
 # --------------------
@@ -919,12 +968,11 @@ class Match_Airfoil:
         geo: Geometry_Curve = self._airfoil.geo
         
         # Create matchers
-        matcher_class = Matcher_Bezier if airfoil_class == Airfoil_Bezier else Matcher_BSpline
         
-        self._matcher_upper = matcher_class()
+        self._matcher_upper = Matcher()
         self._matcher_upper.set_match(geo.upper, self._targets_upper)
         
-        self._matcher_lower = matcher_class()
+        self._matcher_lower = Matcher()
         self._matcher_lower.set_match(geo.lower, self._targets_lower)
         
         # Interruption flag

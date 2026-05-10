@@ -5,9 +5,10 @@
 
 """
 
+import random
 import numpy as np
 import math
-from bisect import bisect_left
+from bisect         import bisect_left
 
 import logging
 logger = logging.getLogger(__name__)
@@ -26,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 #------------ Point -----------------------------------
 
-from typing import overload
 
 class JPoint:
     """    
@@ -245,14 +245,16 @@ class JPoint:
 #------------ linear interpolation -----------------------------------
 
 
-def interpolate(x1:float, x2:float, y1:float, y2:float, x:float) -> float:
+def interpolate(x1: float, x2: float, y1: float, y2: float, x: float | np.ndarray) -> float | np.ndarray:
+    """ 
+    Linear interpolation between points (x1, y1) and (x2, y2) at x.
+    where x can be a single value or an array of values. Returns the interpolated y value(s) at x. 
+    """
 
-    if (x1 -x) == 0.0: return y1
-    
-    try:
-        y = ((y2-y1)/(x2-x1)) * (x-x1) + y1
-    except:
+    if x1 == x2:
         raise ValueError (f"Division by zero in interpolation , x1: {x1}, x2: {x2}")
+
+    y = ((y2 - y1) / (x2 - x1)) * (x - x1) + y1
     return y
 
 
@@ -558,6 +560,34 @@ def secant_fn (f,a,b,N):
 
 
 
+#------------ Binary search - find x where f(x) = target  -----------------------------------
+
+def binary_search(f, target, low, high, max_iter=10):
+    """
+    Find x in [low, high] where f(x) ≈ target using binary search.
+    
+    Assumes f is monotonically increasing on [low, high].
+    
+    Args:
+        f: Monotonically increasing function to search.
+        target: Target value to find.
+        low: Lower bound of search range.
+        high: Upper bound of search range.
+        max_iter: Maximum number of iterations (default 10, narrows range to ~1/1024).
+    
+    Returns:
+        float: Approximation of x where f(x) = target.
+    """
+    for _ in range(max_iter):
+        mid = (low + high) * 0.5
+        f_mid = f(mid)
+        if f_mid < target:
+            low = mid
+        else:
+            high = mid
+    return (low + high) * 0.5
+
+
 #------------ Newton iteration - find Root  -----------------------------------
 
 def newton(f,Df,x0,epsilon = 10e-8 , max_iter= 50, bounds=None):
@@ -601,6 +631,8 @@ def newton(f,Df,x0,epsilon = 10e-8 , max_iter= 50, bounds=None):
         if abs(fxn) < epsilon:
             break
 
+        if xn <= 0.0:
+            pass
         Dfxn = Df(xn)
         if Dfxn == 0:
             if xn == 0.0:                       # special case at LE 
@@ -613,7 +645,7 @@ def newton(f,Df,x0,epsilon = 10e-8 , max_iter= 50, bounds=None):
         if   xn > bounds[1]: xn = bounds[1]
         elif xn < bounds[0]: xn = bounds[0]
 
-    return xn, n
+    return xn, n + 1
 
 
 
@@ -767,10 +799,12 @@ def nelder_mead (f,
                 no_improve_thr : float = 10e-10,                          # for scalar product
                 no_improv_break : int = 12, 
                 no_improv_break_beginning : int|None = None, 
-                max_iter : int =50,
+                max_iter : int =50, 
+                min_iter : int = 0,
                 bounds = None,                                   
                 alpha=1., gamma=2., rho=-0.5, sigma=0.5,
-                stop_callback : bool =False) -> tuple [tuple [np.ndarray, float], int]:
+                stop_callback = None
+                ) -> tuple [tuple [np.ndarray, float], int]:
     '''
         Nelder-Mead optimization algorithm to determine the minimum of a fuction
 
@@ -786,6 +820,7 @@ def nelder_mead (f,
         no_improv_break : break after no_improv_break iterations 
         no_improv_break_beginning : break after no_improv_break iterations at the beginning (default=no_improv_break) 
         bounds  : list of tuple(float) - (min, max) pair for boundary of x. None - no boundary. 
+        min_iter: minimum number of iterations to run (default 0) - allows to skip too calm beginning of optimization
         max_iter: always break after this number of iterations.
         alpha, gamma, rho, sigma (floats): parameters of the algorithm (see Wikipedia page for reference)
         stop_callback : optional method for stop condition
@@ -869,7 +904,6 @@ def nelder_mead (f,
         iters += 1
 
          # break after no_improv_break iterations with no improvement
- 
         if abs(best - prev_best) < no_improve_thr:
             no_improv += 1
         else:
@@ -877,14 +911,15 @@ def nelder_mead (f,
             prev_best = best
 
         # allow a different (higher) no_improv_break at the beginning (results are still highly volatile) 
-        if iters < max_iter / 5:
-            if no_improv >= no_improv_break_beginning:
-                # print(f"  nelder_mead iters: {iters} best: {best} prev_best {prev_best} no_improv: {no_improv}") 
-                return res[0], iters
-        else: 
-            if no_improv >= no_improv_break:
-                # print(f"  nelder_mead iters: {iters} best: {best} prev_best {prev_best} no_improv: {no_improv}") 
-                return res[0], iters
+        if iters > min_iter:
+            if iters < max_iter / 5:
+                if no_improv >= no_improv_break_beginning:
+                    # print(f"  nelder_mead iters: {iters} best: {best} prev_best {prev_best} no_improv: {no_improv}") 
+                    return res[0], iters
+            else: 
+                if no_improv >= no_improv_break:
+                    # print(f"  nelder_mead iters: {iters} best: {best} prev_best {prev_best} no_improv: {no_improv}") 
+                    return res[0], iters
 
 
         # centroid
@@ -892,9 +927,7 @@ def nelder_mead (f,
         for tup in res[:-1]:
             for i, c in enumerate(tup[0]):
                 x0 [i] += c / (len(res)-1)
-        # print ("Centroid ", iters, x0)
-        # for i, tup in enumerate(res):
-        #     print ("res ", i, tup[0])
+
         # reflection
         xr = x0 + alpha*(x0 - res[-1][0])
         rscore = fn_penalty (f, xr, bounds) 
@@ -1000,6 +1033,204 @@ def findRoot (fn, xStart, bounds=None, no_improve_thr=10e-12) -> float:
     return xRoot 
 
 
+
+#--- differential evolution ------
+
+
+def enforce_bounds(trial, bounds, mode='clip'):
+    """
+    Enforce parameter bounds on a trial vector.
+    
+    Args:
+        trial (np.ndarray): Trial vector to enforce bounds on.
+        bounds (list[tuple[float, float]]): List of (lower, upper) bounds for each dimension.
+        mode (str, optional): Enforcement mode. Options:
+            - 'clip': Clip values to bounds (default).
+            - 'reflect': Reflect values at bounds (bounce back into valid range).
+    
+    Returns:
+        np.ndarray: Trial vector with bounds enforced.
+    
+    Examples:
+        >>> bounds = [(0, 1), (0, 10)]
+        >>> enforce_bounds(np.array([1.5, -2]), bounds, mode='clip')
+        array([1., 0.])
+        >>> enforce_bounds(np.array([1.5, -2]), bounds, mode='reflect')
+        array([0.5, 2.])
+    """
+    trial = np.asarray(trial)
+    lower = np.array([b[0] for b in bounds])
+    upper = np.array([b[1] for b in bounds])
+    
+    if mode == 'clip':
+        return np.clip(trial, lower, upper)
+    
+    elif mode == 'reflect':
+        # Reflect values that exceed bounds back into valid range
+        result = trial.copy()
+        
+        # Handle lower bound violations
+        mask_lower = result < lower
+        if np.any(mask_lower):
+            result[mask_lower] = lower[mask_lower] + (lower[mask_lower] - result[mask_lower])
+            # If reflection still outside upper bound, clip
+            result = np.minimum(result, upper)
+        
+        # Handle upper bound violations
+        mask_upper = result > upper
+        if np.any(mask_upper):
+            result[mask_upper] = upper[mask_upper] - (result[mask_upper] - upper[mask_upper])
+            # If reflection still outside lower bound, clip
+            result = np.maximum(result, lower)
+        
+        return result
+    
+    else:
+        raise ValueError(f"Unknown mode '{mode}'. Use 'clip' or 'reflect'.")
+
+
+
+def differential_evolution(
+                    objective,
+                    bounds,
+                    pop_size=30,
+                    mutation_factor=0.8,
+                    crossover_rate=0.9,
+                    generations=200,
+                    no_improve_break=None,
+                    no_improve_thr : float = 10e-10,                          # for scalar product
+                    bound_mode='clip',
+                    seed=None,
+                    stop_callback = None
+                    ) -> tuple[np.ndarray, float, int]:
+    
+    """
+    Minimize an objective function using Differential Evolution (DE).
+
+    Differential Evolution is a population-based, stochastic global optimizer
+    that is robust to local minima and works well for non-smooth or noisy
+    objective functions. This implementation is lightweight, dependency-free,
+    and suitable for medium-dimensional problems (≈10–30 parameters).
+
+    Args:
+        objective (Callable[[np.ndarray], float]):
+            The objective function to minimize. Must accept a 1D NumPy array
+            representing a candidate solution and return a scalar fitness value.
+        bounds (list[tuple[float, float]]):
+            A list of (lower, upper) bounds for each parameter dimension.
+            Example: [(-1.0, 1.0), (0.0, 5.0), ...].
+        pop_size (int, optional):
+            Number of individuals in the population. Larger populations improve
+            global search but increase computation time. Defaults to 30.
+        mutation_factor (float, optional):
+            Differential weight F controlling the mutation step size. Typical
+            values are in the range [0.5, 1.0]. Defaults to 0.8.
+        crossover_rate (float, optional):
+            Crossover probability CR controlling how much of the mutant vector
+            is copied into the trial vector. Values near 1.0 encourage stronger
+            mixing. Defaults to 0.9.
+        generations (int, optional):
+            Number of evolutionary iterations to perform. Defaults to 200.
+        no_improve_break (int | None, optional):
+            Stop early if no improvement occurs for this many generations.
+            Defaults to None (no early stopping).
+        no_improve_thr (float, optional):
+            Threshold for considering an improvement significant. Used with
+            `no_improve_break` to determine early stopping. Defaults to 1e-10.
+        bound_mode (str, optional):
+            How to enforce parameter bounds. Options are:
+            - 'clip': Clip values to bounds (default).
+            - 'reflect': Reflect values at bounds back into valid range.
+            Defaults to 'clip'.
+        seed (int | None, optional):
+            Random seed for reproducibility. If None, randomness is uncontrolled.
+            Defaults to None.
+
+    Returns:
+        tuple[np.ndarray, float, int]:
+            A tuple containing:
+            - best_vector: The best parameter vector found.
+            - best_score: The objective function value at best_vector.
+            - generations: The number of generations completed.
+
+    Notes:
+        - This implementation enforces parameter bounds via clipping.
+        - The algorithm is fully deterministic if `seed` is provided.
+        - Suitable for problems where gradient-based methods fail or get stuck.
+
+    """
+    # sanity
+
+    if stop_callback and not callable (stop_callback):
+        stop_callback = False
+
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+    dim = len(bounds)
+
+    # --- Initialize population ---
+    population = np.zeros((pop_size, dim))
+    
+    # Fill population randomly within bounds
+    for i in range(pop_size):
+        population[i] = [random.uniform(bounds[j][0], bounds[j][1]) for j in range(dim)]
+
+    # Evaluate initial population
+    scores = np.array([objective(ind) for ind in population])
+    
+    # Early stopping tracking
+    no_improve_count = 0
+    prev_best = np.min(scores)
+
+    # --- Evolution loop ---
+    for gen in range(generations):
+        for i in range(pop_size):
+
+            # --- Mutation: select 3 distinct individuals ---
+            idxs = list(range(pop_size))
+            idxs.remove(i)
+            a, b, c = population[random.sample(idxs, 3)]
+
+            # Mutant vector
+            mutant = a + mutation_factor * (b - c)
+
+            # --- Crossover ---
+            trial = np.copy(population[i])
+            for j in range(dim):
+                if random.random() < crossover_rate:
+                    trial[j] = mutant[j]
+
+            # Enforce bounds
+            trial = enforce_bounds(trial, bounds, mode=bound_mode)
+
+            # --- Selection ---
+            trial_score = objective(trial)
+            if trial_score < scores[i]:
+                population[i] = trial
+                scores[i] = trial_score
+        
+        # Check for early stopping
+        if no_improve_break is not None:
+            current_best = np.min(scores)
+            if abs(current_best - prev_best) < no_improve_thr:
+                no_improve_count += 1
+            else:
+                no_improve_count = 0
+                prev_best = current_best
+            
+            if no_improve_count >= no_improve_break:
+                break
+
+        # stop request?
+        if stop_callback and stop_callback(): 
+            break
+
+    # Return best solution
+    best_idx = np.argmin(scores)
+
+    return population[best_idx], scores[best_idx], gen+1
 
 
 

@@ -11,7 +11,7 @@ import numpy as np
 
 import pyqtgraph as pg
 
-from PyQt6.QtCore               import Qt
+from PyQt6.QtCore               import QCoreApplication, Qt
 from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 
 from ..base.widgets             import * 
@@ -26,7 +26,7 @@ from .ae_widgets                import Airfoil_Select_Open_Widget
 from .ae_artists                import Panelling_Du_Artist
 
 from ..app_model                import App_Model
-from ..match_runner             import Matcher_Base, Match_Result
+from ..match_runner             import Matcher, Match_Result
 
 import logging
 logger = logging.getLogger(__name__)
@@ -691,12 +691,12 @@ class Matcher_Run_Info (Dialog):
     """ Little Info dialog (with stop button) show information durig match run"""
 
     _width  = 230
-    _height = 230
+    _height = 260
 
     name = "Match Curve"
 
     def __init__ (self, parent : QWidget, 
-                  matcher : Matcher_Base, 
+                  matcher : Matcher, 
                   **kwargs): 
 
         self._result : Match_Result | None = None  # Current match result
@@ -704,6 +704,7 @@ class Matcher_Run_Info (Dialog):
         self._ncp       = 0                     
         self._ipass     = 1
         self._nevals    = 0
+        self._global_search = False
 
         # connect to matcher siganls to get updates during optimization
 
@@ -746,10 +747,11 @@ class Matcher_Run_Info (Dialog):
         r = 0
         Label  (l,r,0, colSpan=3, height=30, fontSize=size.HEADER_SMALL,
                 get=lambda: f"Pass {self._ipass} with {self._ncp} Control Points")
-        # Label  (l,r,1, colSpan=2, height=30, fontSize=size.HEADER_SMALL,
-        #         get=lambda: f"{self._ncp} Ctrl Points")
         r += 1
-        SpaceR (l, r, stretch=0, height=10) 
+        Label  (l,r,0, colSpan=2,get=lambda: f"Initial global search", height=15,
+                hide=lambda: not self._global_search, style=style.COMMENT)
+        r += 1
+        SpaceR (l, r, stretch=3, height=5) 
         r += 1
         FieldI (l,r,0, width=60, lab="Evaluations", get=lambda: self._nevals), 
         r += 1
@@ -765,7 +767,7 @@ class Matcher_Run_Info (Dialog):
                     get=lambda: self._result.te_curvature if self._result else 0.0,
                     style=lambda: self._result.style_curv_te if self._result else style.NORMAL)
         r += 1
-        SpaceR (l, r) 
+        SpaceR (l, r, stretch=0, height=10) 
 
         l.setColumnMinimumWidth (0,100)
         l.setColumnStretch (2,1)
@@ -774,7 +776,6 @@ class Matcher_Run_Info (Dialog):
 
     def _button_box (self):
         """ returns the QButtonBox with the buttons of self"""
-
 
         self._stop_btn = QPushButton ("Stop", parent=self)
         self._stop_btn.setFixedWidth (80)
@@ -790,18 +791,25 @@ class Matcher_Run_Info (Dialog):
         """ slot to receive new results from running thread"""
 
         self._ipass   = ipass
-        self._ncp     = result.ncp
         self._nevals  = nevals
         self._result  = result  # Store the entire result object
+
         self.refresh ()
+        QCoreApplication.processEvents()
 
 
-    def _on_pass_start (self, ipass, ncp):
+    def _on_pass_start (self, ipass : int, ncp: int, global_search: bool):
         """ slot for pass start - could be new ncp or new weighting """
 
         self._ipass = ipass
         self._ncp = ncp
+        self._global_search = global_search
+        self._result = None  # Clear previous results at the start of a new pass
+        self._nevals = 0
+
         self.refresh()
+        QCoreApplication.processEvents()
+
 
     def _on_finished(self):
         """ slot for thread finished """

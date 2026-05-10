@@ -7,10 +7,12 @@
 import pytest
 import os
 
-from airfoileditor.model.case        import Case_Match_Target, Match_Targets
-from airfoileditor.model.airfoil     import Airfoil, Airfoil_Bezier, Airfoil_BSpline, GEO_SPLINE
-from airfoileditor.model.airfoil_examples import Root_Example
-from airfoileditor.model.geometry import Line
+from airfoileditor.model.case               import Case_Match_Target, Match_Targets
+from airfoileditor.model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline, GEO_SPLINE
+from airfoileditor.model.airfoil_examples   import Root_Example
+from airfoileditor.model.geometry           import Line
+from airfoileditor.model.geometry_bspline   import Side_Airfoil_BSpline
+from airfoileditor.model.geometry_bezier    import Side_Airfoil_Bezier
 
 
 @pytest.fixture
@@ -152,15 +154,15 @@ class Test_Case_Match_Target:
         """Bezier case starts with ncp=6 in both targets"""
         case = Case_Match_Target(seed_airfoil, Airfoil_Bezier)
 
-        assert case.targets_upper.ncp == 6
-        assert case.targets_lower.ncp == 6
+        assert case.targets_upper.ncp == Side_Airfoil_Bezier.NCP_DEFAULT
+        assert case.targets_lower.ncp == Side_Airfoil_Bezier.NCP_DEFAULT
 
     def test_bspline_initial_ncp(self, seed_airfoil):
         """BSpline case starts with ncp=8 in both targets"""
         case = Case_Match_Target(seed_airfoil, Airfoil_BSpline)
 
-        assert case.targets_upper.ncp == 8
-        assert case.targets_lower.ncp == 8
+        assert case.targets_upper.ncp == Side_Airfoil_BSpline.NCP_DEFAULT
+        assert case.targets_lower.ncp == Side_Airfoil_BSpline.NCP_DEFAULT
 
     def test_targets_le_curvature_positive(self, seed_airfoil):
         """le_curvature is a positive value derived from the target airfoil"""

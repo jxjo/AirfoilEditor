@@ -20,7 +20,7 @@ import stat
 from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
-from PyQt6.QtCore            import pyqtSignal, QObject, QThread, QTimer
+from PyQt6.QtCore            import QCoreApplication, pyqtSignal, QObject, QThread, QTimer
 
 from .resources              import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
@@ -29,7 +29,8 @@ from .base.app_utils         import Settings
 # --- the real model imports
 from .model.airfoil          import Airfoil, usedAs
 from .model.airfoil_examples import Example
-from .model.geometry import Line
+from .model.geometry         import Line
+from .model.geometry_curve   import Geometry_Curve, Side_Airfoil_Curve
 from .model.geometry_spline  import Panelling_Spline
 from .model.geometry_bezier  import Panelling_Bezier
 from .model.geometry_bspline import Panelling_BSpline
@@ -38,7 +39,7 @@ from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.xo2_input        import OpPoint_Definition, Input_File
 from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_Match_Target
 
-from .match_runner           import Matcher_Bezier, Matcher_BSpline
+from .match_runner           import Matcher, Match_Result
 
 import logging
 logger = logging.getLogger(__name__)
@@ -305,21 +306,22 @@ class App_Model (QObject):
 
         if self._matcher:
             line_type = self._matcher._side.type
-            self.sig_airfoil_geo_curve.emit (line_type)     # update diagram
+            self.sig_airfoil_geo_curve.emit (line_type)                     # update diagram
+            QCoreApplication.processEvents()
 
 
-    def _on_match_finished (self, result):
+    def _on_match_finished (self, result : Match_Result ):
         """ slot to handle match finished signaled by Matcher"""
 
         if self._matcher:
             self._matcher.sig_finished.disconnect ()
-            self._matcher.sig_pass_start.disconnect ()                      # disconnect all 
             self._matcher.sig_new_results.disconnect ()
 
             aSide = self._matcher._side
             self.airfoil.geo.finished_change_of (aSide, mod_info='matched') # will reset geo and handle changed  
 
-            self.case.set_match_result (result)
+            case : Case_Match_Target = self.case
+            case.set_match_result (result)
 
             self.notify_airfoil_changed()                                   # notify change of airfoil - new design
 
@@ -524,10 +526,35 @@ class App_Model (QObject):
         self.sig_airfoil_geo_paneling.emit (is_paneling)
 
 
-    def notify_airfoil_bezier (self, line_type: Line.Type):
-        """ notify self that current airfoil bezier has changed rapidly """  
-        self.sig_airfoil_bezier.emit (line_type)
+    def notify_match_target_changed (self, side : Side_Airfoil_Curve = None, new_ncp: int = None):
+        """ notify self one of the match targets changed """  
 
+        case : Case_Match_Target = self.case
+        if isinstance (case, Case_Match_Target):
+
+            # reset match result of case to ensure new match run
+            case.set_match_result (None)
+
+            if side and new_ncp:
+
+                # get target side and le curvature for new ncp initial fit 
+                if side.isUpper:
+                    target_side  = case.targets_upper.side
+                    le_curvature = case.targets_upper.le_curvature  
+                else:
+                    target_side  = case.targets_lower.side
+                    le_curvature = case.targets_lower.le_curvature
+
+                # create new design with new ncp of the side upper or lower
+                geo: Geometry_Curve = self.airfoil.geo
+                geo.set_ncp_of (side, new_ncp, target_side, le_curvature)   
+
+                self.notify_airfoil_changed()         # notify change of airfoil - new design
+                
+            else:
+
+                # just trigger refresh to show new results 
+                self.sig_new_airfoil.emit()    
 
 
     @property
@@ -1011,7 +1038,7 @@ class App_Model (QObject):
             case.run()
 
 
-    def run_match (self, side_type : Line.Type) -> Matcher_Bezier|Matcher_BSpline:
+    def run_match (self, side_type : Line.Type) -> Matcher:
         """ run match airfoil. Returns Matcher thread.
             Note: Matcher will signal results and finished, but is not watched by watchdog 
             - it is expected to run fast and not have a complex state to watch. 
@@ -1037,17 +1064,11 @@ class App_Model (QObject):
 
         # set matcher and start thread
 
-        if self.airfoil.isBezierBased:
-            self._matcher = Matcher_Bezier ()
-        elif self.airfoil.isBSplineBased:
-            self._matcher = Matcher_BSpline ()
-        else:
-            raise ValueError (f"{self} cannot run match with airfoil {self.airfoil} - not supported type")
-
+        self._matcher = Matcher ()
+ 
         self._matcher.set_match (side, targets)
 
-        self._matcher.sig_pass_start.connect    (self.sig_airfoil_geo_changed.emit)
-        self._matcher.sig_new_results.connect   (self._on_match_results)
+        self._matcher.sig_new_results.connect     (self._on_match_results)
         self._matcher.sig_finished.connect        (self._on_match_finished)
 
         QTimer.singleShot(0, self._matcher.start)

@@ -1050,11 +1050,9 @@ class Panel_Curve (Panel_Airfoil_Abstract):
         r,c = 0, 0 
         Label (l,r,c, get="# Control Points", colSpan=4)
         r += 1
-        FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.ncp,  width=40, step=1, lim=lambda: self.upper.NCP_BOUNDS,
-                         set=lambda n : self.geo.set_ncp_of (self.upper, n))
+        FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.ncp,  width=40)
         r += 1
-        FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.ncp,  width=40, step=1, lim=lambda: self.lower.NCP_BOUNDS,
-                         set=lambda n : self.geo.set_ncp_of (self.lower, n))
+        FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.ncp,  width=40)
         l.setColumnMinimumWidth (0,80)
 
         r += 1
@@ -1096,21 +1094,19 @@ class Panel_Curve_Small (Panel_Curve):
         l = QGridLayout()
         r,c = 0, 0 
         FieldI (l,r,c,   lab=lambda: f"{self.geo.CURVE_NAME} Upper", 
-                get=lambda: self.upper.ncp,  width=40, step=1, lim=lambda: self.upper.NCP_BOUNDS,
-                set=lambda n : self.geo.set_ncp_of (self.upper, n))
+                get=lambda: self.upper.ncp,  width=40)
         r += 1
         FieldI (l,r,c,   lab=lambda: f"{self.geo.CURVE_NAME} Lower",  
-                get=lambda: self.lower.ncp,  width=40, step=1, lim=lambda: self.lower.NCP_BOUNDS,
-                set=lambda n : self.geo.set_ncp_of (self.lower, n))
+                get=lambda: self.lower.ncp,  width=40)
         l.setColumnMinimumWidth (0,80)
         return l
-
+    
 
 
 class Panel_Match_Result (Panel_Airfoil_Abstract):
     """ Match fit info like RMS deviation, curvature at LE and TE, etc"""
 
-    name = 'Match Result'
+    name = 'Match Results'
     _small = False
 
     def __init__(self, *args, **kwargs):
@@ -1216,26 +1212,24 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
         r,c = 3,0 
         l.setRowStretch (r,1)
         r += 1
-        Label  (l,r,0, colSpan=7, style=style.COMMENT, height=16,
+        Label  (l,r,0, colSpan=12, style=style.COMMENT, height=16,
                 get=lambda: self.result_upper.name + ": " + self._remark(self.result_upper))
         r += 1
-        Label  (l,r,0, colSpan=7, style=style.COMMENT, height=16,
+        Label  (l,r,0, colSpan=12, style=style.COMMENT, height=16,
                 get=lambda: self.result_lower.name + ": " + self._remark(self.result_lower))
         return l
 
 
     def _remark (self, result : Match_Result) -> str: 
 
-        if not result.is_optimized:
-            text = f"Initial fit - run 'Match' to optimize..."
-        elif result.is_perfect():
+        if result.is_perfect():
             text = f"Match is perfect"
             if not result.is_ncp_good():
                 text += " but more control points were needed."
             else:
                 text += "!"
         elif result.is_good_enough():
-            text = f"Match is quite good for this difficult target."
+            text = f"Match is good and curvature is smooth."
         else:
             text = f"Match is not too good. Maybe tweak LE or TE curvature or Reversals"
         return text
@@ -1288,14 +1282,14 @@ class Panel_Match_Result_Small (Panel_Match_Result):
 class Panel_Match_Curve (Panel_Airfoil_Abstract):
     """ Match BezCurveier functions  """
 
-    name = 'Match'
+    name = 'Match Targets'
 
     _small = False
 
     @override
     def title_text(self):
         if self.geo.isCurve:
-            return self.name + " " + self.geo.CURVE_NAME
+            return self.geo.CURVE_NAME + " " + self.name 
         else:
              return super().title_text()
 
@@ -1307,8 +1301,10 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
     @override
     def _on_widget_changed (self, widget):
         """ user changed data in widget"""
-        # just refresh - no airfoil changed
-        self.refresh()
+
+        # reset results and refresh match result panel
+        self.app_model.notify_match_target_changed()
+
 
     @property
     def case (self) -> Case_Match_Target:
@@ -1326,14 +1322,6 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
     def lower (self) -> Side_Airfoil_Curve:
         return self.geo.lower
     
-    @property
-    def curv_upper_nreversals (self) -> int:
-        return self.target_airfoil.geo.curvature.upper.nreversals()
-
-    @property
-    def curv_lower_nreversals (self) -> int:
-        return self.target_airfoil.geo.curvature.lower.nreversals()
-
     @property
     def target_airfoil (self) -> Airfoil:
         return self.app_model.airfoil_target
@@ -1465,12 +1453,17 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
             # set ncp to current value of geo 
             targets.set_ncp (aSide.curve.ncp)
 
+            # will create new design with new ncp and update airfoil 
+            self.app_model.notify_match_target_changed (aSide, aSide.curve.ncp)
+
 
     def set_ncp (self, aSide : Side_Airfoil_Curve, targets : Match_Targets, ncp: int):
         """ set ncp of a side and update targets with new ncp"""                
-        self.geo.set_ncp_of (aSide, ncp)                # show updated airfoil with new ncp - will reset and handle changed
+
         targets.set_ncp (ncp)
-        self.app_model.notify_airfoil_changed()         # notify change of airfoil - new design
+
+        # will create new design with new ncp and update airfoil 
+        self.app_model.notify_match_target_changed (aSide, ncp)
 
 
     @property
@@ -1504,7 +1497,7 @@ class Panel_Match_Curve_Small (Panel_Match_Curve):
 class Panel_Target_Curv (Panel_Airfoil_Abstract):
     """ Curvature values of target airfoil (Match)  """
 
-    name = 'Target Curvature'
+    name = 'Curvature of Target Airfoil'
 
     @property
     def target_airfoil (self) -> Airfoil:
@@ -1625,11 +1618,12 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
                 text.append(f"- {curv.name}: Curvature at TE is quite high.")     
 
         if len(text) < 2:
+            t = f"The target airfoil has been repaneled to {self.target_airfoil.nPanels} panels <br>"
             if "_norm" in self.target_airfoil.name:
-                text.insert(0, "Target airfoil has been repaneled and normalized.")
-            else:
-                text.insert(0, "Target airfoil has been repaneled")
+                t += "and normalized"
+            t += " for good match results."
+            text.insert(0, t)
 
-        text = '\n'.join(text[:3])
+        text = '<br>'.join(text[:3])
         return text 
 

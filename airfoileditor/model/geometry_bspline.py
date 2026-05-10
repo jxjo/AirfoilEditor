@@ -81,29 +81,33 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
     1D line of an airfoil like upper, lower side based on a B-Spline curve with x 0..1
     """
 
-    isBSpline        = True
+    isBSpline       = True
 
-    _le_exponent         = 0.5          # fitting: exponent for leading edge clustering of control points 
-    _te_exponent         = 1.0          # fitting: exponent for trailing edge clustering of control points
+    _le_exponent    = 0.5               # fitting: exponent for leading edge clustering of control points 
+    _te_exponent    = 1.0               # fitting: exponent for trailing edge clustering of control points
 
-    NCP_DEFAULT    = 8                  # default number of control points for B-Spline curve
-    NCP_BOUNDS     = (5,10)             # reasonable range for number of control points for fitting
+    NCP_DEFAULT     = 6                 # default number of control points for B-Spline curve
+    NCP_BOUNDS      = (6,10)            # allowed range for number of control points for B-Spline curve 
+    NCP_AUTO_RANGE  = (6,10)            # range for automatic ncp selection match result
+
+    DEGREE          = 4                 # degree of B-Spline curve - currently fixed to 4 
 
 
-
-    def __init__ (self, cpx_or_cp, cpy=None, knots=None, degree=4, **kwargs):
+    def __init__ (self, cpx_or_cp, cpy=None, knots=None, degree=None, **kwargs):
         """
         1D line of an airfoil like upper, lower side based on a B-Spline curve with x 0..1
         
         Args:
             cpx, cpy: Control point coordinates of the B-Spline
             knots: optional knot vector for the B-Spline curve
-            degree: degree of the B-Spline curve (if None and knots provided, derived from knots)
         """
         super().__init__(None, None, **kwargs)
 
         if cpx_or_cp is None:
             raise ValueError ("B-Spline points missing")
+        
+        if degree is None: 
+            degree = Side_Airfoil_BSpline.DEGREE
 
         self._curve = BSpline(cpx_or_cp, cpy, degree=degree, knots=knots)  
 
@@ -138,41 +142,136 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         cpx     = fromDict(dataDict, "px", None)
         cpy     = fromDict(dataDict, "py", None)
         knots   = fromDict(dataDict, "knots", None)
-        # degree will be derived from knots if present, otherwise use stored value or default
         degree  = fromDict(dataDict, "degree", None)
 
-        return cls (cpx, cpy, knots=knots, degree=degree, linetype=linetype)
+        return cls (cpx, cpy, knots=knots, linetype=linetype, degree=degree)
 
 
-    @classmethod
-    def on_side (cls, target_side : Line, degree=4, ncp=None,  **kwargs):
+    @staticmethod
+    def _get_initial_control_points(x_data, y_data, ncp : int, le_curvature : float):
         """
-        Alternate constructor for BSpline based side from a target side 
-        - used for fitting a B-Spline to data points
-
-        Parameters for fitting can be set via class variables 
-            _le_exponent, _te_exponent and _le_tangent_vertical
+        Create initial B-Spline control points from airfoil side coordinates.
+        
+        Creates control points by:
+        - Distributing x positions uniformly
+        - Taking y values from closest target points
+        - Computing cp[1].y from LE curvature using analytical formula
+        - Applying empirical y-scaling factors for better fit
+        
+        Based on the Fortran implementation from Xoptfoil2.
 
         Args:
-            target_side: Line object representing the target side to fit
-            degree: degree of the B-Spline curve
+            x_data: array of x coordinates from target side
+            y_data: array of y coordinates from target side
             ncp: number of control points for the B-Spline curve
+            le_curvature: leading edge curvature (if None, estimated from data)
+
+        Returns:
+            list of (x, y) tuples representing control points
         """
+        if ncp < 5:
+            raise ValueError('Initial B-Spline: ncp must be >= 5')
+        
+        # Get LE curvature if not provided
+        if le_curvature is None:
+            # Estimate from second point (crude approximation)
+            le_curvature = 2.0 * abs(y_data[1]) / (x_data[1]**2) if x_data[1] > 0 else 100.0
+        
+        if abs(le_curvature) < 10:
+            raise ValueError(f'Initial B-Spline: le_curvature {le_curvature:.1f} is too small (< 10)')
 
-        ncp = ncp if ncp is not None else cls.NCP_DEFAULT
-
+        # Use optimized least-squares fit for best RMS
         cp = BSpline.fit_curve(
-                    target_side.x, target_side.y,
-                    degree=degree,
-                    ncp = ncp,
-                    le_exponent=cls._le_exponent, te_exponent=cls._te_exponent )
+                x_data, y_data,
+                degree=Side_Airfoil_BSpline.DEGREE,
+                ncp = ncp,
+                le_exponent=Side_Airfoil_BSpline._le_exponent, 
+                te_exponent=Side_Airfoil_BSpline._te_exponent)
+
+        # do disturb cp2 to cp-2 a little to give nelder_mead a better starting point for the global fit 
+
+        # for icp in range(2, ncp - 1):
+        #     fac = 1.05
+        #     cp [icp] = (cp[icp][0] * fac, cp[icp][1] * fac)
+
+        # Fix cp[1].y analytically from LE curvature to ensure correct leading edge
+        if le_curvature is not None:
+            px, py = zip(*cp)
+            px = list(px)
+            py = list(py)
+            
+            # Determine if bottom side
+            is_bottom = py[1] < 0.0
+            
+            # Calculate py[1] from LE curvature using analytical formula
+            py[1] = BSpline.cp_y1_from_curvature(le_curvature, px[2], 
+                                                  degree=Side_Airfoil_BSpline.DEGREE, ncp=ncp)
+            if is_bottom:
+                py[1] = -py[1]
+            py[1] = np.clip(py[1], -0.2, 0.2)
+            
+            cp = list(zip(px, py))
+
+        # # Determine if bottom side
+        # is_bottom = y_data[1] < 0.0
         
-        instance = cls(cp, knots=None, degree=degree)
+        # # Initialize control points
+        # px = np.zeros(ncp)
+        # py = np.zeros(ncp)
         
-        # deviation to target side 
-        instance.set_target_deviation_from (target_side)
+        # # Fix LE and TE control points
+        # px[0] = 0.0         # LE x
+        # py[0] = 0.0         # LE y
+        # px[-1] = 1.0        # TE x
+        # py[-1] = y_data[-1] # TE y (gap)
         
-        return instance
+        # # Distribute intermediate x control points and get y from target
+        # np_between = ncp - 3
+        
+        # if np_between == 1:
+        #     dx = 0.35
+        # else:
+        #     dx = 1.0 / (np_between + 1)
+        
+        # xi = 0.0
+        # for ib in range(np_between):
+        #     icp = 2 + ib  # Control point index (starting at 2, after LE tangent point)
+        #     xi = xi + dx
+        #     i = find_closest_index(x_data, xi)
+        #     px[icp] = x_data[i]
+        #     py[icp] = y_data[i]
+
+        # # Move px[2] forward for better initial fit towards LE
+        # if ncp >= 5:
+        #     px[2] = px[2] * 0.5
+
+        # # Calculate py[1] (LE tangent point y) from LE curvature using analytical formula
+        # py[1] = BSpline.cp_y1_from_curvature(le_curvature, px[2], degree=degree, ncp=ncp)    # negative for lower side
+        # if is_bottom:
+        #     py[1] = -py[1]
+        # py[1] = np.clip(py[1], -0.2, 0.2)
+        
+        # # Apply empirical y-scaling factors for better fit
+        # # These factors help compensate for the global nature of B-Spline curves
+        # for icp in range(2, ncp - 1):
+        #     if ncp == 6:
+        #         y_fac = 1.2
+        #     elif ncp == 5:
+        #         y_fac = 1.5
+        #     elif ncp <= 8:
+        #         y_fac = 1.15  # Moderate scaling for 7-8 control points
+        #     else:
+        #         y_fac = 1.25  # Higher scaling for 9-10 control points - more global influence
+            
+        #     # Extra scaling for first interior point
+        #     if icp == 2:
+        #         y_fac = y_fac * 1.1
+            
+        #     py[icp] = py[icp] * y_fac
+
+        # cp = list(zip(px, py))
+
+        return cp
 
 
     def _as_dict (self):
@@ -211,30 +310,6 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         
         # Map to curve parameter space via arc-length inversion
         return self._u_of_arc_fractions(curve, u_cos)
-
-
-    @override
-    def re_fit_curve (self, target_side : Line = None, ncp = None, **kwargs): 
-        """ re-fit the B-Spline curve to the target coordinates - used after control point changes to update curve"""
-
-        if ncp is None:
-            ncp = self.ncp
-
-        if target_side is None:
-            if self._target_deviation is not None:
-                target_side = self.target_deviation
-            else:
-                raise ValueError ("No target side provided for re-fitting the curve")
-
-        # re-fit curve to target coordinates with current settings for fitting
-        cp = BSpline.fit_curve(
-                target_side.x, target_side.y,
-                degree=self.bspline.degree,
-                ncp = ncp,
-                le_exponent=self._le_exponent, te_exponent=self._te_exponent)
-
-        # update control points of self - this update B-Spline
-        self.set_controlPoints(cp)
 
 
 

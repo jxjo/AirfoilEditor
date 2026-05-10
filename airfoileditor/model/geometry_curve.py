@@ -79,9 +79,11 @@ class Side_Airfoil_Curve (Line):
     1D line of an airfoil like upper, lower side based on a curve with x 0..1
     """
 
-    isCurve        = True
-    NCP_DEFAULT    = None                           # default number of control points for curve
-    NCP_BOUNDS     = (None, None)                   # reasonable range for number of control points for fitting
+    isCurve         = True
+    
+    NCP_DEFAULT     = None                          # default number of control points for curve
+    NCP_BOUNDS      = (None, None)                  # allowed range for number of control points 
+    NCP_AUTO_RANGE  = (None,None)                   # range for automatic ncp selection match result
 
     def __init__ (self, *args, **kwargs):
         """
@@ -108,16 +110,38 @@ class Side_Airfoil_Curve (Line):
 
 
     @classmethod
-    def on_side (cls):
+    def on_side (cls, target_side : Line, le_curvature : float=200, ncp=None,  **kwargs):
         """
         Alternate constructor for curve based on a target side 
         - used for fitting a curve to data points
 
-
         Args:
             target_side: Line object representing the target side to fit
+            le_curvature: target leading edge curvature for initial control point placement
             ncp: number of control points for the Bezier curve
         """
+
+        ncp = ncp if ncp is not None else cls.NCP_DEFAULT
+        
+        # Get initial control points
+        cp = cls._get_initial_control_points(
+            target_side.x, target_side.y, ncp, le_curvature)
+        
+        # Create instance with control points
+        instance = cls(cp, **kwargs)
+        
+        # Set target deviation
+        instance.set_target_deviation_from(target_side)
+        
+        return instance
+
+
+    @staticmethod
+    def _get_initial_control_points(x_data, y_data, ncp, le_curvature=None):
+        """
+        Create initial Bezier/B-Spline control points from airfoil side coordinates.
+        """
+
         # has to be implemented in the specific curve based side class (Bezier or B-Spline) 
         raise NotImplementedError
 
@@ -301,11 +325,19 @@ class Side_Airfoil_Curve (Line):
     # ------------------
 
 
-    def re_fit_curve (self, *args, **kwargs): 
+    def re_fit_curve (self, target_side : Line, le_curvature : float = None, ncp = None): 
         """ re-fit the Bezier curve to the target coordinates - used after control point changes to update curve"""
 
-        # has to be implemented in the specific curve based side class (Bezier or B-Spline)
-        raise NotImplementedError
+        if ncp is None:
+            ncp = self.ncp
+        
+        # Get initial control points using simple direct placement
+        cp = self._get_initial_control_points(
+            target_side.x, target_side.y, ncp, le_curvature)
+
+        # update control points of self
+        self.set_controlPoints(cp)
+
 
 
     def add_controlPoint (self, index, point : JPoint | tuple):
@@ -404,6 +436,11 @@ class Deviation_Line (Line):
             self._u_dense = np.empty(len(u) + len(u_mid))
             self._u_dense[0::2] = u
             self._u_dense[1::2] = u_mid        
+
+            # 10 extra midpoints between the first 11 points of u_dense (near LE)
+            # u_extra = (self._u_dense[:10] + self._u_dense[1:11]) / 2
+            # self._u_dense = np.sort(np.concatenate([self._u_dense, u_extra]))
+
 
         # calc deviation to target line 
 
@@ -511,6 +548,12 @@ class Geometry_Curve (Geometry):
         self._curvature  = None                
 
 
+    @property
+    def description_long (self) -> str:
+        """ description of geometry for info and tooltip"""
+        return f"{self.__class__.description}  (#CP {self.upper.ncp}, {self.lower.ncp})"
+
+
     @override
     def _isNormalized (self):
         """ true if LE is at 0,0 and TE is symmetrical at x=1"""
@@ -604,20 +647,21 @@ class Geometry_Curve (Geometry):
         self._changed (mod, mod_info)
 
 
-    def set_ncp_of (self, side : Side_Airfoil_Curve, ncp : int):
+    def set_ncp_of (self, side : Side_Airfoil_Curve, ncp : int,
+                    target_side : Line, le_curvature : float):
         """ set new no bezier control points for side with fit to target_side - update geometry"""
 
         ncp = np.clip (ncp, side.NCP_BOUNDS[0], side.NCP_BOUNDS[1])  # limit number of control points to reasonable range
 
         if ncp != side.ncp:
+            
             # re-fit curve to current target coordinates or to self if no target coordinates defined 
-            target = side.target_deviation if side.target_deviation is not None else Line (side.x, side.y)
-            side.re_fit_curve ( target_side=target, ncp=ncp)   
+            side.re_fit_curve ( target_side=target_side, ncp=ncp, le_curvature=le_curvature)   
 
             self._reset()
 
             mod = self.MOD_CURVE + " " + side.name
-            self._changed (mod, f"nCP={ncp}")
+            self._changed (mod, f"#Ctrl Points={ncp}")
 
 
     @override

@@ -418,4 +418,6 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
             toolTip = self.airfoil.info_as_html if self.airfoil else self._toolTip 
 
-            self._combo_widget.setToolTip (toolTip)  
+            self._combo_widget._toolTip = toolTip
+            self._combo_widget._set_QWidget_toolTip ()
+            # self._combo_widget.setToolTip (toolTip)  

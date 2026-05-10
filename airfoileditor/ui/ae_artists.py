@@ -423,7 +423,11 @@ class Movable_Side_Bezier (Movable_Curve):
             movable_point = self._movable_points[i]
             movable_point.setPos_silent (point_xy)              # silent - no change signal 
 
-        self.setData(*self.points_xy())                         # update self (polyline) 
+        # update polyline         
+        self.setData(*self.points_xy())                         
+
+        # update curve item 
+        self._update_curve_item()
 
 
 
@@ -531,7 +535,11 @@ class Movable_Side_BSpline (Movable_Curve):
             movable_point = self._movable_points[i]
             movable_point.setPos_silent (point_xy)              # silent - no change signal 
 
-        self.setData(*self.points_xy())                         # update self (polyline) 
+        # update polyline         
+        self.setData(*self.points_xy())                         
+
+        # update curve item 
+        self._update_curve_item()
 
 
     @override
@@ -991,11 +999,18 @@ class Bezier_Artist (Artist):
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
     def refresh_from_side (self, aLinetype : Line.Type):
+        """ fast refesh of bezier control points for one line type"""
 
         p : Movable_Side_Bezier
         for p in self._plots: 
-            if p._side.type == aLinetype:
-                p.refresh()
+            if isinstance (p, Movable_Side_Bezier) and p._side.type == aLinetype:
+                if len (p._movable_points) != len(p._side.controlPoints):
+                    # when matching, thread could have changed ncp - complete refresh
+                    self.refresh()     
+                    return
+                else:
+                    # just update control point items
+                    p.refresh()
 
     def _plot (self): 
     
@@ -1037,12 +1052,21 @@ class BSpline_Artist (Artist):
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
+
     def refresh_from_side (self, aLinetype : Line.Type):
+        """ fast refesh of bspline control points for one line type"""
 
         p : Movable_Side_BSpline
         for p in self._plots: 
             if isinstance (p, Movable_Side_BSpline) and p._side.type == aLinetype:
-                p.refresh()
+                if len (p._movable_points) != len(p._side.controlPoints):
+                    # when matching, thread could have changed ncp - complete refresh
+                    self.refresh()     
+                    return
+                else:
+                    # just update control point items
+                    p.refresh()
+
 
     def _plot (self): 
     
@@ -1328,8 +1352,8 @@ class Curvature_Artist (Artist):
                     self._plot_dataItem (x, deriv, name=name, pen=pen)
 
                     # dev: derivative of derivative 
-                    # deriv2 = - derivative1(x, deriv) / 5  # scale down for better visibility
-                    # name2 = f"{side.name} - 2nd Derivative / 5"
+                    # deriv2 = - derivative1(x, deriv) / 10  # scale down for better visibility
+                    # name2 = f"{side.name} - 2nd Derivative / 10"
                     # pen2 = QPen (pen)
                     # pen2.setColor (QColor("darkorange"))
                     # self._plot_dataItem (x, deriv2, name=name2, pen=pen2)

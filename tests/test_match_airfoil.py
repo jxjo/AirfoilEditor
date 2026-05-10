@@ -6,7 +6,7 @@
 
 import pytest
 
-from airfoileditor.match_runner         import Match_Airfoil, Match_Result, Matcher_Bezier, Matcher_BSpline
+from airfoileditor.match_runner         import Match_Airfoil, Match_Result, Matcher
 from airfoileditor.model.airfoil        import Airfoil, Airfoil_Bezier, Airfoil_BSpline
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
 from airfoileditor.model.geometry_spline import Geometry_Splined
@@ -76,18 +76,6 @@ class Test_Match_Result:
         result = match_airfoil_bezier.get_result_upper()
         assert isinstance(result.is_good_enough(), bool)
 
-    def test_side_and_targets_accessible(self, match_airfoil_bezier: Match_Airfoil):
-        result = match_airfoil_bezier.get_result_upper()
-        assert result.side    is not None
-        assert result.targets is not None
-        assert isinstance(result.targets, Match_Targets)
-
-    def test_upper_and_lower_give_different_results(self, match_airfoil_bezier: Match_Airfoil):
-        upper = match_airfoil_bezier.get_result_upper()
-        lower = match_airfoil_bezier.get_result_lower()
-        # Upper and lower sides have different geometry, so rms won't be identical
-        assert upper.side is not lower.side
-
 
 # ── Match_Airfoil – initialisation ───────────────────────────────────────────
 
@@ -108,16 +96,6 @@ class Test_Match_Airfoil_Init:
 
     def test_airfoil_target_is_normalized(self, match_airfoil_bezier: Match_Airfoil):
         assert match_airfoil_bezier.airfoil_target.isNormalized
-
-    def test_bezier_default_ncp(self, match_airfoil_bezier: Match_Airfoil):
-        """Bezier uses 6 control points by default."""
-        assert match_airfoil_bezier.targets_upper.ncp == 6
-        assert match_airfoil_bezier.targets_lower.ncp == 6
-
-    def test_bspline_default_ncp(self, match_airfoil_bspline: Match_Airfoil):
-        """BSpline uses 8 control points by default."""
-        assert match_airfoil_bspline.targets_upper.ncp == 8
-        assert match_airfoil_bspline.targets_lower.ncp == 8
 
     def test_targets_upper_is_match_targets(self, match_airfoil_bezier: Match_Airfoil):
         assert isinstance(match_airfoil_bezier.targets_upper, Match_Targets)

@@ -12,7 +12,7 @@ import numpy as np
 from copy                   import deepcopy
 from timeit                 import default_timer as timer
 
-from .math_util             import findMin, newton
+from .math_util             import findMin, newton, binary_search
 
 import logging
 logger = logging.getLogger(__name__)
@@ -573,7 +573,6 @@ class Bezier:
     - ``n = 4``: cubic
     - ``n > 4``: higher order
     """
-    #todo rename points -> cpoints, take care of Artists
 
     def __init__ (self, cpx_or_cp : list, cpy : list|None =None):
         """
@@ -584,10 +583,10 @@ class Bezier:
             cpy: y coordinates when ``cpx_or_cp`` contains only x values.
         """
 
-        self._cpx = None                        # definition points
+        self._cpx = None                        
         self._cpy = None
 
-        self.basisFn = None                     # stored Bezier basis function for test 
+        self.basisFn = None                         # stored Bezier basis function for test 
 
         self._clear_cache()                          # cache for evaluated values
 
@@ -602,6 +601,46 @@ class Bezier:
         self._u     = None                           
         self._y_on_x_cache = {}
         self._x_on_y_cache = {}
+
+
+    @staticmethod
+    def cp_y1_from_curvature (le_curvature: float, cp_x2: float, degree: int=None, ncp: int=None) -> float:
+        """Compute the second control-point y value from the target LE curvature.
+
+        Assume a leading-edge control-point layout of:
+            P0 = (0, 0)
+            P1 = (0, y1)
+            P2 = (x2, y2)
+
+        This gives a vertical start tangent and solves analytically for ``y1`` so
+        that the start curvature matches ``le_curvature``.
+
+        The formulas used are:
+
+        Bézier:
+            |kappa(0)| = (degree - 1) / degree * |x2| / y1^2
+
+        Args:
+            le_curvature: Desired curvature magnitude at the start point.
+            cp_x2: x coordinate of the third control point ``P2``.
+            degree: Degree of the Bézier curve (n-1). Must be provided if ncp is not.
+            ncp: Number of control points. Must be provided if degree is not.
+
+        Returns:
+            float: ``cp_y1`` that produces the requested leading-edge curvature.
+        """
+        if degree is None and ncp is None:
+            raise ValueError("Must provide either degree or ncp")
+        elif ncp is not None:
+            degree = ncp - 1
+
+        factor = (degree - 1) / degree
+
+        cp_y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
+
+        return cp_y1
+
+
 
 
     @property
@@ -829,6 +868,7 @@ class Bezier:
         if y is not None:
             return y
 
+        u0_offset = 0.01  # Safety offset from u=0 and u=1 for initial guess to avoid numerical issues
 
         if fast and (not self._x is None) and (x >= self._x[0] and x <= self._x[-1]):
 
@@ -846,17 +886,28 @@ class Bezier:
             if x == self._eval_1D(self._cpx,0.0):    # avoid numerical issues of Newton 
                 u = 0.0
             else: 
-                if x < 0.05:                        # good start value für newton iteration 
-                    u0 = 0.05
-                elif x > 0.95:
-                    u0 = 0.95
-                else: 
-                    u0 = x                          # first estimation 
+                # start value for newton iteration - either from cache or binary search
+                if self._x is not None and len(self._x) > 3:
+                    # Use cached x values if available
+                    x_sample = self._x[1:-1]
+                    u_sample = self._u[1:-1]
+                    idx = np.argmin(np.abs(x_sample - x))
+                    u0 = u_sample[idx]
+                else:
+                    # No cache: binary search on curve with 5 evaluations
+                    u0 = binary_search (
+                        f=lambda u: self._eval_1D(self._cpx, u),
+                        target=x, low=u0_offset, high=1.0 - u0_offset, max_iter=5)
 
                 # find u value for x
+                max_iter = 20
+
                 u, niter  = newton (lambda u: self._eval_1D(self._cpx,u) - x,
                             lambda u: self._eval_1D(self._cpx,u, der=1) , u0, 
-                            epsilon=epsilon, max_iter=20, bounds=(0.0,1.0))
+                            epsilon=epsilon, max_iter=max_iter, bounds=(0.0,1.0))
+
+                if niter >= max_iter:
+                    logger.warning (f"BSpline: Newton iteration did not converge for x={x} after {max_iter} iterations.")
 
             # eval y for u value
             y =  self._eval_1D (self._cpy, u)
@@ -1169,25 +1220,52 @@ class BSpline:
          - supports fitting airfoil coordinates with fewer points
     """
 
-    def __init__(self, cpx_or_cp, cpy=None, degree=4, knots=None):
+    def __init__(self, 
+                 cpx_or_cp : list, 
+                 cpy : list = None, 
+                 knots : list = None,
+                 degree : int = None, 
+                 ):
         """
         Initialize a B-spline from control-point coordinates.
 
         Args:
             cpx_or_cp: x coordinates or an iterable of ``(x, y)`` control points.
             cpy: y coordinates when ``cpx_or_cp`` contains only x values.
-            degree: Spline degree. If ``None``, derive it from ``knots`` or default to 3.
             knots: Optional knot vector. If omitted, generate a uniform clamped vector.
+            degree: Spline degree. If ``None``, derive it from ``knots`` or auto_degree
         """
+
         self._cpx = None
         self._cpy = None
-        self._degree = degree
         self._knots  = np.asarray(knots) if knots is not None else None
+        self._degree = degree
 
-        self._seg_polynom    = None                     # cached polynomial coefficients for each segment
+        # sanity ncp, degree and knots
+        ncp    = len(cpx_or_cp) 
+        if degree is None and knots is None:
+            raise ValueError("Must provide either degree or knots")
+        elif degree is not None and knots is not None:
+            nknots = ncp + degree + 1
+            if len(knots) != nknots:
+                raise ValueError(f"Number of knots ({len(self._knots)}) does not match expected ({nknots})")
+        elif degree is None and knots is not None:            
+            k = len(self._knots) - ncp - 1                 # Infer degree from knots
+            if k < 1:
+                raise ValueError("Inferred degree is less than 1")
+            self._degree = k
+
+        if  ncp < self._degree + 1:
+            raise ValueError(f"Number of control points ({ncp}) must be at least degree + 1 ({self._degree + 1})")
+
+        # cached polynomial coefficients for each segment (depends on control points)
+        self._seg_polynom    = None                     
         self._seg_polynom_d1 = None
         self._seg_polynom_d2 = None
         self._seg_starts     = None
+
+        # Cache for basis polynomials (depends only on knots, not control points)
+        self._basis_cache = {}                          # {seg: (active_indices, basis_coeffs)}
 
         self._clear_cache()
 
@@ -1210,28 +1288,27 @@ class BSpline:
         Returns:
             ndarray: Knot vector of length ``ncp + degree + 1``.
         """
-        n = len(self._cpx)  # number of control points
-        k = self._degree
+        k = self.degree
         
         # Total number of knots: n + k + 1
-        num_knots = n + k + 1
+        nknots = self.ncp + k + 1
         
         # Create clamped knot vector: [0,0,0,...,1,2,3,...,1,1,1]
-        knots = np.zeros(num_knots)
+        knots = np.zeros(nknots)
         
         # Repeat 0 at the beginning (k+1 times)
         # Repeat max value at the end (k+1 times)
         # Linear spacing in between
         
-        if num_knots > 2 * (k + 1):
+        if nknots > 2 * (k + 1):
             # Interior knots
-            num_interior = num_knots - 2 * (k + 1)
-            knots[k+1:k+1+num_interior] = np.linspace(0, 1, num_interior + 2)[1:-1]
+            ninterior = nknots - 2 * (k + 1)
+            knots [k+1 : k+1+ninterior] = np.linspace(0, 1, ninterior + 2)[1:-1]
         
         # Last k+1 knots are 1
-        knots[-(k+1):] = 1.0
+        knots [-(k+1):] = 1.0
         
-        return np.round (knots,10)          # round to avoid numerical issues
+        return np.round (knots,12)          # round to avoid numerical issues
 
 
     def _basis_function(self, i, k, u, der=0):
@@ -1457,16 +1534,23 @@ class BSpline:
         segments_d2 = []
         segment_starts = []
 
-        for seg in range(degree, max_span + 1):
-            t0 = knots[seg]
-            t1 = knots[seg+1]
-            dt = t1 - t0
-            if np.isclose(dt, 0.0):
-                continue
+        # Build basis cache if empty (only depends on knots, not control points)
+        if not self._basis_cache:
+            for seg in range(degree, max_span + 1):
+                t0 = knots[seg]
+                t1 = knots[seg+1]
+                dt = t1 - t0
+                if np.isclose(dt, 0.0):
+                    continue
+                active_indices, basis_coeffs = self._segment_basis_polynomials(seg)
+                self._basis_cache[seg] = (active_indices, basis_coeffs)
 
-            # First build the active basis polynomials on this span, then combine
-            # them with the active control points to get x(tau), y(tau).
-            active_indices, basis_coeffs = self._segment_basis_polynomials(seg)
+        # Use cached basis polynomials to compute segment coefficients
+        for seg in range(degree, max_span + 1):
+            if seg not in self._basis_cache:
+                continue  # Skip zero-length spans
+            
+            active_indices, basis_coeffs = self._basis_cache[seg]
             coeff = basis_coeffs.T @ cp[active_indices]
             d1, d2 = self._polynomial_deriv(coeff)
 
@@ -1486,6 +1570,51 @@ class BSpline:
         self._seg_polynom_d2 = np.array(segments_d2)
         # Ensure _seg_starts is always a proper 1D array with platform integer type for indexing
         self._seg_starts     = np.asarray(segment_starts, dtype=np.intp).ravel()
+
+
+    @staticmethod
+    def cp_y1_from_curvature (le_curvature: float, cp_x2: float, degree: int = None, ncp: int = None) -> float:
+        """Compute the second control-point y value from the target LE curvature.
+
+        Assume a leading-edge control-point layout of:
+            P0 = (0, 0)
+            P1 = (0, y1)
+            P2 = (x2, y2)
+
+        This gives a vertical start tangent and solves analytically for ``y1`` so
+        that the start curvature matches ``le_curvature``.
+
+        The formulas used are:
+
+        B-spline (open-uniform/clamped, degree=4):
+            ncp=5 (minimal): |kappa(0)| = (degree - 1) / degree * |x2| / y1^2
+            ncp≥6: |kappa(0)| = (degree - 1) / (2 * degree) * |x2| / y1^2
+            
+        The factor changes because additional control points dilute cp[2]'s influence.
+
+        Args:
+            le_curvature: Desired curvature magnitude at the start point.
+            cp_x2: x coordinate of the third control point ``P2``.
+
+        Returns:
+            float: ``cp_y1`` that produces the requested leading-edge curvature.
+        """
+        
+        if degree is None or ncp is None:
+            raise ValueError("BSpline.cp_y1_from_curvature: degree and ncp must be provided.")
+
+        # Factor depends on number of control points for clamped B-splines
+        # With minimal ncp (degree+1), cp[2] has maximum influence
+        # With more control points, influence is diluted
+        if ncp <= degree + 1:  # minimal case (ncp=5 for degree=4)
+            factor = (degree - 1) / degree
+        else:
+            factor = (degree - 1) / (2 * degree)
+
+        cp_y1 = np.sqrt(factor * abs(cp_x2) / abs(le_curvature))
+
+        return cp_y1
+
 
 
     @property
@@ -1544,6 +1673,14 @@ class BSpline:
             cpx_or_cp: x coordinates or an iterable of ``(x, y)`` control points.
             cpy: y coordinates when ``cpx_or_cp`` contains only x values.
         """
+
+        # sanity check - must have at least degree+1 control points
+        if len(cpx_or_cp) < self.degree + 1:
+            raise ValueError(f"BSpline: At least degree + 1 control points are required (got {len(cpx_or_cp)})")
+
+        # Remember old ncp to detect if it changes
+        old_ncp = len(self._cpx) if self._cpx is not None else 0
+        
         if cpy is None:  # tuples provided
             cpx_or_cp = list(cpx_or_cp)
             self._cpx = np.array([p[0] for p in cpx_or_cp])
@@ -1552,39 +1689,18 @@ class BSpline:
             self._cpx = np.array(cpx_or_cp)
             self._cpy = np.array(cpy)
 
-        self._cpx = np.round(self._cpx, 10)  # round to avoid numerical issues
-        self._cpy = np.round(self._cpy, 10)
+        self._cpx = np.round(self._cpx, 12)  # round to avoid numerical issues
+        self._cpy = np.round(self._cpy, 12)
 
         # Validate
-        n = len(self._cpx)
-        if n < 4:
-            raise ValueError('BSpline: Must have at least 4 control points')
-        if len(self._cpy) != n:
+        ncp = len(self._cpx)
+        if len(self._cpy) != ncp:
             raise ValueError('BSpline: Length of x,y coordinates must be equal')
-        
-        # Derive degree from knots if degree not specified
-        # Relationship: m = n + k + 1  =>  k = m - n - 1
-        knots_were_provided = self._knots is not None
-        if knots_were_provided and self._degree is None:
-            m = len(self._knots)
-            self._degree = m - n - 1
-        elif self._degree is None:
-            self._degree = 3  # default degree
-        
-        # Validate and adjust degree
-        original_degree = self._degree
-        if self._degree >= n:
-            self._degree = max(1, n - 1)
-        
-        # Generate or regenerate knot vector
-        # Regenerate if: no knots provided, or degree was adjusted, or knots don't match expected length
-        expected_knot_length = n + self._degree + 1
-        needs_new_knots = (self._knots is None or 
-                          original_degree != self._degree or 
-                          len(self._knots) != expected_knot_length)
-        
-        if needs_new_knots:
-            self._knots = self._generate_uniform_knots()
+               
+        # Always use uniform clamped knots - regenerate if ncp changed
+        if ncp != old_ncp:
+            self._knots  = self._generate_uniform_knots()
+            self._basis_cache = {}  # Clear cache when knots change
         
         self._clear_cache()
         self._build_segments()
@@ -1612,8 +1728,8 @@ class BSpline:
         else:
             cpx = cpx_or_cp
         
-        cpx = round(cpx, 10)  # round to avoid numerical issues
-        cpy = round(cpy, 10)
+        cpx = round(cpx, 12)  # round to avoid numerical issues
+        cpy = round(cpy, 12)
 
         # Only update if changed
         if self._cpx[iPoint] != cpx or self._cpy[iPoint] != cpy:
@@ -1660,66 +1776,40 @@ class BSpline:
 
     def insert_knot (self, x):
         """
-        Insert a new knot at x-coordinate without changing the curve shape.
+        Insert a new control point at x-coordinate (with uniform knots).
         
-        Uses knot insertion (Boehm's algorithm) to add a new control point and knot
-        while preserving the exact curve geometry.
+        Note: With uniform knots, the curve shape will change slightly.
         
         Args:
-            x: x-coordinate where to insert the new knot.
+            x: x-coordinate where to insert the new control point.
         """
         # Find parameter u for the given x
         u = self._eval_u_on_x(x)
         
-        # Find knot span that contains u
-        knots = self._knots
-        degree = self._degree
-        k = degree  # default span
-        for i in range(degree, len(knots) - degree - 1):
-            if knots[i] <= u < knots[i + 1]:
-                k = i
+        # Evaluate y at this position
+        _, y = self.eval(u)
+        
+        # Find insertion index based on x position
+        n = len(self._cpx)
+        insert_idx = n - 1  # default to end
+        for i in range(n - 1):
+            if self._cpx[i] <= x < self._cpx[i + 1]:
+                insert_idx = i + 1
                 break
         
-        # Boehm's knot insertion algorithm
-        # Insert u into knot vector
-        new_knots = np.insert(knots, k + 1, u)
+        # Insert new control point
+        new_cpx = np.insert(self._cpx, insert_idx, x)
+        new_cpy = np.insert(self._cpy, insert_idx, y)
         
-        # Calculate new control points
-        n = len(self._cpx)
-        new_cpx = np.zeros(n + 1)
-        new_cpy = np.zeros(n + 1)
-        
-        for i in range(n + 1):
-            if i <= k - degree:
-                # Control points before affected region stay the same
-                new_cpx[i] = self._cpx[i]
-                new_cpy[i] = self._cpy[i]
-            elif i > k:
-                # Control points after affected region stay the same
-                new_cpx[i] = self._cpx[i - 1]
-                new_cpy[i] = self._cpy[i - 1]
-            else:
-                # Affected control points: blend between neighbors
-                alpha_denom = knots[i + degree] - knots[i]
-                if abs(alpha_denom) < 1e-10:
-                    alpha = 0.0
-                else:
-                    alpha = (u - knots[i]) / alpha_denom
-                
-                new_cpx[i] = alpha * self._cpx[i] + (1.0 - alpha) * self._cpx[i - 1]
-                new_cpy[i] = alpha * self._cpy[i] + (1.0 - alpha) * self._cpy[i - 1]
-        
-        # Update knots first, then use set_cpoints to update control points
-        self._knots = np.round(new_knots, 10)
+        # set_cpoints will regenerate uniform knots and clear basis cache
         self.set_cpoints(new_cpx, new_cpy)
 
 
     def remove_cpoint(self, index):
         """
-        Remove a control point at the given index.
+        Remove a control point at the given index (with uniform knots).
         
-        Note: This will change the curve shape. The curve is approximated
-        by the remaining control points.
+        Note: The curve shape will change after removal.
         
         Args:
             index: Index of the control point to remove (0-based).
@@ -1729,23 +1819,12 @@ class BSpline:
         # Validate index
         if index < 0 or index >= n:
             raise ValueError(f"BSpline: Index {index} out of range [0, {n-1}]")
-        
-        # Need at least degree+1 control points
-        if n <= self._degree + 1:
-            raise ValueError(f"BSpline: Cannot remove control point. "
-                           f"Need at least {self._degree + 1} control points for degree {self._degree}")
-        
+                
         # Remove control point
         new_cpx = np.delete(self._cpx, index)
         new_cpy = np.delete(self._cpy, index)
         
-        # Remove corresponding knot (remove from the middle section, preserving clamped structure)
-        # For a clamped B-spline, remove knot at position index + degree
-        knot_index = min(index + self._degree, len(self._knots) - self._degree - 2)
-        new_knots = np.delete(self._knots, knot_index)
-        
-        # Update knots first, then use set_cpoints
-        self._knots = np.round(new_knots, 10)
+        # set_cpoints will regenerate uniform knots and clear basis cache
         self.set_cpoints(new_cpx, new_cpy)
 
 
@@ -1814,7 +1893,10 @@ class BSpline:
         
         logger.debug(f"B-Spline eval: der={der}, nu={len(u):3},  time={timer() - start:.6f}s")
 
-        x,y = np.round(x, 10), np.round(y, 10)              # round to avoid numerical issues
+        # Only round position values (der=0), not derivatives - rounding derivatives
+        # causes numerical issues for Newton iteration on nearly flat curves
+        if der == 0:
+            x,y = np.round(x, 12), np.round(y, 12)
 
         if scalar_input:
             return x[0], y[0]
@@ -1890,6 +1972,8 @@ class BSpline:
         except: 
             pass
 
+        u0_offset = 0.01  # Safety offset from u=0 and u=1 for initial guess to avoid numerical issues
+
         if fast and (not self._x is None) and (x >= self._x[0] and x <= self._x[-1]):
 
             # find closest index
@@ -1910,24 +1994,31 @@ class BSpline:
             else: 
 
                 # start value for newton iteration - either given or based on x value
-                if u0 is not None:
-                    u0 = max(0.0, min(1.0, u0))  # clamp to [0, 1]
+                if u0 is  None:
+                    # Use cached x values if available (fast), otherwise binary search
+                    if self._x is not None and len(self._x) > 3:
+                        x_sample = self._x[1:-1]
+                        u_sample = self._u[1:-1]
+                        idx = np.argmin(np.abs(x_sample - x))
+                        u0 = u_sample[idx]
+                    else:
+                        u0 = binary_search (
+                            f=lambda u: self.eval(u, update_cache=False)[0],
+                            target=x, low=u0_offset, high=1.0 - u0_offset, max_iter=5)
                 else:
-                    if x < 0.05:                        # good start value für newton iteration 
-                        u0 = 0.05
-                    elif x > 0.95:
-                        u0 = 0.95
-                    else: 
-                        u0 = x                          # first estimation 
+                    # Clamp user-provided u0 to safe interior region
+                    u0 = np.clip(u0, u0_offset, 1.0 - u0_offset)
 
                 # find u value for x
                 # Add small epsilon to derivative to avoid division by zero when curve is vertical
-                u, niter  = newton (lambda u: self.eval(u)[0] - x,
-                            lambda u: self.eval(u, der=1)[0] + 1e-12 , u0, 
-                            epsilon=epsilon, max_iter=20, bounds=(0.0,1.0))
+                max_iter = 40
 
-                # print iteration info if needed
-                # print(f"Newton iteration: {niter}, u: {u:.6f}, x: {x_target:.6f}")
+                u, niter  = newton (lambda u: self.eval(u)[0] - x,
+                                    lambda u: self.eval(u, der=1)[0] + 1e-10 , 
+                                    u0, epsilon=epsilon, max_iter=max_iter, bounds=(0.0,1.0))
+
+                if niter >= max_iter:
+                    logger.warning (f"BSpline: Newton iteration did not converge for x={x} after {max_iter} iterations.")
 
             # eval y for u value
             _, y =  self.eval(u)

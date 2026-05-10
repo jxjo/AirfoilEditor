@@ -398,9 +398,12 @@ class Airfoil:
         info = "<p style='white-space:pre'>"                     # no word wrap 
 
         if self.isLoaded:
-            used_as = f"{self.usedAs}: " if self.usedAs != usedAs.NORMAL else ""
-            info += f"{used_as}{self.fileName}" 
-            info += f"<br><br>in {self.pathName_abs}" 
+            used_as = f" being {self.usedAs}" if self.usedAs != usedAs.NORMAL else ""
+            info += f"{self.fileName}{used_as}" 
+            if self.geo.isCurve:
+                geo : Geometry_Curve = self.geo
+                info += f"<br><br>{geo.description_long}"          
+            info += f"<br><br>in {self.pathName_abs}    " 
 
         info += self.info_short_as_html()
 
@@ -1076,7 +1079,7 @@ class Airfoil_Curve (Airfoil):
 
 
     @classmethod
-    def on_airfoil (cls, anAirfoil : Airfoil, ncp=6) -> 'Airfoil_Curve':
+    def on_airfoil (cls, anAirfoil : Airfoil, ncp=None) -> 'Airfoil_Curve':
         """
         Alternate constructor for new Airfoil based on another airfoil 
 
@@ -1092,9 +1095,9 @@ class Airfoil_Curve (Airfoil):
         side_class = cls._geometry_class.side_class
 
         # create upper, lower bezier curves based on airfoil coordinates
-        le_curvature = anAirfoil.geo.curvature.at_le
-        upper = side_class.on_side (anAirfoil.geo.upper, le_curvature=le_curvature, ncp=ncp, linetype=Line.Type.UPPER)
-        lower = side_class.on_side (anAirfoil.geo.lower, le_curvature=le_curvature, ncp=ncp, linetype=Line.Type.LOWER)
+        le_curvature = round(anAirfoil.geo.curvature.max, 0)
+        upper = side_class.on_side (anAirfoil.geo.upper, le_curvature=le_curvature, linetype=Line.Type.UPPER)
+        lower = side_class.on_side (anAirfoil.geo.lower, le_curvature=le_curvature, linetype=Line.Type.LOWER)
 
         # new name and filename
         airfoil_new =  cls (name=anAirfoil.name + cls.NAME_SUFFIX)
