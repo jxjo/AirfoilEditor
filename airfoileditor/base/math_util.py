@@ -560,6 +560,34 @@ def secant_fn (f,a,b,N):
 
 
 
+#------------ Interpolate in a non-monotonic array  -----------------------------------
+
+def interpolate_non_monotonic (y_arr, u_arr, y) -> float:
+    """
+    Interpolate ``u`` for a given ``y`` value in a non-monotonic array.
+
+    Finds the nearest sample by ``np.argmin``, then linearly interpolates
+    between the two bracketing neighbors (if one exists) for sub-sample accuracy.
+
+    Args:
+        y_arr: Array of y values (non-monotonic, e.g. upper airfoil surface).
+        u_arr: Array of parameter values corresponding to ``y_arr``.
+        y:     Target y value.
+
+    Returns:
+        float: Interpolated ``u`` value.
+    """
+    idx    = np.argmin(np.abs(y_arr - y))
+    y0, u0 = y_arr[idx], u_arr[idx]
+ 
+    for nb in (idx - 1, idx + 1):
+        if 0 <= nb < len(y_arr):
+            y1, u1 = y_arr[nb], u_arr[nb]
+            if (y1 - y) * (y0 - y) <= 0 and y1 != y0:
+                return interpolate(y0, y1, u0, u1, y)
+    return u0
+
+
 #------------ Binary search - find x where f(x) = target  -----------------------------------
 
 def binary_search(f, target, low, high, max_iter=10):

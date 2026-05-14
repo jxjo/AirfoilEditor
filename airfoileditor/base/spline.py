@@ -12,7 +12,7 @@ import numpy as np
 from copy                   import deepcopy
 from timeit                 import default_timer as timer
 
-from .math_util             import findMin, newton, binary_search
+from .math_util             import findMin, newton, binary_search, interpolate_non_monotonic
 
 import logging
 logger = logging.getLogger(__name__)
@@ -872,14 +872,9 @@ class Bezier:
 
         if fast and (not self._x is None) and (x >= self._x[0] and x <= self._x[-1]):
 
-            # find closest index
-            i = min(bisect.bisect(self._x, x)-1, len(self._x) -2)
-
-            # interpolate u 
-            u = ((self._u[i+1]-self._u[i])/(self._x[i+1]-self._x[i])) * (x - self._x[i]) + self._u[i]
-
-            # evaluate y from u 
-            y =  self._eval_1D (self._cpy, u)
+            # interpolate u from cached x, then evaluate y 
+            u = np.interp (x, self._x, self._u)
+            y = self._eval_1D (self._cpy, u)
 
         else: 
 
@@ -923,11 +918,11 @@ class Bezier:
         """
         Evaluate ``x`` for a given y coordinate on the curve.
 
-        Use either a cached linearized lookup or a scalar minimization for ``u(y)``.
 
         Args:
             y: Target y coordinate.
-            fast: Use cached linear interpolation when possible.
+            fast: When True and a cached panel sample exists, use a nearest-sample
+                  interpolation. When False, use scalar minimization.
 
         Returns:
             float: x coordinate at the requested y location.
@@ -938,19 +933,15 @@ class Bezier:
         if x is not None:
             return x
 
-        if fast and (not self._y is None) and (y <= self._y[0] and y >= self._y[-1]):
-            i = min(bisect.bisect(self._y, y)-1, len(self._y) -2)
-            # interpolate u 
-            u = ((self._u[i+1]-self._u[i])/(self._y[i+1]-self._y[i])) * (y - self._y[i]) + self._u[i]
-            # evaluate y from u 
-            x = self._eval_1D (self._cpx, u)
-        else: 
+        if fast and self._y is not None:
+            # y is non-monotonic, so we can't use interp 
+            u = interpolate_non_monotonic (self._y, self._u, y)
+        else:
+            # scalar minimization (slow, many curve evaluations)
             u = findMin (lambda u: abs(self._eval_1D(self._cpy,u) - y), 0.5, bounds=(0, 1)) 
-            x =  self._eval_1D (self._cpx, u)
-            # print ("y: ",y, "  x evaluated ", x)
 
-            # cache value - only not fast
-            self._x_on_y_cache [y] = x
+        x = self._eval_1D (self._cpx, u)
+        self._x_on_y_cache [y] = x
 
         return x
 
@@ -1978,17 +1969,9 @@ class BSpline:
 
         if fast and (not self._x is None) and (x >= self._x[0] and x <= self._x[-1]):
 
-            # find closest index
-            i = min(bisect.bisect(self._x, x)-1, len(self._x) -2)
-
-            if self._x[i] == x:                         # we have it already exactly 
-                return self._y[i]
-
-            # interpolate u 
-            u = ((self._u[i+1]-self._u[i])/(self._x[i+1]-self._x[i])) * (x - self._x[i]) + self._u[i]
-
-            # evaluate y from u 
-            y =  self.eval (u)[1]
+            # interpolate u from cached x, then evaluate y 
+            u = np.interp (x, self._x, self._u)
+            y = self.eval (u)[1]
 
         else:
             if x == self.eval(0.0)[0]:    # avoid numerical issues of Newton 
