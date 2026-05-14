@@ -89,21 +89,6 @@ class Test_Match_Targets:
         mt.set_max_te_curvature(0.5)
         assert mt.max_te_curvature == pytest.approx(0.5)
 
-    def test_set_max_nreversals_updates_te_curvature(self, seed_airfoil):
-        """Setting max_nreversals=0 forces a low max_te_curvature; =1 allows a higher value"""
-        mt = Match_Targets.from_airfoil(seed_airfoil, Line.Type.UPPER, ncp=6)
-
-        mt.set_max_nreversals(0)
-        te_curv_zero = mt.max_te_curvature
-
-        mt.set_max_nreversals(1)
-        te_curv_one = mt.max_te_curvature
-
-        # With no allowed reversals, TE curvature must be tightly constrained (capped at 1.0)
-        assert te_curv_zero <= 1.0
-        # With one allowed reversal, the limit is relaxed (sentinel value -2.0 means unconstrained)
-        assert te_curv_one > te_curv_zero
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 

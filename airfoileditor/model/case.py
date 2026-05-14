@@ -437,7 +437,7 @@ class Match_Targets:
     """
 
     def __init__ (self, side : Line, curvature : Line,  
-                  ncp = 5, ncp_auto = True, min_rms = True, le_curvature = None):
+                  ncp = 5, ncp_auto = True, min_rms = True, le_curvature = None, le_monoton = True):
 
         self._side              = side                              # target upper or lower Line 
         self._curvature         = curvature                         # target curvature Line
@@ -447,8 +447,13 @@ class Match_Targets:
 
         self._min_rms           = min_rms                           # minimze deviation
         self._le_curvature      = le_curvature                      # target curvature at leading edge 
+        self._le_monoton        = le_monoton                        # LE curvature is montonically descending 
+                                                                    # or just the curvature at LE 
         self._max_nreversals    = np.clip(curvature.nreversals(), 0, 1)     # maximum allowed reversals in curvature
-        self._max_te_curvature  = self._get_max_te_curvature (curvature.y, self._max_nreversals)   # maximum curvature at trailing edge 
+
+        max_te, is_proposed     = self._get_max_te_curvature (curvature.y, self._max_nreversals)   # maximum curvature at trailing edge
+        self._max_te_curvature  = max_te
+        self._max_te_is_proposed = is_proposed
 
         self._bump_control      = True                              # avoid bumps in curvature
 
@@ -468,10 +473,14 @@ class Match_Targets:
         else:
             side = airfoil.geo.lower
             curv = airfoil.geo.curvature.lower
-            
-        le_curvature   = round(airfoil.geo.curvature.max, 0)
 
-        instance =  cls (side, curv, ncp=ncp, le_curvature=le_curvature)
+        # propose a good le_curvature if max of airfoil is not at LE
+
+        le_curvature   = round (airfoil.geo.curvature.at_le, 0)
+        le_monoton     = airfoil.geo.curvature.max_is_at_le
+
+        instance =  cls (side, curv, ncp=ncp, 
+                         le_curvature=le_curvature, le_monoton=le_monoton)
 
         return instance
 
@@ -498,9 +507,17 @@ class Match_Targets:
         return self._le_curvature
     
     @property
+    def le_monoton (self) -> bool:
+        return self._le_monoton
+
+    @property
     def max_te_curvature (self) -> float:
         return self._max_te_curvature
-    
+
+    @property
+    def max_te_is_proposed (self) -> bool:
+        return self._max_te_is_proposed
+        
     @property
     def max_nreversals (self) -> int:
         return self._max_nreversals
@@ -511,31 +528,43 @@ class Match_Targets:
         
     # --- setters ---
 
-    def set_side             (self, side: Line): self._side = side
-    def set_ncp              (self, ncp : int): self._ncp = ncp
-    def set_ncp_auto         (self, auto : bool): self._ncp_auto = auto
-    def set_le_curvature     (self, val : float): self._le_curvature     = abs(val)
-    def set_max_te_curvature (self, val : float): self._max_te_curvature = abs(val)
-    def set_max_nreversals   (self, val : int  ): 
-        self._max_nreversals    = val
-        self._max_te_curvature = self._get_max_te_curvature(self._curvature.y, val)
-    def set_bump_control      (self, val : bool ): self._bump_control = val
+    def set_side (self, side: Line): self._side = side
+
+    def set_ncp (self, ncp : int): self._ncp = ncp
+
+    def set_ncp_auto (self, auto : bool): self._ncp_auto = auto
+
+    def set_le_curvature (self, val : float): 
+        self._le_curvature     = abs(val)
+        self._le_monton   = False
+
+    def set_le_monoton (self, monoton: bool):
+        self._le_monoton = monoton
+
+    def set_max_te_curvature (self, val : float): 
+        self._max_te_curvature   = abs(val)
+        self._max_te_is_proposed = False
+
+    def set_max_nreversals (self, val : int  ): 
+        self._max_nreversals   = val
+        self._max_te_curvature, self._max_te_is_proposed = self._get_max_te_curvature(self._curvature.y, val)
+
+    def set_bump_control (self, val : bool ): self._bump_control = val
 
 
-    def _get_max_te_curvature(self, curvature: np.ndarray, nreversals: int) -> float:
+    def _get_max_te_curvature (self, curvature: np.ndarray, nreversals: int) -> tuple [float, bool]:
         """ 
         calc abs max_te_curvature depending on number of reversals 
         - if there shall be no reversal, only small curvature at TE is allowed, otherwise it can be higher
         - sign of value will be fixed in matcher depending on reversals and side
         """
 
-        if nreversals == 0:
-            te_curvature = round(abs(curvature[-1]),1)
-            return np.clip (te_curvature, 0.1, 1.0)             # clip to accetable range
-        else:
-            return 2.0
-
-
+        max_te = 1.0 if nreversals == 0 else 2.0
+        te_curvature = round(abs(curvature[-1]),1)
+        te_curvature = np.clip (te_curvature, 0.1, max_te)             # clip to accetable range
+        is_proposed  = te_curvature != round(abs(curvature[-1]),1)
+        
+        return te_curvature, is_proposed
 
 
 

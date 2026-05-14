@@ -343,6 +343,12 @@ class Curvature_Abstract:
         return float(max)
 
 
+    @property 
+    def max_is_at_le (self) -> bool: 
+        """ True if max value of curvature is at LE"""
+        return self.iLe is not None and isclose (abs(self.values[self.iLe]), self.max, abs_tol=1e-6)
+
+
     @property
     def at_le (self) -> float: 
         """ max value of curvature at LE"""

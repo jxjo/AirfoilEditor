@@ -379,7 +379,7 @@ class Airfoil:
                     f"</tr>" + \
                     f"<tr>" + \
                         f"<td>Curvature LE  </td>" + \
-                        f"<td>{self.geo.curvature.max:.0f}  </td>" + \
+                        f"<td>{self.geo.curvature.at_le:.0f}  </td>" + \
                         f"<td>TE    </td>" + \
                         f"<td>{self.geo.curvature.max_te:.0f}  </td>" + \
                     f"</tr>" + \
@@ -1095,7 +1095,7 @@ class Airfoil_Curve (Airfoil):
         side_class = cls._geometry_class.side_class
 
         # create upper, lower bezier curves based on airfoil coordinates
-        le_curvature = round(anAirfoil.geo.curvature.max, 0)
+        le_curvature = round(anAirfoil.geo.curvature.at_le, 0)
         upper = side_class.on_side (anAirfoil.geo.upper, le_curvature=le_curvature, linetype=Line.Type.UPPER)
         lower = side_class.on_side (anAirfoil.geo.lower, le_curvature=le_curvature, linetype=Line.Type.LOWER)
 

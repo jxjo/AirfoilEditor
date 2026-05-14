@@ -1432,7 +1432,7 @@ class BSpline:
             basis_coeffs: ndarray with shape (degree + 1, degree + 1), one row per
                           active basis, coefficients in descending-power order
         """
-        knots  = self.knots
+        knots  = self._knots
         degree = self.degree
         t0 = knots[seg]
         t1 = knots[seg + 1]
@@ -1519,7 +1519,7 @@ class BSpline:
         """
 
         cp     = np.column_stack((self._cpx, self._cpy)) if self._cpx is not None else np.empty((0, 2))
-        knots  = self.knots
+        knots  = self._knots
         degree = self.degree
 
         if cp.size == 0:
@@ -1644,10 +1644,12 @@ class BSpline:
         """Spline degree."""
         return self._degree
     
-    @property
-    def knots(self) -> np.ndarray:
-        """Knot vector."""
-        return self._knots
+    def knots (self, only_inner=False) -> np.ndarray:
+        """Knot vector. Optionally only the inner knots that affect the curve shape."""
+        if only_inner:
+            return self._knots[self._degree+1:-self._degree-1]
+        else:
+            return self._knots
 
 
     @property
@@ -1844,7 +1846,7 @@ class BSpline:
         scalar_input = np.isscalar(u)
         u = np.atleast_1d(np.asarray(u, dtype=float))
 
-        knots  = self.knots
+        knots  = self._knots
         segment_starts = self._seg_starts
         segments    = self._seg_polynom
         segments_d1 = self._seg_polynom_d1

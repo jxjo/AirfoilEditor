@@ -80,7 +80,7 @@ class Side_Airfoil_Curve (Line):
     """
 
     isCurve         = True
-    
+
     NCP_DEFAULT     = None                          # default number of control points for curve
     NCP_BOUNDS      = (None, None)                  # allowed range for number of control points 
     NCP_AUTO_RANGE  = (None,None)                   # range for automatic ncp selection match result
@@ -515,7 +515,7 @@ class Geometry_Curve (Geometry):
     """
     
     isBasic         = False 
-    isBezier        = True
+    isBezier        = False
     isBSpline       = False
     isCurve         = True
     description     = "based on 2 Bezier or B-Spline curves"

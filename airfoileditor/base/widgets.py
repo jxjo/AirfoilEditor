@@ -781,7 +781,7 @@ class Widget:
 
             # if it's background color apply alpha
             if color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]:
-                if aStyle == style.GOOD or aStyle == style.HINT:
+                if aStyle == style.GOOD : 
                     color.setAlphaF (0.3) 
                     color_disabled.setAlphaF (0.15)
                 else:
@@ -1177,6 +1177,12 @@ class FieldI (Field_With_Label, QSpinBox):
             self._on_finished ()
 
 
+    @override
+    def mouseDoubleClickEvent(self, event):
+        super().mouseDoubleClickEvent(event)
+        event.accept()                                          # prevent propagation to parent
+
+
     def _on_finished(self):
       self._set_value (self.value())
 
@@ -1309,6 +1315,12 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         super().stepBy(step)
         if self.value() != value:
             self._on_finished ()
+
+
+    @override
+    def mouseDoubleClickEvent(self, event):
+        super().mouseDoubleClickEvent(event)
+        event.accept()                                          # prevent propagation to parent
 
 
     def _on_finished(self):

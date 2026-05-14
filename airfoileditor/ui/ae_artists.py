@@ -1109,9 +1109,7 @@ class BSpline_Artist (Artist):
         pen    = pg.mkPen(color.darker(130), width=1.5, style=Qt.PenStyle.SolidLine)
         length = 0.015
 
-        # remove duplicate knots (u-value) and start/end from knot vector
-        u_knots = np.unique(side.bspline.knots)
-        u_knots = u_knots[(u_knots != 0.0) & (u_knots != 1.0)]
+        u_knots = side.bspline.knots (only_inner=True)
 
         if len(u_knots) == 0:
             return
@@ -1314,9 +1312,6 @@ class Curvature_Artist (Artist):
 
     def _plot (self): 
 
-        # Determine which airfoil(s) should show derivative: design airfoil(s) if any, otherwise the first one
-        has_design_airfoil = any(a.usedAsDesign for a in self.airfoils)
-
         for airfoil in self.airfoils:
 
             color = _color_airfoil (self.airfoils, airfoil)
@@ -1340,31 +1335,29 @@ class Curvature_Artist (Artist):
                 self._plot_dataItem (x, y, name=label, pen=pen, zValue=zValue)
 
                 # plot derivative1 of curvature 
-
-                should_plot_derivative = (has_design_airfoil and airfoil.usedAsDesign) or \
-                                        (not has_design_airfoil and airfoil == self.airfoils[0])
                 
-                if self.show_derivative and should_plot_derivative:
+                if self.show_derivative:
                     pen = QPen (pen)
                     pen.setColor (color.darker(160))
                     name = f"{side.name} - Derivative"
                     deriv = -derivative1(x,y)
                     self._plot_dataItem (x, deriv, name=name, pen=pen)
 
-                    # dev: derivative of derivative 
-                    # deriv2 = - derivative1(x, deriv) / 10  # scale down for better visibility
-                    # name2 = f"{side.name} - 2nd Derivative / 10"
-                    # pen2 = QPen (pen)
-                    # pen2.setColor (QColor("darkorange"))
-                    # self._plot_dataItem (x, deriv2, name=name2, pen=pen2)
-
                 # plot max points at le and te and reversals
 
                 self._plot_le_te_max_point (side, color, airfoil.usedAsDesign)
                 self._plot_reversals       (side, color, airfoil.usedAsDesign)
 
+            # dev plot d4 lines
+            if self.show_derivative:
+                if self.show_upper: 
+                    self._plot_d2_curvature (airfoil.geo.curvature.upper, color, airfoil.usedAsDesign)
+                    self._plot_d5_jumps (airfoil.geo.upper, color, zValue+1)
+                if self.show_lower: 
+                    self._plot_d2_curvature (airfoil.geo.curvature.lower, color, airfoil.usedAsDesign)
+                    self._plot_d5_jumps (airfoil.geo.lower, color, zValue+1)
 
-
+    
     def _plot_le_te_max_point (self, aSide : Line, color, usedAsDesign : bool ):
         """ plot the max values at LE and te"""
 
@@ -1396,6 +1389,44 @@ class Curvature_Artist (Artist):
             anchor = (0.5,1.2) if side.isUpper else (0.5,-0.2)
             self._plot_point (reversal_x, 0.0, color=color, size=2, text="R", anchor=anchor,
                                 zValue=zValue, textColor=color)
+
+
+    def _plot_d5_jumps (self, side : Side_Airfoil_BSpline, color : QColor, zValue=1):
+        """ plot d5 jumps of a BSpline """
+
+        if not isinstance (side, Side_Airfoil_BSpline):
+            return
+
+        bspline = side.curve
+        cp_y    = bspline.cpoints_y
+        u_inner = bspline.knots(only_inner=True)
+
+        # 5th finite difference - the jump of the 4th derivative at each inner knot
+        d5y = np.diff(cp_y, n=5)
+        d5 = d5y                                        # y is relevant for bumps
+        x_d5 = bspline.eval(u_inner, update_cache=False)[0]                          # x position of d5 jumps, ignore first and last 2 knots where d5 is not defined
+
+        # plot d5 jumps: vertical line at each inner knot x position
+        style = Qt.PenStyle.SolidLine if side.isUpper else Qt.PenStyle.DotLine
+        pen = pg.mkPen(color, width=3, style=style)
+        for i in range(len(d5)):
+            self._plot_dataItem([x_d5[i], x_d5[i]], [0.0, d5[i]*10], pen=pen, name="d5y jump * 10",
+                                antialias=True, zValue=zValue+1)
+
+
+    def _plot_d2_curvature (self, side : Line, color : QColor, usedAsDesign : bool):
+        """ plot d2 curvature for a side of the airfoil """
+
+        x = side.x
+        y = side.y
+
+        d2 = derivative1(x, derivative1(x,y)) / 10.0
+
+        style = Qt.PenStyle.DashDotLine if side.isUpper else Qt.PenStyle.DashDotDotLine
+
+        pen = pg.mkPen(color.darker(160), width=1, style=style)
+        name = f"{side.name} - 2nd Derivative / 10"
+        self._plot_dataItem (x, d2, name=name, pen=pen, zValue=4 if usedAsDesign else 2)
 
 
 

@@ -1380,7 +1380,7 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         Label  (l,r,c, colSpan=3, get="LE curv", hide=self._small)
         FieldF (l,r+1,c, rowSpan=2, width=45, dec=0, step=1, lim =(50,800),
                 get=lambda: self.le_curv, set=self.set_le_curv, toolTip=_tip)
-        l.setColumnMinimumWidth (c+1,5)
+        l.setColumnMinimumWidth (c+1,10)
 
         c += 2
         Label  (l,r,c, colSpan=3, get="Revers", hide=self._small)
@@ -1394,31 +1394,33 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         FieldI (l,r+2,c, width=40, step=1, lim =(0,2),
                 get=lambda: self.targets_lower.max_nreversals, 
                 set=lambda n: self.targets_lower.set_max_nreversals(n), toolTip=_tip)
-        l.setColumnMinimumWidth (c+1,5)
+        l.setColumnMinimumWidth (c+1,10)
 
         c += 2
-        _tip = "Maximum curvature at TE allowed for the matched side.\n" + \
+        _tip = "Maximum absolute curvature at TE allowed for the matched side.\n" + \
                "A higher value may allow a better fit, \nbut could cause an undesired artefact at TE."
         Label  (l,r,c, colSpan=3, get="TE curv", hide=self._small)
         FieldF (l,r+1,c, width=45, dec=1, step=0.1, lim =(-9,9),
                 get=lambda: self.targets_upper.max_te_curvature, 
-                set=lambda c: self.targets_upper.set_max_te_curvature(c), toolTip=_tip)
+                set=lambda c: self.targets_upper.set_max_te_curvature(c), toolTip=_tip,
+                style=lambda: style.HINT if self.targets_upper.max_te_is_proposed else style.NORMAL)
         FieldF (l,r+2,c, width=45, dec=1, step=0.1, lim =(-9,9),
                 get=lambda: self.targets_lower.max_te_curvature, 
-                set=lambda c: self.targets_lower.set_max_te_curvature(c), toolTip=_tip)
-        l.setColumnMinimumWidth (c+1,5)
+                set=lambda c: self.targets_lower.set_max_te_curvature(c), toolTip=_tip,
+                style=lambda: style.HINT if self.targets_lower.max_te_is_proposed else style.NORMAL)
+        # l.setColumnMinimumWidth (c+1,10)
 
-        c += 2
-        _tip = "Suppress bumps of curvature to get a smooth airfoil.\n" + \
-               "Bumps are controlled by limiting the derivate of curvature.\n" + \
-               "Show 'Derivative of curvature' in the Curvature diagram to watch the effect."
-        Label  (l,r,c, colSpan=2, get="Bumps", hide=self._small)
-        CheckBox (l,r+1,c, text="No", get=lambda: self.targets_upper.bump_control,
-                set=lambda b: self.targets_upper.set_bump_control(b),
-                toolTip=_tip)
-        CheckBox (l,r+2,c, text="No", get=lambda: self.targets_lower.bump_control,
-                set=lambda b: self.targets_lower.set_bump_control(b),
-                toolTip=_tip)
+        # c += 2
+        # _tip = "Suppress curvature bumps to achieve a smoother airfoil.\n" + \
+        #        "For B-Splines, bumps are penalized via the 5th-derivative jumps at inner knots.\n" + \
+        #        "Use 'Derivative of curvature' in the Curvature diagram to monitor the effect."
+        # Label  (l,r,c, colSpan=2, get="Bumps", hide=lambda: self._small or self.geo.isBezier)
+        # CheckBox (l,r+1,c, text="No", get=lambda: self.targets_upper.bump_control,
+        #         set=lambda b: self.targets_upper.set_bump_control(b),
+        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
+        # CheckBox (l,r+2,c, text="No", get=lambda: self.targets_lower.bump_control,
+        #         set=lambda b: self.targets_lower.set_bump_control(b),
+        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
         l.setColumnMinimumWidth (c+1,20)
 
         c += 2
@@ -1429,9 +1431,16 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
                         set=lambda: self._match (self.lower.type), toolTip=_tip)
 
         r,c = 3,0 
+        _tip = "When checked, the matched airfoil is not required to have its maximum \n" + \
+               "curvature exactly at the LE — mirroring the target airfoil's behavior."
+        CheckBox (l,r,c+5, text="Allow max curvature not at LE", height=16, colSpan=7,
+                  get=lambda: self.le_curv_not_monoton, set=self.set_le_curv_not_monoton,
+                  style=style.HINT,
+                  toolTip=_tip, hide=lambda: self._small or self._hide_le_curv_monoton())
+        r += 1
         l.setRowStretch (r,2)
         r += 1
-        Label  (l,r,0, get=self._messageText, colSpan=10, height=(None, None), hide=self._small, style=style.COMMENT)
+        Label  (l,r,0, get=self._message_text, colSpan=14, height=(None, None), hide=self._small, style=style.COMMENT)
     
         return l
 
@@ -1469,8 +1478,7 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
     @property
     def le_curv (self) -> float:
         upper_curv =self.targets_upper.le_curvature
-        lower_curv =self.targets_lower.le_curvature
-        return round((upper_curv + lower_curv) / 2, 0)
+        return upper_curv
 
 
     def set_le_curv (self, le_curv: float):
@@ -1478,10 +1486,38 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         self.targets_upper.set_le_curvature (le_curv)
         self.targets_lower.set_le_curvature (le_curv)
 
+    @property
+    def le_curv_not_monoton (self) -> bool:
+        """ returns True if curvature at LE is not monotonous (max not at LE)"""
 
-    def _messageText (self):
+        return not (self.targets_upper.le_monoton and self.targets_lower.le_monoton)
+
+    def set_le_curv_not_monoton (self, monoton: bool):
+        """ set curvature at LE to be not monotonous (max not at LE)"""
+
+        self.targets_upper.set_le_monoton(not monoton)
+        self.targets_lower.set_le_monoton(not monoton)
+
+
+    def _hide_le_curv_monoton (self):
+        """ hide checkbox to set curvature at LE to be monotonous if curvature at LE is proposed"""
+
+        if self.geo.isBezier:
+            return True
+
+        return self.target_airfoil.geo.curvature.max_is_at_le
+
+
+    def _message_text (self):
         """ user info"""
-        text = f"Have a look at Curvature (comb) to tune target values."
+
+        text = []
+        if self.targets_upper.max_te_is_proposed or self.targets_lower.max_te_is_proposed:
+            text.append("- TE curvature is proposed to limit undesired artefacts at TE.")  
+        else:
+            text.append (f"- Have a look at Curvature (comb) to tweak target values for best results.")
+
+        text = '<br>'.join(text)
         return text
 
 
@@ -1515,15 +1551,10 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
     def curv_lower (self) -> Line:
         return self.target_airfoil.geo.curvature.lower
 
-    @property
-    def target_curv_le (self) -> float:
-        return self.target_airfoil.geo.curvature.at_le
-
 
     def _init_layout (self):
 
         self._target_curv_le = None 
-        self._target_curv_le_weighting = None
 
         l = QGridLayout()
 
@@ -1542,10 +1573,10 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
         c += 1
         # Label  (l,r,c, colSpan=1, get="Max")
         FieldF (l,r+1,c  , get=lambda: self.curv_upper.max_xy[1],  width=40, dec=0,
-                style=lambda:self._style_max_curv(self.curv_upper.max_xy[1], self.target_curv_le))
+                style=lambda:self._style_max_curv(self.curv_upper.max_xy[1]))
         FieldF (l,r+2,c  , get=lambda: self.curv_lower.max_xy[1],  width=40, dec=0,
-                style=lambda: self._style_max_curv(self.curv_lower.max_xy[1], self.target_curv_le))
-        l.setColumnMinimumWidth (c+1,10)
+                style=lambda: self._style_max_curv(self.curv_lower.max_xy[1]))
+        l.setColumnMinimumWidth (c+1,20)
 
         c += 2
         Label  (l,r,c, colSpan=2, get="Revers")
@@ -1553,7 +1584,7 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
                 style=lambda: self._style_nreversals(self.curv_upper))
         FieldF (l,r+2,c, get=lambda: self.curv_lower.nreversals(), width=30, dec=0,
                 style=lambda: self._style_nreversals(self.curv_lower))
-        l.setColumnMinimumWidth (c+1,10)
+        l.setColumnMinimumWidth (c+1,20)
 
         c += 2
         Label  (l,r,c, colSpan=2, get="TE curv")
@@ -1574,9 +1605,12 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
         """ returns style.WARNING if curvature at LE differs too much"""
         return style.WARNING if abs(curv_le_upper - curv_le_lower) > 0.5 else style.NORMAL
 
-    def _style_max_curv (self, max_curv: float, curv_le: float):
+    def _style_max_curv (self, max_curv: float):
         """ returns style.WARNING if max_curv is not equal curv_le"""
-        return style.WARNING if not np.isclose(max_curv, curv_le) else style.NORMAL
+
+        target_airfoil_curv_le = self.target_airfoil.geo.curvature.at_le
+
+        return style.WARNING if not np.isclose(max_curv, target_airfoil_curv_le) else style.NORMAL
 
     def _style_nreversals (self, curv : Line):
         """ returns style.WARNING if nreversals > 1"""   
@@ -1601,9 +1635,11 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
         """ user warnings"""
         text = []
 
+        target_airfoil_curv_le = self.target_airfoil.geo.curvature.at_le
+
         for curv in [self.curv_upper, self.curv_lower]:
 
-            if not np.isclose(curv.max_xy[1], self.target_curv_le):
+            if not np.isclose(curv.max_xy[1], target_airfoil_curv_le):
                 text.append(f"- {curv.name}: Max curvature is not at LE. ")
 
             nreversals = curv.nreversals()

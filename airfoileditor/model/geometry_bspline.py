@@ -280,7 +280,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         d = {}
         toDict (d, "px",        list(self.bspline.cpoints_x))                  
         toDict (d, "py",        list(self.bspline.cpoints_y)) 
-        toDict (d, "knots",     list(self.bspline.knots))
+        toDict (d, "knots",     list(self.bspline.knots()))
         toDict (d, "degree",    self.bspline.degree) 
         return d
 
