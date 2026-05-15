@@ -1436,7 +1436,7 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         CheckBox (l,r,c+5, text="Allow max curvature not at LE", height=16, colSpan=7,
                   get=lambda: self.le_curv_not_monoton, set=self.set_le_curv_not_monoton,
                   style=style.HINT,
-                  toolTip=_tip, hide=lambda: self._small or self._hide_le_curv_monoton())
+                  toolTip=_tip, hide=lambda: self._small or self.target_airfoil.geo.curvature.max_is_at_le)
         r += 1
         l.setRowStretch (r,2)
         r += 1
@@ -1497,15 +1497,6 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
 
         self.targets_upper.set_le_monoton(not monoton)
         self.targets_lower.set_le_monoton(not monoton)
-
-
-    def _hide_le_curv_monoton (self):
-        """ hide checkbox to set curvature at LE to be monotonous if curvature at LE is proposed"""
-
-        if self.geo.isBezier:
-            return True
-
-        return self.target_airfoil.geo.curvature.max_is_at_le
 
 
     def _message_text (self):

@@ -65,11 +65,11 @@ class Matcher (QThread):
 
         if self._side.isBezier:
 
-            step = interpolate ( 5, 8, 0.3, 0.1, ncp)  # linear interpolation  
+            step = interpolate ( 5, 8, 0.3, 0.1, ncp)   # linear interpolation needed for Bezier 
 
         elif self._side.isBSpline:
 
-            step = interpolate ( 5, 10, 0.2, 0.4, ncp)  # linear interpolation between (5, 0.2) and (10, 0.4)
+            step = interpolate ( 5, 10, 0.2, 0.2, ncp)  # currently constant step size for B-Spline
 
         else:
             step = 0.1
@@ -309,6 +309,56 @@ class Matcher (QThread):
         return pen 
 
 
+    @staticmethod
+    def _penalty_bumpiness (x: np.ndarray, curv: np.ndarray,
+                            max_reversals: int = 0,
+                            scale: float = 1.0) -> float:
+        """
+        Penalize non-smooth curvature in the body region (x=0.05..0.9).
+
+        Measures reversals of the first and second derivative of curvature
+        w.r.t. x. Works directly on the sampled curvature, so it is
+        curve-type agnostic (Bezier and B-Spline alike).
+
+        Args:
+            x: x coordinates.
+            curv: Curvature values sampled at ``x`` (correct sign already applied).
+            max_reversals: Allowed curvature reversals (passed through to curv_dd check).
+            scale: Scaling factor for the returned penalty.
+
+        Returns:
+            float: Bumpiness penalty contribution.
+        """
+
+        # mask region of interest
+        x_start, x_end = (0.2, 1.0)
+        body_mask = (x >= x_start) & (x <= x_end)
+        x_body    = x [body_mask]
+        curv_body = curv [body_mask]
+
+        # Compute first and second derivative of curvature w.r.t. x
+        curv_d  = derivative1 (x_body, curv_body)
+        curv_dd = derivative1 (x_body, curv_d)
+
+        # normalize to be similar to curvature values and avoid scale issues with penalty threshold
+        curv_d  = curv_d  / 10.0
+        curv_dd = curv_dd / 100.0
+
+        # curvature should monotonically decrease in body region
+        #  - also becoming negative (reversal of curvature)
+        # -> avoid reversals of derivative of curvature
+
+        pen_d = Matcher._penalty_reversals (x_body, curv_d, threshold=0.03, scale=0.1)
+
+        # derivative of curvature decreases and may increase again
+        # -> allow max_reversals of derivative of derivative
+
+        pen_dd = Matcher._penalty_reversals (x_body, curv_dd, threshold=0.02,
+                                             max_reversals=max_reversals, scale=1.0)
+
+        return (pen_d + pen_dd) * scale
+
+
     #--------------------
 
     def _calc_dv_bounds (self, ncp : int,  max_thickness: float) -> list [tuple]: 
@@ -447,7 +497,10 @@ class Matcher (QThread):
         # -- penalty for curvature derivatives not being smooth to avoid bumps 
 
         if targets.bump_control:
-            penalty_bumps = self._penalty_c4_jumps (self._curve, scale=0.01) 
+            if self._side.isBSpline:
+                penalty_bumps = self._penalty_c4_jumps (self._curve, scale=0.01)
+            else:
+                penalty_bumps = self._penalty_bumpiness (x, curv, targets.max_nreversals, scale=0.001)
         else:
             penalty_bumps = 0.0
 
@@ -681,47 +734,8 @@ class Match_Result:
     @staticmethod
     def _bumpiness (x : np.ndarray, curv : np.ndarray, 
                         max_reversals: int = 0) -> float:
-        """
-        Penalize reversals of derivative of curvature derivatives in a given x region.
-
-        This is a measure of real bumps
-        
-        Args:
-            x: x coordinates.
-            curv: Curvature values sampled at ``x``.
-            max_reversals: Maximum allowed curvature reversals (sign changes).
-        """
-
-        # mask region of interest
-
-        x_start, x_end = (0.05, 0.9)
-        body_mask = (x >= x_start) & (x <= x_end)
-        x_body    = x [body_mask]
-        curv_body = curv [body_mask]
-
-        # Compute derivative of derivative
-        curv_d  = derivative1 (x_body, curv_body)
-        curv_dd = derivative1 (x_body, curv_d)
-
-        # noramlize to be similar to curv values and avoid scale issues with penalty threshold
-        curv_d  = curv_d  / 10.0
-        curv_dd = curv_dd / 100.0
-
-        # curvature should montonically decrease in body region 
-        #  - also becoming negative (reversal of curvature)
-        # -> avoid reversals of derivative of curvature 
-
-        pen_d = Matcher._penalty_reversals (x_body, curv_d, threshold=0.03, scale=0.1)  
-
-        # derivative of curvature decreases and may increase again
-        # -> allow max_reversals of derivative of derivative  
-
-        pen_dd = Matcher._penalty_reversals (x_body, curv_dd, threshold=0.02, 
-                                             max_reversals=max_reversals, scale=1.0)  
-
-        pen = (pen_d + pen_dd) 
-
-        return pen
+        """Diagnostic bumpiness measure - delegates to Matcher._penalty_bumpiness."""
+        return Matcher._penalty_bumpiness (x, curv, max_reversals)
 
 
     @property
