@@ -13,6 +13,7 @@
 """
 
 import os
+import csv
 import shutil
 from datetime               import datetime
 from timeit                 import default_timer as timer
@@ -314,8 +315,25 @@ class GeoTarget_Result:
         self.value          = 0.0 
         self.deviation      = 0.0              # deviation from target / improvement to seed 
         self.distance       = 0.0              # distance from target  / distance from seed 
-        self.weighting      = 1.0              # actual weighting during optimization 
-        self.is_new_weighting = False          # flag if weighting changed to previous design
+
+    @staticmethod
+    def optVar_from_xo2_name (optVar_name: str):
+        """Map Xoptfoil2 geo type name to canonical GEO_OPT_VARS entry."""
+
+        for optVar in GEO_OPT_VARS:                         # support "thickness" and "Thickness"
+            if optVar_name.lower() == optVar.lower():
+                return optVar
+        return None
+
+    def set_var_by_xo2_name (self, col_name: str, value: float):
+        """Set geo-target value using a Design_GeoTargets column name."""
+
+        if col_name == "val" or col_name == "value":
+            self.value = value
+        elif col_name == "dist" or col_name == "distance":
+            self.distance = value
+        elif col_name == "dev" or col_name == "deviation":
+            self.deviation = value
 
 
 
@@ -341,12 +359,33 @@ class OpPoint_Result (Polar_Point):
         self.distance       = 0.0              # distance from target  / distance from seed 
         self.deviation      = 0.0              # deviation from target / improvement to seed 
         self.flap           = 0.0              # flap angle (optimzation with flaps)
-        self.weighting      = 1.0              # actual weighting during optimization 
-        self.is_new_weighting = False          # flag if weighting changed to previous design
 
+    # --- Xoptfoil2 column mapping ---
 
+    def set_var_by_xo2_name (self, col_name: str, value: float):
+        """Set op-point value using a Design_OpPoints column name."""
 
-
+        if col_name == "alpha":
+            self.set_value(var.ALPHA, value)
+        elif col_name == "cl":
+            self.set_value(var.CL, value)
+        elif col_name == "cd":
+            self.set_value(var.CD, value)
+        elif col_name == "cm":
+            self.set_value(var.CM, value)
+        elif col_name == "xtrt":
+            self.set_value(var.XTRT, value)
+        elif col_name == "xtrb":
+            self.set_value(var.XTRB, value)
+        elif col_name == "cp_min":
+            self.set_value(var.CP_MIN, value)
+        elif col_name == "dist":
+            self.distance = value
+        elif col_name == "dev":
+            self.deviation = value
+        elif col_name == "flap":
+            self.flap = value
+            
 #-------------------------------------------------------------------------------
 # Result Handler - read the various results vom Xoptfoil2
 #-------------------------------------------------------------------------------
@@ -371,9 +410,6 @@ class Reader_Abstract:
 
         return f"{cls.DESIGN_NAME_BASE}{postfix}{extension}"  
     
-      
-    # ----------------------------------
-
 
     def __init__(self, resultDir):
         """Superclass for the different Result Handlers for reading results
@@ -492,7 +528,7 @@ class Reader_Abstract:
                     new_text = ''
                 else:
                     new_text = 'new '
-                if time_load < 0.01 and time_read < 0.01:
+                if time_load < 0.01 and time_read < 0.005:
                     logger.debug (f"{self} imported {n_new} {new_text}{object_name}  (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
                 elif n_new == 1: 
                     logger.warning (f"{self} importing {len(file_lines)} lines takes too long (Time read: {time_read:.4f}s, load: {time_load:.4f}s)")
@@ -598,33 +634,60 @@ class Reader_OpPoints (Reader_Abstract):
         #     0;   1;  -3.713445;  -0.250000;   0.012932;  -0.037740;   0.982203;   0.026582;  -0.001832; -16.507213;   0.0000;     1.0
         #     0;   2;  -2.236515;  -0.050000;   0.008851;  -0.046911;   0.956186;   0.533244;  -0.001791; -25.370629;   0.0000;     0.5
 
-        n_new = 0 
-        idesign_old = len (self._results) 
+        n_new = 0
+        idesign_old = len(self._results)
         ops_results = []
 
-        for i, line in enumerate(file_lines):
+        rows = csv.reader(file_lines, delimiter=';', skipinitialspace=True)
+        header_idx = None
+        idx_design = None
+        idx_iop = None
+        data_cols = []
 
-            vals = [val.strip() for val in line.split(';')]             # will remove all extra spaces
+        for row in rows:
 
-            if vals[0] == 'No' and vals[1] == 'iOp':   # Header 
-                pass
-            else:
-                idesign = int (vals[0])
+            vals = [val.strip() for val in row]
+            if not vals:
+                continue
 
-                if idesign == idesign_old: 
-                    # same design group - add sub object to list 
-                    ops_results.append ([float(i) for i in vals[2:]])   # convert list to float
+            if len(vals) > 1 and vals[0] == 'No' and vals[1] == 'iOp':
+                header_idx = {name: idx for idx, name in enumerate(vals)}
+                idx_design = header_idx.get('No')
+                idx_iop = header_idx.get('iOp')
+                data_cols = [(name, idx) for name, idx in header_idx.items() if name not in ('No', 'iOp')]
+                continue
 
-                if idesign > idesign_old :  
-                    # new design group - flush old one 
-                    n_new += self.add_opPoints_result (idesign_old, ops_results)
-                    # start new one with current sub object
-                    idesign_old = idesign 
-                    ops_results = [[float(i) for i in vals[2:]]]   
+            if header_idx is None:
+                continue
 
-                if i == (len(file_lines)-1):
-                    # last record - flush current design group 
-                    n_new += self.add_opPoints_result (idesign, ops_results)               
+            if idx_design is None or idx_iop is None:
+                continue
+            if idx_design >= len(vals) or idx_iop >= len(vals):
+                continue
+            if vals[idx_design] == '' or vals[idx_iop] == '':
+                continue
+
+            idesign = int(vals[idx_design])
+
+            op_result = {'_iop': int(vals[idx_iop])}
+            for col_name, idx in data_cols:
+                if idx >= len(vals) or vals[idx] == '':
+                    continue
+                op_result[col_name] = float(vals[idx])
+
+            if idesign > idesign_old:
+                # new design group - flush old one
+                n_new += self.add_opPoints_result(idesign_old, ops_results)
+                idesign_old = idesign
+                ops_results = []
+
+            if idesign == idesign_old:
+                # same design group - add sub object to list
+                ops_results.append(op_result)
+
+        # Flush pending records once after parsing completes.
+        if ops_results:
+            n_new += self.add_opPoints_result(idesign_old, ops_results)
       
         return n_new
 
@@ -637,30 +700,24 @@ class Reader_OpPoints (Reader_Abstract):
 
             ops      = []
 
-            for iop, op_result_list in enumerate (ops_results_list): 
+            for iop, op_result_dict in enumerate (ops_results_list):
 
-                if len(op_result_list) >= 10: 
+                if isinstance(op_result_dict, dict) and \
+                   ('alpha' in op_result_dict and 'cl' in op_result_dict and 'cd' in op_result_dict):
+
                     op = OpPoint_Result ()
 
-                    op.idesign   = idesign 
-                    op.iopPoint  = iop 
+                    op.idesign   = idesign
 
-                    op.alpha     = op_result_list[0]
-                    op.cl        = op_result_list[1]
-                    op.cd        = op_result_list[2]
-                    op.cm        = op_result_list[3]
-                    op.xtrt      = op_result_list[4]
-                    op.xtrb      = op_result_list[5]
-                    op.distance  = op_result_list[6]
-                    op.deviation = op_result_list[7]
-                    op.flap      = op_result_list[8]
-                    op.weighting = op_result_list[9]
+                    iop_raw = op_result_dict.get('_iop')
+                    op.iopPoint = iop_raw - 1 if isinstance(iop_raw, int) and iop_raw > 0 else iop
+
+                    for col_name in op_result_dict:
+                        op.set_var_by_xo2_name(col_name, op_result_dict[col_name])
+
                     ops.append(op)
-                else: 
-                    logger.error (f"Format of '{self.filename}' doesn't fit. Skipping op point data...")       
-
-            # compare weighting to previous design and set flag if changed (dynamic weighting)
-            self._set_is_new_weighting (ops, self._results[-1] if self._results else [])
+                else:
+                    logger.error (f"Format of '{self.filename}' doesn't fit. Skipping op point data...")
 
             self._results.append(ops)   
 
@@ -673,16 +730,6 @@ class Reader_OpPoints (Reader_Abstract):
         else:                                       #  there would be a gap in design list
             raise ValueError ("Add new design: Index %i doesn't fit" %idesign)
         return n_new
-
-
-    def _set_is_new_weighting (self, new_ops : list [OpPoint_Result], prev_ops : list [OpPoint_Result]):
-        """ set new weighting flag if new weighting of op point is different to previous one """
-
-        if len(new_ops) != len(prev_ops): return  
-
-        for new_op, prev_op in zip (new_ops, prev_ops):
-            if abs (new_op.weighting - prev_op.weighting) > 1e-6:
-                new_op.is_new_weighting = True 
 
 
 
@@ -707,32 +754,59 @@ class Reader_GeoTargets (Reader_Abstract):
         #     0;    2; 'Thickness';   0.08201; -16.507213;      1.0     
 
         n_new = 0 
-        idesign_old = 0 
+        idesign_old = len(self._results)
         geo_results = []
 
-        for i, line in enumerate(file_lines):
+        rows = csv.reader(file_lines, delimiter=';', skipinitialspace=True)
+        header_idx = None
+        idx_design = None
+        idx_type = None
+        data_cols = []
 
-            vals = [val.strip() for val in line.split(';')]             # will remove all extra spaces
+        for row in rows:
 
-            if vals[0] == 'No' and vals[1] == 'iGeo':   # Header 
-                pass
-            else:
-                idesign = int (vals[0])
+            vals = [val.strip() for val in row]
+            if not vals:
+                continue
 
-                if idesign == idesign_old: 
-                    # same design group - add sub object to list 
-                    geo_results.append ([vals[2]] + [float(i) for i in vals[3:]]) 
+            if len(vals) > 1 and vals[0] == 'No' and vals[1] == 'iGeo':
+                header_idx = {name: idx for idx, name in enumerate(vals)}
+                idx_design = header_idx.get('No')
+                idx_type = header_idx.get('type')
+                data_cols = [(name, idx) for name, idx in header_idx.items() if name not in ('No', 'iGeo', 'type')]
+                continue
 
-                if idesign != idesign_old :  
-                    # new design group - flush old one 
-                    n_new += self.add_geoTarget_result (idesign_old, geo_results)
-                    # start new one with current sub object
-                    idesign_old = idesign 
-                    geo_results = [[vals[2]] + [float(i) for i in vals[3:]]]
+            if header_idx is None:
+                continue
 
-                if i == (len(file_lines)-1):
-                    # last record - flush current design group 
-                    n_new += self.add_geoTarget_result (idesign, geo_results)               
+            if idx_design is None or idx_type is None:
+                continue
+            if idx_design >= len(vals) or idx_type >= len(vals):
+                continue
+            if vals[idx_design] == '' or vals[idx_type] == '':
+                continue
+
+            idesign = int(vals[idx_design])
+
+            geo_result = {'_type': vals[idx_type]}
+            for col_name, idx in data_cols:
+                if idx >= len(vals) or vals[idx] == '':
+                    continue
+                geo_result[col_name.lower()] = float(vals[idx])
+
+            if idesign > idesign_old:
+                # new design group - flush old one
+                n_new += self.add_geoTarget_result (idesign_old, geo_results)
+                idesign_old = idesign
+                geo_results = []
+
+            if idesign == idesign_old:
+                # same design group - add sub object to list
+                geo_results.append(geo_result)
+
+        # Flush pending records once after parsing completes.
+        if geo_results:
+            n_new += self.add_geoTarget_result (idesign_old, geo_results)
 
         return n_new
 
@@ -744,25 +818,24 @@ class Reader_GeoTargets (Reader_Abstract):
         if idesign == len (self._results):          # new, next design in list 
 
             geos = []
-            for geo_result_list in geos_results_list: 
+            for geo_result in geos_results_list: 
 
-                if len(geo_result_list) >= 2: 
-                    geo = GeoTarget_Result ()
+                if isinstance(geo_result, dict):
+                    optVar_result : str = geo_result.get('_type', '')
+                    optVar = GeoTarget_Result.optVar_from_xo2_name(optVar_result) if optVar_result else None
 
-                    optVar_result : str = geo_result_list[0]
-                    for optVar in GEO_OPT_VARS:                         # support "thickness" and "Thickness"
-                        if optVar_result.lower() == optVar.lower():
-                            geo.optVar    = optVar
-                            geo.value     = geo_result_list[1]
-                            geo.distance  = geo_result_list[2]
-                            geo.deviation = geo_result_list[3]
-                            geo.weighting = geo_result_list[4]
-                            geos.append(geo)
+                    if optVar is not None:
+                        geo = GeoTarget_Result ()
+                        geo.optVar = optVar
+
+                        for col_name, val in geo_result.items():
+                            if col_name == '_type':
+                                continue
+                            geo.set_var_by_xo2_name(col_name, val)
+
+                        geos.append(geo)
                 else: 
                     logger.error (f"Format of '{self.filename}' doesn't fit. Skipping op point data...")       
-
-            # compare weighting to previous design and set flag if changed (dynamic weighting)  
-            self._set_is_new_weighting (geos, self._results[-1] if self._results else [])
 
             self._results.append(geos)  
             n_new += 1  
@@ -771,19 +844,9 @@ class Reader_GeoTargets (Reader_Abstract):
             pass                                     
         elif len (self._results) == 0:              # we are already in error mode
             pass
-        else:                                       #  there would be a gap in design list
+        else:                                       # there would be a gap in design list
             raise ValueError ("Add new design: Index %i doesn't fit" %idesign)
         return n_new
-
-
-    def _set_is_new_weighting (self, new_geos : list [GeoTarget_Result], prev_geos : list [GeoTarget_Result]):
-        """ set new weighting flag if new weighting of op point is different to previous one """
-
-        if len(new_geos) != len(prev_geos): return  
-
-        for new_geo, prev_geo in zip (new_geos, prev_geos):
-            if abs (new_geo.weighting - prev_geo.weighting) > 1e-6:
-                new_geo.is_new_weighting = True 
 
 
 
@@ -946,6 +1009,7 @@ class Reader_Airfoils_Bezier (Reader_Abstract):
             airfoil.set_newSide_for (Line.Type.LOWER, px, py)
 
             airfoil.set_usedAs (usedAs.DESIGN)
+            airfoil.set_isLoaded (True)
             airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  
 
             self._results.append(airfoil)

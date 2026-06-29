@@ -14,6 +14,7 @@ from typing                 import override
 from timeit                 import default_timer as timer
 
 from ..base.math_util       import * 
+from ..base.common_utils    import clip
 from ..base.spline          import Bezier, BSpline
 
 from .geometry      import (Geometry, Line, Panelling, Curvature_Abstract)
@@ -107,6 +108,7 @@ class Side_Airfoil_Curve (Line):
         self._u_cpoints_hash = None                 # hash of control points when u was calculated
         
         self._target_deviation = None               # deviation to target side for fitting - will be
+        self._is_matched       = False              # true if side is finally matched to target
 
 
     @classmethod
@@ -321,6 +323,14 @@ class Side_Airfoil_Curve (Line):
         if self._target_deviation is not None:
             self._target_deviation.calc_deviation ()
 
+    @property
+    def is_matched (self) -> bool:
+        """ true if side is finally matched to target"""
+        return self._is_matched
+    
+    def set_matched (self, matched : bool):
+        """ set matched to target - true if side is finally matched to target"""
+        self._is_matched = matched
 
     # ------------------
 
@@ -388,13 +398,61 @@ class Side_Airfoil_Curve (Line):
 
     @property
     def te_gap (self):
-        """ returns y value of the last bezier control point which is half the te gap"""
+        """ returns signed y value of the last bezier control point which is half the te gap"""
         return self.curve.cpoints_y[-1]
-    
-    def set_te_gap (self, y): 
-        """ set te Bezier control point to y to change te gap """
-        cpx = self.curve.cpoints_x
-        self.curve.set_cpoint (-1, cpx[-1], y) 
+
+    def set_te_gap(self, dgap: float, xBlend: float = None):
+        """Apply a trailing-edge gap delta to this Bezier side.
+
+        Args:
+            dgap:   delta gap in y-coordinates to be distributed to this side
+            xBlend: blending range from trailing edge, 0.0..1.0
+        """
+
+        if xBlend is None:
+            xBlend = Geometry.TE_GAP_XBLEND
+
+        control_points = self.controlPoints
+        ncp = len(control_points)
+
+        x = np.array([p[0] for p in control_points])
+        y = np.array([p[1] for p in control_points], copy=True)
+
+        if xBlend == 0.0:
+            for i in range(ncp):
+                if x[i] == 1.0:
+                    if self.type == Line.Type.UPPER:
+                        y[i] += 0.5 * dgap
+                    elif self.type == Line.Type.LOWER:
+                        y[i] -= 0.5 * dgap
+
+            self.controlPoints = list(zip(x, y))
+            return
+
+        # Convert trailing-edge blend length in x-space to a curve parameter start.
+        x_start = 1.0 - xBlend
+        u_start = self.curve.eval_u_on_x(x_start, fast=False)
+
+        for i in range(ncp):
+            # Approximate each control point position with a normalized index parameter.
+            u = i / (ncp - 1)
+
+            if u <= u_start:
+                tfac = 0.0
+            else:
+                ub = (u - u_start) / (1.0 - u_start)
+                # Smoothstep-5 ramp for C2-continuous TE blending.
+                tfac = ub**3 * (ub * (ub * 6.0 - 15.0) + 10.0)
+
+            dy = 0.5 * dgap * tfac
+
+            if self.type == Line.Type.UPPER:
+                y[i] += dy
+            elif self.type == Line.Type.LOWER:
+                y[i] -= dy
+
+        self.set_controlPoints(list(zip(x, y)))    
+
 
 # -----------------------------------------------------------------------------
 
@@ -534,9 +592,18 @@ class Geometry_Curve (Geometry):
         self._upper : Side_Airfoil_Curve     = None       # upper side as Side_Airfoil_Curve object
         self._lower : Side_Airfoil_Curve     = None       # lower side as Side_Airfoil_Curve object
 
+        # Keep a baseline during interactive TE-gap moves so every update starts
+        # from the same original curve shape (xBlend-only changes stay effective).
+        self._te_gap_move_upper_cp = None
+        self._te_gap_move_lower_cp = None
+
 
     def _reset_lines (self):
         """ reinit the dependand lines of self""" 
+
+        # clear transient TE-gap move baseline whenever dependent line state is reset
+        self._te_gap_move_upper_cp = None
+        self._te_gap_move_lower_cp = None
 
         # overloaded Bezier do not reset upper and lower as they define the geometry
         if self._upper is not None:
@@ -580,14 +647,14 @@ class Geometry_Curve (Geometry):
 
 
     @override
-    def set_upper (self, side : Side_Airfoil_Curve, mod_info : str = None):
+    def set_upper (self, side : Side_Airfoil_Curve):
         """ set new upper side to upper - update geometry"""
         self._upper = side
         self._reset_lines()
 
-        if mod_info:
-            mod = self.MOD_CURVE + " " + side.name
-            self.modification_dict[mod] = mod_info
+        mod_info = "initial fit"
+        mod = self.MOD_CURVE + " " + side.name
+        self.modification_dict[mod] = mod_info
 
 
     @override
@@ -600,14 +667,14 @@ class Geometry_Curve (Geometry):
         return self._lower 
 
     @override
-    def set_lower (self, side : Side_Airfoil_Curve, mod_info : str = None):
+    def set_lower (self, side : Side_Airfoil_Curve):
         """ set new lower side to lower - update geometry"""
         self._lower = side
         self._reset_lines()
 
-        if mod_info:
-            mod = self.MOD_CURVE + " " + side.name 
-            self.modification_dict[mod] = mod_info
+        mod_info = "initial fit"
+        mod = self.MOD_CURVE + " " + side.name 
+        self.modification_dict[mod] = mod_info
 
 
     def set_newSide_for (self, line_type: Line.Type, cpx_or_cp,cpy=None): 
@@ -632,8 +699,15 @@ class Geometry_Curve (Geometry):
         self._reset_lines()
 
 
-    def finished_change_of (self, side : Side_Airfoil_Curve, mod_info : str = 'changed'):
+    def finished_change_of (self, side : Side_Airfoil_Curve, matched = False):
         """ confirm Bezier changes for aSide - update geometry"""
+
+        if matched:
+            side.set_matched (True)
+            mod_info = "matched"
+        else:
+            side.set_matched (False)
+            mod_info = "changed"
 
         self._reset()
 
@@ -694,14 +768,6 @@ class Geometry_Curve (Geometry):
         """ coordinates of le defined by a virtual curve- - Curve always 0,0 """
         return self.le
 
-
-    @override    
-    @property
-    def te_gap (self) -> float: 
-        """ trailing edge gap in y"""
-        #overridden to get data from Bezier curves
-        return  round (float (self.upper.te_gap - self.lower.te_gap),7)
-
     def set_maxThick (self, newY): 
         raise NotImplementedError
 
@@ -715,17 +781,43 @@ class Geometry_Curve (Geometry):
         raise NotImplementedError
 
     @override
-    def set_te_gap (self, newGap): 
-        """ set trailing edge gap to new value which is in y"""
-        #override to directly manipulate Bezier
-        newGap = max(0.0, newGap)
-        newGap = min(0.1, newGap)
+    def set_te_gap (self, new_gap : float, xBlend = None, moving=False):
+        """ set te gap - must be / will be normalized .
 
-        self.upper.set_te_gap (  newGap / 2)
-        self.lower.set_te_gap (- newGap / 2)
+        Args: 
+            new_gap:   in y-coordinates - typically 0.01 or so 
+            xBlend:   the blending range from trailing edge 0..1
+        """
 
-        self._reset () 
-        self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 7))   # finalize (parent) airfoil 
+        if xBlend is None:
+            xBlend = Geometry.TE_GAP_XBLEND
+
+        new_gap = clip (new_gap, 0.0, 0.1)
+        xBlend  = clip (xBlend, 0.1, 1.0)
+
+        if moving:
+            # Initialize move baseline once and re-use it for all move updates.
+            if self._te_gap_move_upper_cp is None:
+                self._te_gap_move_upper_cp = list(self.upper.controlPoints)
+                self._te_gap_move_lower_cp = list(self.lower.controlPoints)
+
+        # If a move baseline exists, always restart from it (also on final call).
+        if self._te_gap_move_upper_cp is not None:
+            self.upper.set_controlPoints(self._te_gap_move_upper_cp)
+            self.lower.set_controlPoints(self._te_gap_move_lower_cp)
+
+        cur_gap = self.te_gap
+        dgap    = new_gap - cur_gap
+        if dgap != 0.0:
+            self.upper.set_te_gap (dgap, xBlend)
+            self.lower.set_te_gap (dgap, xBlend)
+
+        if not moving:
+            # End move session and drop baseline after the final apply.
+            self._reset () 
+            if dgap != 0.0:
+                self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))   # finalize (parent) airfoil 
+
 
 
     @override

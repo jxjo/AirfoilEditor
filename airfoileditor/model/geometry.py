@@ -60,7 +60,7 @@ from enum                   import Enum
 from typing                 import override
 from math                   import isclose
 
-from ..base.common_utils    import clip, Parameters
+from ..base.common_utils    import clip, StrEnum_Extended
 from ..base.math_util       import * 
 from ..base.spline          import Spline1D, Spline2D
 
@@ -72,6 +72,24 @@ logger = logging.getLogger(__name__)
 class GeometryException(Exception):
     """ raised when geometry calculation failed """
     pass
+
+
+class geo_parm (StrEnum_Extended):
+    """Shared geometry parameter keys used across model/UI code."""
+
+    THICKNESS       = "Thickness"
+    THICKNESS_AT    = "Thickness At"
+    CAMBER          = "Camber"
+
+    TE_ANGLE        = "TE Angle"
+    TE_ANGLE_UPPER  = "TE Angle Upper"
+    TE_ANGLE_LOWER  = "TE Angle Lower"
+    TE_CURV_UPPER   = "TE Curvature Upper"
+    TE_CURV_LOWER   = "TE Curvature Lower"
+
+    LE_CURV         = "LE Curvature"
+
+    FLAP_ANGLE      = "Flap Angle"
 
 
 
@@ -501,7 +519,7 @@ class Line:
     isBSpline       = False
     isHicksHenne    = False
 
-    CURV_THRESHOLD = 0.01       # threshold for curvature to be counted as reversal 
+    CURV_THRESHOLD  = 0.01       # threshold for curvature to be counted as reversal 
     
     # ----------------------------------------------
 
@@ -513,7 +531,6 @@ class Line:
         self._y         = np.array(y)
         self._type      = linetype 
         self._name      = name 
-        self._threshold = 0.1                   # threshold for reversal detection 
         self._highpoint = None                  # the high Point of the line  
         self._max_spline = None                 # little helper spline to get maximum 
 
@@ -547,12 +564,6 @@ class Line:
     def set_name (self,aName): 
         self._name = aName
     
-
-    @property
-    def threshold (self):   return self._threshold 
-    def set_threshold (self, aVal): 
-        self._threshold =aVal 
-
     @property
     def isNormalized (self) -> bool:
         """ true if x[0] == y[0] ==0.0 and x[-1] = 1.0 """
@@ -772,8 +783,10 @@ class Line:
 
     def angle_in_range (self, x_min=0.95, x_max=1.0) -> float:
         """
-        Computes the tangent angle (in degrees) of surface
-        by fitting a straight line to the points in the x-range [x_min, x_max].
+        Computes tangent angle in degrees in x-range [x_min, x_max].
+
+        If the tangent is falling down, angle is positive.
+        If the tangent is rising, angle is negative.
         """
         # Select points within the chosen x-range
         mask = (self.x >= x_min) & (self.x <= x_max)
@@ -781,16 +794,73 @@ class Line:
         y_sel = self.y[mask]
 
         if len(x_sel) < 2:
-            raise ValueError(f"{self} - Not enough points in the selected x-range.")
+            if len(self.x) < 2:
+                return 0.0
+            x_sel = self.x[-2:]
+            y_sel = self.y[-2:]
 
-        # Linear regression: y = a*x + b
-        a, b = np.polyfit(x_sel, y_sel, 1)
+        n_dp = float(len(x_sel))
+        sum_x = np.sum(x_sel)
+        sum_y = np.sum(y_sel)
+        sum_xy = np.sum(x_sel * y_sel)
+        sum_x2 = np.sum(x_sel * x_sel)
 
-        # Tangent angle in degrees
-        angle_rad = np.arctan(a)
-        angle_deg = np.degrees(angle_rad)
+        # Linear regression slope: y = slope*x + intercept
+        denom = n_dp * sum_x2 - sum_x * sum_x
+        if np.isclose(denom, 0.0):
+            return 0.0
+
+        slope = (n_dp * sum_xy - sum_x * sum_y) / denom
+
+        # Sign follows Xoptfoil2 convention: falling tangent is positive.
+        angle_deg = -np.degrees(np.arctan(slope))
 
         return angle_deg
+
+
+    @property
+    def te_angle (self) -> float:
+        """ tangent angle at TE in degrees - positive is downward, negative upward"""
+
+        return self.angle_in_range (x_min=0.95, x_max=1.0)
+
+
+    @property
+    def te_gap (self):
+        """ returns signed y value of the y point which is half the te gap"""
+        return self.y[-1]
+
+
+    def set_te_gap (self, dgap : float, xBlend : float = None):
+        """apply a trailing-edge gap delta to this side
+
+        Args:
+            dgap:   delta gap in y-coordinates to be distributed to this side
+            xBlend: blending range from trailing edge, 0.0..1.0
+        """
+
+        if xBlend is None:
+            xBlend = Geometry.TE_GAP_XBLEND
+
+        y_new = np.zeros (len(self.x))
+        for i in range(len(self.x)):
+            # Thickness factor tails off exponentially away from trailing edge.
+            if xBlend == 0.0:
+                tfac = 0.0
+                if i == 0 or i == (len(self.x) - 1):
+                    tfac = 1.0
+            else:
+                arg = min ((1.0 - self.x[i]) * (1.0 / xBlend - 1.0), 15.0)
+                tfac = np.exp(-arg)
+
+            if self.type == Line.Type.UPPER:
+                y_new[i] = self.y[i] + 0.5 * dgap * self.x[i] * tfac
+            elif self.type == Line.Type.LOWER:
+                y_new[i] = self.y[i] - 0.5 * dgap * self.x[i] * tfac
+            else:
+                y_new[i] = self.y[i]
+
+        self.set_y (y_new)
 
     # ------------------ private ---------------------------
 
@@ -1220,7 +1290,7 @@ class Geometry ():
     def te (self): 
         """ returns trailing edge upper and lower x,y of point coordinate data """
         return self.x[0], self.y[0], self.x[-1], self.y[-1]
-  
+
     @property
     def te_gap (self) -> float: 
         """ trailing edge gap"""
@@ -1230,9 +1300,8 @@ class Geometry ():
     def te_angle (self) -> float: 
         """ trailing edge angle in degrees"""
 
-        x_min = 0.95                        # to avoid noise at TE - take angle at x=0.95..1.0
-        upper = self.upper.angle_in_range (x_min=x_min)     # negative
-        lower = self.lower.angle_in_range (x_min=x_min)     # positive
+        upper = self.upper.te_angle
+        lower = self.lower.te_angle
         return abs (upper - lower)
 
     @property
@@ -1385,17 +1454,95 @@ class Geometry ():
                 Line.Type.CAMBER     : self.camber}
 
 
+    def get_geo_parm(self, parm: geo_parm, x: float | None = None) -> float | tuple:
+        """
+        Unified accessor for geometry parameters.
+        
+        Args:
+            parm: geo_parm enum specifying which parameter to retrieve
+            x: optional x position for THICKNESS_AT queries
+        
+        Returns:
+            - THICKNESS_AT: tuple (x, thickness_at_x) for requested x position
+            - THICKNESS: tuple (max_thick_x, max_thick) at max thickness position
+            - CAMBER: tuple (max_camb_x, max_camb) at max camber position
+            - TE_ANGLE: scalar angle in degrees
+            - TE_ANGLE_UPPER: scalar upper trailing edge angle
+            - TE_ANGLE_LOWER: scalar lower trailing edge angle
+            - TE_CURV_UPPER: scalar upper trailing edge curvature
+            - TE_CURV_LOWER: scalar lower trailing edge curvature
+            - LE_CURV: scalar leading edge curvature
+        """
+        if parm == geo_parm.THICKNESS_AT:
+            if x is None:
+                x = 0.5  # default x position
+            return (x, self.thickness_at(x))
+        
+        elif parm == geo_parm.THICKNESS:
+            return (self.max_thick_x, self.max_thick)
+        
+        elif parm == geo_parm.CAMBER:
+            return (self.max_camb_x, self.max_camb)
+        
+        elif parm == geo_parm.TE_ANGLE:
+            return self.te_angle
+        
+        elif parm == geo_parm.TE_ANGLE_UPPER:
+            return self.upper.te_angle
+        
+        elif parm == geo_parm.TE_ANGLE_LOWER:
+            return self.lower.te_angle
+        
+        elif parm == geo_parm.TE_CURV_UPPER:
+            # Curvature at trailing edge (upper side)
+            if hasattr(self.upper, 'curvature') and self.upper.curvature is not None:
+                return self.upper.curvature.at_te
+            return 0.0
+        
+        elif parm == geo_parm.TE_CURV_LOWER:
+            # Curvature at trailing edge (lower side)
+            if hasattr(self.lower, 'curvature') and self.lower.curvature is not None:
+                return self.lower.curvature.at_te
+            return 0.0
+        
+        elif parm == geo_parm.LE_CURV:
+            return self.le_curvature
+        
+        else:
+            raise ValueError(f"Unknown geometry parameter: {parm}")
 
-    def set_te_gap (self, newGap : float, xBlend = TE_GAP_XBLEND, moving=False):
+
+    def thickness_at (self, x : float) -> float:
+        """ returns the thickness at x by evaluating the thickness line"""
+        return self.thickness.yFn (x)
+    
+
+    def set_te_gap (self, new_gap : float, xBlend = TE_GAP_XBLEND, moving=False):
         """ set te gap - must be / will be normalized .
 
         Args: 
-            newGap:   in y-coordinates - typically 0.01 or so 
-            xblend:   the blending range from trailing edge 0..1
+            new_gap:  in y-coordinates - typically 0.01 or so 
+            xBlend:   the blending range from trailing edge 0..1
         """
 
         try: 
-            self._set_te_gap (newGap, xBlend) 
+            new_gap = clip (new_gap, 0.0, 0.1)
+            xBlend  = clip (xBlend, 0.1, 1.0)
+
+            cur_gap = self.te_gap     # calc from self.y!
+            dgap   = new_gap - cur_gap
+            if dgap == 0.0:
+                return
+
+            # create new side objects from x,y to allow repeated setting of te gap
+            self._upper = self.side_class (np.flip (self.x [0: self.iLe + 1]), np.flip (self.y [0: self.iLe + 1]),
+                                     linetype=Line.Type.UPPER)
+            self._lower = self.side_class (self.x[self.iLe:], self.y[self.iLe:],
+                                     linetype=Line.Type.LOWER)
+
+            self._upper.set_te_gap (dgap, xBlend)
+            self._lower.set_te_gap (dgap, xBlend)
+
             if not moving:
                 self._rebuild_from_upper_lower ()
                 self._reset () 
@@ -1403,49 +1550,6 @@ class Geometry ():
                 self._set_xy (self._x, self._y)
         except GeometryException:
             self._clear_xy()
-    
-
-    def _set_te_gap (self, newGap, xBlend = TE_GAP_XBLEND):
-        """ set te gap of upper and lower 
-         The procedere is based on xfoil allowing to define a blending range from le.
-
-        Arguments: 
-            newGap:   in y-coordinates - typically 0.01 or so 
-            xblend:   the blending range from trailing edge 0..1
-        """
-
-        newGap = clip (newGap, 0.0, 0.1)
-        xBlend = clip (xBlend, 0.1, 1.0)
-
-        dgap   = newGap - self.te_gap 
-
-        if dgap == 0.0: return                              # nothing to do
-
-        # create new side objects from x,y to allow repeated setting of te gap 
-        self._upper  = self.side_class (np.flip (self.x [0: self.iLe + 1]), np.flip (self.y [0: self.iLe + 1]),
-                                 linetype=Line.Type.UPPER)
-        self._lower  = self.side_class (self.x[self.iLe:], self.y[self.iLe:],
-                                 linetype=Line.Type.LOWER)
-
-        for side in [self._upper, self._lower]:
-
-            y_new = np.zeros (len(side.x))
-            for i in range(len(side.x)):
-                # thickness factor tails off exponentially away from trailing edge
-                if (xBlend == 0.0): 
-                    tfac = 0.0
-                    if (i == 0 or i == (len(side.x)-1)):
-                        tfac = 1.0
-                else:
-                    arg = min ((1.0 - side.x[i]) * (1.0/xBlend -1.0), 15.0)
-                    tfac = np.exp(-arg)
-
-                if side.type == Line.Type.UPPER:
-                    y_new[i] = side.y[i] + 0.5 * dgap * side.x[i] * tfac 
-                else:
-                    y_new[i] = side.y[i] - 0.5 * dgap * side.x[i] * tfac  
-
-            side.set_y (y_new)
 
 
 
@@ -1588,27 +1692,23 @@ class Geometry ():
 
         if aLine.type == Line.Type.THICKNESS:
             self._rebuild_from_camb_thick ()
-
             amod = Geometry.MOD_MAX_THICK
-            lab = aLine.highpoint.label_percent ()
+            lab  = aLine.highpoint.label_percent ()
 
         elif aLine.type == Line.Type.CAMBER:
             self._rebuild_from_camb_thick ()
-
             amod = Geometry.MOD_MAX_CAMB
-            lab = aLine.highpoint.label_percent ()
+            lab  = aLine.highpoint.label_percent ()
 
         elif aLine.type == Line.Type.UPPER:
             self._rebuild_from_upper_lower ()
-
             amod = Geometry.MOD_MAX_UPPER
-            lab = ' '
+            lab  = ' '
 
         elif aLine.type == Line.Type.LOWER:
             self._rebuild_from_upper_lower ()
-
             amod = Geometry.MOD_MAX_LOWER
-            lab = ' '
+            lab  = ' '
 
         else:
             raise ValueError (f"{aLine.type} not supprted for set_highpoint") 

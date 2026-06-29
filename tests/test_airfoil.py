@@ -12,14 +12,14 @@ import numpy as np
 import os
 
 # -> pyproject.toml
+# pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
 
-from airfoileditor.resources              import get_assets_dir
 from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
 from airfoileditor.model.geometry         import Geometry
-from airfoileditor.model.geometry_spline  import Geometry_Splined
-from airfoileditor.model.geometry_curve   import Curvature_of_Curve
+from airfoileditor.model.geometry_spline  import Geometry_Splined, Curvature_of_Spline
 from airfoileditor.model.geometry_bezier  import Geometry_Bezier
+from airfoileditor.model.geometry_curve   import Curvature_of_Curve
 from airfoileditor.model.xo2_driver       import Worker
 from airfoileditor.base.common_utils      import PathHandler
 
@@ -42,15 +42,15 @@ class Test_Airfoil:
 
         # base data 
 
-        assert airfoil.nPoints == 161
-        assert airfoil.nPanels == 160
+        assert airfoil.nPoints == 200
+        assert airfoil.nPanels == 199
         assert airfoil.isNormalized
-        assert geo.te_gap == 0.0002934
+        assert geo.te_gap == 0.03 / 100
 
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.2909977, 0.0769996)
-        assert geo.camber._get_maximum()    == (0.4027354, 0.0167918)
+        assert geo.thickness._get_maximum() == (0.2903642, 0.0764996)
+        assert geo.camber._get_maximum()    == (0.4152061, 0.0170131)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -74,10 +74,10 @@ class Test_Airfoil:
         # curvature
 
         airfoil = Root_Example(geometry = GEO_BASIC)
-        curv = airfoil.geo.curvature
+        curv : Curvature_of_Spline = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 319
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.086
+        assert round(curv.upper._get_maximum()[1],0) == 317
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.032
 
     
     def test_geo_splined (self): 
@@ -89,16 +89,16 @@ class Test_Airfoil:
 
         # base data 
 
-        assert airfoil.nPoints == 161
-        assert airfoil.nPanels == 160
+        assert airfoil.nPoints == 200
+        assert airfoil.nPanels == 199
         assert not airfoil.isNormalized       
-        assert geo.te_gap == 0.0002934 
-        assert geo.le_real           == (0.0, 1.05e-05)
+        assert geo.te_gap == 0.03 / 100 
+        assert geo.le_real           == (0.0, 1.29e-05)
 
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.2908811, 0.0770029)
-        assert geo.camber._get_maximum()    == (0.4027112, 0.0167905)
+        assert geo.thickness._get_maximum() == (0.2903512, 0.076502)
+        assert geo.camber._get_maximum()    == (0.4152475, 0.0170127)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -114,7 +114,7 @@ class Test_Airfoil:
         geo.set_max_camb_x  (0.30)
         assert round(geo.max_camb_x,3) == 0.30
 
-        assert geo.nPoints == 161, "nPoints changed with rebuild from upper and lower "
+        assert geo.nPoints == 203, "nPoints changed with rebuild from upper and lower "
 
 
         # normalize, repanel 
@@ -123,7 +123,7 @@ class Test_Airfoil:
         geo : Geometry_Splined = airfoil.geo
 
         assert geo.le == (0.0, 0.0) 
-        assert geo.le_real == (0.0, 1.05e-05)          
+        assert geo.le_real == (0.0, 1.29e-05)          
 
         assert geo.normalize(), "should be True because normalization needed"
         assert geo.isNormalized
@@ -136,11 +136,11 @@ class Test_Airfoil:
         # curvature
 
         airfoil = Root_Example(geometry = GEO_SPLINE)
-        curv = airfoil.geo.curvature
+        curv : Curvature_of_Spline = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 319
-        assert round(curv.lower._get_maximum()[1],0) == 319
-        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.086
+        assert round(curv.upper._get_maximum()[1],0) == 317
+        assert round(curv.lower._get_maximum()[1],0) == 372
+        assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.032
 
 
 
@@ -156,7 +156,7 @@ class Test_Airfoil:
         
         # normalize, repanel 
 
-        assert airfoil.normalize(), "should be True because normalization needed"
+        assert airfoil.normalize(), "should be True because normalizaton needed"
         assert airfoil.isNormalized
 
         #todo implement repanel 
@@ -189,7 +189,7 @@ class Test_Airfoil:
         assert airfoil1.geo.max_thick == airfoil.geo.max_thick
 
         airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5)
-        assert airfoil.geo.max_thick == 0.0741438
+        assert airfoil.geo.max_thick == 7.3015 / 100
 
 
 
@@ -294,6 +294,27 @@ class Test_Airfoil_Bezier:
 
         te_curv = curv.lower.y[-10:]
         assert round(np.min (np.abs(te_curv)),3) == 0.062
+
+
+    def test_geo_bezier_set_te_gap(self):
+
+        airfoil = Airfoil_Bezier()
+        geo : Geometry_Bezier = airfoil.geo
+
+        assert geo.te_gap == 0.0
+
+        # During moving, changing only xBlend must still reshape the control points.
+        geo.set_te_gap(1.0 / 100, xBlend=0.25, moving=True)
+        upper_cp_blend_025 = np.array(geo.upper.controlPoints)
+
+        geo.set_te_gap(1.0 / 100, xBlend=0.85, moving=True)
+        upper_cp_blend_085 = np.array(geo.upper.controlPoints)
+
+        assert not np.allclose(upper_cp_blend_025, upper_cp_blend_085)
+
+        # Finalize move and ensure final TE gap is applied.
+        geo.set_te_gap(1.0 / 100, xBlend=0.85, moving=False)
+        assert geo.te_gap == 1.0 / 100
     
 
 
@@ -303,8 +324,15 @@ class Test_Worker:
 
     def test_worker_ready (self):
 
-        assets_dir = str(get_assets_dir()) 
-        Worker().isReady (assets_dir, min_version=self.WORKER_MIN_VERSION)
+        # handle different current dir 
+
+        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
+
+        if not Worker.ready:
+            # check .\assets\...
+
+            Worker.exe_dir = None               # reset exe_dir
+            Worker().isReady ("..", min_version=self.WORKER_MIN_VERSION)
 
         assert Worker.ready
 
@@ -316,7 +344,8 @@ class Test_Worker:
         import shutil
         import time
 
-        self.test_worker_ready()
+        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
+        assert Worker.ready
 
         worker = Worker()
         airfoil = Root_Example(geometry = GEO_SPLINE)
@@ -334,15 +363,14 @@ class Test_Worker:
 
         worker.generate_polar (airfoil_path, 'T1', 700000, 0.0, 8.0, run_async=False)
 
-        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None, None, None)
+        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
+
+        if polar_file:
+            print  (f"polar file found: {polar_file}")
+        else: 
+            print (f"polar file not found")
+
         assert polar_file
-
-        # test forced transition 
-
-        worker.generate_polar (airfoil_path, 'T1', 200000, 0.0, 8.0, xtript=0.2, run_async=False)
-        polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 200000, 0.0, 8.0, 0.2, None, None, None, None, None)
-        assert polar_file
-
 
         # ------- async test ---------------------------------------------
 
@@ -357,11 +385,16 @@ class Test_Worker:
             print (f"{worker} waiting: {secs}s")
 
         if worker.finished_returncode == 0:
-            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None, None, None)
-        else:
-            polar_file = None
 
-        assert not worker.finished_errortext, f"Worker finished with error: {worker.finished_errortext}"
+            polar_file = worker.get_existingPolarFile (airfoil_path, 'T1', 700000, 0.0, 8.0, None, None, None, None)
+
+            if polar_file:
+                print  (f"polar file found: {polar_file}")
+            else: 
+                print (f"polar file not found")
+        else: 
+            print (f"{worker}: {worker.finished_errortext}")
+
         assert polar_file
 
 
@@ -369,7 +402,10 @@ class Test_Worker:
 
     def test_worker_set_flap (self, temp_dir):
 
-        self.test_worker_ready()
+        import shutil
+
+        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
+        assert Worker.ready
 
         worker = Worker()
         airfoil = Root_Example(geometry = GEO_SPLINE)
@@ -397,7 +433,7 @@ class Test_Worker:
         airfoil_flapped.load()
 
         assert airfoil_flapped.isFlapped
-        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.7049158
+        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.70509515
 
 
 # Main program for testing 

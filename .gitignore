@@ -34,5 +34,3 @@ dist/
 *.manifest
 *.spec
 
-doc/how_to_PyPI.docx
-/doc/video

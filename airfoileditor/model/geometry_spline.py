@@ -148,14 +148,7 @@ class Curvature_of_Spline (Curvature_Abstract):
     def __init__ (self, spline: Spline2D):
         super().__init__()
 
-        # curvature of a cubic spline is exactly linear between knots,
-        # so one midpoint per interval is sufficient to capture all kinks (C3 discontinuities at knots)
-
-        u_in    = spline.u
-        u_mid   = (u_in[:-1] + u_in[1:]) / 2                        # midpoints between consecutive u values
-        u       = np.empty(len(u_in) + len(u_mid))
-        u[0::2] = u_in
-        u[1::2] = u_mid
+        u = spline.u  # no oversampling - curvature is not used for repanelning but only for display and bump control 
 
         # new evaluation of spline
 

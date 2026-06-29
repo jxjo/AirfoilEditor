@@ -1,6 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 4.3.0 dev
+### Version 4.2.0
 
 ---
 
@@ -33,7 +33,7 @@ The app, developed in Python with the Qt UI framework, runs on Windows, Linux, a
 
 ## Geometry of an Airfoil
 
-The AirfoilEditor utilizes various strategies to represent the geometry of an airfoil.
+The **AirfoilEditor** utilizes various strategies to represent the geometry of an airfoil.
 
 * 'Linear interpolation' – Using the point coordinates from the airfoils '.dat' file, intermediate points are calculated through linear interpolation. Used for quick previews and simple tasks.
 
@@ -51,15 +51,12 @@ This method is also used to adjust the highpoint of both the upper and lower sur
 
 ## Curvature
 
-One of the main views in AirfoilEditor is the curvature of the airfoil surface. It enables a quick assessment of surface quality and helps detect artifacts such as a trailing-edge 'spoiler', which is fairly common.
-
-Curvature can be displayed as a 'curvature comb' directly on the surface or shown in more detail in a separate diagram.
-
-![AE](images/curvature_comb.png "curvature")
+On of the major views on an airfoil in the AirfoilEditor is the curvature of the airfoils surface. It allows a quick assessment of the surface quality and to detect artifacts like a 'spoiler' at the trailing edge which is quite common.
 
 > [!TIP]
 Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) for more information about an airfoils geometry.  
 
+![AE](images/curvature.png "curvature")
 
 
 ## Bezier based airfoils
@@ -81,7 +78,7 @@ The match function fits the Bezier curve to an existing airfoil as accurately as
 
 ## Polars of an Airfoil
 
-To generate the polars of an airfoil the AirfoilEditor uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). On of the Worker actions is the multi-threaded creation of a polar set using Xfoil.
+To generate the polars of an airfoil the **AirfoilEditor** uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). On of the Worker actions is the multi-threaded creation of a polar set using Xfoil.
 
 For polar generation the auto_range feature of the Worker is applied which optimizes the alpha range of the polar to show the complete T1 polar from cl_min to cl_max of the airfoil. For T2 polars (constant lift) the range starts right above cl=0.0 to cl_max.
 
@@ -108,28 +105,6 @@ This allows to compare the airfoils of a wing with a single polar definition for
 
 ![AE](images/polars_scaled.png "Scaled polars")
 
-### Separation Bubbles
-
-The AirfoilEditor visualizes laminar separation bubbles in the polar diagrams. Xfoil identifies these regions by detecting areas of negative shear stress. In the transition diagram (Xtr), the length of a separation bubble at a certain value of cl (or alpha) is displayed.
-
-When a bubble bursts into turbulent separation - indicated by the reattachment point falling behind the laminar-to-turbulent transition point - this results in further increased drag. As this turbulent separation bubble have an high impact on airfoil design, these bubbles are highlighted.
-
-Small triangle markers in the polar diagrams indicate operating points where a bubble has formed on either the upper or lower surface of the airfoil.
-
-<img src="images/polars_bubbles_separated.png" alt="Separation bubbles" width="800">
-
-
-### Forced Transition
-
-Forced transition from laminar to turbulent flow, for example through a turbulator or trip strip, prevents the formation of separation bubbles.
-
-In the polar definition, such a forced transition point can be specified. The value corresponds to the Xfoil parameters XtripT (top) and XtripB (bottom).
-
-In the polar diagrams, the region where forced transition is effective is indicated by a dashed line.
-
-The following diagram shows the same polar as in the previous separation bubble example, but with forced transition on the upper surface at 70% chord.
-
-<img src="images/polars_forced_transition.png" alt="Forced Transition" width="800">
 
 # 1. View Mode
 
@@ -189,7 +164,7 @@ The optional match function fits the Bezier curve to an existing airfoil as accu
 
 # 3. Optimization Mode
 
-In 'Optimization Mode', the AirfoilEditor serves as a wrapper for [Xoptfoil2](https://github.com/jxjo/Xoptfoil2).
+In 'Optimization Mode', the **AirfoilEditor** serves as a wrapper for [Xoptfoil2](https://github.com/jxjo/Xoptfoil2).
 
 Xoptfoil2 is a particle swarm based airfoil optimizer which supports different 'shaping methods' to modify the airfoil during optimization: 
 
@@ -197,7 +172,7 @@ Xoptfoil2 is a particle swarm based airfoil optimizer which supports different '
 *	Bezier curve defining the shape
 *	Geometry parameters like maximum thickness and its position
 
-The AirfoilEditor covers all steps needed for airfoil optimization with Xoptfoil2: 
+The **AirfoilEditor** covers all steps needed for airfoil optimization with Xoptfoil2: 
 
 *	Define an optimization case with the objectives and boundary conditions
 *	Run, control and watch an optimization  
@@ -209,7 +184,7 @@ Compared to manual editing the input file of Xoptfoil2, the user interface great
 Multiple versions of an optimization case can be created, making it easier to finally select the best version  at the end of the optimization sessions.
 
 > [!IMPORTANT]
-> Before you start your own airfoil optimizations with the AirfoilEditor, you should fully understand the key concepts of Xoptfoil2 and the special terms like 'seed airfoil' or 'operating point'. 
+> Before you start your own airfoil optimizations with the **AirfoilEditor**, you should fully understand the key concepts of Xoptfoil2 and the special terms like 'seed airfoil' or 'operating point'. 
 > Please read carefully the chapters [Getting Started](https://jxjo.github.io/Xoptfoil2/docs/getting_started) and [Airfoil Optimization](https://jxjo.github.io/Xoptfoil2/docs/airfoil_optimization) of the Xoptfoil2  documentation. 
 >You will find the example of 'Getting Started' is ready to go in the AirfoilEditor making it easy to watch and modify your first optimization. 
 
@@ -253,17 +228,11 @@ Doing such iterations it is very helpful to create a new version when changing t
 
 ### Windows Easy Setup
 
-A Windows Installer including Worker for polar generation and Xoptfoil2 for airfoil optimization is available in the [releases section on GitHub](https://github.com/jxjo/AirfoilEditor/releases).
+A ready-build Windows App including Worker for polar generation and Xoptfoil2 for airfoil optimization is available in the [releases section on GitHub](https://github.com/jxjo/AirfoilEditor/releases).
 
-Download and run the setup program. During installation, you may define whether the file extension .dat (and .bez for Bezier based airfoils) shall be assigned to the AirfoilEditor. 
+Download the .zip file and extract the file in your preferred directory. For the first trials it's convenient to extract the .zip file on your Windows Desktop.
 
-When running the downloaded setup file, Windows SmartScreen may display a warning: "Windows protected your PC" with "Unknown publisher". **This is normal** for open-source software distributed without a code signing certificate.
-
-To install in this case:
-1. Click "More info"
-2. Click "Run anyway"
-
-
+A double click on 'airfoileditor.exe' will start the app.
 
 ### Windows Setup using Python
 
@@ -273,15 +242,12 @@ The package already includes Worker and Xoptfoil2.
 
 Install the app:
 ```
-pip install airfoileditor 
+pip3 install airfoileditor 
 ```
 
-To upgrade to the actual version use `pip install airfoileditor -U`.
+To upgrade to the actual version use `pip3 install airfoileditor -U`.
 
 Run the app by typing `airfoileditor` on the command line.
-
-The command `where airfoileditor.exe` will show, where Python installed the program within your filesystem.
-This file path can be used to create a shortcut on your desktop or to assign the file extension '.dat' to the app,  allowing to open an airfoil with a double click. 
 
 If you just want to try out the app and want to ensure, that the installation doesn't influence other packages, you may prefer to install the package in an 'virtual environment'. For daily use a 'normal' installation is more convenient.
 
@@ -298,10 +264,6 @@ pip3 install airfoileditor
 To upgrade to the actual version use `pip3 install airfoileditor -U`.
 
 Run the app by typing `airfoileditor` on the command line.
-
-The command `which airfoileditor` will show, where Python installed the program within your filesystem.
-This file path can be used to create a shortcut on your desktop or to assign the file extension '.dat' to the app,  allowing to open an airfoil with a double click. 
-
 
 #### Preparing Xoptfoil2 and Worker
 To use polar generation and airfoil optimization the two programs `worker` and `xoptfoil2` have to be compiled and made available for the AirfoilEditor by copying the two programs into /usr/local/bin. 
@@ -332,8 +294,9 @@ pip install  "platformdirs>=4.3.0"
 ### Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for history of changes.
-
-
 # Finally 
 
-I hope you enjoy working with the **AirfoilEditor** 🚀
+I hope you enjoy working with the **AirfoilEditor**.
+
+> [!TIP]
+For Windows: Use the "Open with ..." Explorer command to connect the AirfoilEditor.exe to the file extension .dat. Later a double click on an airfoil dat-file will open the AirfoilEditor and you can browse through the files in the directory (if you are using the Python version, create a little batch job to open an airfoils dat-file)

@@ -635,10 +635,13 @@ class Diagram_Item (pg.PlotItem):
             self._help_message_items[artist] = p1
             i +=1
 
+
     def _remove_help_messages (self):
-        """ remove all help messages"""
+        """Remove all currently shown and remembered help messages for this diagram item."""
+
         for item in self._help_message_items.values():
-            self.scene().removeItem (item)                             # was added directly to the scene via setParentItem
+            self.scene().removeItem(item)
+
         self._help_message_items = {}
         self._help_messages = {}
         self._help_messages_shown = {}

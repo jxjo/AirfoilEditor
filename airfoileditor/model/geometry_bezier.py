@@ -81,8 +81,8 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
     isBezier        = True
 
     NCP_DEFAULT     = 6                # default number of control points for Bezier curve
-    NCP_BOUNDS      = (4,8)            # allowed range for number of control points for Bezier curve 
-    NCP_AUTO_RANGE  = (5,8)            # range for automatic ncp selection match result
+    NCP_BOUNDS      = (4,9)            # allowed range for number of control points for Bezier curve 
+    NCP_AUTO_RANGE  = (5,9)            # range for automatic ncp selection match result
 
 
     def __init__ (self, cpx_or_cp, cpy=None, **kwargs):

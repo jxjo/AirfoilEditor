@@ -808,7 +808,7 @@ class Case_Optimize (Case_Abstract):
     @property
     def isInput_faultless (self) -> bool:
         """ is input file ready for optimization """
-        return self.input_file.fileName and not self.input_file.hasErrors
+        return self.input_file.fileName and not self.input_file.has_parse_error 
 
 
     @property 
@@ -873,7 +873,7 @@ class Case_Optimize (Case_Abstract):
     def run (self):
         """ start a new optimization run """
 
-        if not self.input_file.hasErrors and self.xo2.isReady:
+        if not self.input_file.has_parse_error and self.xo2.isReady:
 
             # be sure all changes written to file 
             self.input_file.save_nml()

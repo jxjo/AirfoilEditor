@@ -848,6 +848,64 @@ class Bezier:
         return self._eval_1D (self._cpy, u, der=der)
 
 
+    def eval_u_on_x(self, x, fast=True, epsilon=10e-10):
+        """Evaluate curve parameter u for a given x coordinate.
+
+        Args:
+            x: Target x coordinate.
+            fast: Use cached linear interpolation when possible.
+            epsilon: Convergence tolerance passed to ``newton``.
+
+        Returns:
+            float: Parameter value u in ``[0, 1]``.
+        """
+
+        x0 = self._eval_1D(self._cpx, 0.0)
+        x1 = self._eval_1D(self._cpx, 1.0)
+
+        if x <= x0:
+            return 0.0
+        if x >= x1:
+            return 1.0
+
+        if fast and (self._x is not None) and (x >= self._x[0] and x <= self._x[-1]):
+            return float(np.interp(x, self._x, self._u))
+
+        if x == x0:
+            return 0.0
+
+        u0_offset = 0.01  # Safety offset from u=0 and u=1 for initial guess to avoid numerical issues
+
+        # start value for newton iteration - either from cache or binary search
+        if self._x is not None and len(self._x) > 3:
+            # Use cached x values if available
+            x_sample = self._x[1:-1]
+            u_sample = self._u[1:-1]
+            idx = np.argmin(np.abs(x_sample - x))
+            u0 = u_sample[idx]
+        else:
+            # No cache: binary search on curve with 5 evaluations
+            u0 = binary_search(
+                f=lambda u: self._eval_1D(self._cpx, u),
+                target=x, low=u0_offset, high=1.0 - u0_offset, max_iter=5)
+
+        # find u value for x
+        max_iter = 20
+        u, niter = newton(
+            lambda u: self._eval_1D(self._cpx, u) - x,
+            lambda u: self._eval_1D(self._cpx, u, der=1),
+            u0,
+            epsilon=epsilon,
+            max_iter=max_iter,
+            bounds=(0.0, 1.0),
+        )
+
+        if niter >= max_iter:
+            logger.warning(f"Bezier: Newton iteration did not converge for x={x} after {max_iter} iterations.")
+
+        return float(u)
+
+
     def eval_y_on_x (self, x, fast=True, epsilon=10e-10):
         """
         Evaluate ``y`` for a given x coordinate on the curve.
@@ -868,47 +926,12 @@ class Bezier:
         if y is not None:
             return y
 
-        u0_offset = 0.01  # Safety offset from u=0 and u=1 for initial guess to avoid numerical issues
+        u = self.eval_u_on_x(x, fast=fast, epsilon=epsilon)
+        y = self._eval_1D(self._cpy, u)
 
-        if fast and (not self._x is None) and (x >= self._x[0] and x <= self._x[-1]):
-
-            # interpolate u from cached x, then evaluate y 
-            u = np.interp (x, self._x, self._u)
-            y = self._eval_1D (self._cpy, u)
-
-        else: 
-
-            if x == self._eval_1D(self._cpx,0.0):    # avoid numerical issues of Newton 
-                u = 0.0
-            else: 
-                # start value for newton iteration - either from cache or binary search
-                if self._x is not None and len(self._x) > 3:
-                    # Use cached x values if available
-                    x_sample = self._x[1:-1]
-                    u_sample = self._u[1:-1]
-                    idx = np.argmin(np.abs(x_sample - x))
-                    u0 = u_sample[idx]
-                else:
-                    # No cache: binary search on curve with 5 evaluations
-                    u0 = binary_search (
-                        f=lambda u: self._eval_1D(self._cpx, u),
-                        target=x, low=u0_offset, high=1.0 - u0_offset, max_iter=5)
-
-                # find u value for x
-                max_iter = 20
-
-                u, niter  = newton (lambda u: self._eval_1D(self._cpx,u) - x,
-                            lambda u: self._eval_1D(self._cpx,u, der=1) , u0, 
-                            epsilon=epsilon, max_iter=max_iter, bounds=(0.0,1.0))
-
-                if niter >= max_iter:
-                    logger.warning (f"BSpline: Newton iteration did not converge for x={x} after {max_iter} iterations.")
-
-            # eval y for u value
-            y =  self._eval_1D (self._cpy, u)
-
-            # cache value - only not fast
-            self._y_on_x_cache [x] = y
+        # cache value only for the accurate/non-fast path
+        if not fast:
+            self._y_on_x_cache[x] = y
 
         return y
         
@@ -1733,30 +1756,34 @@ class BSpline:
             self._build_segments()
 
 
-    def _eval_u_on_x(self, x, u0=None, epsilon=1e-10):
-        """
-        Find parameter u for a given x-coordinate using Newton iteration.
-        
+    def eval_u_on_x(self, x, u0=None, epsilon=1e-10, fast=False):
+        """Evaluate spline parameter u for a given x coordinate.
+
         Args:
-            x: Target x-coordinate.
+            x: Target x coordinate.
             u0: Optional initial guess for Newton iteration.
             epsilon: Convergence tolerance.
-            
+            fast: Use cached linear interpolation when possible.
+
         Returns:
-            float: Parameter value u in [0, 1] where the curve has x-coordinate x.
+            float: Parameter value u in ``[0, 1]``.
         """
+
+        if fast and (self._x is not None) and (x >= self._x[0] and x <= self._x[-1]):
+            return float(np.interp(x, self._x, self._u))
+
         # Handle endpoints
         if x <= self._cpx[0]:
             return 0.0
         elif x >= self._cpx[-1]:
             return 1.0
-        
+
         # Determine initial guess
         if u0 is None:
             u0 = x if 0.05 <= x <= 0.95 else (0.05 if x < 0.05 else 0.95)
         else:
             u0 = np.clip(u0, 0.0, 1.0)
-        
+
         # Newton iteration to find u where curve x-coordinate equals target x
         try:
             u, _ = newton(lambda u: self.eval(u)[0] - x,
@@ -1764,7 +1791,8 @@ class BSpline:
                          epsilon=epsilon, max_iter=20, bounds=(0.0, 1.0))
         except:
             raise ValueError(f"BSpline: Could not find parameter u for x={x}.")
-        return u
+
+        return float(u)
 
 
     def insert_knot (self, x):
@@ -1777,7 +1805,7 @@ class BSpline:
             x: x-coordinate where to insert the new control point.
         """
         # Find parameter u for the given x
-        u = self._eval_u_on_x(x)
+        u = self.eval_u_on_x(x)
         
         # Evaluate y at this position
         _, y = self.eval(u)
@@ -1965,51 +1993,14 @@ class BSpline:
         except: 
             pass
 
-        u0_offset = 0.01  # Safety offset from u=0 and u=1 for initial guess to avoid numerical issues
-
-        if fast and (not self._x is None) and (x >= self._x[0] and x <= self._x[-1]):
-
-            # interpolate u from cached x, then evaluate y 
-            u = np.interp (x, self._x, self._u)
-            y = self.eval (u)[1]
-
+        if fast and (self._x is not None) and (x >= self._x[0] and x <= self._x[-1]):
+            u = self.eval_u_on_x(x, fast=True)
+            _, y = self.eval(u)
         else:
-            if x == self.eval(0.0)[0]:    # avoid numerical issues of Newton 
-                u = 0.0
-            else: 
-
-                # start value for newton iteration - either given or based on x value
-                if u0 is  None:
-                    # Use cached x values if available (fast), otherwise binary search
-                    if self._x is not None and len(self._x) > 3:
-                        x_sample = self._x[1:-1]
-                        u_sample = self._u[1:-1]
-                        idx = np.argmin(np.abs(x_sample - x))
-                        u0 = u_sample[idx]
-                    else:
-                        u0 = binary_search (
-                            f=lambda u: self.eval(u, update_cache=False)[0],
-                            target=x, low=u0_offset, high=1.0 - u0_offset, max_iter=5)
-                else:
-                    # Clamp user-provided u0 to safe interior region
-                    u0 = np.clip(u0, u0_offset, 1.0 - u0_offset)
-
-                # find u value for x
-                # Add small epsilon to derivative to avoid division by zero when curve is vertical
-                max_iter = 40
-
-                u, niter  = newton (lambda u: self.eval(u)[0] - x,
-                                    lambda u: self.eval(u, der=1)[0] + 1e-10 , 
-                                    u0, epsilon=epsilon, max_iter=max_iter, bounds=(0.0,1.0))
-
-                if niter >= max_iter:
-                    logger.warning (f"BSpline: Newton iteration did not converge for x={x} after {max_iter} iterations.")
-
-            # eval y for u value
-            _, y =  self.eval(u)
-
+            u = self.eval_u_on_x(x, u0=u0, epsilon=epsilon, fast=False)
+            _, y = self.eval(u)
             # cache value - only not fast
-            self._y_on_x_cache [x] = y
+            self._y_on_x_cache[x] = y
 
 
         return y

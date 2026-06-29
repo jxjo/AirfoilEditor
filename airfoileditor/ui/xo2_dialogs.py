@@ -15,7 +15,7 @@ from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog, QMe
 from PyQt6.QtGui            import QFontMetrics
 
 from ..base.widgets         import * 
-from ..base.panels          import Dialog, Edit_Panel, MessageBox, Panel_Abstract
+from ..base.panels          import Dialog_Modeless, Dialog_Modal, Edit_Panel, MessageBox, Panel_Abstract
 
 from ..model.airfoil        import Airfoil
 from ..model.polar_set      import Polar_Definition
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 
-class Xo2_Select_Dialog (Dialog):
+class Xo2_Select_Dialog (Dialog_Modal):
     """ 
     Dialog to choose what should be done when entering optimization mode:
     - open existing case
@@ -234,7 +234,7 @@ class Xo2_Select_Dialog (Dialog):
 
 
 
-class Xo2_New_Dialog (Dialog):
+class Xo2_New_Dialog (Dialog_Modal):
     """ Dialog to create a new input file """
 
     _width  = (1200, None)
@@ -351,7 +351,7 @@ class Xo2_New_Dialog (Dialog):
         self.airfoil_seed.set_polarSet (Polar_Set (self.airfoil_seed, polar_def=self.opPoint_defs.polar_def_default))
         self.polarSet_seed.load_or_generate_polars ()
         
-        nOp = 3 if self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK else 5
+        nOp = 5
 
         # (re) create opPoint definitions 
         self.opPoint_defs.create_initial (self.polarSet_seed, nOp, 
@@ -429,14 +429,12 @@ class Xo2_New_Dialog (Dialog):
         CheckBox    (l,r,c+1, text="Reflexed (reversal on top side)", colSpan=2, 
                      get=lambda: self.curvature.max_curv_reverse_top == 1,
                      set=lambda x: self.curvature.set_max_curv_reverse_top(x),
-                     hide=lambda: not self.airfoil_seed.isReflexed or 
-                          self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK)
+                            hide=lambda: not self.airfoil_seed.isReflexed)
         r += 1
         CheckBox    (l,r,c+1, text="Rearloaded (reversal on bottom)", colSpan=3,   
                      get=lambda: self.curvature.max_curv_reverse_bot == 1,
                      set=lambda x: self.curvature.set_max_curv_reverse_bot(x),
-                     hide=lambda: not self.airfoil_seed.isRearLoaded or 
-                        self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK)
+                            hide=lambda: not self.airfoil_seed.isRearLoaded)
 
         r += 1
         l.setRowStretch (r,5)
@@ -538,10 +536,16 @@ class Xo2_New_Dialog (Dialog):
         """ edit default polar definition"""
 
         polar_def = self.opPoint_defs.polar_def_default
-        diag = Polar_Definition_Dialog (self._edit_panel, polar_def, small_mode=True, parentPos=(1.05,0.2), dialogPos=(0,1))
+        diag = Polar_Definition_Dialog (self._edit_panel, polar_def, 
+                                        title="Default Polar of Op Points",
+                                        small_mode=True, parentPos=(1.0,0.5), dialogPos=(0,0.5))
 
-        diag.setWindowTitle ("Default Polar of Op Points")
-        diag.exec()
+        diag.sig_final_changed.connect (self._on_polar_def_default_changed)
+        diag.show()
+
+
+    def _on_polar_def_default_changed (self, polar_def : Polar_Definition):
+        """ slot for change of default polar definition"""
 
         self.opPoint_defs.set_polar_def_default (polar_def)
         self.airfoil_seed.set_polarSet (Polar_Set (self.airfoil_seed, polar_def=polar_def))
@@ -606,22 +610,12 @@ class Xo2_New_Dialog (Dialog):
         super().accept()
 
 
-    @override
-    def done(self, result):
-        """ called by both accept() and reject() before closing"""
 
-        self._watchdog.sig_new_polars.disconnect (self.refresh)
-        self._watchdog = None
-
-        super().done(result)
-
-
-
-class Xo2_Run_Dialog (Dialog):
+class Xo2_Run_Dialog (Dialog_Modal):
     """ Dialog to run/watch Xoptfoil2"""
 
     _width  = (350, None)
-    _height = (330, None)
+    _height = (330, 330)
 
     name = "Run"
 
@@ -655,13 +649,15 @@ class Xo2_Run_Dialog (Dialog):
 
         super().__init__ (parent, title=f"{self.name}   [{self.case.input_file.fileName}]", **kwargs)  
 
-        #self.setWindowFlags (self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint,)
-        self.setWindowFlags (Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window | Qt.WindowType.WindowTitleHint)
+        # only close button left
+        self.setWindowFlags (Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window | 
+                             Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint) 
 
         # no border for panel layout 
 
         self._panel.layout().setContentsMargins (QMargins(0, 0, 0, 0))              # no margin for main panel
-        self.layout().setContentsMargins        (QMargins(5, 0, 5, 15))             # no top margin for self
+        self.layout().setSpacing(15)
+        self.layout().setContentsMargins        (QMargins(5, 0, 5, 10))             # no top margin for self
 
         # handle button (signals) 
 
@@ -1066,7 +1062,7 @@ class Xo2_Run_Dialog (Dialog):
 
 
 
-class Xo2_Input_File_Dialog (Dialog):
+class Xo2_Input_File_Dialog (Dialog_Modal):
 
     """ Text edit of Xoptfoil2 input file  """
 
@@ -1142,6 +1138,16 @@ class Xo2_Input_File_Dialog (Dialog):
 
             if rc == 0: 
                 self._input_file.text_save (text, pathFileName=self._input_file.pathFileName)
+
+                # Worker syntax check may pass while the f90nml re-parse fails.
+                # In that case, keep the dialog open and show the parse error explicitly.
+                if self._input_file.has_parse_error:
+                    parse_error = self._input_file.parse_error_text or "Input file parse failed after saving."
+                    self._highlight_error (parse_error)
+                    MessageBox.error (self, 'Input File Parse Error', f"{parse_error}", min_height=80)
+                    self._qtextEdit.setFocus ()
+                    return
+
                 super().accept() 
             else: 
                 self._highlight_error (error_text)
@@ -1153,43 +1159,25 @@ class Xo2_Input_File_Dialog (Dialog):
             super().reject() 
 
 
-class Xo2_Description_Dialog (Dialog):
+class Xo2_Description_Dialog (Dialog_Modeless):
 
     """ a small text editor to edit the &info description"""
 
     _width  = 300
-    _height = 110
+    _height = 50
 
     name = "Description"
 
-    def __init__ (self, *args, title : str= None, **kwargs): 
-
-        self._close_btn  : QPushButton = None 
-        self._new_text  = None
-
+    def __init__ (self, *args, **kwargs): 
         super().__init__ ( *args, **kwargs)
 
-        title = title if title is not None else self.name
-        self.setWindowTitle (f"{title}")
         self._panel.layout().setContentsMargins (QMargins(0, 0, 0, 0))  # no borders in central panel 
 
-        # connect dialog buttons
-        self._close_btn.clicked.connect  (self.close)
-
 
     @property
-    def text (self) -> str:
+    def info (self) -> Nml_info:
         return self.dataObject
 
-    @property
-    def new_text (self) -> str:
-        """ the edited text when Ok was pressed"""
-        return self._new_text
-    
-    def set_new_text (self, aStr : str):
-        self._new_text = aStr
-
-    # -------------------------------------------------------------------
 
     def _init_layout(self) -> QLayout:
 
@@ -1197,7 +1185,8 @@ class Xo2_Description_Dialog (Dialog):
 
         self._qtextEdit = QTextEdit () 
         self._qtextEdit.setPlaceholderText ("Enter a description ...")  
-        self._qtextEdit.setPlainText (self.text)  
+        self._qtextEdit.setPlainText (self.info.descriptions_string)  
+        self._qtextEdit.textChanged.connect (lambda: self._on_widget_changed(self._qtextEdit))
 
         l.addWidget (self._qtextEdit, 0,0)
         l.setRowStretch (0,1)    
@@ -1206,69 +1195,34 @@ class Xo2_Description_Dialog (Dialog):
         return l
 
 
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttonBox = QDialogButtonBox (QDialogButtonBox.StandardButton.Close) #  | QDialogButtonBox.StandardButton.Cancel)
-        self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
-        return buttonBox 
-
-
     @override 
-    def close (self): 
-        """ close button clicked """
+    def _on_widget_changed(self, widget):
 
-        self.set_new_text (self._qtextEdit.toPlainText ()) 
+        # from QTextEdit to Nml_info
+        text = self._qtextEdit.toPlainText ()
+        self.info.set_descriptions (text.split ("\n"))
 
-        super().close ()
-
-        self.setResult (QDialog.DialogCode.Accepted)
-
+        return super()._on_widget_changed(widget)   
 
 
-class Xo2_OpPoint_Def_Dialog (Dialog):
-    """ Dialog to view / edit current opPoint definition """
 
-    _width  = (330, None)
-    _height = (210, 210)
+class Xo2_OpPoint_Def_Dialog (Dialog_Modeless):
+    """ 
+    Dialog to view / edit current opPoint definition. 
+    Allows live changes of the opPoint definition while the dialog is open.
+    """
 
-    name = "Operating Point Definition"
+    _width  = (330, None)           # minimum needed for polar definition
 
-    def __init__ (self, parent : QWidget, 
+    name = "Operating Point Definition (New)"
+
+    def __init__ (self, parent : QWidget,
                   app_model : App_Model,
-                  **kwargs): 
+                  **kwargs):
 
         self._app_model = app_model
 
-        self._individual_flap       = False if self.cur_opPoint_def.has_default_flap      else True 
-
-        # init layout etc 
-
-        self._btn_close  : QPushButton = None 
-
-        super().__init__ (parent, title=self._titletext(), **kwargs)  
-
-        #self.setWindowFlags (self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint,)
-        self.setWindowFlags (Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window | 
-                             Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint) #
-
-        # no border for main layout 
-
-        self._panel.layout().setContentsMargins (QMargins(10, 5, 10, 5))
-
-        if Widget.light_mode:
-            set_background (self._panel, darker_factor=30)
-            set_background (self       , darker_factor=30)
-        else: 
-            set_background (self._panel, darker_factor=110)
-            set_background (self       , darker_factor=110)
-
-        # connect to changes of input file
-
-        self.app_model.sig_xo2_input_changed.connect (self.refresh_current)
-        self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh_current)
-        self.app_model.sig_xo2_run_started.connect (self.close)
+        super().__init__ (parent,  **kwargs)
 
 
     @property
@@ -1296,95 +1250,83 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
             if polar_def.re == polar_def_default.re and polar_def.ma == polar_def_default.ma and \
                polar_def.ncrit == polar_def_default.ncrit:
 
-                polar_defs.remove (polar_def)    
+                polar_defs.remove (polar_def)
         return polar_defs
 
 
     def refresh_current (self):
         """ slot for refresh opPoint def"""
 
-        # update local settings 
-        self.set_individual_flap      (not self.cur_opPoint_def.has_default_flap) 
+        # update local settings
+        if not self.opPoint_defs.use_flap:
+            self.set_individual_flap  (False)
 
         self.refresh()
- 
+
 
     def _init_layout(self) -> QLayout:
 
         l =  QGridLayout()
         r,c, = 0,0
-        ComboBox (l,r,c, lab="Spec", width=90, 
+        ComboBox (l,r,c, lab="Spec", width=90,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.specVar,
                     options=SPEC_TYPES,
                     toolTip="Specification of this Operating Point is either based on cl or alpha")
         FieldF   (l,r,c+2, width=70, dec=2, lim=(-20,20), step=0.01,
-                    get=lambda: self.cur_opPoint_def.specValue, 
+                    get=lambda: self.cur_opPoint_def.specValue,
                     set=lambda aVal: self.cur_opPoint_def.set_specValue_limited(aVal),
                     toolTip="Specification of this Operating Point is on the polar")
         r += 1
-        ComboBox (l,r,c, lab="Type", width=90, 
+        ComboBox (l,r,c, lab="Type", width=90,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.opt_asString,
                     options=lambda:self.cur_opPoint_def.opt_allowed_asString(),
                     toolTip="Type of optimization for this Operating Point")
-        
+
         # target value cd       0.001 .. 0.1 step 0.00001
-        FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.00001, 
+        FieldF   (l,r,c+2, width=70, dec=5, lim=(0.001,0.1), step=0.00001,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
                     hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
-                                      self.cur_opPoint_def.optVar==var.CD and \
-                                      not self.cur_opPoint_def.optValue_isFactor),
+                                      self.cur_opPoint_def.optVar==var.CD),
                     toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
 
         # target value cl/cd    0 .. 200     step 0.01
-        FieldF   (l,r,c+2, width=70, dec=2, lim=(0,200), step=0.01, 
+        FieldF   (l,r,c+2, width=70, dec=2, lim=(0,200), step=0.01,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
                     hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
-                                      self.cur_opPoint_def.optVar==var.GLIDE and \
-                                      not self.cur_opPoint_def.optValue_isFactor),
+                                      self.cur_opPoint_def.optVar==var.GLIDE),
                     toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
-        
+
         # target value cl       0.001 .. 5   step 0.001
-        FieldF   (l,r,c+2, width=70, dec=3, lim=(0.001,5), step=0.001, 
+        FieldF   (l,r,c+2, width=70, dec=3, lim=(0.001,5), step=0.001,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
                     hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
-                                      self.cur_opPoint_def.optVar==var.CL and \
-                                      not self.cur_opPoint_def.optValue_isFactor),
+                                      self.cur_opPoint_def.optVar==var.CL),
                     toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
 
         # target value cm       -0.5 .. 0.5  step 0.001
-        FieldF   (l,r,c+2, width=70, dec=4, lim=(-0.5,0.5), step=0.001, 
+        FieldF   (l,r,c+2, width=70, dec=4, lim=(-0.5,0.5), step=0.001,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
                     hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
-                                      self.cur_opPoint_def.optVar==var.CM and \
-                                      not self.cur_opPoint_def.optValue_isFactor),
+                                      self.cur_opPoint_def.optVar==var.CM),
                     toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
 
-        # target factor         0.5 .. 2  step 0.001
-        FieldF   (l,r,c+2, width=70, dec=3, lim=(0.5,2), step=0.001, 
+        # target value cp_min       0.0 .. -20  step 0.1
+        FieldF   (l,r,c+2, width=70, dec=2, lim=(-20.0, 0.0), step=0.1,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue,
                     hide=lambda: not (self.cur_opPoint_def.isTarget_type and \
-                                      self.cur_opPoint_def.optValue_isFactor),
-                    toolTip="Factor on the value of the seed airfoil to achieve")
+                                      self.cur_opPoint_def.optVar==var.CP_MIN),
+                    toolTip=f"{self.cur_opPoint_def.optVar} target value to achieve")
 
-        CheckBox (l,r,c+4, text="Factor",
-                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.optValue_isFactor,
-                    hide=lambda: not self.cur_opPoint_def.isTarget_type or \
-                                  self.cur_opPoint_def.optVar == var.CM,                # cm does not make sense as factor
-                    toolTip="Target value should be a factor to value of seed airfoil")
         r += 1
         SpaceR   (l,r, stretch=0)
         r += 1
-        CheckBox (l,r,c, text="Individual Weighting", colSpan=2, 
+        CheckBox (l,r,c, text="Individual Weighting", colSpan=2,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.has_individual_weighting,
                     toolTip="Set an individual weighting for this Operating Point")
         FieldF   (l,r,c+2, width=70, step=0.1, lim=(0,10), dec=1,
-                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.weighting_abs,
+                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.weighting,
                     hide=lambda: not self.cur_opPoint_def.has_individual_weighting,
                     toolTip="An individual weighting for this Operating Point")
-        CheckBox (l,r,c+4, text="Fixed",
-                    obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.weighting_fixed,
-                    hide=lambda: not self.cur_opPoint_def.has_individual_weighting or not self.opPoint_defs.dynamic_weighting,
-                    toolTip="Fix this weighting during Dynamic Weighting")
 
         r += 1
         CheckBox (l,r,c, text="Individual Polar", colSpan=2,
@@ -1416,8 +1358,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.flap_optimize,
                     disable=lambda: not self.opPoint_defs.use_flap,
                     toolTip="Optimize flap angle at this Operating Point")
-        r += 1
-        l.setRowStretch (r,5)
+
         l.setColumnMinimumWidth (0,40)
         l.setColumnMinimumWidth (3,5)
         l.setColumnStretch (4,3)
@@ -1425,49 +1366,32 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
         return l
 
 
-    def _titletext (self) -> str: 
+    def _titletext (self) -> str:
         return f"Operating Point {self.cur_opPoint_def.iPoint}"
-
-
-    @override
-    def _button_box(self):
-        """ no buttons - floating window"""
-        return None
-
-
-    @override
-    def _on_widget_changed (self,*_):
-        """ slot for change of widgets"""
-        # checkbox show handling                                     
-        for w in self.widgets:
-            w.refresh()
-
-        # inform model about changes
-        self.app_model.notify_xo2_input_changed()
 
 
     @property
     def individual_polar (self) -> bool:
         """ checkBox - opPoint def has individual polar """
-        return self.cur_opPoint_def.has_individual_polar 
+        return self.cur_opPoint_def.has_individual_polar
 
     def set_individual_polar (self, aBool : bool):
         if not aBool:
             self.cur_opPoint_def.set_has_individual_polar(False)
-        elif aBool and not self.individual_polar:    
+        elif aBool and not self.individual_polar:
             # switch on
             if not self.polar_defs_without_default:
-                # if there are no other polar defs open dialog directly 
-                self.new_polar_def ()   
-            else: 
-                # take the first individual polar 
-                self.cur_opPoint_def.set_polar_def (self.polar_defs_without_default[0])          
+                # if there are no other polar defs open dialog directly
+                self.new_polar_def ()
+            else:
+                # take the first individual polar
+                self.cur_opPoint_def.set_polar_def (self.polar_defs_without_default[0])
 
 
     def set_polar_def_by_name (self, aStr : str):
         """ for Combobox - set new polar_def by name string """
         for polar_def in self.polar_defs_without_default:
-            if polar_def.name == aStr: 
+            if polar_def.name == aStr:
                 self.cur_opPoint_def.set_polar_def (polar_def)
 
 
@@ -1476,86 +1400,55 @@ class Xo2_OpPoint_Def_Dialog (Dialog):
 
         if self.cur_opPoint_def.has_individual_polar:
             new_polar_def = self.cur_opPoint_def.polar_def
+            is_new = False
         else:
             new_polar_def  = copy (self.opPoint_defs.polar_def_default)
             new_polar_def.set_re (new_polar_def.re + 100000)
             new_polar_def.set_active(True)
-        
-        diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, polar_type_fixed=True, 
-                                        parentPos=(0.9, 0.5), dialogPos=(0, 0.5))
-        diag.setWindowTitle (f"Individual Polar of Op Point {self.cur_opPoint_def.iPoint}")
-        diag.exec()
+            is_new = True
 
-        self.cur_opPoint_def.set_polar_def (new_polar_def)
+        diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, polar_type_fixed=True,
+                                        title=f"Individual Polar of Op Point {self.cur_opPoint_def.iPoint}",
+                                        is_new=is_new,          # ensure final changed signal
+                                        parentPos=(0.6, 0.5), dialogPos=(0, 0.5))
+        diag.sig_final_changed.connect (self._on_polar_def_changed)
+        diag.show()
+
+
+    def _on_polar_def_changed (self, polar_def : Polar_Definition):
+        """ slot for polar def changed - refresh dialog"""
+        self.cur_opPoint_def.set_polar_def (polar_def)
         self.refresh()
-
-        # inform model about changes
-        self.app_model.notify_xo2_input_changed()
 
 
     @property
     def individual_flap (self) -> bool:
         """ checkbox - opPoint def has individual flap angle"""
-        return self._individual_flap
+        return not self.cur_opPoint_def.has_default_flap
 
     def set_individual_flap (self, aBool : bool):
-        self._individual_flap = aBool 
         if not aBool:
-            self.cur_opPoint_def.set_flap_angle (None)                    # will set to default 
-
-
-    @override
-    def refresh (self): 
-        """ refresh self"""
-        self.setWindowTitle (self._titletext())
-
-        super().refresh() 
-
-
-    @override
-    def close (self):
-        """ close dialog - inform model about changes"""
-
-        # disconnect from changes of input file
-        self.app_model.sig_xo2_input_changed.disconnect (self.refresh_current)
-        self.app_model.sig_xo2_opPoint_def_selected.disconnect (self.refresh_current)
-
-        super().close ()
+            self.cur_opPoint_def.set_flap_angle (None)                  # will set to default
+        else:
+            self.cur_opPoint_def.set_flap_angle (3.0)                   # set to current or 0.0
 
 
 
-class Xo2_Abstract_Options_Dialog (Dialog):
+class Xo2_Abstract_Options_Dialog (Dialog_Modeless):
     """ Super class dialog to edit options of namelist group """
 
-    _width  = (300, None)
-    _height = (320, None)
 
-    name = "my xo2 Options"
+    def _init_footer_layout (self) -> QLayout | None:
+        """ no footer layout by default for live-edit dialogs """
 
-    def __init__ (self, *args, **kwargs): 
-
-        self._btn_default : QPushButton = None 
-        self._btn_close   : QPushButton = None 
-
-        super().__init__ (*args, **kwargs)  
-
-    @override
-    def _button_box (self) -> QDialogButtonBox:
-
-        buttonBox = QDialogButtonBox (QDialogButtonBox.StandardButton.Close) #  | QDialogButtonBox.StandardButton.Cancel)
-
-        self._close_btn   = buttonBox.button(QDialogButtonBox.StandardButton.Close)
-
-        self._default_btn = QPushButton ("Default", parent=self)
-        self._default_btn.setFixedWidth (80)
-        self._default_btn.setToolTip    ("Reset to default values")
-        buttonBox.addButton (self._default_btn, QDialogButtonBox.ButtonRole.ActionRole)
-
-        # connect dialog buttons
-        self._close_btn.clicked.connect  (self.close)
-        self._default_btn.clicked.connect  (self.set_default_values)
-
-        return buttonBox 
+        # add a mini reset button to the footer
+        l = QHBoxLayout()
+        l.addSpacing(10)
+        Button (l, text="Reset",  width=40, set=self.set_default_values,
+                button_style=button_style.SECONDARY,
+                toolTip="Reset these values to default values")
+        l.addStretch()
+        return l  
 
 
     def set_default_values (self):
@@ -1563,15 +1456,12 @@ class Xo2_Abstract_Options_Dialog (Dialog):
         nml : Nml_Abstract = self.dataObject
         nml.set_to_default ()
 
-        self.refresh()
+        self._on_widget_changed(None)  # inform model about changes
 
 
 
 class Xo2_Particle_Swarm_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist Particle_Swarm_Options"""
-
-    _width  = (300, None)
-    _height = (320, None)
 
     name = "Particle Swarm Options"
 
@@ -1630,9 +1520,6 @@ class Xo2_Particle_Swarm_Dialog (Xo2_Abstract_Options_Dialog):
 class Xo2_Xfoil_Run_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist Xfoil_Run_Options"""
 
-    _width  = (280, None)
-    _height = (320, None)
-
     name = "Xfoil Options"
 
     @property
@@ -1687,9 +1574,6 @@ class Xo2_Xfoil_Run_Dialog (Xo2_Abstract_Options_Dialog):
 class Xo2_Paneling_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist paneling_options"""
 
-    _width  = (280, None)
-    _height = (320, None)
-
     name = "Paneling Options"
 
     @property
@@ -1727,9 +1611,6 @@ class Xo2_Paneling_Dialog (Xo2_Abstract_Options_Dialog):
 class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist hicks_henne_options"""
 
-    _width  = 260
-    _height = 280
-
     name = "Hicks-Henne Options"
 
     @property
@@ -1760,11 +1641,6 @@ class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
                      obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.initial_perturb,
                     toolTip="Measure of how much initial solutions may deviate from seed") 
         r += 1
-        CheckBox    (l,r,c, text="Smooth Seed",
-                     obj=lambda: self.hicks_henne_options, prop=Nml_hicks_henne_options.smooth_seed,
-                     disable=lambda: self.hicks_henne_options._input_file.airfoil_seed.isBezierBased,
-                     toolTip="Create a Bezier based airfoil from seed airfoil prior to optimization")                        
-        r += 1
         l.setRowStretch (r,2)
         l.setColumnMinimumWidth (0,70)
         l.setColumnStretch (4,2)
@@ -1772,19 +1648,12 @@ class Xo2_Hicks_Henne_Dialog (Xo2_Abstract_Options_Dialog):
         return l
 
 
-    @override
-    def _on_widget_changed (self,*_):
-        """ slot for change of widgets"""
-        # refresh design variables
-        self.refresh()
-
-
 
 class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist bezier_options"""
 
-    _width  = 260
-    _height = 250
+    # _width  = 260
+    # _height = 250
 
     name = "Bezier Options"
 
@@ -1826,81 +1695,24 @@ class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
 
         return l
 
-    @override
-    def _on_widget_changed (self,*_):
-        """ slot for change of widgets"""
-        # refresh design variables
-        self.refresh()
-
-
-
-class Xo2_Camb_Thick_Dialog (Xo2_Abstract_Options_Dialog):
-    """ Dialog to edit namelist camb_thick_options"""
-
-    _width  = (260, None)
-    _height = (240, None)
-
-    name = "Camb-Thick Options"
-
-    @property
-    def camb_thick_options (self) -> Nml_camb_thick_options:
-        return self.dataObject
-
-
-    def _init_layout (self) -> QGridLayout:
-
-        l = QGridLayout()
-        r,c = 0, 0
-        Label (l,r,c, get="Geometry parameters to optimize", style=style.COMMENT, colSpan=4)
-        r += 1
-        CheckBox (l,r,c, text="Thickness",
-                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.thickness,
-                    toolTip="Maximum thickness of the airfoil") 
-        CheckBox (l,r,c+1, text="... position",
-                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.thickness_pos,
-                    toolTip="Position of maximum thickness of the airfoil") 
-        r += 1
-        CheckBox (l,r,c, text="Camber",
-                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.camber,
-                    toolTip="Maximum camber of the airfoil") 
-        CheckBox (l,r,c+1, text="... position",
-                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.camber_pos,
-                    toolTip="Position of maximum camber of the airfoil") 
-        r += 1
-        CheckBox (l,r,c, text="LE radius",
-                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.le_radius,
-                    toolTip="Leading edge radius of the airfoil") 
-        CheckBox (l,r,c+1, text="... blend distance",
-                    obj=lambda: self.camb_thick_options, prop=Nml_camb_thick_options.le_radius_blend,
-                    toolTip="How much will a change of the radius influence the whole airfoil") 
-        r += 1
-        l.setRowStretch (r,2)
-        r += 1
-        Label (l,r,c, colSpan=4, style=style.COMMENT,
-               get=lambda: f"Will be {self.camb_thick_options.ndesign_var} design variables")        
-        l.setColumnMinimumWidth (0,110)
-        l.setColumnStretch (4,2)
-
-        return l
-
-    @override
-    def _on_widget_changed (self,*_):
-        """ slot for change of widgets"""
-        # refresh design variables
-        self.refresh()
 
 
 class Xo2_Constraints_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist constraints"""
 
-    _width  = (280, None)
-    _height = (200, None)
-
     name = "Constraints"
+
 
     @property
     def constraints (self) -> Nml_constraints:
         return self.dataObject
+
+
+    @staticmethod
+    def _lim_percent(lim: tuple | None) -> tuple | None:
+        if lim is None:
+            return None
+        return (lim[0] * 100.0, lim[1] * 100.0)
 
 
     def _init_layout(self) -> QLayout:
@@ -1910,41 +1722,132 @@ class Xo2_Constraints_Dialog (Xo2_Abstract_Options_Dialog):
         r += 1
         SpaceR      (l,r, height=5)
         r += 1
-        CheckBox    (l,r,c, text="Check Geometry", colSpan=2, 
-                     obj=lambda: self.constraints, prop=Nml_constraints.check_geometry,
-                     toolTip="Check geometry constraints during optimization")                        
+        CheckBox    (l,r,c, text="Symmetrical Airfoil",
+                     obj=lambda: self.constraints, prop=Nml_constraints.symmetrical,
+                     toolTip="Airfoil is forced to be symmetrical by mirroring top side to bottom side")                        
+        r += 1
+        SpaceR      (l,r, height=15)
+        r += 1
+        con = self.constraints.min_thickness
+        CheckBox    (l,r,c, text="Minimum Thickness",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate minimum thickness constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: self._lim_percent(con.effective_limits), step=0.1, unit='%',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Minimum thickness")
+        r += 1
+        con = self.constraints.min_thickness_at_x
+        CheckBox    (l,r,c, text="Minimum Thickness at x",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate minimum thickness-at-x constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=(0.01, 0.99), step=0.1,
+            obj=con, prop=GeoConstraint_Definition.value_x,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="x/c location for minimum local thickness constraint")
+        FieldF      (l,r,c+3, width=70, dec=2, lim=lambda con=con: self._lim_percent(con.effective_limits[1]), step=0.1, unit='%',
+            obj=con, prop=GeoConstraint_Definition.value_t,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Minimum thickness t/c required at x/c")
+        r += 1
+        con = self.constraints.max_thickness
+        CheckBox    (l,r,c, text="Maximum Thickness",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate maximum thickness constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: self._lim_percent(con.effective_limits), step=0.1, unit='%',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Maximum thickness")
         r += 1
         SpaceR      (l,r, height=10)
         r += 1
-        CheckBox    (l,r,c, text="Symmetrical Airfoil", colSpan=2,
-                     obj=lambda: self.constraints, prop=Nml_constraints.symmetrical,
-                     disable=lambda: not self.constraints.check_geometry,
-                     toolTip="Airfoil is forced to be symmetrical")                        
+        con = self.constraints.min_camber
+        CheckBox    (l,r,c, text="Minimum Camber",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate minimum camber constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: self._lim_percent(con.effective_limits), step=0.1, unit='%',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Minimum camber")
         r += 1
-        FieldF      (l,r,c, lab="Min TE angle", width=70, dec=1, lim=(0.1,20), step=0.02, unit='°',
-                     obj=self.constraints, prop=Nml_constraints.min_te_angle, lab_disable=True,
-                     disable=lambda: not self.constraints.check_geometry,
-                     toolTip="Minimum opening angle at trailing edge ") 
+        con = self.constraints.max_camber
+        CheckBox    (l,r,c, text="Maximum Camber",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate maximum camber constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: self._lim_percent(con.effective_limits), step=0.1, unit='%',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Maximum camber")
         r += 1
-        l.setRowStretch (r,5)
+        SpaceR      (l,r, height=10)
+        r += 1
+        con = self.constraints.min_te_angle
+        CheckBox    (l,r,c, text="Minimum TE Angle",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate minimum trailing-edge angle constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: con.effective_limits, step=0.1, unit='°',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Minimum trailing-edge angle") 
+        r += 1
+        con = self.constraints.min_te_top_angle
+        CheckBox    (l,r,c, text="Minimum TE Top Angle",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate minimum top-side trailing-edge angle constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: con.effective_limits, step=0.1, unit='°',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Minimum top-side trailing-edge angle")
+        r += 1
+        con = self.constraints.max_te_bot_angle
+        CheckBox    (l,r,c, text="Maximum TE Bot Angle",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate maximum bottom-side trailing-edge angle constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: con.effective_limits, step=0.1, unit='°',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Maximum bottom-side trailing-edge angle")
+        r += 1
+        SpaceR      (l,r, height=8)
+        r += 1
+        con = self.constraints.min_flap_angle
+        CheckBox    (l,r,c, text="Minimum Flap Angle",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate minimum flap angle constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: con.effective_limits, step=0.1, unit='°',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Minimum flap angle")
+        r += 1
+        con = self.constraints.max_flap_angle
+        CheckBox    (l,r,c, text="Maximum Flap Angle",
+            obj=con, prop=GeoConstraint_Definition.is_active,
+            disable=lambda con=con: con.disabled,
+            toolTip="Activate maximum flap angle constraint")
+        FieldF      (l,r,c+1, width=70, dec=2, lim=lambda con=con: con.effective_limits, step=0.1, unit='°',
+            obj=con, prop=GeoConstraint_Definition.value,
+            disable=lambda con=con: con.disabled or not con.is_active,
+            toolTip="Maximum flap angle")
+
         l.setColumnMinimumWidth (0,100)
-        l.setColumnStretch (5,2)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnStretch (4,2)
 
         return l
-
-    @override
-    def _on_widget_changed (self,*_):
-        """ slot for change of widgets"""
-        self.refresh()
-
 
 
 
 class Xo2_Curvature_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist curvature"""
-
-    _width  = (370, None)
-    _height = (390, None)
 
     name = "Curvature"
 
@@ -2002,40 +1905,15 @@ class Xo2_Curvature_Dialog (Xo2_Abstract_Options_Dialog):
 
         r += 1
         SpaceR      (l,r, height=5, stretch=0)
-
-        if self.shape_functions == Nml_optimization_options.HICKS_HENNE:
-            r += 1
-            Label       (l,r,c, get="Maximum number of spikes on ...", style=style.COMMENT, colSpan=4)
-            r += 1
-            FieldI      (l,r,c, lab='Top side', width=50, step=1, lim=(0,10),
-                         obj=self.curvature, prop=Nml_curvature.max_spikes_top,
-                         disable=lambda: self.curvature.auto_curvature,
-                         toolTip="Maximum number of curvature spikes") 
-            FieldF      (l,r,c+2, lab=" ... using Threshold  ", width=60, dec=2, lim=(0.01,1), step=0.01, rowSpan=2,
-                         align=Qt.AlignmentFlag.AlignVCenter,
-                         obj=self.curvature, prop=Nml_curvature.spike_threshold,
-                         disable=lambda: self.curvature.auto_curvature,
-                         toolTip="Threshold to detect spikes") 
-            r += 1
-            FieldI      (l,r,c, lab='Bottom side', width=50, step=1, lim=(0,10),
-                         obj=self.curvature, prop=Nml_curvature.max_spikes_bot,
-                         disable=lambda: self.curvature.auto_curvature,
-                         toolTip="Maximum number of curvature spikes") 
         r += 1
         SpaceR      (l,r, height=5, stretch=0)
         r += 1
-        Label       (l,r,c, get="Curvature control at LE and TE  ...", style=style.COMMENT, colSpan=4)
+        Label       (l,r,c, get="Curvature control at TE ...", style=style.COMMENT, colSpan=4)
         r += 1
         FieldF      (l,r,c, lab="Max at TE", width=60, dec=2, lim=(0.01,50), step=0.1, 
                      obj=self.curvature, prop=Nml_curvature.max_te_curvature,
                      disable=lambda: self.curvature.auto_curvature,
                      toolTip="Maximum curvature at trailing edge") 
-
-        if self.shape_functions == Nml_optimization_options.BEZIER:
-            r += 1
-            FieldF      (l,r,c, lab='Max diff at LE', width=60, step=1, lim=(0.1,50), dec=1, 
-                         obj=self.curvature, prop=Nml_curvature.max_le_curvature_diff,
-                         toolTip="Maximum difference of curvature of top and bottom side at leading edge") 
 
         r += 1
         l.setRowStretch (r,5)
@@ -2044,18 +1922,11 @@ class Xo2_Curvature_Dialog (Xo2_Abstract_Options_Dialog):
 
         return l
 
-    @override
-    def _on_widget_changed (self):
-        self.refresh(9)
-
 
 
 
 class Xo2_Flap_Definition_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit flap definition"""
-
-    _width  = 280
-    _height = 170
 
     name = "Flap Definition"
 
@@ -2079,6 +1950,10 @@ class Xo2_Flap_Definition_Dialog (Xo2_Abstract_Options_Dialog):
         r += 1
         FieldF  (l,r,c, lab="Default angle", width=60, step=1, lim=(-30, 30), dec=1, unit='°',
                         obj=self.operating_conditions, prop=Nml_operating_conditions.flap_angle_default)
+        r += 1
+        SpaceR  (l, r, height=10, stretch=3) 
+        r += 1
+        Label   (l,r,c, get="Set min/max flap angles in the Constraints dialog.", style=style.COMMENT, colSpan=4)
         r += 1
         SpaceR  (l, r, stretch=3) 
 

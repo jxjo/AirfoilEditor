@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 SW_NORMAL = 1 
 SW_MINIMIZE = 6 
 
-EXE_DIR_WIN    = 'windows'                          # directory of exe files 
-EXE_DIR_UNIX   = 'linux'                    
+EXE_DIR_WIN    = 'assets/windows'                   # directory of exe files 
+EXE_DIR_UNIX   = 'assets/linux'                    
 
 TMP_INPUT_NAME = 'tmp~'                             # temporary input file (~1 will be appended)
 TMP_INPUT_EXT  = '.inp'
@@ -59,28 +59,16 @@ def is_younger (filePath, age_in_seconds):
 
 
 def file_in_use (filePath):
-    """ returns True if file is in use by another process
-
-        performs one retry after 100 ms
-    """
+    """ returns True if file is in use by another process"""
     
     in_use = False
-    attempts = 2
-    delay_s = 0.1
 
     if os.path.exists(filePath):
-        for attempt in range(attempts):
-            try:
-                os.rename(filePath, filePath)
-                in_use = False
-                break
-            except OSError:
-                in_use = True
-                if attempt < attempts - 1 and delay_s > 0:
-                    time.sleep(delay_s)
-
-        if in_use:
+        try:
+            os.rename(filePath, filePath)
+        except OSError as e:
             logger.warning (f"File {filePath} in use by another process")
+            in_use = True 
 
     return in_use 
 
@@ -130,12 +118,12 @@ class X_Program:
         return self._workingDir
     
    
-    def isReady (self, assets_dir : str, min_version : str = '') -> bool:
+    def isReady (self, project_dir : str, min_version : str = '') -> bool:
         """ 
         checks if self is available with min_version.
 
         Args: 
-            assets_dir: directory where there should be ./windows or ./linux subdir with exe 
+            project_dir: directory where there should be ./assets/... 
             min_version: check fpr min version number 
         """
 
@@ -151,7 +139,7 @@ class X_Program:
 
         if self.exe_dir is None: 
 
-            exe_dir, ready_msg = self._get_exe_dir (assets_dir)
+            exe_dir, ready_msg = self._get_exe_dir (project_dir)
 
             if exe_dir is None:                                        # self not found anywhere
                 cls.ready_msg = ready_msg
@@ -487,7 +475,7 @@ class X_Program:
         return dict(startupinfo=None) 
 
 
-    def _get_exe_dir (self, assets_dir : str): 
+    def _get_exe_dir (self, project_dir : str): 
         """
         trys to find path to call programName
         
@@ -498,14 +486,19 @@ class X_Program:
         ready_msg = None 
 
         if os.name == 'nt':
-            exe_dir = EXE_DIR_WIN
+            assets_dir = EXE_DIR_WIN
         else: 
-            exe_dir = EXE_DIR_UNIX  
+            assets_dir = EXE_DIR_UNIX  
 
-        check_dir = os.path.join (assets_dir , exe_dir)                            #
+        assets_dir = os.path.normpath (assets_dir)  
+        check_dir1 = os.path.join (project_dir , assets_dir)                            # .\modules\assets\...
+        check_dir2 = os.path.join (os.path.dirname (project_dir), assets_dir)           # .\assets\...
 
-        if shutil.which (self.NAME_EXE, path=check_dir) : 
-            exe_dir  = os.path.abspath(check_dir) 
+        if shutil.which (self.NAME_EXE, path=check_dir1) : 
+            exe_dir  = os.path.abspath(check_dir1) 
+            ready_msg = f"{self.NAME_EXE} found in: {exe_dir}"
+        elif shutil.which (self.NAME_EXE, path=check_dir2) : 
+            exe_dir  = os.path.abspath(check_dir2) 
             ready_msg = f"{self.NAME_EXE} found in: {exe_dir}"
         else: 
             exe_path = shutil.which (self.NAME_EXE)  
@@ -513,8 +506,7 @@ class X_Program:
                 exe_dir = os.path.dirname (exe_path)
                 ready_msg = f"{self.NAME_EXE} using OS search path to execute: {exe_dir}"
             else: 
-                exe_dir = None
-                ready_msg = f"{self.NAME_EXE} not found either via OS search path nor in '{check_dir}'" 
+                ready_msg = f"{self.NAME_EXE} not found either via OS search path nor in '{check_dir1}' or '{check_dir2}'" 
         return exe_dir, ready_msg
 
 
@@ -740,9 +732,10 @@ class Worker (X_Program):
 
     @staticmethod
     def get_existingPolarFile (airfoil_pathFileName, 
-                               polarType : str, re : float, ma : float, 
-                               ncrit : float, xtript : float, xtripb : float,
-                               flap_angle : float, x_flap : float, y_flap : float, y_flap_spec : str) -> str:
+                               polarType : str, re : float, ma : float, ncrit : float,
+                               xtript : float = None, xtripb : float = None,
+                               flap_angle : float = 0.0, x_flap : float = 0.75,
+                               y_flap : float = 0.0, y_flap_spec : str = 'y/t') -> str:
         """ 
         Get pathFileName of polar file if it exists 
         """      
@@ -790,6 +783,13 @@ class Worker (X_Program):
                 ok = ok and parm_is_ok ("N",  ncrit, 1, args)
                 ok = ok and parm_is_ok ("T",  int(polarType[1:]), 0, args)
 
+                # optional transition settings in file name
+                xtript_arg = None if xtript is None else round (xtript * 100, 0)
+                ok = ok and parm_is_ok ("Trt", xtript_arg, 0, args)
+
+                xtripb_arg = None if xtripb is None else round (xtripb * 100, 0)
+                ok = ok and parm_is_ok ("Trb", xtripb_arg, 0, args)
+
                 # flapped part '_f-1.4_xf0.72_yf0.5_yspecYC' for non default values
 
                 ok = ok and parm_is_ok ("f", flap_angle, 1, args)
@@ -802,14 +802,6 @@ class Worker (X_Program):
 
                 y_flap_spec_arg = 'YC' if y_flap_spec =='y/c' else None
                 ok = ok and parm_is_ok ("yspec", y_flap_spec_arg, None, args)
-
-                # transition part '_Trt60_Trb20' for non default values
-                
-                xtript_arg = None if xtript is None else round (xtript*100, 0)
-                ok = ok and parm_is_ok ("Trt", xtript_arg, 0, args)
-
-                xtripb_arg = None if xtripb is None else round (xtripb*100, 0)
-                ok = ok and parm_is_ok ("Trb", xtripb_arg, 0, args)
 
                 if ok:
                     # logger.debug (f"<class Worker> found polar file {fileName} in {polarDir}")
@@ -1097,9 +1089,9 @@ class Worker (X_Program):
             tmp.write ("&xfoil_run_options\n")
             tmp.write ("  ncrit = %.1f\n" % ncrit) 
             if xtript is not None:
-                tmp.write (f"  xtript = {xtript:.2f}\n")
+                tmp.write ("  xtript = %.2f\n" % xtript)
             if xtripb is not None:
-                tmp.write (f"  xtripb = {xtripb:.2f}\n")
+                tmp.write ("  xtripb = %.2f\n" % xtripb)
             if detect_bubble and Worker.can_detect_bubbles():
                 tmp.write ("  detect_bubble = .true.\n") 
             tmp.write ("/\n")
@@ -1162,3 +1154,92 @@ class Worker (X_Program):
 
         return tmpFilePath              
 
+
+# -------------- End --------------------------------------
+
+
+
+
+# Main program for testing 
+if __name__ == "__main__":
+
+    # init logging 
+    from ..base.common_utils      import init_logging
+    init_logging (level= logging.DEBUG)
+
+
+    Worker().isReady (project_dir="..\\..", min_version='1.0.3')
+
+    if Worker.ready:
+
+        worker = Worker()
+
+        if os.path.isfile ('..\\..\\test_airfoils\\MH 30.dat'):
+            airfoil = '..\\..\\test_airfoils\\MH 30.dat'
+        elif os.path.isfile ('MH 30.dat'):
+            airfoil = 'MH 30.dat'
+        else: 
+            logger.error (f"Airfoil file 'MH 30.dat' not found")
+            exit()
+
+        # build name of polar dir from airfoil file 
+        polarDir = str(Path(airfoil).with_suffix('')) + '_polars'
+
+        # ------- sync test ---------------------------------------------
+
+        try: 
+            worker.generate_polar (airfoil, 'T1', 700000, 0.0, 8.0, flap_angle=5.12, run_async=False)
+
+            worker.generate_polar (airfoil, 'T1', 700000, 0.0, 8.0, run_async=False)
+
+            logger.info ("\n".join (worker._pipe_out_lines))
+            polar_file = worker.get_existingPolarFile (airfoil, 'T1', 700000, 0.0, 8.0, flap_angle=5.12)
+
+            if polar_file:
+                logger.info  (f"polar file found: {polar_file}")
+            else: 
+                logger.error (f"polar file not found")
+
+            worker.finalize ()
+            worker.remove_polarDir (airfoil)
+
+        except ValueError as exc:
+            logger.error (f"{exc}")
+        except RuntimeError as exc:
+            # logger.error (f"Polar failed: {exc}")
+            logger.error (f"{worker}: {worker.finished_errortext}")
+
+        
+
+        # ------- async test ---------------------------------------------
+
+        worker = Worker()
+
+        try: 
+            worker.generate_polar (airfoil, 'T1', 700000, 0.0, 8.0, run_async=True)
+
+            secs = 0 
+            while worker.isRunning ():
+                time.sleep (0.5)
+                secs += 0.5
+                logger.debug (f"{worker} waiting: {secs}s")
+
+            if worker.finished_returncode == 0:
+
+                polar_file = worker.get_existingPolarFile (airfoil, 'T1', 700000, 0.0, 8.0)
+
+                if polar_file:
+                    logger.info  (f"polar file found: {polar_file}")
+                else: 
+                    logger.error (f"polar file not found")
+            else: 
+                logger.error (f"{worker}: {worker.finished_errortext}")
+
+            worker.finalize ()
+            worker.remove_polarDir (airfoil)
+
+        except ValueError as exc:
+            logger.error (f"{exc}")
+        except RuntimeError as exc:
+            # logger.error (f"Polar failed: {exc}")
+            logger.error (f"{worker}: {worker.finished_errortext}")

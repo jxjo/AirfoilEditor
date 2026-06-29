@@ -14,11 +14,10 @@ logger = logging.getLogger(__name__)
 import os
 import sys
 import types
-from pathlib            import Path
 from typing             import override
 from enum               import Enum
 
-from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QEvent
+from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer
 
 from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
 from PyQt6.QtWidgets    import (QApplication, QWidget, QPushButton, QMenu,
@@ -116,8 +115,8 @@ class Icon (QIcon):
 
     cache     = {}
 
-    # 'icons' directory - has to be set at runtime as it differs between pip, frozen and dev mode
-    ICONS_PATH : Path = None        
+    # parent of 'icons' directory - has to be set at runtime - defaults to grand parent of self  dir
+    RESOURCES_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))            
  
 
     @staticmethod
@@ -130,8 +129,10 @@ class Icon (QIcon):
 
         ico = None
 
-        if Icon.ICONS_PATH is None:
-            raise ValueError ("Icon.ICONS_PATH must be set before using icons")
+        if Icon.RESOURCES_DIR is None:
+            raise ValueError ("Icon.RESOURCES_DIR must be set before using icons")
+        else:
+            icon_dir = os.path.join (Icon.RESOURCES_DIR, "icons")
 
         # Check if icon_name looks like a filename (has extension)
         if icon_name and '.' in icon_name:
@@ -150,15 +151,15 @@ class Icon (QIcon):
 
         # read icon from file via QIcon 
         else: 
-            if Path(filename).is_file():
-                icon_path = Path(filename)
+            if os.path.isfile(filename):
+                icon_pathFilename = filename
             else:   
-                icon_path = Icon.ICONS_PATH / filename
-            if icon_path.is_file(): 
-                ico = QIcon (str(icon_path))
+                icon_pathFilename = os.path.join (icon_dir, filename)
+            if os.path.isfile(icon_pathFilename): 
+                ico = QIcon (icon_pathFilename)
                 Icon.cache [filename] = ico 
             else:
-                logger.error (f"Icon '{icon_path}' not found")
+                logger.error (f"Icon '{icon_pathFilename}' not found")
         return ico 
 
 
@@ -585,7 +586,7 @@ class Widget:
         have_called = self._set_value_callback ()
 
         if have_called and self._signal: 
-            QTimer.singleShot(0, self._emit_change)     # delayed emit 
+            self._emit_change()                         # emit immediately so close-on-deactivate sees it
 
         self._while_setting = False                
 
@@ -711,14 +712,6 @@ class Widget:
         Widget._set_height (widget, self._height)
 
 
-    def event (self, e: QEvent) -> bool:
-        """ override to suppress tooltip propagation to parent when no toolTip is defined """
-        if e.type() == QEvent.Type.ToolTip and self._toolTip is None:
-            e.accept()                      # accept = handled; prevents propagating to parent
-            return True
-        return super().event(e)
-
-
     def _set_QWidget_toolTip (self):
         """ set a toolTip into self QWidget"""
 
@@ -781,7 +774,7 @@ class Widget:
 
             # if it's background color apply alpha
             if color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]:
-                if aStyle == style.GOOD : 
+                if aStyle == style.GOOD or aStyle == style.HINT:
                     color.setAlphaF (0.3) 
                     color_disabled.setAlphaF (0.15)
                 else:
@@ -1177,14 +1170,8 @@ class FieldI (Field_With_Label, QSpinBox):
             self._on_finished ()
 
 
-    @override
-    def mouseDoubleClickEvent(self, event):
-        super().mouseDoubleClickEvent(event)
-        event.accept()                                          # prevent propagation to parent
-
-
     def _on_finished(self):
-      self._set_value (self.value())
+        self._set_value (self.value())
 
 
 
@@ -1315,12 +1302,6 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         super().stepBy(step)
         if self.value() != value:
             self._on_finished ()
-
-
-    @override
-    def mouseDoubleClickEvent(self, event):
-        super().mouseDoubleClickEvent(event)
-        event.accept()                                          # prevent propagation to parent
 
 
     def _on_finished(self):
@@ -1534,8 +1515,10 @@ class Button (Widget, QPushButton):
         super()._set_Qwidget (**kwargs)        
         if self._button_style == button_style.PRIMARY:
             self.setDefault (True)
+            self.setAutoDefault (True)
         else: 
             self.setDefault(False)
+            self.setAutoDefault(False)
 
 
 
@@ -1845,19 +1828,6 @@ class ComboBox (Field_With_Label, QComboBox):
     def _on_selected (self):
       self._set_value (self.currentText())
       self._set_placeholder_text()
-
-
-    @override
-    def showPopup(self):
-        """Override to refresh items before showing dropdown"""
-
-        old_options = self._options.copy() if self._options else []
-        self._get_properties()
-
-        if old_options != self._options:
-            self._set_Qwidget ()
-        
-        super().showPopup()
 
 
     def _set_placeholder_text (self):

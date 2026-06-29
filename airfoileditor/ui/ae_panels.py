@@ -435,7 +435,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         FieldF (l,r,c, lab="TE gap", width=75, unit="%", step=0.1,
                 obj=lambda: self.geo, prop=Geometry.te_gap, disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
-                hide=lambda: not self.is_mode_modify or self.geo.isCurve,
+                hide=lambda: not self.is_mode_modify , # or self.geo.isCurve,
                 toolTip="Set trailing edge gap with a flexible blending range")
         r += 1
         SpaceR (l,r, height=5)
@@ -478,22 +478,10 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
     def do_blend_with (self): 
         """ blend with another airfoil - open blend airfoil dialog """ 
 
-        dialog = Blend_Airfoil_Dialog (self, self.airfoil, self.app_model.airfoil_seed, 
-                                       parentPos=(0.75, 0.2), dialogPos=(0,1))  
-
-        dialog.sig_airfoil_2_changed.connect    (self.app_model.set_airfoil_2)
-        dialog.sig_blend_changed.connect        (self.app_model.notify_airfoil_geo_changed)
-
-        dialog.exec()     
-
-        if dialog.airfoil2 is not None: 
-            # do final blend with high quality (splined) 
-            self.airfoil.geo.blend (self.app_model.airfoil_seed.geo, 
-                                      dialog.airfoil2.geo, 
-                                      dialog.blendBy) 
-            self.app_model.set_airfoil_2 (None)
-            self.app_model.notify_airfoil_changed()
-
+        dialog = Blend_Airfoil_Dialog (self, self.app_model, parentPos=(0.75, 0.2), dialogPos=(0,1),
+                                close_on_click_outside=False,
+                                lock_widget_while_open=self.parent_container)
+        dialog.show()     
 
 
     def do_le_radius (self): 
@@ -501,17 +489,19 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
         if self.airfoil.isBezierBased: return                   # not for Bezier airfoils
 
-        dialog = LE_Radius_Dialog (self, self.app_model, parentPos=(0.25, 0.75), dialogPos=(0,1))
-        dialog.exec()     
+        dialog = LE_Radius_Dialog (self, self.app_model, parentPos=(0.5, 0.6), dialogPos=(0,1),
+                                   close_on_click_outside=False,
+                                   lock_widget_while_open=self.parent_container)
+        dialog.show()     
 
 
     def do_te_gap (self): 
         """ set TE gap - run set TE gap dialog""" 
 
-        if self.airfoil.isBezierBased: return                   # not for Bezier airfoils
-
-        dialog = TE_Gap_Dialog (self, self.app_model, parentPos=(0.25, 0.75), dialogPos=(0,1))
-        dialog.exec()     
+        dialog = TE_Gap_Dialog (self, self.app_model, parentPos=(0.5, 0.6), dialogPos=(0,1),
+                                close_on_click_outside=False,
+                                lock_widget_while_open=self.parent_container)
+        dialog.show()     
 
 
 
@@ -607,13 +597,10 @@ class Panel_Panels (Panel_Airfoil_Abstract):
     def do_repanel (self): 
         """ repanel airfoil - open repanel dialog""" 
 
-        dialog = Repanel_Airfoil_Dialog (self, self.app_model,
-                                         parentPos=(0.35, 0.75), dialogPos=(0,1))
-        dialog.exec()     
-
-
-    def _on_panelling_finished (self, aSide):
-        """ slot for panelling (dialog) finished - reset airfoil"""
+        dialog = Repanel_Airfoil_Dialog (self, self.app_model,  parentPos=(0.75, 0.3), dialogPos=(0,1),
+                                close_on_click_outside=False,
+                                lock_widget_while_open=self.parent_container)
+        dialog.show()     
 
 
     def _style_panel (self):
@@ -797,8 +784,10 @@ class Panel_Flap (Panel_Airfoil_Abstract):
     def do_flap (self): 
         """ set flaps - run set flap dialog""" 
 
-        dialog = Flap_Airfoil_Dialog (self, self.app_model, parentPos=(0.55, 0.80), dialogPos=(0,1.2))
-        dialog.exec()     
+        dialog = Flap_Airfoil_Dialog (self, self.app_model, parentPos=(0.9, 0.5), dialogPos=(1,1),
+                                close_on_click_outside=False,
+                                lock_widget_while_open=self.parent_container)
+        dialog.show()     
 
 
     @override

@@ -8,20 +8,14 @@ Xoptfoil2 controler for run state
 """
 import os
 
-from enum                   import StrEnum
 from datetime               import datetime
+from ..base.common_utils    import StrEnum_Extended
 
 from .xo2_driver            import Xoptfoil2
 
 #-------------------------------------------------------------------------------
 # enums   
 #-------------------------------------------------------------------------------
-
-class StrEnum_Extended (StrEnum):
-    """ enum extension to get a list of all enum values"""
-    @classmethod
-    def values (cls):
-        return [c.value for c in cls]
 
 
 class xo2_state (StrEnum_Extended):

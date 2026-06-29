@@ -7,6 +7,7 @@ Common Utility functions for convenience - no dependencies from other modules
 
 import os
 import json
+from enum                   import StrEnum
 from pathlib                import Path
 from typing                 import override
 from termcolor              import colored
@@ -20,6 +21,14 @@ logger = logging.getLogger(__name__)
 #------------------------------------------------------------------------------
 # base type utils  
 #------------------------------------------------------------------------------
+
+
+class StrEnum_Extended (StrEnum):
+    """Enum extension with convenience access to raw values."""
+
+    @classmethod
+    def values (cls):
+        return [c.value for c in cls]
 
 
 def clip(val, min_, max_):

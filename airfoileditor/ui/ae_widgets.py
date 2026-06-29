@@ -170,8 +170,6 @@ def get_next_airfoil_in_dir (anAirfoil : Airfoil, example_if_none=False) -> Airf
 class Airfoil_Select_Open_Widget (Widget, QWidget):
     """ 
     Compound widget to either select or open new airfoil 
-
-    _last_dir : str | None = None                   # class-level LRU: last directory opened via dialog
         - ComboBox (optional with spin) with files in same directory
         - optional Open button to select new airfoil 
         - optional Delete button to delete current   
@@ -418,6 +416,4 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
             toolTip = self.airfoil.info_as_html if self.airfoil else self._toolTip 
 
-            self._combo_widget._toolTip = toolTip
-            self._combo_widget._set_QWidget_toolTip ()
-            # self._combo_widget.setToolTip (toolTip)  
+            self._combo_widget.setToolTip (toolTip)  

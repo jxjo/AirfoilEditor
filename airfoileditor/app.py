@@ -29,14 +29,14 @@ import argparse
 from PyQt6.QtCore           import pyqtSignal, QMargins, Qt
 from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget 
 from PyQt6.QtWidgets        import QGridLayout
-from PyQt6.QtGui            import QCloseEvent, QGuiApplication, QIcon
+from PyQt6.QtGui            import QCloseEvent, QGuiApplication
 
 # DEV: when running app.py as main, set package property to allow relative imports
 if __name__ == "__main__":  
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = "airfoileditor"
 
-from .resources              import get_icons_path, get_icon_path
+from .                       import resources_dir_ae
 from .base.common_utils      import * 
 
 from .model.xo2_input        import Input_File
@@ -126,7 +126,7 @@ class Main (QMainWindow):
 
         # main window style - dark or light mode
 
-        self._set_win_style (app_icon_name='AE.ico')
+        self._set_win_style (resources_dir_ae(), 'AE.ico')
         self._set_win_title ()
         self._set_win_geometry ()
 
@@ -196,22 +196,22 @@ class Main (QMainWindow):
         self.setWindowTitle (APP_NAME + "  v" + str(__version__) + "  " + ext)
 
 
-    def _set_win_style (self, icons_path : Path = None, app_icon_name : str  = None):
+    def _set_win_style (self, resources_dir, icon_filename):
         """ 
         Set window style according to settings
         """
 
         # set resources dir for Icons
-        if icons_path is None:
-            icons_path = get_icons_path()
-        Icon.ICONS_PATH = icons_path
 
-        # get and set app icon  
-        app_icon_path = get_icon_path(app_icon_name) 
-        if app_icon_path:
-            self.setWindowIcon (QIcon (str(app_icon_path)))  
+        if resources_dir is not None:
+            Icon.RESOURCES_DIR = resources_dir
+
+        # set app icon    
+
+        self.setWindowIcon(Icon(icon_filename=icon_filename))
 
         # set dark or light mode
+
         scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)   # either unknown (from System), Dark, Light
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])    # set scheme of QT
 
@@ -226,8 +226,11 @@ class Main (QMainWindow):
 
         geometry = app_settings.get('window_geometry', [])
         maximize = app_settings.get('window_maximize', False)
+        screen_number = app_settings.get('window_screen', None)
+
         Win_Util.set_initialWindowSize (self, size_frac= (0.80, 0.80), pos_frac=(0.1, 0.1),
-                                        geometry=geometry, maximize=maximize)
+                                        geometry=geometry, maximize=maximize,
+                                        screen_number=screen_number)
 
 
     def _save_app_settings (self):
@@ -237,6 +240,7 @@ class Main (QMainWindow):
 
         s.set ('window_maximize', self.isMaximized())
         s.set ('window_geometry', self.normalGeometry().getRect())
+        s.set ('window_screen', Win_Util.screen_number_for_window (self))
 
         airfoil = self._app_model.airfoil
         if airfoil and not airfoil.isExample: 

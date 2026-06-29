@@ -17,7 +17,7 @@ from PyQt6.QtCore           import QTimer
 from PyQt6.QtWidgets        import QDialogButtonBox, QWidget
 
 from .common_utils          import Parameters
-from .panels                import Dialog
+from .panels                import Dialog_Modal
 from .widgets               import *
 
 import logging
@@ -227,7 +227,7 @@ class Update_Checker:
 
 
 
-class Update_Info_Dialog (Dialog):
+class Update_Info_Dialog (Dialog_Modal):
     """
     Inform user about a newer version of app
     """
@@ -237,7 +237,7 @@ class Update_Info_Dialog (Dialog):
     _width  = 420
     _height = 230 
 
-    def __init__(self, parent, app_name : str, package_name, latest_version : str):
+    def __init__(self, parent, app_name : str, package_name : str, latest_version : str):
 
         self._app_name = app_name
         self._latest_version = latest_version

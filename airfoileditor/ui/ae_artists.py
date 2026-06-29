@@ -838,7 +838,7 @@ class Flap_Artist (Artist):
             label = f"{self.design_airfoil.name_to_show} flapped"
 
             self._plot_dataItem  (flapped_airfoil.x, flapped_airfoil.y, name=label, pen = pen, 
-                                    antialias = False, zValue=5)
+                                  zValue=5)
 
             # plot flap angle 
 
@@ -892,13 +892,12 @@ class TE_Gap_Artist (Artist):
         if not self.design_airfoil: return
 
         color = _color_airfoil (self.airfoils, self.design_airfoil)
-        color.setAlphaF (0.8)
 
         for line in [self.design_airfoil.geo.upper, 
                      self.design_airfoil.geo.lower]:
             
             style = _linestyle_of (line._type)
-            pen   = pg.mkPen(color, width=1, style=style)
+            pen   = pg.mkPen(color, width=1.0, style=style)
 
             p = self._plot_dataItem (line.x, line.y, pen = pen, zValue=5)
 
@@ -956,15 +955,14 @@ class LE_Radius_Artist (Artist):
         if not self.design_airfoil: return
 
         color = _color_airfoil (self.airfoils, self.design_airfoil)
-        color.setAlphaF (0.8)
             
         for line in [self.design_airfoil.geo.upper, 
                      self.design_airfoil.geo.lower]:
             
             style = _linestyle_of (line._type)
-            pen   = pg.mkPen(color, width=1, style=style)
+            pen   = pg.mkPen(color, width=1.0, style=style)
 
-            p = self._plot_dataItem (line.x, line.y, pen = pen, zValue=5)
+            self._plot_dataItem (line.x, line.y, pen = pen, zValue=5)
 
         # plot le circle 
 
@@ -1352,10 +1350,8 @@ class Curvature_Artist (Artist):
             if self.show_derivative:
                 if self.show_upper: 
                     self._plot_d2_curvature (airfoil.geo.curvature.upper, color, airfoil.usedAsDesign)
-                    self._plot_d5_jumps (airfoil.geo.upper, color, zValue+1)
                 if self.show_lower: 
                     self._plot_d2_curvature (airfoil.geo.curvature.lower, color, airfoil.usedAsDesign)
-                    self._plot_d5_jumps (airfoil.geo.lower, color, zValue+1)
 
     
     def _plot_le_te_max_point (self, aSide : Line, color, usedAsDesign : bool ):
@@ -1389,29 +1385,6 @@ class Curvature_Artist (Artist):
             anchor = (0.5,1.2) if side.isUpper else (0.5,-0.2)
             self._plot_point (reversal_x, 0.0, color=color, size=2, text="R", anchor=anchor,
                                 zValue=zValue, textColor=color)
-
-
-    def _plot_d5_jumps (self, side : Side_Airfoil_BSpline, color : QColor, zValue=1):
-        """ plot d5 jumps of a BSpline """
-
-        if not isinstance (side, Side_Airfoil_BSpline):
-            return
-
-        bspline = side.curve
-        cp_y    = bspline.cpoints_y
-        u_inner = bspline.knots(only_inner=True)
-
-        # 5th finite difference - the jump of the 4th derivative at each inner knot
-        d5y = np.diff(cp_y, n=5)
-        d5 = d5y                                        # y is relevant for bumps
-        x_d5 = bspline.eval(u_inner, update_cache=False)[0]                          # x position of d5 jumps, ignore first and last 2 knots where d5 is not defined
-
-        # plot d5 jumps: vertical line at each inner knot x position
-        style = Qt.PenStyle.SolidLine if side.isUpper else Qt.PenStyle.DotLine
-        pen = pg.mkPen(color, width=3, style=style)
-        for i in range(len(d5)):
-            self._plot_dataItem([x_d5[i], x_d5[i]], [0.0, d5[i]*10], pen=pen, name="d5y jump * 10",
-                                antialias=True, zValue=zValue+1)
 
 
     def _plot_d2_curvature (self, side : Line, color : QColor, usedAsDesign : bool):

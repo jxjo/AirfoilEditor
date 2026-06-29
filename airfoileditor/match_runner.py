@@ -17,7 +17,7 @@ from PyQt6.QtCore                   import QThread, pyqtSignal, QEventLoop
 from .base.math_util                import nelder_mead, derivative1, interpolate, differential_evolution
 from .base.spline                   import Bezier
 from .base.widgets                  import style 
-from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline, clip
+from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline
 from .model.geometry                import Line
 from .model.geometry_spline         import Geometry_Splined
 from .model.geometry_curve          import BSpline, Side_Airfoil_Curve, Geometry_Curve
@@ -81,7 +81,6 @@ class Matcher (QThread):
                             region : tuple | None = None,
                             max_reversals: int = 0,
                             threshold: float = Line.CURV_THRESHOLD,
-                            smooth: bool = False,
                             scale: float = 0.01) -> float:
         """ 
         Penalize curvature sign changes beyond the allowed reversal count.
@@ -121,7 +120,6 @@ class Matcher (QThread):
         if len(curv_body) < 2:
             return 0.0
 
-
         # Track sign changes from left to right
         signs = np.sign(curv_body)
         signs[signs == 0] = 1  # treat zero as positive to avoid ambiguity
@@ -150,15 +148,16 @@ class Matcher (QThread):
                 max_val = np.max(np.abs(segment))
                 segment_maxs.append(max_val)
             
-            # Sort segments by area (largest to smallest)
+            # Sort segments by max value (largest to smallest)
             segment_maxs.sort(reverse=True)
             # We want to keep (max_reversals + 1) most significant segments
             # The smaller rest should be penalized
             n_segments_to_keep = max_reversals + 1
-            segments_to_penalize = segment_maxs[n_segments_to_keep:]
+            max_to_penalize = segment_maxs[n_segments_to_keep:]
             
-            # Sum the max values of the segments we're penalizing
-            penalty_sum = sum(segments_to_penalize)
+            # Sum the max values minus threshold of the segments we're penalizing
+            for val in max_to_penalize:
+                penalty_sum += max(0.0, val - threshold)   
         
         # Apply scaling
         if penalty_sum > 1.0:
@@ -255,61 +254,6 @@ class Matcher (QThread):
 
 
     @staticmethod
-    def _penalty_c4_jumps (curve : BSpline, scale = 1.0):
-        """Compute a normalized C4 continuity soft penalty for uniform B-Splines of degree 4.
-
-        Measures the relative jumps of the 4th derivative at inner knots.
-        The 4th derivative is piecewise constant (one value per span) and
-        proportional to the 4th finite difference of the control points.
-        The jump at each knot is the 5th finite difference, normalized by
-        the average magnitude of the adjacent 4th differences.
-
-        This normalization makes the penalty:
-            - Scale-independent (works across different airfoil sizes)
-            - Geometrically adaptive (tolerates larger jumps at the nose
-            where curvature is naturally high, while penalizing small
-            bumps on the mid-section and trailing edge region)
-
-        Args:
-            curve: BSpline object representing the curve.
-            scale: Scaling factor for the returned penalty.
-
-        Returns:
-            Scalar penalty value. Zero indicates perfect C4 continuity
-            at all inner knots.
-        """
-
-        if not isinstance(curve, BSpline) or curve.degree != 4:
-            return 0.0
-
-        if curve.ncp <= 6:
-            return 0.0
-
-        # get curvature at inner knots - used for normalization
-        u_knots = curve.knots (only_inner=True)
-        k = curve.curvature (u_knots)
-
-        # 4th finite difference - the piecewise constant 4th derivative in each span
-        # 5th finite difference - the jump of the 4th derivative at each inner knot
-        cp_y = curve.cpoints_y
-        d5y = np.diff(cp_y, n=5)
-
-        # normalize by local curvature magnitude: high-κ regions (LE, κ>1) tolerate larger d5 jumps;
-        # low-κ regions (body, κ≤1) are fully penalized - denominator clamped at 1.0
-        d5y_norm = d5y / np.maximum(np.abs(k) ** 0.3, 1.0)
-
-        # we can just look at y direction as x direction is more uniform and less critical for smoothness
-        # L1 norm: each knot contributes equally - avoids one large outlier dominating (L2 would)
-        pen = np.sum (np.abs(d5y_norm) ** 2)  
-
-        pen *= scale 
-
-        # print (f"curvature at inner knots: {k}  dy5: {d5y} dy5_norm: {d5y_norm}  C4 penalty: {pen:.6f} )")
-
-        return pen 
-
-
-    @staticmethod
     def _penalty_bumpiness (x: np.ndarray, curv: np.ndarray,
                             max_reversals: int = 0,
                             scale: float = 1.0) -> float:
@@ -348,7 +292,7 @@ class Matcher (QThread):
         #  - also becoming negative (reversal of curvature)
         # -> avoid reversals of derivative of curvature
 
-        pen_d = Matcher._penalty_reversals (x_body, curv_d, threshold=0.03, scale=0.1)
+        pen_d = Matcher._penalty_reversals (x_body, curv_d, threshold=0.02, scale=0.1)
 
         # derivative of curvature decreases and may increase again
         # -> allow max_reversals of derivative of derivative
@@ -445,76 +389,61 @@ class Matcher (QThread):
         
         targets = self._targets
 
+        self._nevals += 1                                           # counter of objective evaluations
+
         # rebuild BSpline 
+
         self._map_dv_to_curve (variables)
 
-        # get needed values from current bspline
+        # get x and curvature of current curve 
+
         x      = self._side.x                                       # single vectorized call
-
-        # fast check if x is monoton 
-
-        x_diff = np.diff(x)
-        if not np.all(x_diff > 0):
-            # Return high penalty - optimizer should avoid these regions entirely
-            # logger.info (f"Non-monotonic x detected - returning high penalty")
-            return 10.0
-
-        # get curvature of current curve 
         c_line = self._side.curvature ()
         curv   = -c_line.y if self._side.isUpper else c_line.y      # curve for upper side has to be negated
 
         # -- rms of deviation - calc via linear interpolation of BSpline y values at target x 
 
-        if targets.min_rms:
-            self._side.reset_target_deviation ()                    # update target deviation line for current bspline shape
-            obj_rms = self._side.target_deviation.rms()             # get current rms from target deviation line
-        else:
-            obj_rms = 0.0  
+        self._side.reset_target_deviation ()                        # update target deviation line for current bspline shape
+        obj_rms = self._side.target_deviation.rms()                 # get current rms from target deviation line
 
         # -- le curvature is analytically enforced via cp_y[1] - but for low ncp it could be wrong
 
+        penalty_le_curv = 0.0
         if targets.le_curvature is not None:
-            penalty_le_curv = self._penalty_le_curv (curv[0], targets.le_curvature, threshold = 0.01, 
-                                        scale = 0.00001)
-        else:
-            penalty_le_curv = 0.0
+            penalty_le_curv = self._penalty_le_curv (curv[0], targets.le_curvature, threshold = 0.01, scale = 0.00001)
 
         # -- le curvature should be monotonically decreasing in the leading-edge region 
 
+        penalty_le_curv_monoton = 0.0   
         if targets.le_monoton:
             penalty_le_curv_monoton = self._penalty_le_curv_monoton (curv, scale=0.1) 
-        else:
-            penalty_le_curv_monoton = 0.0   
 
         # -- te curvature limit
 
+        penalty_te_curv = 0.0
         if targets.max_te_curvature is not None:
             penalty_te_curv = self._penalty_te_curv (curv[-1], targets.max_te_curvature, targets.max_nreversals,
-                                        scale = 0.0001)   # 0.01
-        else:
-            penalty_te_curv = 0.0
+                                        scale = 0.01)    
 
         # -- penalty for curvature derivatives not being smooth to avoid bumps 
 
+        penalty_bumps = 0.0
         if targets.bump_control:
             if self._side.isBSpline:
-                penalty_bumps = self._penalty_c4_jumps (self._curve, scale=0.01)
+                penalty_bumps = self._penalty_bumpiness (x, curv, targets.max_nreversals, scale=0.001)
             else:
                 penalty_bumps = self._penalty_bumpiness (x, curv, targets.max_nreversals, scale=0.001)
-        else:
-            penalty_bumps = 0.0
 
         # -- penalty for curvature reversals
 
         penalty_reversals = self._penalty_reversals (x, curv, region = (0.1, 1.0),
-                                        max_reversals = targets.max_nreversals,
-                                        scale = 0.005) 
+                                        max_reversals = targets.max_nreversals, scale = 0.005) 
 
         # objective function is sum of single objectives and penalties - should be as low as possible
         
         obj = obj_rms + penalty_le_curv + penalty_le_curv_monoton + penalty_te_curv + penalty_bumps + penalty_reversals
 
-        if self._nevals%50 == 0 or show_info:  
+        if self._nevals%100 == 0 or show_info:  
             logger.info (f"{self._nevals:4d}:  "
                     f"obj: {obj:.6f}   "
                     f"{('rms: '        + f'{obj_rms:.6f}   ') if obj_rms > 1e-9 else ''}"
@@ -524,10 +453,8 @@ class Matcher (QThread):
                     f"{('bumps: '      + f'{penalty_bumps:.6f}   ')   if penalty_bumps > 1e-9 else ''}"
                     f"{('reversals: '  + f'{penalty_reversals:.6f}')  if penalty_reversals > 1e-9 else ''}")
 
-        self._nevals += 1                       # counter of objective evaluations (for entertainment)
-
         # signal parent with new results 
-        if self._nevals%50 == 0 or show_info:  
+        if self._nevals%100 == 0 or show_info:  
             result = Match_Result(self._side, self._targets, rms=obj_rms, objective=obj, curv=curv)
             self.sig_new_results.emit (self._ipass, self._nevals, result)
             self.msleep(2)                      # give parent some time to do updates
@@ -593,7 +520,7 @@ class Matcher (QThread):
         max_iter  = len(dv_start) * 300                         # max_iter based on current number of variables
 
         res, niter = nelder_mead (f, dv_start,
-                    step=step_size, no_improve_thr=1e-6,             
+                    step=step_size, no_improve_thr=1e-7,             
                     no_improv_break_beginning=150, no_improv_break=100, #20
                     min_iter=200, max_iter=max_iter,        
                     bounds = bounds,

@@ -9,49 +9,41 @@ Extra functions (dialogs) to modify airfoil
 
 import numpy as np
 
-import pyqtgraph as pg
-
-from PyQt6.QtCore               import QCoreApplication, Qt
+from PyQt6.QtCore               import Qt, QCoreApplication
 from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 
 from ..base.widgets             import * 
-from ..base.panels              import Dialog
-from ..base.diagram             import Diagram, Diagram_Item
+from ..base.panels              import Dialog_Modal, Dialog_Modeless
+
 from ..model.airfoil            import Airfoil, Flap_Setter
-from ..model.geometry           import Geometry, Panelling
+from ..model.geometry           import Geometry
 from ..model.geometry_spline    import Geometry_Splined, Panelling_Spline
 from ..model.case               import Match_Targets
+from ..match_runner             import Match_Result, Matcher
 
 from .ae_widgets                import Airfoil_Select_Open_Widget
-from .ae_artists                import Panelling_Du_Artist
 
 from ..app_model                import App_Model
-from ..match_runner             import Matcher, Match_Result
 
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 
-class Blend_Airfoil_Dialog (Dialog):
-    """ Dialog to two airfoils into a new one"""
+class Blend_Airfoil_Dialog (Dialog_Modeless):
+    """ Dialog to blend two airfoils into a new one"""
 
     _width  = 560
-    _height = 180
 
     name = "Blend Airfoil with ..."
 
-    sig_blend_changed      = pyqtSignal ()
-    sig_airfoil_2_changed  = pyqtSignal (object)    # either airfoil or None
-
 
     def __init__ (self, parent : QWidget, 
-                  airfoil  : Airfoil, 
-                  airfoil_org : Airfoil,                # airfoil which will be blended...
+                  app_model : App_Model,
                   **kwargs): 
 
-        self._airfoil     = airfoil 
-        self._airfoil_org = airfoil_org
+        self._app_model = app_model
+
         self._airfoil2    = None
         self._airfoil2_copy = None
         
@@ -61,12 +53,61 @@ class Blend_Airfoil_Dialog (Dialog):
         super().__init__ (parent=parent, **kwargs)
 
 
+    @property
+    def app_model (self) -> App_Model:
+        return self._app_model
+    
+    @property
+    def airfoil (self) -> Airfoil:
+        return self.app_model.airfoil
+    
+    @property
+    def airfoil_seed (self) -> Airfoil:
+        """ original airfoil seed for blending """
+        return self.app_model.airfoil_seed
+
+    @property
+    def blendBy (self) -> float:
+        """ blend value"""
+        return self._blendBy
+    
+    def set_blendBy (self, aVal : float):
+        """ set new value - do Blend - signal change"""
+        self._blendBy = aVal
+        self.refresh()
+
+        # Blend with new blend value - use copy as airfoil2 could be normalized
+        if self._airfoil2_copy is not None: 
+            self.airfoil.geo.blend(self.airfoil_seed.geo, self._airfoil2_copy.geo, 
+                                     self._blendBy, moving=True)
+            self.app_model.notify_airfoil_geo_changed()
+
+
+    @property
+    def airfoil_2 (self) -> Airfoil:
+        """ airfoil to blend with """
+        return self.app_model.airfoil_2
+
+    def set_airfoil_2 (self, aAirfoil : Airfoil = None):
+        """ set new 2nd airfoil - do blend - signal change"""
+
+        self.app_model.set_airfoil_2 (aAirfoil)
+        self.refresh()
+
+        # first blend with new airfoil - use copy as airfoil2 could be normalized
+
+        self._airfoil2_copy = aAirfoil.asCopy() if aAirfoil is not None else None
+
+        if aAirfoil is not None: 
+            self.airfoil.geo.blend(self.airfoil_seed.geo, self._airfoil2_copy.geo, 
+                                     self._blendBy, moving=True)
+            self.app_model.notify_airfoil_geo_changed()
+
+
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
         r = 0 
-        # SpaceR (l, r, stretch=0, height=5) 
-        # r += 1
         Label  (l,r,1, colSpan=5, get="Select airfoil to blend with and adjust blending value")
         r += 1
         SpaceR (l, r, stretch=0, height=5) 
@@ -75,128 +116,53 @@ class Blend_Airfoil_Dialog (Dialog):
         Label  (l,r,3, get="Blended with")
         Label  (l,r,6, get="Airfoil 2")
         r += 1 
-        Field  (l,r,1, get=self._airfoil_org.fileName, width = 130)
+        Field  (l,r,1, get=self.airfoil_seed.fileName, width = 130)
         SpaceC (l,2, width=10, stretch=0)
         Slider (l,r,3, width=110, lim=(0,1), get=lambda: self.blendBy,
-                       set=self._set_blendBy, hide=lambda: self._airfoil2 is None)
+                       set=self.set_blendBy, hide=lambda: self.airfoil_2 is None)
         FieldF (l,r,4, width=60,  lim=(0, 100),get=lambda: self.blendBy, step=1, unit="%", dec=0,
-                       set=self._set_blendBy, hide=lambda: self.airfoil2 is None)
+                       set=self.set_blendBy, hide=lambda: self.airfoil_2 is None)
         SpaceC (l,5, width=10, stretch=0)
         Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
-                                    get=lambda: self.airfoil2, set=self._set_airfoil2,
+                                    get=lambda: self.airfoil_2, set=self.set_airfoil_2,
                                     addEmpty=True,                                  # do not show first airfoil in directory
-                                    initialDir=self._airfoil_org)
-
+                                    initialDir=self.airfoil_seed)
         SpaceC (l,7, width=5)
         r += 1
         SpaceR (l, r) 
 
         return l
 
-    @property
-    def blendBy (self) -> float:
-        """ blend value"""
-        return self._blendBy
-    
-    def _set_blendBy (self, aVal : float):
-        """ set new value - do Blend - signal change"""
-        self._blendBy = aVal
-        self.refresh()
 
-        # Blend with new blend value - use copy as airfoil2 could be normalized
-        if self._airfoil2_copy is not None: 
-            self._airfoil.geo.blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
-                                     self._blendBy, moving=True)
-            self.sig_blend_changed.emit()
+    def done(self, result: int) -> None:
+        """ close or x-Button pressed"""
+
+        if self._changes:
+            # do final blend with high quality (splined) 
+            self.airfoil.geo.blend (self.airfoil_seed.geo, self.airfoil_2.geo, self.blendBy) 
+            self.app_model.notify_airfoil_changed()
+
+        self.app_model.set_airfoil_2 (None)
+
+        return super().done(result)
 
 
-    @property
-    def airfoil2 (self) -> Airfoil:
-        """ airfoil to blend with """
-        return self._airfoil2
-    
-    def _set_airfoil2 (self, aAirfoil : Airfoil = None):
-        """ set new 2nd airfoil - do blend - signal change"""
-        self._airfoil2 = aAirfoil
-        self.refresh()
-        self.sig_airfoil_2_changed.emit (aAirfoil)
-
-        # first blend with new airfoil - use copy as airfoil2 could be normalized
-
-        self._airfoil2_copy = aAirfoil.asCopy() if aAirfoil is not None else None
-
-        if aAirfoil is not None: 
-            self._airfoil.geo.blend(self._airfoil_org.geo, self._airfoil2_copy.geo, 
-                                     self._blendBy, moving=True)
-            self.sig_blend_changed.emit()
 
 
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-
-        return buttonBox 
-
-
-class Repanel_Airfoil_Dialog (Dialog):
+class Repanel_Airfoil_Dialog (Dialog_Modeless):
     """ Dialog to repanel an airfoil"""
 
-    _width  = 460
-    _height = 400
+    _width  = 440
 
     name = "Repanel Airfoil"
-
-    class Item_Du_Distribution (Diagram_Item):
-        """ Compact Diagram_Item to embed Δu distribution in a dialog """
-
-        name         = "Panel du Distribution"
-        title        = None
-        subtitle     = None
-        min_width    = 200
-        min_height   = 80
-        show_buttons = False
-        show_coords  = False
-
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.setContentsMargins ( 0,10,0,0)
-
-        def setup_artists (self):
-            self._add_artist (Panelling_Du_Artist (self, self._dataObject))
-
-        def setup_viewRange (self):
-            self.viewBox.setDefaultPadding (0.0)
-            self.viewBox.setXRange (0, 1, padding=0.05)
-            self.viewBox.setYRange (0, 1.5, padding=0.0)
-            self.showGrid (x=True, y=True)
-
-
-    class Diagram_Du_Distribution (Diagram):
-        """ Tiny diagram widget that wraps Item_Du_Distribution for dialog embedding """
-
-        name = "Panel Distribution"
-
-        def create_view_panel (self):
-            pass                                            # no side panel for embedded use
-
-        def create_diagram_items (self):
-            self.graph_layout.setContentsMargins (0, 0, 10, 0)
-            item = Repanel_Airfoil_Dialog.Item_Du_Distribution (self, self._dataObject)
-            self._add_item (item, row=0, col=0, rowStretch=1)
 
 
     def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
 
 
         self._app_model = app_model
-        self._has_been_repaneled = False
 
         # init layout etc 
-
         super().__init__ (parent, **kwargs)
 
         # do a first repanel with the actual parameters 
@@ -215,11 +181,10 @@ class Repanel_Airfoil_Dialog (Dialog):
 
         l = QGridLayout()
         r = 0 
+        Label  (l,r,0, colSpan=5, style=style.COMMENT,
+            get="Adjust number of panels and density near the leading and trailing edges")
+        r += 1
         SpaceR (l, r, stretch=0, height=5) 
-        r += 1
-        Label  (l,r,0, colSpan=5, get="Adjust No of Panels and the extra density at leading and trailing edge")
-        r += 1
-        SpaceR (l, r, stretch=0, height=10) 
         r += 1 
         Label  (l,r,1, get="Panels", align=Qt.AlignmentFlag.AlignRight)
         FieldI (l,r,2, width=60, step=10, lim=(40, 400),
@@ -229,34 +194,26 @@ class Repanel_Airfoil_Dialog (Dialog):
         Slider (l,r,1, colSpan=3, width=150, align=Qt.AlignmentFlag.AlignHCenter,
                         lim=(40, 400), dec=0, # step=10,
                         obj=self.geo.panelling, prop=Panelling_Spline.nPanels)
-        # r += 1
         Label  (l,r,0, get="LE bunch")
         Label  (l,r,4, get="TE bunch")
 
         r += 1
         FieldF (l,r,0, width=60, step=0.02, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling.le_bunch,
+                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch,
                         style=self._le_bunch_style)
         Slider (l,r,1, width=100, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling.le_bunch)
+                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch)
 
         Slider (l,r,3, width=100, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling.te_bunch)
+                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
         FieldF (l,r,4, width=60, step=0.02, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling.te_bunch)
+                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
         r += 1
-        Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)  
-        l.setColumnStretch (5,1)      
-        r += 1
-        Label  (l,r,0, colSpan=5, style=style.COMMENT,
-                get=f"Mapping of evenly spaced {self.geo.CURVE_NAME} curve parameter")  
-        r += 1
-        self._du_diagram = Repanel_Airfoil_Dialog.Diagram_Du_Distribution (self, lambda: self.geo.panelling,
-                                                    height=(100, 120))
-        l.addWidget (self._du_diagram, r, 0, 1, 5)
-        l.setRowStretch (r, 1)
+        Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)        
+        SpaceC (l,5, width=5)
 
         return l
+
 
     def _le_bunch_message (self): 
         angle = self.geo.panelAngle_le
@@ -277,64 +234,36 @@ class Repanel_Airfoil_Dialog (Dialog):
             return style.NORMAL
 
 
-    def _set_default_values (self):
-        """ reset to default values"""
-
-        self.geo.panelling.set_le_bunch (self.geo.panelling.LE_BUNCH_DEFAULT)
-        self.geo.panelling.set_te_bunch (self.geo.panelling.TE_BUNCH_DEFAULT)
-        self.geo.panelling.set_nPanels  (self.geo.panelling.N_PANELS_DEFAULT)
-        self._on_widget_changed()     # repanel and refresh
-
-
     @override
-    def _on_widget_changed (self):
+    def _on_widget_changed (self, widget):
         """ slot a input field changed - repanel and refresh"""
+
+        super()._on_widget_changed (widget)
 
         self.geo._repanel (based_on_org=True)              # repanel based on original x,y 
         self.refresh()
         self._app_model.notify_airfoil_geo_paneling (True)
 
-        self._has_been_repaneled = True                      # for change detection 
 
-        self._du_diagram.refresh (also_viewRange=False)     # update Δu chart live
-
-
-    def close(self):
+    def done(self, result: int) -> None:
         """ close or x-Button pressed"""
 
-        if self._has_been_repaneled:
+        if self._changes:
             # finalize modifications
             self.geo.repanel (just_finalize=True)
-            self._app_model.notify_airfoil_geo_paneling (False)     # switch off panel mode in diagram
             self._app_model.notify_airfoil_changed ()
 
-        return super().close()
+        self._app_model.notify_airfoil_geo_paneling (False)     # switch off panel mode in diagram
 
-
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-
-        default_btn = QPushButton ("Default", parent=self)
-        default_btn.setFixedWidth (80)
-        default_btn.setToolTip    ("Reset to default values")
-        default_btn.clicked.connect  (self._set_default_values)
-        buttonBox.addButton (default_btn, QDialogButtonBox.ButtonRole.ActionRole)
-
-
-        return buttonBox 
+        return super().done(result)
 
 
 
-class Flap_Airfoil_Dialog (Dialog):
+
+class Flap_Airfoil_Dialog (Dialog_Modeless):
     """ Dialog to set flap of airfoil"""
 
     _width  = 320
-    _height = 200
 
     name = "Set Flap"
 
@@ -344,7 +273,6 @@ class Flap_Airfoil_Dialog (Dialog):
     def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
 
         self._app_model = app_model
-        self._has_been_flapped = False
 
         super().__init__ (parent, **kwargs)
 
@@ -367,7 +295,7 @@ class Flap_Airfoil_Dialog (Dialog):
     @property
     def has_been_flapped (self) -> bool:
         """ True if flap was set in this dialog """
-        return self._has_been_flapped and self.flap_setter.flap_angle != 0.0  
+        return self._changes and self.flap_setter.flap_angle != 0.0  
 
 
     def _init_layout(self) -> QLayout:
@@ -404,45 +332,36 @@ class Flap_Airfoil_Dialog (Dialog):
 
 
     @override
-    def _on_widget_changed (self):
+    def _on_widget_changed (self, widget):
         """ slot a input field changed - repanel and refresh"""
+
+        super()._on_widget_changed (widget)
 
         self.refresh()
         self.flap_setter.set_flap()
 
-        self._has_been_flapped = True                           # for change detection 
         self.app_model.notify_airfoil_flap_set (True)
 
 
-    def close(self):
+    def done(self, result: int) -> None:
         """ close or x-Button pressed"""
 
         if self.has_been_flapped:
             # finalize modifications
             self.airfoil.do_flap ()                             # modify airfoil geometry
-            self.app_model.notify_airfoil_flap_set (False)      # switch off flap mode in diagram
             self.app_model.notify_airfoil_changed()
 
-        return super().close()
+        self.app_model.notify_airfoil_flap_set (False)      # switch off flap mode in diagram
 
-
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-        return buttonBox 
+        return super().done(result)
 
 
 
-class TE_Gap_Dialog (Dialog):
+class TE_Gap_Dialog (Dialog_Modeless):
     """ Dialog to set TE gap of airfoil"""
 
     _width  = 320
-    _height = 150
-
+    
     name = "Set Trailing Edge Gap"
 
     def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
@@ -451,7 +370,6 @@ class TE_Gap_Dialog (Dialog):
 
         self._xBlend = app_model.airfoil.geo.TE_GAP_XBLEND           # start with initial value
         self._te_gap = app_model.airfoil.geo.te_gap
-        self._has_been_set = False
 
         super().__init__ (parent, **kwargs)
 
@@ -495,12 +413,6 @@ class TE_Gap_Dialog (Dialog):
         self.refresh()
 
 
-    @property
-    def has_been_set (self) -> bool:
-        """ True if TE gap was set in this dialog """
-        return self._has_been_set 
-
-
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
@@ -520,8 +432,6 @@ class TE_Gap_Dialog (Dialog):
 
         Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.0, 0.1), step=0.001, dec=3, 
                         obj=self, prop=TE_Gap_Dialog.te_gap)
-        r += 1
-        SpaceR  (l, r, stretch=3) 
 
         l.setColumnMinimumWidth (0,90)
         l.setColumnMinimumWidth (2,10)
@@ -530,168 +440,26 @@ class TE_Gap_Dialog (Dialog):
 
         return l
 
-
-    def close(self):
+    @override
+    def done(self, result: int) -> None:
         """ close or x-Button pressed"""
 
-        if self.has_been_set:
+        if self._changes:
             # finalize modifications
             self.airfoil.geo.set_te_gap (self.te_gap, xBlend=self.xBlend)
-            self.app_model.notify_airfoil_geo_te_gap (None)   # switch off TE gap mode in diagram
             self.app_model.notify_airfoil_changed ()
 
-        return super().close()
+        # switch off TE gap mode in diagram
+        self.app_model.notify_airfoil_geo_te_gap (None)  
 
-
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-
-        return buttonBox 
+        return super().done(result)
 
 
 
-class LE_Radius_Dialog (Dialog):
-    """ Dialog to set LE Radius of airfoil"""
-
-    _width  = 320
-    _height = 180
-
-    name = "Set Leading Edge Radius"
-
-
-    def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
-
-        self._app_model = app_model
-
-        self._xBlend = app_model.airfoil.geo.LE_RADIUS_XBLEND           # start with initial value
-        self._le_radius = app_model.airfoil.geo.le_radius
-        self._has_been_set = False
-
-        super().__init__ (parent, **kwargs)
-
-        # switch on TE gap mode in diagram
-        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
-
-
-    @property
-    def app_model (self) -> App_Model:
-        return self._app_model
-    
-    @property
-    def airfoil (self) -> Airfoil:
-        return self.app_model.airfoil
-
-
-    @property
-    def xBlend (self) -> float:
-        """ blending range x/c from LE"""
-        return self._xBlend
-    
-    def set_xBlend (self, aVal: float):
-
-        self._xBlend = aVal
-        self.airfoil.geo.set_le_radius (self.le_radius, xBlend=aVal, moving=True)
-        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
-        self.refresh()
-
-
-    @property
-    def le_radius (self) -> float:
-        """ LE radius as y/c """
-        return self._le_radius
-    
-    def set_le_radius (self, aVal: float):
-
-        self._le_radius = aVal
-        self.airfoil.geo.set_le_radius (aVal, xBlend=self.xBlend, moving=True)
-        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
-        self._has_been_set = True
-        self.refresh()
-
-    @property
-    def le_curvature (self) -> float:
-        """ LE curvature """
-        return 1 / self.le_radius if self.le_radius != 0 else 0.0
-    
-    def set_le_curvature (self, aVal: float):
-        if aVal != 0.0:
-            self.set_le_radius (1 / aVal)
-
-    @property
-    def has_been_set (self) -> bool:
-        """ True if TE gap was set in this dialog """
-        return self._has_been_set 
-
-
-    def _init_layout(self) -> QLayout:
-
-        l = QGridLayout()
-        r,c = 0,0 
-        SpaceR (l, r, stretch=0, height=5) 
-        r += 1
-        FieldF  (l,r,c, lab="Blend from LE", width=75, step=1, lim=(1, 100), dec=1, unit="%",
-                        obj=self, prop=LE_Radius_Dialog.xBlend)
-        Slider  (l,r,c+3, colSpan=2, width=100,  
-                        lim=(0.01, 1.0), dec=2,  
-                        obj=self, prop=LE_Radius_Dialog.xBlend)
-        r += 1
-        SpaceR  (l, r, stretch=1, height=10) 
-        r += 1
-        FieldF  (l,r,c, lab="LE radius", width=75, unit="%", step=0.1, lim=(0.1, 3),
-                        obj=self, prop=LE_Radius_Dialog.le_radius)
-
-        Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.001, 0.03), step=0.001, dec=3, 
-                        obj=self, prop=LE_Radius_Dialog.le_radius)
-        r += 1
-        FieldF  (l,r,c, lab="LE curvature", width=75, dec=0, step=1.0, lim=(10, 1000),
-                        obj=self, prop=LE_Radius_Dialog.le_curvature)
-        Slider  (l,r,c+3, colSpan=2, width=100, lim=(10, 1000), step=10, dec=0, 
-                        obj=self, prop=LE_Radius_Dialog.le_curvature)
-        r += 1
-        SpaceR  (l, r, stretch=3) 
-
-        l.setColumnMinimumWidth (0,90)
-        l.setColumnMinimumWidth (2,10)
-        l.setColumnMinimumWidth (3,50)
-        l.setColumnStretch (5,2)   
-
-        return l
-
-
-    def close(self):
-        """ close or x-Button pressed"""
-
-        if self.has_been_set:
-            # finalize modifications
-            self.airfoil.geo.set_le_radius (self.le_radius, xBlend=self.xBlend)
-            self.app_model.notify_airfoil_geo_le_radius (None)   # switch off LE radius mode in diagram
-            self.app_model.notify_airfoil_changed ()
-
-        return super().close()
-
-
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-
-        return buttonBox 
-
-
-
-class Matcher_Run_Info (Dialog):
-    """ Little Info dialog (with stop button) show information durig match run"""
+class Matcher_Run_Info (Dialog_Modal):
+    """ Little Info dialog (with stop button) show information during match run"""
 
     _width  = 230
-    _height = 260
 
     name = "Match Curve"
 
@@ -706,7 +474,7 @@ class Matcher_Run_Info (Dialog):
         self._nevals    = 0
         self._global_search = False
 
-        # connect to matcher siganls to get updates during optimization
+        # connect to matcher signals to get updates during optimization
 
         matcher.finished.connect (self._on_finished)
         matcher.sig_pass_start.connect (self._on_pass_start)
@@ -725,7 +493,8 @@ class Matcher_Run_Info (Dialog):
                            **kwargs)
 
         self._stop_btn.clicked.connect (self._cancel_thread)    # after super init to get button instance
-        self.set_background_color (color='magenta', alpha=0.2)        
+
+        set_background (self._panel, color='magenta', alpha=0.2)
 
         # start matcher after dialog is shown 
 
@@ -834,3 +603,115 @@ class Matcher_Run_Info (Dialog):
         # normal close 
         super().reject()
 
+
+
+class LE_Radius_Dialog (Dialog_Modeless):
+    """ Dialog to set LE Radius of airfoil"""
+
+    _width  = 320
+
+    name = "Set Leading Edge Radius"
+
+
+    def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
+
+        self._app_model = app_model
+
+        self._xBlend    = app_model.airfoil.geo.LE_RADIUS_XBLEND           # start with initial value
+        self._le_radius = app_model.airfoil.geo.le_radius
+
+        super().__init__ (parent, **kwargs)
+
+        # switch on LE radius mode in diagram
+        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
+
+
+    @property
+    def app_model (self) -> App_Model:
+        return self._app_model
+    
+    @property
+    def airfoil (self) -> Airfoil:
+        return self.app_model.airfoil
+
+
+    @property
+    def xBlend (self) -> float:
+        """ blending range x/c from LE"""
+        return self._xBlend
+    
+    def set_xBlend (self, aVal: float):
+
+        self._xBlend = aVal
+        self.airfoil.geo.set_le_radius (self.le_radius, xBlend=aVal, moving=True)
+        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
+        self.refresh()
+
+
+    @property
+    def le_radius (self) -> float:
+        """ LE radius as y/c """
+        return self._le_radius
+    
+    def set_le_radius (self, aVal: float):
+
+        self._le_radius = aVal
+        self.airfoil.geo.set_le_radius (aVal, xBlend=self.xBlend, moving=True)
+        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
+        self.refresh()
+
+    @property
+    def le_curvature (self) -> float:
+        """ LE curvature """
+        return 1 / self.le_radius if self.le_radius != 0 else 0.0
+    
+    def set_le_curvature (self, aVal: float):
+        if aVal != 0.0:
+            self.set_le_radius (1 / aVal)
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0,0 
+        SpaceR (l, r, stretch=0, height=5) 
+        r += 1
+        FieldF  (l,r,c, lab="Blend from LE", width=75, step=1, lim=(1, 100), dec=1, unit="%",
+                        obj=self, prop=LE_Radius_Dialog.xBlend)
+        Slider  (l,r,c+3, colSpan=2, width=100,  
+                        lim=(0.01, 1.0), dec=2,  
+                        obj=self, prop=LE_Radius_Dialog.xBlend)
+        r += 1
+        SpaceR  (l, r, stretch=1, height=10) 
+        r += 1
+        FieldF  (l,r,c, lab="LE radius", width=75, unit="%", step=0.1, lim=(0.1, 3),
+                        obj=self, prop=LE_Radius_Dialog.le_radius)
+
+        Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.001, 0.03), step=0.001, dec=3, 
+                        obj=self, prop=LE_Radius_Dialog.le_radius)
+        r += 1
+        FieldF  (l,r,c, lab="LE curvature", width=75, dec=0, step=1.0, lim=(10, 1000),
+                        obj=self, prop=LE_Radius_Dialog.le_curvature)
+        Slider  (l,r,c+3, colSpan=2, width=100, lim=(10, 1000), step=10, dec=0, 
+                        obj=self, prop=LE_Radius_Dialog.le_curvature)
+
+        l.setColumnMinimumWidth (0,90)
+        l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,50)
+        l.setColumnStretch (5,2)   
+
+        return l
+
+
+    def done(self, result: int) -> None:
+        """ close or x-Button pressed"""
+
+        if self._changes:
+            # finalize modifications
+            self.airfoil.geo.set_le_radius (self.le_radius, xBlend=self.xBlend)
+            self.app_model.notify_airfoil_changed ()
+
+        # switch off LE radius mode in diagram
+        self.app_model.notify_airfoil_geo_le_radius (None)  
+
+        return super().done(result)

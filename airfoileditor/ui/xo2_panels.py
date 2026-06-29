@@ -30,30 +30,6 @@ logger = logging.getLogger(__name__)
 
 
 
-def create_case_from_path (parent, pathFilename,  message_delayed=False) -> Case_Optimize:
-    """
-    Create and return a optimization case based on pathFilename.
-        Return None if Case couldn't be loaded
-    """
-
-    try: 
-        case = Case_Optimize (pathFilename)
-        case_loaded = True
-    except:
-        case = None
-        case_loaded = False
-
-    if not case_loaded and pathFilename:
-        msg     =  f"<b>{pathFilename}</b> couldn't be loaded."
-        if message_delayed:
-            QTimer.singleShot (100, lambda: MessageBox.error   (parent,'Load Input File', msg, min_height= 60))
-        else:
-            MessageBox.error   (parent,'Load Airfoil', msg, min_height= 60)
-
-    return case  
-
-
-
 class Panel_Xo2_Abstract (Edit_Panel):
     """ 
     Abstract superclass for Edit/View-Panels of AirfoilEditor Optimize mode
@@ -116,14 +92,14 @@ class Panel_Xo2_Abstract (Edit_Panel):
 
     def _on_widget_changed (self, widget):
         """ user changed data in widget"""
-        logger.debug (f"{self} {widget} widget changed slot")
+        self.refresh_and_notify ()
+
+
+    def refresh_and_notify (self, **kwargs):
+        """ refresh data in panel from model and notify xo2_input changed"""
+        self.refresh(**kwargs)
         self.app_model.notify_xo2_input_changed()
 
-    @override
-    def refresh (self,**kwargs):
-        """ refresh data in panel from model"""
-        logger.debug (f"{self} refresh - is visible: {self.isVisible()} - should be visible: {self.shouldBe_visible}")
-        super().refresh(**kwargs)
 
 
 class Panel_Xo2_File (Panel_Xo2_Abstract):
@@ -305,7 +281,7 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         r += 1
         SpaceR (l,r, stretch=0)
         r += 1
-        Field       (l,r,c, lab="Final Airfoil", lab_disable=True,
+        Field       (l,r,c, lab="Final Airfoil", 
                      get=lambda: self.input_file.airfoil_final_fileName,
                      style=lambda: style.GOOD if self.case.airfoil_final else style.NORMAL,
                      toolTip=lambda: (self.case.airfoil_final.info_as_html if self.case.airfoil_final else "it does not yet exist"))
@@ -323,7 +299,6 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
                      toolTip=lambda: "Bezier based seed airfoil is master of shape functions" if self.input_file.airfoil_seed.isBezierBased \
                                      else "Select shape functions for optimization")     
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_shape_functions,
-                     disable=lambda: self.input_file.airfoil_seed.isBezierBased,
                      toolTip="Edit options of shape functions")
 
         r += 1
@@ -337,36 +312,29 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
     def _edit_description (self):
         """ open text editor to edit Xoptfoil2 input description"""
 
-        dialog = Xo2_Description_Dialog (self,self.input_file.nml_info.descriptions_string, 
-                                         parentPos=(0.8,0,3), dialogPos=(0,1))
-        dialog.exec () 
+        diag = Xo2_Description_Dialog (self,self.input_file.nml_info, 
+                                         parentPos=(1.0, 0.4), dialogPos=(0,1))
+        diag.sig_final_changed.connect (self.refresh_and_notify)         
+        diag.show ()
 
-        if dialog.result() == QDialog.DialogCode.Accepted:
-            descriptions = dialog.new_text.split ("\n")
-            self.input_file.nml_info.set_descriptions (descriptions)
-            
-            self.app_model.notify_xo2_input_changed ()
 
 
     def _edit_shape_functions (self):
         """ open editor to change the parameters of the shape functions"""
         diag = None 
-        parentPos=(0.8, 0.0)
-        dialogPos=(0.2,1.1)
+
         if self.optimization_options.shape_functions == Nml_optimization_options.BEZIER:
+
             diag = Xo2_Bezier_Dialog (self, getter=self.input_file.nml_bezier_options, 
-                                         parentPos=parentPos, dialogPos=dialogPos)
-        if self.optimization_options.shape_functions == Nml_optimization_options.HICKS_HENNE:
+                                         parentPos=(1,0.4), dialogPos=(0,1))
+        elif self.optimization_options.shape_functions == Nml_optimization_options.HICKS_HENNE:
+
             diag = Xo2_Hicks_Henne_Dialog (self, getter=self.input_file.nml_hicks_henne_options, 
-                                         parentPos=parentPos, dialogPos=dialogPos)
-        if self.optimization_options.shape_functions == Nml_optimization_options.CAMB_THICK:
-            diag = Xo2_Camb_Thick_Dialog (self, getter=self.input_file.nml_camb_thick_options, 
-                                         parentPos=parentPos, dialogPos=dialogPos)
+                                         parentPos=(1,0.4), dialogPos=(0,1))
 
         if diag:
-            diag.exec()
-            self.refresh ()
-            self.app_model.notify_xo2_input_changed ()
+            diag.sig_final_changed.connect (self.refresh_and_notify)         
+            diag.show ()
 
 
     def _airfoil_seed_changed (self, *_):
@@ -438,9 +406,6 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
                     get=lambda: self.opPoint_defs.polar_def_default.name)
         ToolButton  (l,r,c+1, icon=Icon.EDIT,   set=self._edit_polar_def)
         r += 1
-        CheckBox    (l,r,c, text="Dynamic Weighting", 
-                    obj=lambda:  self.operating_conditions, prop=Nml_operating_conditions.dynamic_weighting)
-        r += 1
         CheckBox    (l,r,c, text="Use Flaps", 
                     obj=lambda:  self.operating_conditions, prop=Nml_operating_conditions.use_flap)
         ToolButton  (l,r,c+1, icon=Icon.EDIT, set=self._edit_flap_def,
@@ -472,10 +437,9 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         """ edit default flap definition"""
 
         diag = Xo2_Flap_Definition_Dialog (self, getter=self.operating_conditions,
-                                         parentPos=(0.9, 0.1), dialogPos=(0,1))        
-        diag.exec()     
-
-        self.app_model.notify_xo2_input_changed()
+                                            parentPos=(1.0, 0.4), dialogPos=(0,1))
+        diag.sig_final_changed.connect (self.refresh_and_notify)         
+        diag.show ()
 
 
 
@@ -486,13 +450,11 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
 
     def __init__ (self, *args, **kwargs):
 
-        self._opPoint_def_dialog : Xo2_OpPoint_Def_Dialog = None        # instance of dialog to edit opPoint def
-
         super().__init__ (*args, **kwargs)
 
         self.app_model.sig_xo2_input_changed.connect        (self.refresh)              # refresh list
         self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh)              # refresh list
-        self.app_model.sig_xo2_opPoint_def_selected.connect (self.edit_opPoint_def)     # open edit dialog
+        self.app_model.sig_xo2_opPoint_def_selected.connect (self._edit_opPoint_def)     # open edit dialog
 
     
     @property
@@ -516,11 +478,12 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
                     get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
                     set=self.set_cur_opPoint_def_from_label,
                     signal=False,                                               # do not signal xo2_input changed
-                    doubleClick=self.edit_opPoint_def,
+                    doubleClick=self._edit_opPoint_def,
                     options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
         c += 1
-        ToolButton  (l,r,c, icon=Icon.EDIT, align=ALIGN_RIGHT, 
-                     set=self.edit_opPoint_def,
+        ToolButton  (l,r,c, icon=Icon.EDIT, align=ALIGN_RIGHT,
+                     set=self._edit_opPoint_def,
+                     toolTip="Edit current Operating Point (New)",
                      disable=lambda: not self.cur_opPoint_def)
         r += 1
         ToolButton  (l,r,c, icon=Icon.DELETE, align=ALIGN_RIGHT,
@@ -562,42 +525,28 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
         self.app_model.notify_xo2_input_changed()
 
 
-    @override
-    def hideEvent(self, event):
-        """ self is hidden - close edit dialog if open"""
-
-        if self._opPoint_def_dialog is not None:
-            self._opPoint_def_dialog.close()
-
-        super().hideEvent(event)
-
-
-    def edit_opPoint_def (self):
-        """ slot user action - open floating dialog to edit current xo2 opPoint def """
+    def _edit_opPoint_def (self):
+        """ slot user action - open pilot floating dialog to edit current xo2 opPoint def """
 
         if not self.isVisible():
             return                                  # do nothing if panel not visible (normal/small panel)
 
-         # open dialog if not yet existing
+        dialog = self.findChild (Xo2_OpPoint_Def_Dialog)
+        if dialog is None:
 
-        if self._opPoint_def_dialog is None:
-            parentPos=(0.95, 0.5) 
-            dialogPos=(0,1)
-            self._opPoint_def_dialog = Xo2_OpPoint_Def_Dialog (self, self.app_model, parentPos=parentPos, dialogPos=dialogPos)
-            self._opPoint_def_dialog.finished.connect (self._on_opPoint_dialog_closed)
-        else: 
-            self._opPoint_def_dialog.activateWindow ()
+            dialog = Xo2_OpPoint_Def_Dialog (self, self.app_model, parentPos=(0.7,0.7), dialogPos=(0,1),
+                                             lock_widget_while_open=self.parent_container,
+                                             close_on_click_outside=False,)
 
-        self._opPoint_def_dialog.show () 
+            dialog.sig_changed.connect (self.app_model.notify_xo2_input_changed)
+            dialog.connect_live_signal (self.app_model.sig_xo2_input_changed, dialog.refresh_current)
+            dialog.connect_live_signal (self.app_model.sig_xo2_opPoint_def_selected, dialog.refresh_current)
+            dialog.close_on_signal (self.app_model.sig_xo2_run_started)
+        else:
+            dialog.activateWindow ()
 
+        dialog.show ()
 
-    def _on_opPoint_dialog_closed (self, *_):
-        """ slot - dialog to edit current opPoint def finished"""
-
-        if self._opPoint_def_dialog is not None:
-            self._opPoint_def_dialog.finished.disconnect (self._on_opPoint_dialog_closed)
-            self._opPoint_def_dialog.deleteLater()
-            self._opPoint_def_dialog = None     
 
 
 
@@ -627,8 +576,9 @@ class Panel_Xo2_Operating_Small (Panel_Xo2_OpPoint_Defs):
                     get=lambda: self.cur_opPoint_def.labelLong if self.cur_opPoint_def else None ,
                     set=self.set_cur_opPoint_def_from_label,
                     options=lambda:  [opPoint_def.labelLong for opPoint_def in self.opPoint_defs])
-        ToolButton  (l,r,c+2, icon=Icon.EDIT, 
-                     set=self.edit_opPoint_def,
+        ToolButton  (l,r,c+2, icon=Icon.EDIT,
+                     set=self._edit_opPoint_def,
+                     toolTip="Edit current Operating Point",
                      disable=lambda: not self.cur_opPoint_def)
 
         l.setColumnMinimumWidth (0,100)
@@ -678,13 +628,9 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
                      obj=lambda: self.thickness, prop=GeoTarget_Definition.optValue,
                      hide=lambda: not self.thickness)
         r += 1
-        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.1, lim=(-10,10), dec=2,
-                     obj=lambda: self.thickness, prop=GeoTarget_Definition.weighting_abs,
+        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.1, lim=(0,10), dec=2,
+                     obj=lambda: self.thickness, prop=GeoTarget_Definition.weighting,
                      hide=lambda: self.thickness is None)
-        CheckBox    (l,r,c+3, text="Fix", align=ALIGN_RIGHT,
-                     obj=lambda: self.thickness, prop=OpPoint_Definition.weighting_fixed,
-                     hide=lambda: self.thickness is None,
-                     toolTip="Fix this weighting during Dynamic Weighting")
 
         r += 1
         CheckBox    (l,r,c, text="Camber", colSpan=2, 
@@ -694,23 +640,17 @@ class Panel_Xo2_Geometry_Targets (Panel_Xo2_Abstract):
                      obj=lambda: self.camber, prop=GeoTarget_Definition.optValue,
                      hide=lambda: not self.camber)
         r += 1
-        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.1, lim=(-10,10), dec=2,
-                     obj=lambda: self.camber, prop=GeoTarget_Definition.weighting_abs,
+        FieldF      (l,r,c+1, lab="Weighting", lab_disable=True, width=70, step=0.1, lim=(0,10), dec=2,
+                     obj=lambda: self.camber, prop=GeoTarget_Definition.weighting,
                      hide=lambda: self.camber is None)
-        CheckBox    (l,r,c+3, text="Fix", align=ALIGN_RIGHT,
-                     obj=lambda: self.camber, prop=OpPoint_Definition.weighting_fixed,
-                     hide=lambda: self.camber is None,
-                     toolTip="Fix this weighting during Dynamic Weighting")
         r += 1
         l.setRowStretch (r,2)
         r += 1
-        Label (l,r,c, colSpan=4, style=style.COMMENT,
+        Label (l,r,c, colSpan=3, style=style.COMMENT,
                get=lambda: f"Will be {len (self.geometry_targets.geoTarget_defs)} design variables",
                hide=lambda: len (self.geometry_targets.geoTarget_defs )== 0)        
         l.setColumnMinimumWidth (0,20)
         l.setColumnMinimumWidth (1,70)
-        l.setColumnMinimumWidth (3,50)
-        l.setColumnStretch (4,2)
 
         return l
 
@@ -756,9 +696,8 @@ class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
     @override
     @property
     def shouldBe_visible (self) -> bool:
-        """ overloaded: only visible if mode optimize and not camb_thick """
-        return super().shouldBe_visible and self.is_mode_optimize and \
-               self.shape_functions != Nml_optimization_options.CAMB_THICK
+        """ overloaded: only visible if mode optimize """
+        return super().shouldBe_visible and self.is_mode_optimize
 
 
     @property
@@ -805,10 +744,10 @@ class Panel_Xo2_Curvature (Panel_Xo2_Abstract):
 
         diag = Xo2_Curvature_Dialog (self, getter=self.input_file.nml_curvature,
                                      shape_functions = self.input_file.nml_optimization_options.shape_functions, 
-                                     parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
-        diag.exec()
-        self.refresh ()
-        self.app_model.notify_xo2_input_changed()
+                                     parentPos=(1.0, 0.4), dialogPos=(0,1))
+
+        diag.sig_final_changed.connect (self.refresh_and_notify)         
+        diag.show ()
 
 
 
@@ -826,9 +765,7 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
         """ add Widgets to header layout"""
 
         Button (l_head, text="Input File", width=70, button_style = button_style.SUPTLE,
-                set=self.sig_edit_input_file.emit, 
-                disable=lambda: self._isDisabled,
-                toolTip="Direct editing of the Xoptfoil2 input file")
+                set=self.sig_edit_input_file.emit, toolTip="Direct editing of the Xoptfoil2 input file")
 
 
     def _init_layout (self) -> QGridLayout:
@@ -836,32 +773,32 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
         l = QGridLayout()
         r,c = 0, 0
 
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_particle_swarm_options.isDefault)
+        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_constraints.isDefault,
+                     set=self._edit_constraints)
+        Label       (l,r,c+1, get="Geometry Constraints", lab_disable=True)
+        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_constraints,
+                     toolTip="Edit options")
+        r += 1
+        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_particle_swarm_options.isDefault,
+                     set=self._edit_particle_swarm_options)
         Label       (l,r,c+1, get="Particle Swarm Options", lab_disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_particle_swarm_options,
                      toolTip="Edit options")
         r += 1
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_xfoil_run_options.isDefault)
+        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_xfoil_run_options.isDefault,
+                     set=self._edit_xfoil_run_options)
         Label       (l,r,c+1, get="Xfoil Options",lab_disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_xfoil_run_options,
                      toolTip="Edit options")
         r += 1
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_paneling_options.isDefault)
+        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_paneling_options.isDefault,
+                     set=self._edit_paneling_options)
         Label       (l,r,c+1, get="Paneling Options", lab_disable=True)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_paneling_options,
                      toolTip="Edit options")
 
         r += 1
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_constraints.isDefault)
-        Label       (l,r,c+1, get="Constraints", lab_disable=True)
-        ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_constraints,
-                     toolTip="Edit options")
-        r += 1
         l.setRowStretch (r,2)
-        # r += 1
-        # Label       (l,r,c+1, get="Xoptfoil2 Input File", lab_disable=True)
-        # ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_input_file,
-        #              toolTip="Direct editing of the Xoptfoil2 input file")
         
         l.setColumnMinimumWidth (0,20)
         l.setColumnMinimumWidth (1,130)
@@ -870,37 +807,49 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
         return l
      
 
-    def _edit_particle_swarm_options (self): 
+    def _edit_particle_swarm_options (self, edit = True): 
 
-        diag = Xo2_Particle_Swarm_Dialog (self, getter=self.input_file.nml_particle_swarm_options, 
-                                            parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
-        diag.exec()
-        self.refresh ()
-        self.app_model.notify_xo2_input_changed()
-
-
-    def _edit_xfoil_run_options (self): 
-
-        diag = Xo2_Xfoil_Run_Dialog (self, getter=self.input_file.nml_xfoil_run_options, 
-                                            parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
-        diag.exec()
-        self.refresh ()
-        self.app_model.notify_xo2_input_changed()
+        if edit:
+            diag = Xo2_Particle_Swarm_Dialog (self, getter=self.input_file.nml_particle_swarm_options, 
+                                                parentPos=(0.0, 0.4), dialogPos=(1,1))
+            diag.sig_final_changed.connect (self.refresh_and_notify)         
+            diag.show ()
+        else:
+            self.input_file.nml_particle_swarm_options.set_to_default()
+            self.refresh_and_notify()
 
 
-    def _edit_paneling_options (self): 
+    def _edit_xfoil_run_options (self, edit = True): 
 
-        diag = Xo2_Paneling_Dialog (self, getter=self.input_file.nml_paneling_options, 
-                                            parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
-        diag.exec()
-        self.refresh ()
-        self.app_model.notify_xo2_input_changed()
+        if edit:
+            diag = Xo2_Xfoil_Run_Dialog (self, getter=self.input_file.nml_xfoil_run_options, 
+                                                parentPos=(0.0, 0.4), dialogPos=(1,1))
+            diag.sig_final_changed.connect (self.refresh_and_notify)         
+            diag.show ()
+        else:
+            self.input_file.nml_xfoil_run_options.set_to_default()
+            self.refresh_and_notify()
 
 
-    def _edit_constraints (self): 
+    def _edit_paneling_options (self, edit = True): 
 
-        diag = Xo2_Constraints_Dialog (self, getter=self.input_file.nml_constraints, 
-                                            parentPos=(0.5, 0.0), dialogPos=(0.8,1.1))
-        diag.exec()
-        self.refresh ()
-        self.app_model.notify_xo2_input_changed()
+        if edit:
+            diag = Xo2_Paneling_Dialog (self, getter=self.input_file.nml_paneling_options, 
+                                                parentPos=(0.0, 0.4), dialogPos=(1,1))
+            diag.sig_final_changed.connect (self.refresh_and_notify)         
+            diag.show ()
+        else:
+            self.input_file.nml_paneling_options.set_to_default()
+            self.refresh_and_notify()
+
+
+    def _edit_constraints (self, edit = True): 
+
+        if edit:
+            diag = Xo2_Constraints_Dialog (self, getter=self.input_file.nml_constraints, 
+                                                parentPos=(0.0, 0.4), dialogPos=(1,1))
+            diag.sig_final_changed.connect (self.refresh_and_notify)         
+            diag.show ()
+        else:
+            self.input_file.nml_constraints.set_to_default()
+            self.refresh_and_notify()

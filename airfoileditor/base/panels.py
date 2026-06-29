@@ -12,16 +12,17 @@ import os
 from copy               import copy
 from typing             import override, Callable
 
-from PyQt6.QtCore       import Qt, QEvent, QPoint, QRectF
+from PyQt6.QtCore       import Qt, QEvent, QPoint, QRect, QRectF, pyqtSignal
 from PyQt6.QtCore       import QSize, QMargins, QTimer, QPropertyAnimation, QAbstractAnimation
 from PyQt6.QtWidgets    import (QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QSizePolicy,
                                 QWidget, QDialog, QDialogButtonBox, QLabel, QMessageBox, QFrame,
+                                QApplication,
                                 QGraphicsOpacityEffect, QTabWidget)
-from PyQt6.QtGui        import QGuiApplication, QScreen, QColor, QPalette, QPainterPath, QRegion, QTransform
+from PyQt6.QtGui        import QGuiApplication, QScreen, QColor, QPalette, QPainterPath, QRegion, QTransform, QIcon
 from PyQt6              import sip
 
 from .widgets           import set_background, style
-from .widgets           import Widget, Label, CheckBox, size, Icon
+from .widgets           import Widget, Label, CheckBox, size, Icon, Button
 
 import logging
 logger = logging.getLogger(__name__)
@@ -38,21 +39,94 @@ class Win_Util:
     """
 
     @staticmethod
+    def screen_for_number (screen_number : int | None) -> QScreen | None:
+        """Return the selected screen, defaulting to the primary screen."""
+
+        screens = QGuiApplication.screens()
+        if not screens:
+            return None
+
+        if screen_number is None:
+            return QGuiApplication.primaryScreen() or screens[0]
+
+        screen_index = max (0, min (int(screen_number) - 1, len(screens) - 1))
+        return screens[screen_index]
+
+
+    @staticmethod
+    def screen_number_for_window (qwindow : QWidget) -> int | None:
+        """Return the 1-based screen number a window currently belongs to."""
+
+        screens = QGuiApplication.screens()
+        if not screens:
+            return None
+
+        screen = qwindow.windowHandle().screen() if qwindow.windowHandle() else None
+        if screen is None:
+            center = qwindow.frameGeometry().center()
+            screen = QGuiApplication.screenAt (center)
+        if screen is None:
+            screen = QGuiApplication.primaryScreen() or screens[0]
+
+        try:
+            return screens.index (screen) + 1
+        except ValueError:
+            return 1
+
+
+    @staticmethod
+    def _is_visible_on_any_screen (rect : QRect) -> bool:
+        """Return whether the geometry intersects any connected screen."""
+
+        return any (screen.availableGeometry().intersects (rect) for screen in QGuiApplication.screens())
+
+
+    @staticmethod
+    def _move_rect_to_screen (rect : QRect, screen : QScreen | None) -> QRect:
+        """Keep the saved size where possible and place the window on the target screen."""
+
+        if screen is None:
+            return rect
+
+        screen_geometry = screen.availableGeometry()
+        width  = min (rect.width(),  screen_geometry.width())
+        height = min (rect.height(), screen_geometry.height())
+
+        x = screen_geometry.x() + max (0, int (screen_geometry.width()  * 0.1))
+        y = screen_geometry.y() + max (0, int (screen_geometry.height() * 0.1))
+
+        return QRect (x, y, width, height)
+
+    @staticmethod
     def set_initialWindowSize (qwindow : QWidget,
                                size : tuple | None = None,
                                size_frac : tuple | None = None,
                                pos : tuple | None = None,
                                pos_frac: tuple | None = None,
                                geometry : tuple | None = None,
-                               maximize : bool = False):
+                               maximize : bool = False,
+                               screen_number : int | None = None):
         """
-        Set size and position of Qt window in fraction of screensize or absolute
+        Set size and position of Qt window in fraction of screensize or absolute.
+
+        screen_number is 1-based. If provided, it overrides the stored screen position.
         """
+
+        screen = Win_Util.screen_for_number (screen_number)
 
         # geometry argument has priority 
 
         if geometry: 
-            qwindow.setGeometry (*geometry)
+            rect = QRect (*geometry)
+
+            if screen_number is None and Win_Util._is_visible_on_any_screen (rect):
+                qwindow.setGeometry (rect)
+                if maximize:
+                    qwindow.showMaximized()
+                return
+
+            rect = Win_Util._move_rect_to_screen (rect, screen)
+            qwindow.setGeometry (rect)
             if maximize:
                 qwindow.showMaximized()
             return
@@ -63,8 +137,7 @@ class Win_Util:
 
         if size_frac: 
 
-            screen : QScreen = QGuiApplication.primaryScreen()
-            screenGeometry = screen.geometry()
+            screenGeometry = screen.availableGeometry() if screen else QRect (0, 0, 1920, 1080)
  
             width_frac, height_frac  = size_frac
 
@@ -89,13 +162,12 @@ class Win_Util:
 
         if pos_frac: 
 
-            screen : QScreen = QGuiApplication.primaryScreen()
-            screenGeometry = screen.geometry()
+            screenGeometry = screen.availableGeometry() if screen else QRect (0, 0, 1920, 1080)
  
             x_frac = pos_frac[0]
             y_frac = pos_frac[1]
-            if x_frac: x = screenGeometry.width()  * x_frac
-            if y_frac: y = screenGeometry.height() * y_frac
+            if x_frac is not None: x = screenGeometry.x() + screenGeometry.width()  * x_frac
+            if y_frac is not None: y = screenGeometry.y() + screenGeometry.height() * y_frac
 
         x = int (x) if x  is not None else 200
         y = int (y) if y is not None else  200
@@ -112,7 +184,7 @@ class Disabled_Overlay(QWidget):
         super().__init__(parent)
 
         self.setGeometry(parent.rect())
-        set_background (self, color=QColor("#202020"), alpha=0.7)
+        set_background (self, color=QColor("#202020"), alpha=0.4)
         self.raise_()                               # Ensure it's on top
         self.show()
     
@@ -277,6 +349,18 @@ class Panel_Abstract (QWidget):
     def set_doubleClick (self, doubleClick: Callable|None):
         """ set double click callable """
         self._doubleClick = doubleClick
+
+
+    @property
+    def parent_container (self) -> 'Container_Panel | None':
+        """ nearest parent container panel if self is embedded in one """
+
+        parent = self.parentWidget()
+        while parent is not None:
+            if isinstance(parent, Container_Panel):
+                return parent
+            parent = parent.parentWidget()
+        return None
 
 
     @property 
@@ -588,9 +672,8 @@ class Edit_Panel (Panel_Abstract):
     def refresh(self, reinit_layout=False):
         """ refreshes all Widgets on self """
 
-        # use isHidden to be independent of visibility set by parent panels
-        hide = not self.shouldBe_visible and not self.isHidden()
-        show =     self.shouldBe_visible and     self.isHidden()
+        hide = not self.shouldBe_visible and     self.isVisible()
+        show =     self.shouldBe_visible and not self.isVisible()
 
         # hide / show self 
 
@@ -620,10 +703,6 @@ class Edit_Panel (Panel_Abstract):
             if (show or reinit_layout) and not self._initial_layout:                   # show again or forced reinit
                 self._set_panel_layout ()
                 logger.debug (f"{self} - refresh - reinit_layout ")
-
-                # ensure disabled state after reinit e.g. when lazy init
-                if self._isDisabled:
-                    self.refresh_panel (self._isDisabled, reinit_layout=False)
 
             # normal refresh 
             else:
@@ -827,6 +906,18 @@ class MessageBox (QMessageBox):
 
         self.setWindowTitle (title)
         self.setText (text)
+
+        # Keep title bar simple for modal message dialogs on all platforms.
+        self.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.CustomizeWindowHint
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowSystemMenuHint
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.MSWindowsFixedSizeDialogHint
+        )
+        self.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, False)
+        self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, False)
 
         # set icon 
 
@@ -1179,6 +1270,8 @@ class Dialog (QDialog):
     _width  = None
     _height = None 
 
+    _default_icon = None            # will be set to the first icon of the parent window 
+
 
     def __init__(self,  
                  parent : QWidget = None,
@@ -1236,6 +1329,12 @@ class Dialog (QDialog):
         if title is not None: 
             self.name = title 
         self.setWindowTitle (self.name)
+
+        # save app icon on first call - to be used as default
+        # (setting an explicit icon would make it unaccessible for sub dialogs)
+        if Dialog._default_icon is None and parent is not None:
+            Dialog._default_icon = parent.window().windowIcon() 
+        self.setWindowIcon(Dialog._default_icon)
 
         # enable custom window hint, disable (but not hide) close button
         # self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
@@ -1358,6 +1457,431 @@ class Dialog (QDialog):
         """ handle done actions - both accept and reject"""
         # to override 
         super().done(r)
+
+
+class Dialog_Modal (QDialog):
+    """
+    Modal dialog base class
+    """
+
+    name = "Dialog"
+    _width  = None
+    _height = None
+
+    _default_icon = None            # will be set to the first icon of the parent window
+
+    def __init__(self,
+                 parent : QWidget = None,
+                 getter = None,
+                 dialogPos : tuple = (0.4,0.5),
+                 parentPos : tuple = (0.3,0.6),
+                 title=None,
+                 flags : Qt.WindowType = Qt.WindowType.Dialog,
+                 window_icon = None,
+                 close_button_only : bool = True,
+                 **kwargs):
+
+        # build window flags for modal dialog with only close button (no minimize/maximize buttons)
+
+        if close_button_only:
+            flags = (
+                flags
+                | Qt.WindowType.CustomizeWindowHint
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowCloseButtonHint
+            )
+            if os.name == 'nt':
+                flags = flags | Qt.WindowType.MSWindowsFixedSizeDialogHint
+            flags = flags & ~Qt.WindowType.WindowMinimizeButtonHint
+            flags = flags & ~Qt.WindowType.WindowMaximizeButtonHint
+            flags = flags & ~Qt.WindowType.WindowMinMaxButtonsHint
+
+        super().__init__(parent, flags=flags, **kwargs)
+
+        self._parent = parent
+        self._getter = getter
+
+        self._dataObject = None
+        self._dataObject_copy = copy (self.dataObject)
+
+        if title is not None:
+            self.name = title
+        self.setWindowTitle (self._titletext())
+
+        # save app icon on first call - to be used as default
+        # (setting an explicit icon would make it unaccessible for sub dialogs)
+        if Dialog_Modal._default_icon is None and parent is not None:
+            Dialog_Modal._default_icon = parent.window().windowIcon() 
+
+        if window_icon is not None:
+            self.setWindowIcon (window_icon)
+        else:
+            self.setWindowIcon(Dialog_Modal._default_icon)
+
+        # set width and height 
+
+        Widget._set_width  (self, self._width)
+        Widget._set_height (self, self._height)
+
+        # build data panel, footer, main layout
+
+        self._panel = QWidget ()
+        set_background (self._panel, darker_factor=105)
+
+        l_panel = self._init_layout()
+        l_panel.setContentsMargins (QMargins(15, 10, 15, 5))
+        if isinstance (l_panel, QGridLayout):
+            l_panel.setVerticalSpacing(3)
+
+        self._panel.setLayout (l_panel)
+
+        l_main   = QVBoxLayout()
+        l_main.addWidget (self._panel, stretch=1)
+        l_main.setContentsMargins (QMargins(5, 5, 5, 5))
+        l_main.setSpacing(5)
+
+        l_footer = self._init_footer_layout()
+        if l_footer is not None:
+            l_footer.setContentsMargins (QMargins(15, 0, 15, 10))
+            l_main.addLayout (l_footer)
+
+        self.setLayout (l_main)
+
+        # Let the layout define the dialog size, then place it relative to the parent.
+        self.adjustSize()
+
+        if isinstance(self._parent, QWidget):
+            parent_topLeft     = self._parent.mapToGlobal (self._parent.rect().topLeft())
+            parent_bottomRight = self._parent.mapToGlobal (self._parent.rect().bottomRight())
+            parent_width  = parent_bottomRight.x() - parent_topLeft.x()
+            parent_height = parent_bottomRight.y() - parent_topLeft.y()
+
+            parentPos_rel = QPoint (int(parent_width * parentPos[0]), int(parent_height * parentPos[1]))
+            parentPos_abs = parent_topLeft + parentPos_rel
+
+            self_width  = self.size().width()
+            self_height = self.size().height()
+            selfPos_rel = QPoint (int(self_width * dialogPos[0]), int(self_height * dialogPos[1]))
+
+            self.move (parentPos_abs - selfPos_rel)
+
+        # change handling of widgets 
+
+        self._changes = False
+        self._connect_widget_signals ()
+
+
+    def _connect_widget_signals (self):
+        """ connect widget change signals to the dialog change hook """
+
+        for w in self.widgets:
+            w.sig_changed.connect (self._on_widget_changed)
+
+
+    def _init_layout(self) -> QLayout:
+        """ init and return main layout"""
+
+        # to be implemented by sub class
+        return QVBoxLayout ()
+
+    def _titletext(self) -> str | None:
+        """ optional dynamic window title - override in subclass to provide custom title """
+        return self.name
+
+    def _init_footer_layout(self) -> QLayout | None:
+        """ 
+        optional footer layout for action buttons 
+        - default is a _button_box . Can be overridden by subclass. 
+        - If None, no footer will be shown"""
+
+        l = QHBoxLayout()
+
+        button_box = self._button_box()
+        if button_box:
+            l.addWidget(button_box)
+        return l
+
+
+
+    def _button_box (self) -> QDialogButtonBox:
+        """ returns the QButtonBox with the buttons of self"""
+        buttons = QDialogButtonBox.StandardButton.Ok | \
+                  QDialogButtonBox.StandardButton.Cancel
+        buttonBox = QDialogButtonBox(buttons)
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        return buttonBox
+
+
+    @property
+    def dataObject (self):
+        """ dataObject the dialog got from parent """
+        # to be overloaded - or implemented with semantic name
+        if callable(self._getter):
+            return self._getter()
+        else:
+            if self._dataObject is None:
+                self._dataObject = self._getter
+            return self._dataObject
+
+
+    @property
+    def dataObject_copy (self):
+        """ shallow copy of dataObject"""
+        # to be overloaded - or implemented with semantic name
+        return self._dataObject_copy
+
+
+    @property
+    def widgets (self) -> list[Widget]:
+        """ list of widgets defined in self """
+        return Panel_Abstract.widgets_of_layout (self._panel.layout())
+
+
+    def _on_widget_changed (self,*_):
+        """ slot for change of widgets"""
+
+        # default behaviour is to refresh all widgets - can be overridden in subclass
+        for w in self.widgets:
+            w.refresh()
+
+        self._changes = True
+
+
+    def button_clicked (self, aButton):
+        """ slot for button of buttonbox clicked. Can be overridden"""
+        pass
+
+
+    def refresh(self, disable=None):
+        """ refreshes all Widgets on self """
+
+        for w in self.widgets:
+            w.refresh(disable=disable)
+        logger.debug (f"{self} - refresh")
+
+
+    @override
+    def reject (self):
+        """ handle reject (close) actions"""
+        # to override
+        super().reject()
+
+
+    @override
+    def done (self, r : int):
+        """ handle done actions - both accept and reject"""
+        super().done(r)
+
+
+
+class Dialog_Modeless (Dialog_Modal):
+    """
+    Super class for little modeless live-edit dialogs.
+    - non-modal by default
+    - no footer button box by default
+    - closes when its parent widget gets hidden or closed
+    - optional auto-close when user clicks outside this modeless dialog
+    """
+
+    sig_changed = pyqtSignal(object)                # signal any change in this dialog
+    sig_final_changed = pyqtSignal(object)          # signal final change when dialog is closed
+
+    def __init__ (self, *args,
+                  lock_widget_while_open : QWidget | None = None,
+                  close_on_click_outside : bool = True,
+                  **kwargs):
+
+        self._lock_widget = lock_widget_while_open
+        self._lock_widget_enabled = None
+        self._lock_overlay : Disabled_Overlay | None = None
+
+        self._close_on_click_outside = bool(close_on_click_outside)
+
+        self._live_connections : list[tuple[object, callable]] = []
+
+        super().__init__ (*args,
+                            flags=Qt.WindowType.Window,
+                            window_icon=Icon(Icon.EDIT),
+                            **kwargs)
+
+        # Live dialogs are transient editors; delete on close so external
+        # signal connections are cleaned up automatically by Qt.
+        self.setAttribute (Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+        self.setModal (False)
+        self.setWindowModality (Qt.WindowModality.NonModal)
+
+        parent_widget = self.parentWidget()
+        if isinstance (parent_widget, QWidget):
+            parent_widget.installEventFilter (self)
+
+
+        # more compact layout 
+
+        l = self.layout()
+        l.setContentsMargins (QMargins(0,0,0,0))
+        set_background (self._panel, darker_factor=95)
+
+        # lock the target widget, so the user cannot edit it while this dialog is open
+
+        self._lock_target_widget()
+
+
+    def _lock_target_widget (self):
+        """ visually lock the configured widget while self is open """
+
+        if not isinstance(self._lock_widget, QWidget):
+            return
+        if sip.isdeleted(self._lock_widget):
+            self._lock_widget = None
+            return
+
+        self._lock_widget_enabled = self._lock_widget.isEnabled()
+        self._lock_overlay = Disabled_Overlay(self._lock_widget)
+
+
+    def _unlock_target_widget (self):
+        """ remove the temporary overlay and restore widget state if needed """
+
+        if self._lock_overlay is not None:
+            try:
+                if not sip.isdeleted(self._lock_overlay):
+                    self._lock_overlay.close()
+            except Exception:
+                pass
+            self._lock_overlay = None
+
+        self._lock_widget = None
+        self._lock_widget_enabled = None
+
+
+
+    def _init_footer_layout (self) -> QLayout | None:
+        """ no footer layout by default for live-edit dialogs """
+
+        if not self._close_on_click_outside:
+            # add a mini close button to the footer if auto-close is not enabled
+            l = QHBoxLayout()
+            Label (l, get="You may also edit in diagrams", style=style.COMMENT)  
+            l.addStretch()
+            Button (l, text="Close",  width=60, set=self.close)
+            return l  
+        else:  
+            return None
+
+
+    @override
+    def _on_widget_changed (self, widget):
+        """ forward widget changes so the parent decides about side effects """
+
+        super()._on_widget_changed (widget)
+
+        self.sig_changed.emit (self.dataObject)
+
+
+    def set_close_on_click_outside (self, enabled : bool = True):
+        """ enable auto-close when this dialog loses active-window focus """
+        self._close_on_click_outside = bool(enabled)
+
+
+    def connect_live_signal (self, signal : pyqtSignal, slot: Callable):
+        """ connect signal and register it for automatic disconnect on teardown """
+        signal.connect (slot)
+        self._live_connections.append ((signal, slot))
+
+
+    def close_on_signal (self, signal, only_if_visible : bool = True):
+        """ close this dialog when an external signal is emitted """
+
+        def _close_from_signal (*_):
+            if only_if_visible and not self.isVisible():
+                return
+            self.close()
+
+        self.connect_live_signal (signal, _close_from_signal)
+
+
+    def disconnect_live_signals (self):
+        """ disconnect all previously registered live-edit signal connections """
+        while self._live_connections:
+            signal, slot = self._live_connections.pop()
+            try:
+                signal.disconnect (slot)
+            except Exception:
+                # ignore if already disconnected
+                pass
+
+
+    @override
+    def done (self, r : int):
+        """ ensure lifecycle filter is removed before dialog teardown """
+
+        self._unlock_target_widget ()
+
+        # final change signal if desired
+
+        if self._changes:
+            self.sig_final_changed.emit (self.dataObject)
+
+        # disconnect all live-edit signals
+
+        self.disconnect_live_signals ()
+        parent_widget = self.parentWidget()
+        if isinstance (parent_widget, QWidget):
+            parent_widget.removeEventFilter (self)
+
+        super().done (r)
+
+
+    def _close_after_deactivate (self):
+        """ close on deferred deactivate if still visible and inactive """
+        if self.isVisible() and not self.isActiveWindow():
+            # Don't close if a child dialog opened from self is now the active window.
+            # isAncestorOf() won't work across top-level windows, so walk the Qt
+            # parent chain of the active window instead.
+            active = QApplication.activeWindow()
+            if active is not None:
+                p = active.parent()
+                while p is not None:
+                    if p is self:
+                        return
+                    p = p.parent()
+            self.close()
+
+
+    @override
+    def event (self, event):
+        """ optional auto-close when user clicks outside this modeless dialog """
+        if self._close_on_click_outside and event.type() == QEvent.Type.WindowDeactivate:
+            # Keep open if a popup that belongs to this dialog is active (e.g. ComboBox list).
+            active_popup = QApplication.activePopupWidget()
+            if active_popup is not None and (active_popup is self or self.isAncestorOf(active_popup)):
+                return super().event(event)
+
+            QTimer.singleShot (0, self._close_after_deactivate)
+
+        return super().event(event)
+
+
+    @override
+    def eventFilter (self, watched, event):
+        """ close this modeless dialog if its lifecycle parent gets hidden/closed """
+        if watched is self.parentWidget() and event.type() in (QEvent.Type.Hide, QEvent.Type.Close):
+            if self.isVisible():
+                self.close()
+        return super().eventFilter (watched, event)
+
+
+    @override
+    def refresh (self, disable=None):
+        """ refresh widgets and keep dynamic title in sync for live-edit dialogs """
+
+        title_text = self._titletext()
+        if title_text is not None:
+            self.setWindowTitle(title_text)
+        super().refresh(disable=disable)
 
 
 #-------------------------------------------------------------------------------

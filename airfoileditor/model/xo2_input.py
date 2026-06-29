@@ -11,17 +11,19 @@
 """
 
 import os
+from numbers                import Real
 from operator               import attrgetter
 from pathlib                import Path
-from typing                 import TextIO
+from typing                 import TextIO, Callable
 
 import f90nml                                       # fortran namelist parser
 
-from ..base.common_utils        import * 
+from ..base.common_utils    import * 
 
 from .polar_set                 import * 
 from .airfoil                   import Airfoil, GEO_BASIC, usedAs
-from .geometry_bezier   import Geometry_Bezier
+from .geometry                  import geo_parm
+from .geometry_bezier           import Geometry_Bezier
 from .airfoil_examples          import Example
 
 
@@ -138,8 +140,8 @@ class Input_File:
         self._workingDir = workingDir                                           # working dir of optimizer
         self._fileName   = fileName
 
-        self._hasErrors  = False                                                # errors in input file? 
-        self._error_text = None                                                 # text from error check by worker
+        self._parse_error_text = None                                           # parse/load error text
+        self._migration_warnings = []                                           # one-time migration notes for UI
 
         if not os.path.exists (self.pathFileName) and not is_new:
             raise ValueError (f"Input file '{self.pathFileName}' doesn't exist")
@@ -153,8 +155,9 @@ class Input_File:
 
         # save namelist dict as string for later change detection 
 
-        self.opPoint_defs.set_nml()                                             # dummy write to have same format
-        self.nml_geometry_targets.geoTarget_defs.set_nml ()
+        if not self.has_parse_error:
+            self.opPoint_defs.set_nml()                                         # dummy write to have same format
+            self.nml_geometry_targets.geoTarget_defs.set_nml ()
 
         self._nml_file_str = str(self.nml_file)
 
@@ -165,6 +168,8 @@ class Input_File:
         # fortran namelist of the input file  
 
         self._nml_file_dict = None                                              # f90nml namelist as dict 
+        self._parse_error_text = None                                           # reset parse state per load
+        self._migration_warnings = []                                           # reset per load
 
         # single namelists within the input file 
 
@@ -173,13 +178,15 @@ class Input_File:
         self._nml_optimization_options   = Nml_optimization_options (self)
         self._nml_hicks_henne_options    = Nml_hicks_henne_options (self)
         self._nml_bezier_options         = Nml_bezier_options (self)
-        self._nml_camb_thick_options     = Nml_camb_thick_options (self)
         self._nml_paneling_options       = Nml_paneling_options (self)
         self._nml_particle_swarm_options = Nml_particle_swarm_options (self)
         self._nml_xfoil_run_options      = Nml_xfoil_run_options (self)
         self._nml_curvature              = Nml_curvature (self)
         self._nml_constraints            = Nml_constraints (self)
         self._nml_geometry_targets       = Nml_geometry_targets (self)
+
+        # Legacy, deprecated namelist group - no longer supported.
+        self.nml_file.pop('camb_thick_options', None)
 
         # higher level objects based on input file definitions 
 
@@ -189,12 +196,9 @@ class Input_File:
         self._polar_defs     = None                                             # Polar definitions in input file
         self._geoTargets_def = None                                             # geo targets definition in input file
 
-        self._hasErrors  = False                                                # errors in input file? 
-        self._error_text = None                                                 # text from error check by worker
-
         # additional consistency 
 
-        if not is_new:
+        if not is_new and not self.has_parse_error:
             self.airfoil_seed                                                   # will check if exists, if not create Example                             
             self.airfoils_ref                                                   # will check if exists, if not empty list 
 
@@ -252,10 +256,14 @@ class Input_File:
                 parser.global_start_index = 1
                 try: 
                     self._nml_file_dict = parser.read(self.pathFileName)   # fortran namelist as object  
-                except: 
-                    self._nml_file_dict = None    
-                    self._hasErrors  = True  
-                    self._error_text = 'Generell syntax error'   
+                except Exception as e: 
+                    # Fallback 1: retry with default parser settings for broader compatibility.
+                    try:
+                        self._nml_file_dict = f90nml.read(self.pathFileName)
+                    except Exception as e2:
+                        self._nml_file_dict = {}
+                        msg = str(e2) if str(e2) else repr(e2)
+                        self._set_parse_error(f'Namelist parse error: {msg}')
             else: 
                 # new, not existing input file 
                 self._nml_file_dict = {}    
@@ -283,10 +291,6 @@ class Input_File:
         return self._nml_bezier_options
 
     @property 
-    def nml_camb_thick_options (self) -> 'Nml_camb_thick_options':
-        return self._nml_camb_thick_options
-
-    @property 
     def nml_paneling_options (self) -> 'Nml_paneling_options':
         return self._nml_paneling_options
 
@@ -310,11 +314,42 @@ class Input_File:
     def nml_geometry_targets (self) -> 'Nml_geometry_targets':
         return self._nml_geometry_targets
 
+    @property
+    def has_parse_error(self) -> bool:
+        """True if the input file had a parse/load error."""
+        return bool(self._parse_error_text)
 
-    @property 
-    def hasErrors (self) -> bool:
-        """ are syntax errors in input file"""
-        return self._hasErrors
+
+    @property
+    def parse_error_text(self) -> str | None:
+        """Parse/load error text of the input file or None."""
+        return self._parse_error_text
+
+
+    def _set_parse_error(self, message: str):
+        """Set parse/load error state for unified issue reporting."""
+        self._parse_error_text = message
+        logger.error(message)
+
+
+    def get_issue_messages(self) -> dict[str, list[str]]:
+        """Return current user-visible issues grouped by severity."""
+        errors = [self.parse_error_text] if self.parse_error_text else []
+        warnings = self._migration_warnings[:]
+        return {"errors": errors, "warnings": warnings}
+
+
+    def add_migration_warning(self, message: str):
+        """Store one migration warning message to be shown once in the UI."""
+        if message and message not in self._migration_warnings:
+            self._migration_warnings.append(message)
+
+
+    def pop_migration_warnings(self) -> list[str]:
+        """Return and clear migration warning messages."""
+        warnings = self._migration_warnings[:]
+        self._migration_warnings = []
+        return warnings
 
 
     @property
@@ -351,7 +386,7 @@ class Input_File:
         return self._airfoil_seed
 
     
-    def set_airfoil_seed (self, airfoil: Airfoil):  
+    def set_airfoil_seed (self, airfoil: Airfoil | str):  
         """ set new seed airfoil in input file"""
 
         if isinstance (airfoil, Airfoil): 
@@ -362,13 +397,19 @@ class Input_File:
                 # if seed is bezier, init shape Bezier with number of control points of seed 
                 #   as Xo2 will do it 
                 geo : Geometry_Bezier = airfoil.geo
-                ncp_top = geo.upper.ncp
-                ncp_bot = geo.lower.ncp
+                ncp_top = geo.upper.nControlPoints
+                ncp_bot = geo.lower.nControlPoints
                 self.nml_bezier_options.set_ncp_top (ncp_top)
                 self.nml_bezier_options.set_ncp_bot (ncp_bot)
 
+        elif isinstance (airfoil, str):
+            self.nml_optimization_options.set_airfoil_file(airfoil)
+
         # reset existing Airfoil - will be re-created 
         self._airfoil_seed = None
+
+        # Keep active constraints within current effective limits of new seed settings.
+        self.nml_constraints.revalidate_to_seed()
 
 
     @property
@@ -439,16 +480,13 @@ class Input_File:
         return text
 
 
-    def text_save (self, text, pathFileName=None, hasErrors=None): 
+    def text_save (self, text, pathFileName=None): 
         "save text to input file - overwrite existing data - re-init nml"
 
         if pathFileName is None: pathFileName = self.pathFileName
 
         with open(pathFileName,'w') as f:
             f.write(text)
-
-        # error state of input file 
-        if hasErrors is not None:  self._hasErrors = hasErrors
 
         # reset f90nml 
         self._init_nml ()
@@ -476,7 +514,7 @@ class Input_File:
 
 
     @property
-    def isChanged (self) -> bool:
+    def is_changed (self) -> bool:
         """ True if changes were made to the namelist"""
 
         return str(self._nml_file_dict) != self._nml_file_str
@@ -495,7 +533,7 @@ class Input_File:
   
         self.update_nml ()                                              # ensure namelist dict is up to date
 
-        if not self.isChanged: return False                             # no changes - no save
+        if not self.is_changed: return False                             # no changes - no save
 
         # write namelist dictionaries to file 
         with open(self.pathFileName, 'w') as nml_stream:
@@ -545,11 +583,12 @@ OPT_MIN             = "min"
 OPT_MAX             = "max"
 
 OPT_TYPES   = [OPT_TARGET, OPT_MIN, OPT_MAX]
-OPT_VARS    = [var.CD, var.CL, var.GLIDE, var.CM, var.XTR]
+OPT_VARS    = [var.CD, var.CL, var.GLIDE, var.CM, var.XTR, var.CP_MIN]
 OPT_ALLOWED = [(OPT_TARGET,var.CD), 
                (OPT_TARGET,var.GLIDE),
                (OPT_TARGET,var.CL),
                (OPT_TARGET,var.CM),
+               (OPT_TARGET,var.CP_MIN),
                (OPT_MIN,   var.CD),
                (OPT_MIN,   var.SINK),
                (OPT_MAX,   var.GLIDE),
@@ -673,21 +712,13 @@ class OpPoint_Definition:
                 valstr = f"{optValue:4.2f}"
 
             elif optVar == var.CD:
-                if self.optValue_isFactor: 
-                    valstr = (f"seed*{optValue:.2f}")                       # cd val is factor  
-                    fix = False                                             # always cut 0   
-                else:
-                    if optValue >= 0.0:       
-                        valstr = (f"{optValue:7.5f}")[1:]                   # remove leading 0 
-                    else:                                                   # altValue can be negative
-                        valstr = "-" +(f"{optValue:7.5f}")[2:]  
+                if optValue >= 0.0:       
+                    valstr = (f"{optValue:7.5f}")[1:]                   # remove leading 0 
+                else:                                                   # altValue can be negative
+                    valstr = "-" +(f"{optValue:7.5f}")[2:]  
 
             elif optVar == var.GLIDE or optVar == var.SINK:
-                if self.optValue_isFactor:
-                    valstr = (f"seed*{optValue:.2f}")                       # glide val is factor     
-                    fix = False                                             # always cut 0   
-                else:       
-                    valstr = (f"{optValue:.1f}")                            # remove leading 0 
+                valstr = (f"{optValue:.1f}")                            # remove leading 0 
             elif optVar == var.CM:
                 valstr = f"{optValue:5.3f}"
             else:
@@ -702,12 +733,19 @@ class OpPoint_Definition:
             return f"{optType}-{optVar}"
 
 
-    def polar_point (self) -> Polar_Point:
+
+    def get_polar_value (self, variable : var, or_target=False) -> float|None:
         """ 
-        Returns an interpolated Polar_Point in opPoint_defs polar of seed airfoil.
-        If it is a target point, the target value is set in the polar point.
+        Returns an interpolated variable value in self polar of seed airfoil.
+        If 'or_target' is True and variable is the target variable, the target value is returned.
             None if polar doesn't exist 
         """
+
+        if self.optType == OPT_TARGET and variable == self.optVar and or_target:
+            if self.optValue is  None: 
+                logger.error (f"{self} - no target value set")
+            return self.optValue                               # target (opt)value is absolute value
+
 
         polar = self._myList.get_seed_polar (self)
         if polar is None: 
@@ -719,34 +757,17 @@ class OpPoint_Definition:
         
         # get interpolated polar point in this polar - allow vals lt, gt than seed
 
-        polar_point =  polar.get_interpolated_point (self.specVar, self.specValue, allow_outside_range=True)
+        val =  polar.get_interpolated (self.specVar, self.specValue, variable, allow_outside_range=True)
 
-        if polar_point is None: 
-            logger.error (f"{self.__class__} - no polar point found in seed polar")
+        if val is None: 
+            logger.error (f"{self.__class__} - no value found in seed polar for variable {variable}")
             return None
 
-        # if target set optValue in polar point 
+        return val
 
-        if self.optType == OPT_TARGET:
-            if self.optValue_isFactor:                              # target (opt)value is factor to seed airfoil value 
-                seedValue = polar_point.get_value (self.optVar)
-                if seedValue : 
-                    optValue = self.optValue * seedValue
-                else:                                       
-                    optValue = None 
-            else:                                                   # target (opt)value is absolute value                        
-                optValue = self.optValue
 
-            if optValue is not None: 
 
-                # set exact target value in polar point
-                polar_point.set_value (self.optVar, optValue)   
 
-            else: 
-                logger.error (f"{self} - no target value set")
-
-        return polar_point
-    
 
     @property
     def specVar (self): return self._specVar
@@ -799,9 +820,9 @@ class OpPoint_Definition:
         optVar  = opt[1] 
         # set optVar and type with an initial value 
         if opt in OPT_ALLOWED and (optType != self._optType or optVar != self._optVar): 
-            self._optType = optType
-            self._optValue = self.polar_point().get_value (optVar) if self.polar_point() else None
-            self._optVar  = optVar 
+            self._optType  = optType
+            self._optValue = self.get_polar_value (optVar) 
+            self._optVar   = optVar 
 
 
     def opt_allowed_asString (self) -> list [str]: 
@@ -835,66 +856,30 @@ class OpPoint_Definition:
         or - the current value on the seed polar for optType 'min/max'
         """
         if self.optType == OPT_TARGET:
-            if self.optValue_isFactor:
-                return - self._optValue
-            else: 
-                return self._optValue
+            return self._optValue
         else: 
-            polar_point = self.polar_point()
-            return polar_point.get_value(self.optVar) if polar_point else None
+            return self.get_polar_value(self.optVar)
         
         
     def set_optValue (self, aVal):  
         if self.optType == OPT_TARGET and aVal is not None:
 
-            # aVal could be factor if negative
-            if not self.optVar == var.CM and aVal < 0.0:
-                self._optValue = -abs(round(aVal,3))
-            elif not self.optVar == var.CM and self.optValue_isFactor and aVal > 0.0:
-                self._optValue = -abs(round(aVal,3))
-
-            # normal values 
+            if self.optVar == var.CD:
+                aVal = clip (aVal, 0.001, 0.1) 
+                self._optValue = round (aVal,6)
+            elif self.optVar == var.CL:
+                aVal = clip (aVal, 0.001, 5.0) 
+                self._optValue = round (aVal,4)
+            elif self.optVar == var.GLIDE:
+                aVal = clip (aVal, 0, 200.0) 
+                self._optValue = round (aVal,3)
+            elif self.optVar == var.CM:
+                aVal = clip (aVal, -0.5, 0.5) 
+                self._optValue = round (aVal,4)
             else: 
-                if self.optVar == var.CD:
-                    aVal = clip (aVal, 0.001, 0.1) 
-                    self._optValue = round (aVal,6)
-                elif self.optVar == var.CL:
-                    aVal = clip (aVal, 0.001, 5.0) 
-                    self._optValue = round (aVal,4)
-                elif self.optVar == var.GLIDE:
-                    aVal = clip (aVal, 0, 200.0) 
-                    self._optValue = round (aVal,3)
-                elif self.optVar == var.CM:
-                    aVal = clip (aVal, -0.5, 0.5) 
-                    self._optValue = round (aVal,4)
-                else: 
-                    self._optValue = round (aVal,4)
+                self._optValue = round (aVal,4)
         else: 
             self._optValue = None 
-
-
-    @property
-    def optValue_isFactor (self) -> bool: 
-        """ optValue (target value) is taken as factor to seed airfoil value"""
-        isFactor = False
-        # only possible for target-cd and target-glide 
-        if self.isTarget_type and not self.optVar == var.CM:
-            # a negative target value is taken as factor by Xoptfoil2 
-            if self._optValue is not None and self._optValue < 0.0: 
-                isFactor = True
-        return isFactor 
-    
-    def set_optValue_isFactor (self, aBool: bool):
-        """ is True, optValue (target value) is taken as factor to seed airfoil value """
-        # only possible for target-cd and target-glide 
-        if self.isTarget_type and not self.optVar == var.CM:
-            if aBool: 
-                self._optValue = -1.0 
-            else: 
-                # reset - take inital value from seed airfoil polar
-                seedValue = self.polar_point().get_value(self.optVar)
-                if seedValue: 
-                    self._optValue = seedValue 
 
     @property
     def re (self): 
@@ -986,38 +971,14 @@ class OpPoint_Definition:
 
     @property
     def weighting (self): 
-        """ an individual weighting - default is 1 - can be negative, which means fixed """
+        """ an individual weighting - default is 1 """
         return 1.0 if self._weighting is None else self._weighting
         
     def set_weighting (self, aVal): 
-        if aVal == 1.0: 
+        if aVal is None or aVal == 1.0: 
             self._weighting = None
         else: 
-            self._weighting = aVal 
-
-    @property
-    def weighting_abs (self): 
-        """ an individual weighting - default is 1 - always > 0  """
-        return 1.0 if self._weighting is None else abs(self._weighting)
-
-    def set_weighting_abs (self, aVal : float):
-        aVal = -abs(aVal) if self.weighting_fixed else abs(aVal)
-        self.set_weighting (aVal) 
-
-
-    @property
-    def weighting_fixed (self) -> str:
-        """ True if weighing is fixed aga not dynamic"""
-        # negative weighting means fixed
-        return self.weighting < 0.0 and self._myList.dynamic_weighting
-
-    def set_weighting_fixed (self, fixed : bool) -> str:
-        if not self._myList.dynamic_weighting:
-            fixed = False
-        if self.weighting > 0.0 and fixed:           
-            self.set_weighting (- self.weighting)
-        elif self.weighting < 0.0 and not fixed:
-            self.set_weighting (- self.weighting)
+            self._weighting = abs(aVal)
 
 
     @property
@@ -1089,18 +1050,12 @@ class OpPoint_Definition:
             # recalc cl/cd to cd  - or vice versa 
             if self.optVar == var.GLIDE and self.specVar == var.CL:
                 optVar = var.CD 
-                if self.optValue_isFactor:
-                    optValue = 1 / self.optValue
-                else:
-                    optValue = self.specValue / self.optValue       # cd = cl / glide
+                optValue = self.specValue / self.optValue       # cd = cl / glide
                 if optType == OPT_MAX:                              # max glide will be min cd
                     optType = OPT_MIN
             elif self.optVar == var.CD and self.specVar == var.CL:
                 optVar = var.GLIDE 
-                if self.optValue_isFactor:
-                    optValue = 1 / self.optValue
-                else:
-                    optValue = self.specValue / self.optValue       # glide = cl / cd
+                optValue = self.specValue / self.optValue       # glide = cl / cd
                 if optType == OPT_MIN:                              # min cd will be max glide
                     optType = OPT_MAX
             else:
@@ -1238,15 +1193,7 @@ class OpPoint_Definition:
 
         self.set_specValue_limited (specValue)                  # check neighbour values 
 
-        # target (opt)value could be a factor to seed airfoil value 
         if self.isTarget_type: 
-            if self.optValue_isFactor:
-                seedValue = self.polar_point().get_value(self.optVar)
-                if seedValue : 
-                    optValue = optValue / seedValue if optValue else None
-                else: 
-                    optValue = None 
-
             # do not set if seed couldn't be calculated
             if optValue is not None: 
                 self.set_optValue  (optValue) 
@@ -1341,6 +1288,8 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         flap_angles         = nml._get('flap_angle',     default=[None] * n)
         flap_optimizes      = nml._get('flap_optimize',  default=[None] * n)
 
+        skipped_negative_targets = 0
+
         # collect opPoint definitions
 
         for iop in range (n):
@@ -1382,16 +1331,30 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             elif opt == 'target-glide':
                 op_def.set_optType (OPT_TARGET)
                 op_def.set_optVar  (var.GLIDE)
+            elif opt == 'target-cp-min':
+                op_def.set_optType (OPT_TARGET)
+                op_def.set_optVar  (var.CP_MIN)
             elif opt == 'max-xtr':
                 op_def.set_optType (OPT_MAX)
                 op_def.set_optVar  (var.XTR)
             else:
-                raise ValueError ("Type '%s' of Operating point %d not known. Using default" %(opt, iop))
+                raise ValueError (f"Type '{opt}' of Operating point {iop} not known. Using default")
 
-            op_def.set_optValue     (target_values[iop])            # opt type and var had to be set
+            target_val = target_values[iop]
+
+            # Legacy migration: negative target values formerly meant "factor of seed value".
+            if opt in ('target-drag', 'target-glide', 'target-lift') and \
+               isinstance(target_val, (int, float)) and target_val < 0.0:           
+                skipped_negative_targets += 1
+            else:
+
+                op_def.set_optValue     (target_val)                    # opt type and var had to be set
+                self.append (op_def) 
 
 
-            self.append (op_def) 
+        if skipped_negative_targets > 0:
+            self._input_file.add_migration_warning(
+                f"{skipped_negative_targets} Operating Point with legacy negative target value were skipped.")
 
 
 
@@ -1444,10 +1407,12 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
                 opt = 'target-lift'
             elif opPoint_def.optType == OPT_TARGET and opPoint_def.optVar == var.GLIDE:
                 opt = 'target-glide'
+            elif opPoint_def.optType == OPT_TARGET and opPoint_def.optVar == var.CP_MIN:
+                opt = 'target-cp-min'
             elif opPoint_def.optType == OPT_MAX and opPoint_def.optVar == var.XTR:
                 opt = 'max-xtr'
             else:
-                logger.debug ("Unknown optType, optVar combination - using default optimization type")
+                logger.warning ("Unknown optType, optVar combination - using default optimization type")
                 opt = 'min-drag'
                 
             optimization_types.append(opt)
@@ -1540,10 +1505,6 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
     @property
     def allow_improved_target (self) -> bool:  
         return self._nml.allow_improved_target
-    
-    @property
-    def dynamic_weighting (self) -> bool:  
-        return self._nml.dynamic_weighting
     
     @property
     def polar_defs (self) -> list[Polar_Definition]: 
@@ -1849,11 +1810,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
 #-------------------------------------------------------------------------------
 
 
-THICKNESS           = "Thickness"
-CAMBER              = "Camber"
-CURVATURE_LE        = "tbd"             #todo
-
-GEO_OPT_VARS    = [THICKNESS, CAMBER]
+GEO_OPT_VARS    = [geo_parm.THICKNESS, geo_parm.CAMBER]
 
 class GeoTarget_Definition:
     """ 
@@ -1870,7 +1827,6 @@ class GeoTarget_Definition:
         self._optVar     = optVar                   # either Thickness or Camber
         self._optValue   = optValue                 # target value 
         self._weighting  = weighting                # weighting during optimization 
-        self._preset_to_target = False
 
 
     @property
@@ -1899,48 +1855,10 @@ class GeoTarget_Definition:
         return self._weighting if self._weighting is not None else 1.0   
 
     def set_weighting (self, aVal): 
-        if aVal == 1.0: 
+        if aVal is None or aVal == 1.0: 
             self._weighting = None
         else: 
-            self._weighting = aVal 
-
-    @property
-    def weighting_abs (self): 
-        """ an individual weighting - default is 1 - always > 0  """
-        return 1.0 if self._weighting is None else abs(self._weighting)
-
-    def set_weighting_abs (self, aVal : float):
-        aVal = -abs(aVal) if self.weighting_fixed else abs(aVal)
-        self.set_weighting (aVal) 
-
-
-    @property
-    def weighting_fixed (self) -> str:
-        """ True if weighing is fixed aga not dynamic"""
-        # negative weighting means fixed
-        return self.weighting < 0.0 # and self._myList.dynamic_weighting
-
-    def set_weighting_fixed (self, fixed : bool) -> str:
-        # if not self._myList.dynamic_weighting:
-        #     fixed = False
-        if self.weighting > 0.0 and fixed:           
-            self.set_weighting (- self.weighting)
-        elif self.weighting < 0.0 and not fixed:
-            self.set_weighting (- self.weighting)
-
-
-    @property
-    def weighting_fixed_label (self) -> str:
-        """ returns a label if weighing is fixed aga not dynamic"""
-        return " = fix" if self.weighting < 0.0 else ""
-
-
-    @property
-    def preset_to_target (self) -> bool: 
-        """ preset airfoil to target value """
-        return self._preset_to_target is True
-    def set_preset_to_target (self, aBool : bool): 
-        self._preset_to_target = aBool is True
+            self._weighting = abs(aVal)
 
     @property
     def label (self): 
@@ -1976,7 +1894,6 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
         if target_values == [None] * ngeo:
             target_values   = self._nml._get('target_geo',      default=[None]  * ngeo)  # compatibility to older versions
         weightings      = self._nml._get('weighting',           default=[1.0]   * ngeo)
-        presets         = self._nml._get('preset_to_target',    default=[False] * ngeo)
 
         for igeo in range (ngeo):
 
@@ -1985,7 +1902,6 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
             geo_def.set_optVar    (target_types [igeo])
             geo_def.set_optValue  (target_values [igeo])
             geo_def.set_weighting (weightings [igeo])
-            geo_def.set_preset_to_target (presets [igeo])
             
             self.append (geo_def) 
 
@@ -1998,14 +1914,12 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
         target_types  = []
         target_values = []
         weightings    = []
-        presets       = []
 
         for geo_def in self:
 
             target_types.append (geo_def.optVar)
             target_values.append (geo_def.optValue)
             weightings.append (geo_def._weighting)                                          # raw value (None for default)
-            presets.append (geo_def.preset_to_target if geo_def.preset_to_target else None) # False is default
 
         self._nml._set ('ngeo_targets', len(self) if self else None) 
 
@@ -2014,13 +1928,14 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
             self._nml._set ('target_type',       target_types)
             self._nml._set ('target_value',      target_values)
             self._nml._set ('weighting',         weightings)
-            self._nml._set ('preset_to_target',  presets)
         else: 
             # remove empty dict items 
             self._nml.nml.pop ('target_type', None)
             self._nml.nml.pop ('target_value', None)
             self._nml.nml.pop ('weighting', None)
-            self._nml.nml.pop ('preset_to_target', None)
+
+        # Remove deprecated setting in all cases.
+        self._nml.nml.pop ('preset_to_target', None)
 
 
 #-------------------------------------------------------------------------------
@@ -2079,11 +1994,30 @@ class Nml_Abstract:
             if len(entry) < len(default): 
                 entry.extend (default [(len(entry)-len(default)):])
 
+        # return numeric two element arrays as tuple (e.g. min_thickness_at_x).
+        # Keep non-numeric pairs as list to avoid accidental scalar serialization.
+        elif isinstance(entry, list) and len(entry) == 2 and all(
+            (v is None) or (isinstance(v, Real) and not isinstance(v, bool)) for v in entry
+        ):
+            entry = tuple(entry)
+
         return entry    
 
 
     def _set (self, key: str, aVal): 
         """ sets a namelist entry in self having key"""
+
+        def _normalize_for_namelist(value):
+            # f90nml cannot serialize Python tuples as values; normalize to lists.
+            if isinstance(value, tuple):
+                return [_normalize_for_namelist(v) for v in value]
+            if isinstance(value, list):
+                return [_normalize_for_namelist(v) for v in value]
+            if isinstance(value, dict):
+                return {k: _normalize_for_namelist(v) for k, v in value.items()}
+            return value
+
+        aVal = _normalize_for_namelist(aVal)
 
         if isinstance (aVal, list):
             none_val = aVal.count(None) == len(aVal)
@@ -2114,6 +2048,8 @@ class Nml_Abstract:
                 valString = ".false."
             elif isinstance(value, str):
                 valString = f"'{value}'"
+            elif isinstance(value, tuple):
+                valString = ", ".join (str(v) for v in value)
             else: 
                 valString = str(value)
 
@@ -2174,14 +2110,6 @@ class Nml_info (Nml_Abstract):
 
     name = "info"
 
-    def __init__(self, *args):
-
-        super().__init__ (*args)
-
-        # read initial comments in input file as descriptions 
-        if not self.descriptions:
-            self.set_descriptions (self._get_descriptions_from_file())
-
 
     @override
     def _write_arrays (self, aStream : TextIO):
@@ -2205,28 +2133,13 @@ class Nml_info (Nml_Abstract):
             self._write_entry (aStream, f"ref_airfoil_scale({i+1})", ref_airfoil_scale)
             
 
-    def _get_descriptions_from_file (self) -> list:
-        """ try to read (legacy) descriptions being comments from input file directly"""
-
-        descriptions = []
-        text  = self._input_file.as_text()
-         
-        for line in text.split ("\n"):
-            line = line.strip()
-            if line:
-                if line[0] == "!":
-                    descriptions.append (line[1:].strip())
-                else: 
-                    break
-        return descriptions
-
-
     @property
     def author (self) -> str:                   return self._get('author', default='')
     def set_author (self, aVal):                self._set ('author', aVal) 
 
     @property
-    def descriptions (self) -> list :           return self._get('description', default=[])[:2]
+    def descriptions (self) -> list :           
+        return self._get('description', default=[])[:2]
     def set_descriptions (self, aList : list):  self._set ('description', [line for line in aList if line][:2]) 
 
     @property
@@ -2255,7 +2168,7 @@ class Nml_optimization_options (Nml_Abstract):
     """ 
     &optimization_options                          ! main control of optimization
     airfoil_file     = '<mySeedAirfoil>'           ! either '.dat', '.bez' or '.hicks' file 
-    shape_functions  = 'hicks-henne'               ! either 'hicks-henne', 'bezier' or 'camb-thick' 
+    shape_functions  = 'hicks-henne'               ! either 'hicks-henne' or 'bezier'
     cpu_threads      = -1                          ! no of cpu threads or -n less than available 
     show_details     = .true.                      ! show details of actions and results 
     """
@@ -2264,9 +2177,21 @@ class Nml_optimization_options (Nml_Abstract):
 
     HICKS_HENNE = 'hicks-henne'
     BEZIER      = 'bezier'
-    CAMB_THICK  = 'camb-thick'
+    LEGACY_CAMB_THICK = 'camb-thick'
 
-    SHAPE_FUNCTIONS = [HICKS_HENNE, BEZIER, CAMB_THICK]
+    SHAPE_FUNCTIONS = [HICKS_HENNE, BEZIER]
+
+    def __init__(self, *args):
+
+        super().__init__(*args)
+
+        # Migrate deprecated legacy value immediately during init.
+        shape = self._get('shape_functions', default=self.HICKS_HENNE)
+        if shape == self.LEGACY_CAMB_THICK:
+            self._input_file.add_migration_warning(
+                "Legacy shape_functions 'camb-thick' was migrated to 'bezier'."
+            )
+            self._set('shape_functions', self.BEZIER)
   
     @property
     def airfoil_file (self) -> str:             return self._get ('airfoil_file', default=None) 
@@ -2283,8 +2208,8 @@ class Nml_optimization_options (Nml_Abstract):
 
     @property 
     def shape_functions (self) -> str: 
-        shape = self._get ('shape_functions', default=self.HICKS_HENNE)
-        return shape  if shape in self.SHAPE_FUNCTIONS else self.HICKS_HENNE
+        shape = self._get ('shape_functions', default=self.BEZIER)
+        return shape if shape in self.SHAPE_FUNCTIONS else self.BEZIER
     def set_shape_functions (self, aShape):     
         if aShape in self.SHAPE_FUNCTIONS:  
             self._set('shape_functions', aShape)
@@ -2298,10 +2223,8 @@ class Nml_optimization_options (Nml_Abstract):
         """ set actualshape functions with long label"""
         if aLabel == self._input_file.nml_bezier_options.label_long:
             self.set_shape_functions (Nml_optimization_options.BEZIER)
-        elif aLabel == self._input_file.nml_hicks_henne_options.label_long:
-            self.set_shape_functions (Nml_optimization_options.HICKS_HENNE)
         else:
-            self.set_shape_functions (Nml_optimization_options.CAMB_THICK)
+            self.set_shape_functions (Nml_optimization_options.HICKS_HENNE)
 
 
     @property
@@ -2310,10 +2233,8 @@ class Nml_optimization_options (Nml_Abstract):
 
         if self.shape_functions == self.BEZIER:
             return self._input_file.nml_bezier_options
-        elif self.shape_functions == self.HICKS_HENNE:
-            return self._input_file.nml_hicks_henne_options
         else:
-            return self._input_file.nml_camb_thick_options
+            return self._input_file.nml_hicks_henne_options
 
     @property
     def shape_functions_list (self) -> list [str]:
@@ -2321,7 +2242,6 @@ class Nml_optimization_options (Nml_Abstract):
         l = []
         l.append (self._input_file.nml_bezier_options.label_long)
         l.append (self._input_file.nml_hicks_henne_options.label_long)
-        l.append (self._input_file.nml_camb_thick_options.label_long)
         return l
 
 
@@ -2332,9 +2252,15 @@ class Nml_hicks_henne_options (Nml_Abstract):
         nfunctions_top   = 3                           ! hicks-henne functions on top side              
         nfunctions_bot   = 3                           ! hicks-henne functions on bot side
         initial_perturb  = 0.1                         ! max. perturb when creating initial designs 
-        smooth_seed      = .false.                     ! smooth (match bezier) of seed airfoil prior to optimization
     """
     name = "hicks_henne_options"
+
+    def __init__(self, *args):
+
+        super().__init__(*args)
+
+        # Remove deprecated option silently for legacy input files.
+        self.nml.pop('smooth_seed', None)
 
     @property
     def label_long (self) -> str:
@@ -2351,10 +2277,6 @@ class Nml_hicks_henne_options (Nml_Abstract):
     @property
     def initial_perturb (self) -> float:        return self._get ('initial_perturb', default=0.1) 
     def set_initial_perturb (self, aVal:float): self._set ('initial_perturb', clip (aVal, 0.01, 0.5)) 
-
-    @property
-    def smooth_seed (self) -> bool:             return self._get ('smooth_seed', default=False) 
-    def set_smooth_seed (self, aVal : bool):    self._set('smooth_seed', aVal is True) 
 
     @property
     def ndesign_var (self) -> int:
@@ -2394,73 +2316,10 @@ class Nml_bezier_options (Nml_Abstract):
         return (self.ncp_top * 2 - 5) + (self.ncp_bot * 2 - 5)
 
 
-class Nml_camb_thick_options (Nml_Abstract):
-    """ 
-    &camb_thick_options                                ! options for shape_function 'camb_thick'
-        thickness        = .true.                      ! optimize thickness 
-        thickness_pos    = .true.                      ! optimize max. thickness position
-        camber           = .true.                      ! optimize camber
-        camber_pos       = .true.                      ! optimize max. camber position
-        le_radius        = .true.                      ! optimize leading edge radius
-        le_radius_blend  = .true.                      ! optimize blending range for le radius change 
-        initial_perturb  = 0.1d0                       ! max. perturb when creating initial designs     
-    """
-    name = "camb_thick_options"
-
-    @property
-    def label_long (self) -> str:
-        return f"Camb-Thick{"  (adapted)" if self.nml else ""}"
-
-    @property
-    def thickness (self) -> bool:               return self._get('thickness', default=True) 
-    def set_thickness (self, aVal : bool):      self._set('thickness', aVal is True) 
-
-    @property
-    def thickness_pos (self) -> bool:           return self._get('thickness_pos', default=True) 
-    def set_thickness_pos (self, aVal : bool):  self._set('thickness_pos', aVal is True) 
-
-    @property
-    def camber (self) -> bool:                  return self._get('camber', default=True) 
-    def set_camber (self, aVal : bool):         self._set('camber', aVal is True) 
-
-    @property
-    def camber_pos (self) -> bool:              return self._get('camber_pos', default=True) 
-    def set_camber_pos (self, aVal : bool):     self._set('camber_pos', aVal is True) 
-
-    @property
-    def le_radius (self) -> bool:               return self._get('le_radius', default=True) 
-    def set_le_radius (self, aVal : bool):      
-        self._set('le_radius', aVal is True) 
-        self.set_le_radius_blend (aVal)
-
-    @property
-    def le_radius_blend (self) -> bool:         return self._get('le_radius_blend', default=True) 
-    def set_le_radius_blend (self, aVal : bool):
-        if not (not self.le_radius and aVal):
-            self._set ('le_radius_blend', aVal is True) 
-
-    @property
-    def initial_perturb(self) -> float:         return self._get('initial_perturb', default=0.1) 
-    def set_initial_perturb (self, aVal:float): self._set ('initial_perturb', clip(aVal, 0.01, 0.5)) 
-
-
-    @property
-    def ndesign_var (self) -> int:
-        """ number of design variables based on ncp"""
-        n = (1 if self.thickness else 0) +  \
-            (1 if self.thickness_pos else 0) +  \
-            (1 if self.camber else 0) +  \
-            (1 if self.camber_pos else 0) +  \
-            (1 if self.le_radius else 0) +  \
-            (1 if self.le_radius_blend else 0) 
-        return n
-
-
 class Nml_operating_conditions (Nml_Abstract):
     """ 
     &operating_conditions
 
-        dynamic_weighting      = .true.                ! activate dynamic weighting during optimization
         allow_improved_target  = .true.                ! allow result to be better than target value
         
         re_default             = 400000                ! use this Reynolds number for operating points
@@ -2532,7 +2391,7 @@ class Nml_operating_conditions (Nml_Abstract):
             self._write_entry (aStream, f"weighting({i+1})", weightings[i])
             self._write_entry (aStream, f"reynolds({i+1})", reynolds[i])
             self._write_entry (aStream, f"mach({i+1})", machs[i])
-            self._write_entry (aStream, f"ncrit({i+1})", ncrits[i])
+            self._write_entry (aStream, f"ncrit_pt({i+1})", ncrits[i])
             self._write_entry (aStream, f"flap_optimize({i+1})", flap_optimizes[i])
             self._write_entry (aStream, f"flap_angle({i+1})", flap_angles[i])
 
@@ -2552,10 +2411,6 @@ class Nml_operating_conditions (Nml_Abstract):
     @property 
     def re_default_as_resqrtcl (self) -> bool:  return self._get ('re_default_as_resqrtcl', default=False)
     def set_re_default_as_resqrtcl (self, aVal : bool): self._set ('re_default_as_resqrtcl', aVal is True)
-
-    @property 
-    def dynamic_weighting (self) -> bool:       return self._get('dynamic_weighting', default=True)
-    def set_dynamic_weighting (self, aVal:bool):self._set('dynamic_weighting', aVal is True)
 
     @property 
     def allow_improved_target (self) -> bool:   return self._get('allow_improved_target', default=True)
@@ -2639,15 +2494,24 @@ class Nml_particle_swarm_options (Nml_Abstract):
         max_retries      = 2                           ! no of particle retries for geometry violations
         max_speed        = 0.1                         ! max speed of a particle in solution space 0..1 
         init_attempts    = 1000                        ! no of tries to get initial, valid design 
-        convergence_profile = 'exhaustive'             ! either 'exhaustive' or 'quick' or 'quick_camb_thick'
+        convergence_profile = 'exhaustive'             ! either 'exhaustive' or 'quick'
     """
     name = "particle_swarm_options"
 
     EXHAUSTIVE  = 'exhaustive'
     QUICK       = 'quick'
-    QUICK_CAMB  = 'quick_camb_thick'
+    LEGACY_QUICK_CAMB  = 'quick_camb_thick'
 
-    POSSIBLE_PROFILES = [EXHAUSTIVE, QUICK, QUICK_CAMB]
+    POSSIBLE_PROFILES = [EXHAUSTIVE, QUICK]
+
+    def __init__(self, *args):
+
+        super().__init__(*args)
+
+        # Normalize deprecated legacy profile value on load.
+        profile = self._get('convergence_profile', default=self.EXHAUSTIVE)
+        if profile == self.LEGACY_QUICK_CAMB:
+            self._set('convergence_profile', self.QUICK)
 
     @property
     def pop (self) -> int:                      return self._get('pop', default=30) 
@@ -2674,7 +2538,9 @@ class Nml_particle_swarm_options (Nml_Abstract):
     def set_init_attempts (self, aVal : int):   self._set('init_attempts', clip (int(aVal), 0, 9999))
 
     @property
-    def convergence_profile (self) -> str:      return self._get('convergence_profile', default=self.EXHAUSTIVE) 
+    def convergence_profile (self) -> str:
+        profile = self._get('convergence_profile', default=self.EXHAUSTIVE)
+        return profile if profile in self.POSSIBLE_PROFILES else self.EXHAUSTIVE
     def set_convergence_profile (self,aVal:str):
         if aVal in self.POSSIBLE_PROFILES:      self._set('convergence_profile', aVal) 
 
@@ -2732,12 +2598,20 @@ class Nml_curvature (Nml_Abstract):
         max_curv_reverse_bot = 0                       ! max no of curvature reversals - bot ("rearloading"?)
         curv_threshold   = 0.1                         ! threshold to detect reversals 
         max_te_curvature = 5.0                         ! max curvature at trailing edge
-        max_le_curvature_diff = 5.0                    ! Bezier: max curvature difference at leading edge
-        spike_threshold  = 0.5                         ! threshold to detect spikes aga bumps 
-        max_spikes_top   = 0                           ! max no of curvature bumbs - top 
-        max_spikes_bot   = 0                           ! max no of curvature bumbs - bot 
 /    """
     name = "curvature"
+
+    def __init__ (self, *args):
+
+        super().__init__(*args)
+
+        # Remove deprecated curvature options silently for legacy input files.
+        self.nml.pop('curv_top_spec', None)
+        self.nml.pop('curv_bot_spec', None)
+        self.nml.pop('max_spikes_top', None)
+        self.nml.pop('max_spikes_bot', None)
+        self.nml.pop('spike_threshold', None)
+        self.nml.pop('max_le_curvature_diff', None)
 
     @property
     def check_curvature (self) -> bool:         return self._get('check_curvature', default=True) 
@@ -2769,21 +2643,384 @@ class Nml_curvature (Nml_Abstract):
     def max_te_curvature (self) -> float:       return self._get('max_te_curvature', default=5.0) 
     def set_max_te_curvature (self,aVal:float): self._set('max_te_curvature', clip (aVal, 0.01, 50) if aVal != 5.0 else None)
 
-    @property
-    def max_le_curvature_diff (self) -> float:  return self._get('max_le_curvature_diff', default=5.0) 
-    def set_max_le_curvature_diff (self, aVal): self._set('max_le_curvature_diff', clip (aVal, 0.1, 50))
+
+
+
+#-------------------------------------------------------------------------------
+# Geometric Constraint Definition 
+#-------------------------------------------------------------------------------
+
+
+CON_MIN             = "min"
+CON_MAX             = "max"
+
+class GeoConstraint_Definition:
+    """
+    A single geometry constraint definition.
+    Geometry parameters are accessed through the unified get_geo_parm() API.
+    """
+
+    TE_SIDE_SAFETY_DELTA = 1.0
+    SEED_SAFETY_EPSILON = 0.0001                            # eg for thickness 0.0800, smallest max is 0.0801, biggest min is 0.0799 
+
+    def __init__(self,
+                 myList,
+                 key: str,                                  # xo2 name like "max_tickness"
+                 parm : geo_parm,                           # associated geo_parm 
+                 kind: str,                                 # CON_MIN or CON_MAX
+                 default = None,
+                 physical_lim: tuple | None = None,         # physical limits (lo, hi) - if not set, no physical limits
+                 physical_x_lim: tuple | None = None,       # for tuple constraints: physical limits for x value (lo, hi) 
+                 physical_t_lim: tuple | None = None,       # for tuple constraints: physical limits for t value (lo, hi)
+                 disabled_getter: Callable | None = None,   # function to check if constraint is disabled 
+                 ):
+
+        if not key:
+            raise ValueError("GeoConstraint_Definition requires non-empty key")
+
+        if not isinstance(parm, geo_parm):
+            raise TypeError(f"Invalid geo_parm for constraint '{key}': {parm}")
+
+        if kind not in (CON_MIN, CON_MAX):
+            raise ValueError(f"Invalid constraint kind for '{key}': {kind}")
+
+        is_tuple_def = physical_x_lim is not None or physical_t_lim is not None
+        if is_tuple_def and parm != geo_parm.THICKNESS_AT:
+            raise ValueError(f"Tuple constraint '{key}' requires parm THICKNESS_AT")
+        if parm == geo_parm.THICKNESS_AT and not is_tuple_def:
+            raise ValueError(f"Constraint '{key}' with THICKNESS_AT requires tuple limits")
+        if is_tuple_def and (physical_x_lim is None or physical_t_lim is None):
+            raise ValueError(f"Tuple constraint '{key}' requires both x and t limits")
+
+        self._myList = myList
+        self._key = key
+        self._parm = parm
+        self._kind = kind
+        self._default = default
+        self._physical_lim = physical_lim
+        self._physical_x_lim = physical_x_lim
+        self._physical_t_lim = physical_t_lim
+        self._disabled_getter = disabled_getter
 
     @property
-    def spike_threshold (self) -> float:        return self._get('spike_threshold', default=0.5) 
-    def set_spike_threshold (self, aVal:float): self._set('spike_threshold', clip (aVal, 0.1, 5.0))
+    def parm(self) -> geo_parm:
+        return self._parm
 
     @property
-    def max_spikes_top (self) -> int:           return self._get('max_spikes_top', default=0) 
-    def set_max_spikes_top (self, aVal : int):  self._set('max_spikes_top', clip (int(aVal), 0, 20))
+    def _nml(self) -> 'Nml_constraints':
+        """Owner Nml_constraints."""
+        return self._myList
+
 
     @property
-    def max_spikes_bot (self) -> int:           return self._get('max_spikes_bot', default=0) 
-    def set_max_spikes_bot (self, aVal : int):  self._set('max_spikes_bot', clip (int(aVal), 0, 20))
+    def key(self) -> str:
+        return self._key
+
+
+    @property
+    def is_tuple(self) -> bool:
+        return self.physical_t_lim is not None or self.physical_x_lim is not None
+
+
+    @property
+    def is_min(self) -> bool:
+        return self._kind == CON_MIN 
+
+
+    @property
+    def is_max(self) -> bool:
+        return self._kind == CON_MAX
+
+    @property
+    def physical_lim(self) -> tuple | None:
+        return self._physical_lim
+
+
+    @property
+    def physical_x_lim(self) -> tuple | None:
+        return self._physical_x_lim
+
+
+    @property
+    def physical_t_lim(self) -> tuple | None:
+        return self._physical_t_lim
+
+
+    @property
+    def default(self):
+        """ default value - if not set, take seed value """
+        if self._default is not None:
+            return self._default
+        if self.is_tuple:
+            x_val = self.seed_at
+            t_val = self.seed_value
+            if x_val is None and t_val is None:
+                return None
+            return (x_val, t_val)
+        return self.seed_value
+
+
+    @property
+    def disabled(self) -> bool:
+        if self._disabled_getter is None:
+            return False
+        try:
+            return bool(self._disabled_getter())
+        except Exception:
+            return False
+    
+
+    def _clip_x(self, x_val: float) -> float:
+        """Clip x value to physical x limits."""
+        if self.physical_x_lim is not None and x_val is not None:
+            return clip(x_val, self.physical_x_lim[0], self.physical_x_lim[1])
+        return x_val
+
+    def _clip_val(self, val: float, lim: tuple | None = None, x_val: float | None = None) -> float:
+        """Clip value to limits, deriving effective limits when not explicitly provided."""
+        if lim is None:
+            lim = self._effective_limit(x_val=x_val)
+
+        if self.is_tuple and isinstance(lim, (tuple, list)) and len(lim) >= 2:
+            # Tuple constraints use (x_lim, t_lim); clip scalar t against t_lim.
+            lim = lim[1]
+
+        if lim is not None and val is not None:
+            return clip(val, lim[0], lim[1])
+        return val
+
+    def _seed_geo_value(self, x_val: float | None = None):
+        """Seed geometry value (scalar), queried optionally at x for tuple constraints."""
+        try:
+            airfoil = self._nml.airfoil_seed
+            if airfoil is None or airfoil.geo is None:
+                return None
+
+            if x_val is None:
+                seed_result = airfoil.geo.get_geo_parm(self._parm)
+            else:
+                seed_result = airfoil.geo.get_geo_parm(self._parm, x=x_val)
+
+            return seed_result[1] if isinstance(seed_result, (tuple, list)) and len(seed_result) >= 2 else seed_result
+
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def _effective_limit(self, x_val: float | None = None):
+        """Effective constraint limit for current state or an optional x position."""
+        seed_val = None
+
+        if self.is_tuple:
+            x_lim = self.physical_x_lim
+            t_lim = self.physical_t_lim
+            query_x = self.value_x if x_val is None else x_val
+            if t_lim is None or query_x is None:
+                return (x_lim, t_lim)
+
+            if self.is_max or self.is_min:
+                seed_val = self._seed_geo_value(query_x)
+            lo, hi = t_lim
+        else:
+            lim = self.physical_lim
+            if lim is None:
+                return None
+
+            lo, hi = lim
+
+            if self.is_max or self.is_min:
+                seed_val = self.seed_value
+
+        if seed_val is not None:
+            if self.is_max:
+                seed_guard = seed_val + self.SEED_SAFETY_EPSILON
+                lo = max(lo, seed_guard)
+            elif self.is_min:
+                seed_guard = seed_val - self.SEED_SAFETY_EPSILON
+                hi = min(hi, seed_guard)
+
+        if not self.is_tuple:
+            # Keep side TE angle constraints separated by a safety margin.
+            # This avoids upper/lower helper lines crossing during editing.
+            if self._parm == geo_parm.TE_ANGLE_UPPER:
+                other = self._nml.max_te_bot_angle
+                other_val = other.value if other.is_active else None
+                if other_val is not None:
+                    lo = max(lo, float(other_val) + self.TE_SIDE_SAFETY_DELTA)
+            elif self._parm == geo_parm.TE_ANGLE_LOWER:
+                other = self._nml.min_te_top_angle
+                other_val = other.value if other.is_active else None
+                if other_val is not None:
+                    hi = min(hi, float(other_val) - self.TE_SIDE_SAFETY_DELTA)
+
+        if lo > hi:
+            lo = hi
+
+        return (x_lim, (lo, hi)) if self.is_tuple else (lo, hi)
+
+    @property
+    def seed_value(self):
+        """Get seed value (scalar) for this constraint via get_geo_parm() API."""
+        if self.is_tuple:
+            x_val = self.value_x
+            if x_val is None:
+                return None
+            return self._seed_geo_value(x_val)
+        return self._seed_geo_value()
+
+
+    @property
+    def seed_at(self) -> float | None:
+        """x anchor/seed position for plotting helpers and markers."""
+
+        x_val = None
+
+        if self.is_tuple:
+            x_val = self.value_x
+        else:
+            # For scalar constraints, try to get x from seed value
+            try:
+                seed_val = self._nml.airfoil_seed.geo.get_geo_parm(self._parm)
+                x_val    = seed_val[0]
+            except (AttributeError, TypeError, ValueError, IndexError):
+                pass
+
+        if x_val is None:
+            return None
+
+        return self._clip_x(x_val)
+
+
+    @property
+    def effective_limits(self):
+        """ effective limits for this constraint, taking into account physical limits and seed value"""
+        return self._effective_limit()
+
+
+    @property
+    def value(self):
+        if self.is_tuple:
+            val = self._nml._get(self._key, default=None)
+            if isinstance (val, (tuple, list)) and len(val) >= 2:
+                return (val[0], val[1])
+            return None
+        return self._nml._get(self._key, default=None)
+
+
+    @property
+    def _value_decimals(self) -> int | None:
+        key = self.key.lower()
+        if "angle" in key:
+            return 2
+        if "thickness" in key or "camber" in key:
+            return 4
+        return None
+
+
+    def _round_for_storage(self, value):
+        if value is None:
+            return None
+
+        decimals = self._value_decimals
+        if decimals is None:
+            return value
+
+        try:
+            return round(float(value), decimals)
+        except (TypeError, ValueError):
+            return value
+
+
+    def set_value(self, aVal):
+        # Handle None case upfront (same for both tuple and non-tuple)
+        if aVal is None:
+            self._nml._set(self._key, None)
+            return
+
+        if self.is_tuple:
+            # For tuple constraints, aVal must be a (x, t) tuple
+            if not (isinstance(aVal, (tuple, list)) and len(aVal) >= 2):
+                raise TypeError(f"Constraint '{self.key}' expects tuple value (x, t)")
+
+            x_val = aVal[0]
+            t_val = aVal[1]
+
+            # Clip x to physical limits
+            x_val = self._clip_x(x_val)
+
+            # Clip t to limits and store
+            t_val = self._clip_val(t_val, x_val=x_val)
+            t_val = self._round_for_storage(t_val)
+            self._nml._set(self._key, (x_val, t_val) if x_val is not None or t_val is not None else None)
+        else:
+            # For scalar constraints, clip to effective limits
+            aVal = self._clip_val(aVal)
+            aVal = self._round_for_storage(aVal)
+            self._nml._set(self._key, aVal)
+
+
+    @property
+    def is_active(self) -> bool:
+        if self.disabled:
+            return False
+        val = self.value
+        if isinstance(val, (tuple, list)):
+            return len(val) >= 2 and val[0] is not None and val[1] is not None
+        return val is not None
+
+
+    def set_is_active(self, on: bool):
+        if on and self.disabled:
+            return
+        if on and not self.is_active:
+            self.set_value (self.default)
+        elif not on:
+            self.set_value (None)
+
+
+    @property
+    def value_x (self) -> float | None:
+        if not self.is_tuple:
+            return None
+
+        val = self.value
+        if isinstance(val, (tuple, list)) and len(val) >= 1 and val[0] is not None:
+            return self._clip_x(val[0])
+
+        if self.physical_x_lim is not None:
+            x_lo, x_hi = self.physical_x_lim
+            return self._clip_x((x_lo + x_hi) / 2.0)
+
+        return self._clip_x(0.5)
+
+
+    def set_value_x (self, aVal : float | None):
+        val = self.value
+        t_val = val[1] if isinstance(val, (tuple, list)) else None
+        self.set_value ((aVal, t_val))
+
+
+    @property
+    def value_t (self) -> float | None:
+        val = self.value
+        return val[1] if isinstance(val, (tuple, list)) else None
+
+
+    def set_value_t (self, aVal : float | None):
+        val = self.value
+        x_val = val[0] if isinstance(val, (tuple, list)) else None
+        self.set_value ((x_val, aVal))
+
+
+    @property
+    def x_lim (self) -> tuple | None:
+        return self.physical_x_lim
+
+
+
+    def limits(self) -> tuple:
+        """Placeholder for future seed-dependent limits."""
+        return self.effective_limits
+
 
 
 
@@ -2797,20 +3034,191 @@ class Nml_constraints (Nml_Abstract):
         max_thickness    =                             ! max thickness        (better use geometry targets) 
         min_camber       =                             ! min camber           (better use geometry targets) 
         max_camber       =                             ! max camver           (better use geometry targets) 
+        min_te_top_angle =                             ! min top-side trailing edge angle in degrees
+        max_te_bot_angle =                             ! max bottom-side trailing edge angle in degrees
+        min_flap_angle   =                             ! minimum flap angle in degrees
+        max_flap_angle   =                             ! maximum flap angle in degrees
+        min_thickness_at_x =                           ! minimum thickness at x/c location
     """
     name = "constraints"
 
+    def __init__ (self, *args):
+        super().__init__(*args)
+        self._min_thickness = None
+        self._min_thickness_at_x = None
+        self._max_thickness = None
+        self._min_camber = None
+        self._max_camber = None
+        self._min_te_angle = None
+        self._min_te_top_angle = None
+        self._max_te_bot_angle = None
+        self._min_flap_angle = None
+        self._max_flap_angle = None
+
+    @property 
+    def airfoil_seed (self) -> Airfoil:
+        """Airfoil seed for geometry constraints."""
+        return self._input_file.airfoil_seed
+
+
+    def _disabled_geometry_off(self) -> bool:
+        return False
+
+
+    def _disabled_non_symmetric(self) -> bool:
+        return self.symmetrical
+
+
     @property
-    def check_geometry (self) -> bool:          return self._get('check_geometry', default=True) 
-    def set_check_geometry (self, aVal:bool):   self._set('check_geometry', aVal is True) 
+    def all_constraints(self) -> list[GeoConstraint_Definition]:
+        """All geometry constraint definitions in a stable order."""
+        return [
+            self.min_thickness,
+            self.min_thickness_at_x,
+            self.max_thickness,
+            self.min_camber,
+            self.max_camber,
+            self.min_te_angle,
+            self.min_te_top_angle,
+            self.max_te_bot_angle,
+            self.min_flap_angle,
+            self.max_flap_angle,
+        ]
+
+    
+    @property
+    def min_thickness (self) -> GeoConstraint_Definition:
+        if self._min_thickness is None:
+            self._min_thickness = GeoConstraint_Definition(self, 'min_thickness',
+                parm = geo_parm.THICKNESS,
+                kind = CON_MIN,
+                physical_lim = (0.001, 0.30),
+                disabled_getter = self._disabled_geometry_off)
+        return self._min_thickness
+
+    @property
+    def min_thickness_at_x (self) -> GeoConstraint_Definition:
+        if self._min_thickness_at_x is None:
+            self._min_thickness_at_x = GeoConstraint_Definition(self, 'min_thickness_at_x',
+                parm = geo_parm.THICKNESS_AT,
+                kind = CON_MIN,
+                physical_x_lim = (0.0, 1.0),
+                physical_t_lim = (0.001, 0.30),
+                disabled_getter = self._disabled_geometry_off)
+        return self._min_thickness_at_x
+
+    @property
+    def max_thickness (self) -> GeoConstraint_Definition:
+        if self._max_thickness is None:
+            self._max_thickness = GeoConstraint_Definition(self, 'max_thickness',
+                parm = geo_parm.THICKNESS,
+                kind = CON_MAX,
+                physical_lim = (0.001, 0.30),
+                disabled_getter = self._disabled_geometry_off)
+        return self._max_thickness
+
+    @property
+    def min_camber (self) -> GeoConstraint_Definition:
+        if self._min_camber is None:
+            self._min_camber = GeoConstraint_Definition(self, 'min_camber',
+                parm = geo_parm.CAMBER,
+                kind = CON_MIN,
+                physical_lim = (0.001, 0.30),
+                disabled_getter = self._disabled_non_symmetric)
+        return self._min_camber
+
+    @property
+    def max_camber (self) -> GeoConstraint_Definition:
+        if self._max_camber is None:
+            self._max_camber = GeoConstraint_Definition(self, 'max_camber',
+                parm = geo_parm.CAMBER,
+                kind = CON_MAX,
+                physical_lim = (-0.30, 0.30),
+                disabled_getter = self._disabled_non_symmetric)
+        return self._max_camber
+
+    @property
+    def min_te_angle (self) -> GeoConstraint_Definition:
+        if self._min_te_angle is None:
+            self._min_te_angle = GeoConstraint_Definition(self, 'min_te_angle',
+                parm = geo_parm.TE_ANGLE,
+                kind = CON_MIN,
+                physical_lim = (0.1, 40.0),
+                disabled_getter = self._disabled_geometry_off)
+        return self._min_te_angle
+
+    @property
+    def min_te_top_angle (self) -> GeoConstraint_Definition:
+        if self._min_te_top_angle is None:
+            self._min_te_top_angle = GeoConstraint_Definition(self, 'min_te_top_angle',
+                parm = geo_parm.TE_ANGLE_UPPER,
+                kind = CON_MIN,
+                physical_lim = (-90.0, 90.0),
+                disabled_getter = self._disabled_non_symmetric)
+        return self._min_te_top_angle
+
+    @property
+    def max_te_bot_angle (self) -> GeoConstraint_Definition:
+        if self._max_te_bot_angle is None:
+            self._max_te_bot_angle = GeoConstraint_Definition(self, 'max_te_bot_angle',
+                parm = geo_parm.TE_ANGLE_LOWER,
+                kind = CON_MAX,
+                physical_lim = (-90.0, 90.0),
+                disabled_getter = self._disabled_non_symmetric)
+        return self._max_te_bot_angle
+
+    @property
+    def min_flap_angle (self) -> GeoConstraint_Definition:
+        if self._min_flap_angle is None:
+            self._min_flap_angle = GeoConstraint_Definition(self, 'min_flap_angle',
+                parm = geo_parm.FLAP_ANGLE,
+                kind = CON_MIN,
+                default = -15.0,
+                physical_lim = (-45.0, 45.0),
+                disabled_getter = self._disabled_geometry_off)
+        return self._min_flap_angle
+
+    @property
+    def max_flap_angle (self) -> GeoConstraint_Definition:
+        if self._max_flap_angle is None:
+            self._max_flap_angle = GeoConstraint_Definition(self, 'max_flap_angle',
+                parm = geo_parm.FLAP_ANGLE,
+                kind = CON_MAX,
+                default = 15.0,
+                physical_lim = (-45.0, 45.0),
+                disabled_getter = self._disabled_geometry_off)
+        return self._max_flap_angle
+
+
+    def revalidate_to_seed (self):
+        """Re-apply effective limits to all currently active constraints."""
+        for con in self.all_constraints:
+            if con.is_active:
+                con.set_value(con.value)
+
+
+    @override
+    def write_to_stream (self, aStream: TextIO):
+
+        # ensure check_geometry is consistent with active constraints 
+        self._set('check_geometry', self.check_geometry)
+
+        super().write_to_stream(aStream)
+
+
+    @property
+    def check_geometry (self) -> bool:
+        return any(con.is_active for con in self.all_constraints)
+
+    def set_check_geometry (self, aVal:bool):
+        # Legacy compatibility: "off" clears all constraints. "on" is derived from active constraints.
+        if not aVal:
+            for con in self.all_constraints:
+                con.set_value(None)
 
     @property
     def symmetrical (self) -> bool:             return self._get('symmetrical', default=False) 
     def set_symmetrical (self, aVal : bool):    self._set('symmetrical', aVal is True) 
-
-    @property
-    def min_te_angle (self) -> float:           return self._get('min_te_angle', default=2.0) 
-    def set_min_te_angle (self, aVal : float):  self._set('min_te_angle', clip (aVal, 0.1, 20.0)) 
 
 
 
@@ -2819,11 +3227,9 @@ class Nml_geometry_targets (Nml_Abstract):
     """ 
     &geometry_targets                                  ! geometry targets which should be achieved
         ngeo_targets     = 0                           ! no of geometry targets 
-        target_type(1)   = ''                          ! either 'camber', 'thickness', 'match-foil' 
+        target_type(1)   = ''                          ! either 'camber', 'thickness'
         target_value(1)  = 0.0                         ! target value to achieve 
-        target_string(1) = 0.0                         ! in case of 'match-foil' filename of airfoil 
         weighting(1)     = 1.0                         ! weighting of this target
-        preset_to_target(1) = .false.                  ! preset seed airfoil to this target 
     """
     name = "geometry_targets"
 
@@ -2849,7 +3255,6 @@ class Nml_geometry_targets (Nml_Abstract):
 
         target_values = self._get('target_value',       noneArr)
         weightings    = self._get('weighting',          noneArr)
-        presets       = self._get('preset_to_target',   noneArr)
 
         for i, _ in enumerate (target_types):
 
@@ -2858,7 +3263,6 @@ class Nml_geometry_targets (Nml_Abstract):
             self._write_entry (aStream, f"target_type({i+1})",      target_types[i])
             self._write_entry (aStream, f"target_value({i+1})",     target_values[i])
             self._write_entry (aStream, f"weighting({i+1})",        weightings[i])
-            self._write_entry (aStream, f"preset_to_target({i+1})", presets[i])
 
     @property
     def ngeo_targets (self) -> int:             return self._get('ngeo_targets', default=0) 
@@ -2877,7 +3281,7 @@ class Nml_geometry_targets (Nml_Abstract):
         """ thickess geo target if defined - else None """
 
         for geoTarget in self.geoTarget_defs:
-            if geoTarget.optVar == THICKNESS:
+            if geoTarget.optVar == geo_parm.THICKNESS:
                 return geoTarget 
         return None     
     
@@ -2886,7 +3290,7 @@ class Nml_geometry_targets (Nml_Abstract):
         """ camber geo target if defined - else None """
 
         for geoTarget in self.geoTarget_defs:
-            if geoTarget.optVar == CAMBER:
+            if geoTarget.optVar == geo_parm.CAMBER:
                 return geoTarget 
         return None 
     
@@ -2900,7 +3304,7 @@ class Nml_geometry_targets (Nml_Abstract):
 
         elif on and not self.thickness:
             geo_def = GeoTarget_Definition (self.geoTarget_defs)
-            geo_def.set_optVar    (THICKNESS)
+            geo_def.set_optVar    (geo_parm.THICKNESS)
             thickness_seed = self._input_file.airfoil_seed.geo.max_thick
             geo_def.set_optValue  (thickness_seed)
 
@@ -2916,7 +3320,7 @@ class Nml_geometry_targets (Nml_Abstract):
 
         elif on and not self.camber:
             geo_def = GeoTarget_Definition (self.geoTarget_defs)
-            geo_def.set_optVar    (CAMBER)
+            geo_def.set_optVar    (geo_parm.CAMBER)
             thickness_seed = self._input_file.airfoil_seed.geo.max_camb
             geo_def.set_optValue  (thickness_seed)
 

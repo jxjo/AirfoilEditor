@@ -318,7 +318,7 @@ class App_Model (QObject):
             self._matcher.sig_new_results.disconnect ()
 
             aSide = self._matcher._side
-            self.airfoil.geo.finished_change_of (aSide, mod_info='matched') # will reset geo and handle changed  
+            self.airfoil.geo.finished_change_of (aSide, matched=True) # will reset geo and handle changed  
 
             case : Case_Match_Target = self.case
             case.set_match_result (result)
@@ -1022,7 +1022,7 @@ class App_Model (QObject):
 
             # be sure input file data is written to file 
 
-            if case.input_file.isChanged:                
+            if case.input_file.is_changed:                
                 case.input_file.save_nml()
 
             # clear previous results - prepare UI 

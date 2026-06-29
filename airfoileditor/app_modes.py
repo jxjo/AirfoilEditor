@@ -17,6 +17,7 @@ from .base.app_utils         import Settings
 
 from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.case             import Case_Direct_Design, Case_Match_Target
+from .model.airfoil          import Airfoil_BSpline
 
 from .ui.util_dialogs        import Airfoil_Save_Dialog
 from .ui.ae_panels           import *
@@ -480,8 +481,7 @@ class Mode_Modify (Mode_Abstract):
 
         # dialog to edit name, choose path, ..
 
-        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil,
-                                   parentPos=(0.25,-1), dialogPos=(0,1))
+        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
         ok = dlg.exec()
         if not ok: return                                       # save was cancelled - return to modify mode 
 
@@ -614,8 +614,7 @@ class Mode_As_Bezier (Mode_Abstract):
 
         # dialog to edit name, choose path, ..
 
-        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil,
-                                   parentPos=(0.25,-1), dialogPos=(0,1))
+        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
         ok = dlg.exec()
         if not ok: return                                       # save was cancelled - return to modify mode 
 
@@ -745,8 +744,7 @@ class Mode_As_BSpline (Mode_Abstract):
 
         # dialog to edit name, choose path, ..
 
-        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil,
-                                   parentPos=(0.25,-1), dialogPos=(0,1))
+        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
         ok = dlg.exec()
         if not ok: return                                       # save was cancelled - return to modify mode 
 
@@ -825,7 +823,7 @@ class Mode_Optimize (Mode_Abstract):
 
         # check if changes were made in current case 
 
-        if case and case.input_file.isChanged:
+        if case and case.input_file.is_changed:
             if ask: 
                 text = f"Save changes made for <b>{case.name}</b>?"
                 button = MessageBox.save (self.stacked_panel, "Save Case", text,
@@ -1086,11 +1084,12 @@ class Modes_Manager (QObject):
         if not (mode.mode_id in self._modes_dict):
             logger.error (f"Mode {mode} not registered in Mode_Manager.")
 
-        # set small oder normal  
-        mode.set_current_panel (self._is_minimized, refresh=True)
-
         # switch stacked widget to new mode panel
         self._modes_panel.setCurrentWidget (mode.stacked_panel)
+
+        # set small or normal and refresh after switching so visibility-dependent
+        # child widgets (e.g. file selectors) are updated reliably.
+        mode.set_current_panel (self._is_minimized, refresh=True)
 
         # setting of the actual width of the modes panel after switching needs to be done
         # after all current events are processed so that the size hint of the new panel is valid

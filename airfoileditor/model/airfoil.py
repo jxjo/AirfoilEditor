@@ -1101,8 +1101,8 @@ class Airfoil_Curve (Airfoil):
 
         # new name and filename
         airfoil_new =  cls (name=anAirfoil.name + cls.NAME_SUFFIX)
-        airfoil_new.geo.set_upper (upper, mod_info="initial fit")
-        airfoil_new.geo.set_lower (lower, mod_info="initial fit")
+        airfoil_new.geo.set_upper (upper)
+        airfoil_new.geo.set_lower (lower)
 
         # new pathFileName
         fileName_stem = anAirfoil.fileName_stem

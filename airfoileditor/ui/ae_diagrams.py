@@ -24,6 +24,7 @@ from ..model.xo2_driver     import Worker, Xoptfoil2
 from ..model.xo2_results    import OpPoint_Result, GeoTarget_Result
 
 from .ae_artists            import *
+from .ae_artists            import BSpline_Artist, Deviation_Line_Artist
 from .ae_widgets            import Airfoil_Select_Open_Widget
 from .xo2_artists           import *
 from .util_dialogs          import Polar_Definition_Dialog, Airfoil_Scale_Dialog
@@ -312,12 +313,16 @@ class Panel_Airfoils (Edit_Panel):
 
         airfoil = self.airfoils[id]
 
-        diag = Airfoil_Scale_Dialog (self, airfoil.scale_factor, dx=400, dy=100)
-        diag.exec()
+        diag = Airfoil_Scale_Dialog (self, airfoil.scale_factor, 
+                                     parentPos=(0.9, 0.3), dialogPos=(0,0.3))
 
-        if airfoil.scale_factor != diag.scale_factor:
-            airfoil.set_scale_factor (diag.scale_factor)
-            self.sig_airfoils_scale_changed.emit()
+        diag.sig_changed.connect(airfoil.set_scale_factor)
+        diag.sig_changed.connect(lambda val: self.refresh())
+
+        # finally, when dialog is closed, emit signal to inform parent that scale factor has changed
+        diag.sig_final_changed.connect(lambda: self.sig_airfoils_scale_changed.emit())
+
+        diag.show()
 
 
     def _on_airfoil_design_selected (self, fileName):
@@ -416,12 +421,9 @@ class Panel_Polar_Defs (Edit_Panel):
 
         diag = Polar_Definition_Dialog (self, polar_def, 
                                         parentPos=(1.1, 0.5), dialogPos=(0,0.5), fixed_chord=self.chord)
-        diag.exec()
-
-        # sort polar definitions ascending re number 
-        self.polar_defs.sort (key=lambda aDef : aDef.re)
-
-        self._on_polar_def_changed ()
+        
+        diag.sig_final_changed.connect (self._on_polar_def_changed)
+        diag.show()
 
 
     def delete_polar_def (self, id : int):
@@ -456,6 +458,9 @@ class Panel_Polar_Defs (Edit_Panel):
 
     def _on_polar_def_changed (self):
         """ handle changed polar def - inform parent"""
+
+        # sort polar definitions ascending re number 
+        self.polar_defs.sort (key=lambda aDef : aDef.re)
 
         # ensure if only 1 polardef, this has to be active 
         if len(self.polar_defs) == 1 and not self.polar_defs[0].active:
@@ -674,17 +679,6 @@ class Item_Airfoil (Diagram_Item):
         return False
 
 
-    def _on_enter_panelling (self):
-        """ slot user started panelling dialog - show panels """
-
-        # switch on show panels , switch off thickness, camber 
-        self._airfoil_artist.set_show_points (True)
-        self._line_artist.set_show (False)
-        self.section_panel.refresh() 
-
-        logger.debug (f"{str(self)} _on_enter_panelling")
-
-
     def _on_paneling_changed (self, is_paneling : bool):
         """ slot to handle paneling of airfoil changed signal """
 
@@ -692,11 +686,11 @@ class Item_Airfoil (Diagram_Item):
         for artist in self._get_artist (Airfoil_Line_Artist):
             if artist.show: artist.set_show (False)
 
-        # switch on show points
-        if is_paneling:
-            artist : Airfoil_Artist
-            for artist in self._get_artist (Airfoil_Artist):
-                artist.set_show_points (True)
+        # switch on/off show points
+        artist : Airfoil_Artist
+        for artist in self._get_artist (Airfoil_Artist):
+            artist.set_show_points (is_paneling)
+
 
     def _on_curve_changed (self, side_type : Line.Type):
         """ slot to handle curve of airfoil changed signal """

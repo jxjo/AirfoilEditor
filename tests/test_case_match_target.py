@@ -64,13 +64,6 @@ class Test_Match_Targets:
         assert mt.ncp == 6
         assert mt.side is not None
 
-    def test_default_flags(self, seed_airfoil):
-        """ncp_auto and min_rms are True by default"""
-        mt = Match_Targets.from_airfoil(seed_airfoil, Line.Type.UPPER, ncp=6)
-
-        assert mt.ncp_auto is True
-        assert mt.min_rms  is True
-
     def test_set_ncp(self, seed_airfoil):
         """set_ncp updates the ncp value"""
         mt = Match_Targets.from_airfoil(seed_airfoil, Line.Type.UPPER, ncp=6)

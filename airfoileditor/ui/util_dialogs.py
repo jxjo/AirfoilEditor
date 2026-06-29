@@ -7,11 +7,12 @@ Samller Utility dialogs not depending on app model
 
 """
 
-from PyQt6.QtWidgets                    import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
+from PyQt6.QtCore                       import pyqtSignal
+from PyQt6.QtWidgets                    import QLayout, QDialogButtonBox, QDialogButtonBox
 from PyQt6.QtWidgets                    import QFileDialog, QWidget
 
 from ..base.widgets                     import * 
-from ..base.panels                      import Dialog
+from ..base.panels                      import Dialog_Modeless, Dialog_Modal
 
 from ..model.airfoil                    import Airfoil, Flap_Definition
 from ..model.polar_set                  import *
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 
-class Airfoil_Save_Dialog (Dialog):
+class Airfoil_Save_Dialog (Dialog_Modal):
     """ 
     Common airfoil save dialog - optionally
         - set new filename
@@ -34,11 +35,11 @@ class Airfoil_Save_Dialog (Dialog):
     """
 
     _width  = (520, None)
-    _height = 300
 
     name = "Save Airfoil as..."
 
-    def __init__ (self,*args, remove_designs=False, rename_mode=False, **kwargs):
+    def __init__ (self,*args, remove_designs=False, rename_mode=False, 
+                  parentPos=(0.3,0.0), dialogPos=(0.0,1.5),**kwargs):
 
         self._rename_mode    = rename_mode
         self._remove_designs = remove_designs
@@ -46,7 +47,7 @@ class Airfoil_Save_Dialog (Dialog):
         if rename_mode:
             self.name = "Rename Airfoil"
 
-        super().__init__ (*args, **kwargs)
+        super().__init__ (*args, parentPos=parentPos, dialogPos=dialogPos, **kwargs)
 
 
     @property
@@ -66,7 +67,11 @@ class Airfoil_Save_Dialog (Dialog):
 
         l = QGridLayout()
         r = 0 
-        Label  (l,r,0, colSpan=4, get="Change airfoil name and/or filename before saving the airfoil",
+        if self._rename_mode:
+            text = "Rename airfoil and/or filename."
+        else:
+            text = "Save airfoil to a new file and/or directory."
+        Label  (l,r,0, colSpan=4, get=text,
                        style=style.COMMENT )
         r += 1
         SpaceR (l, r, stretch=0) 
@@ -95,12 +100,12 @@ class Airfoil_Save_Dialog (Dialog):
                     hide = self._rename_mode,
                     toolTip = 'Select directory of airfoil') 
         r += 1
-        SpaceR (l, r, height=10, stretch=2) 
+        SpaceR (l, r, height=10, stretch=0) 
         r += 1
         CheckBox (l,r,0, text="Remove all designs and design directory", colSpan=4,
                         get=lambda: self.remove_designs, set=self.set_remove_designs)
         r += 1
-        SpaceR (l, r, height=10, stretch=1) 
+        SpaceR (l, r, height=10, stretch=0) 
 
         l.setColumnStretch (1,5)
         l.setColumnMinimumWidth (0,80)
@@ -164,56 +169,43 @@ class Airfoil_Save_Dialog (Dialog):
 
 
 
-class Polar_Definition_Dialog (Dialog):
+class Polar_Definition_Dialog (Dialog_Modeless):
     """ Dialog to edit a single polar definition"""
 
-    _width  = 480
-    _height = (300, None)
+    _width  = 500
 
     name = "Edit Polar Definition"
 
-    def __init__ (self, parent : QWidget, polar_def : Polar_Definition, 
+    def __init__ (self, *args, 
                   small_mode = False,                                       # with flap etc 
                   polar_type_fixed = False,                                 # change of polar type not allowed 
                   fixed_chord : float = None,                               # fixed chord length in mm
+                  is_new : bool = False,                                    # new polar definition, ensure changed
                   **kwargs): 
 
-        self._polar_def         = polar_def
         self._small_mode        = small_mode
         self._polar_type_fixed  = polar_type_fixed
         self._fixed_chord       = fixed_chord
-        self._has_xtrip         = polar_def.has_xtrip
-
-        if small_mode:
-            self._height = 140
-            self._width  = 480
 
         # init layout etc 
-        super().__init__ (parent=parent, **kwargs)
+        super().__init__ (*args, **kwargs)
+
+        self._changes = is_new                                              # ensure changed if new polar definition
 
         if fixed_chord:
             self.setWindowTitle (f"{self.name} at Chord {fixed_chord}mm")
 
+        # strange: with max height, the dialog is getting to large...
+        if self._small_mode:
+            self.setMaximumHeight (self.sizeHint().height())
 
     @property
     def polar_def (self) -> Polar_Definition:
-        return self._polar_def
+        return self._dataObject
 
     @property
     def flap_def (self) -> Flap_Definition:
         return self.polar_def.flap_def if self.polar_def else None
-
-    @property
-    def has_xtrip (self) -> bool:
-        """ True if forced transition is or shall be set on top or bottom side"""
-        return self._has_xtrip
-    
-    def set_has_xtrip (self, aBool : bool):
-        self._has_xtrip = aBool
-        if not aBool:
-            self.polar_def.set_xtript (None)
-            self.polar_def.set_xtripb (None)
-        self.refresh()
 
 
     @property
@@ -227,10 +219,7 @@ class Polar_Definition_Dialog (Dialog):
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
-        l.setVerticalSpacing(3)                                     # strange - otherwise vertical spacing is too large
         r,c = 0,0 
-        SpaceR (l, r, height=10,stretch=0) 
-        r += 1 
         Label  (l,r,c, get="Polar type")
         ComboBox (l,r,c+1,  width=55, options=polarType.values(),
                         obj=self.polar_def, prop=Polar_Definition.type,
@@ -242,7 +231,7 @@ class Polar_Definition_Dialog (Dialog):
         l.setColumnMinimumWidth (c,80)
         c += 2
         ToolButton  (l,r,c, icon=Icon.EDIT, set=self.calc_re,
-                        toolTip="Calculate Re from velocity and chord length")
+                        toolTip=self._tooltip_calc_re)
         c += 1
         SpaceC  (l,c, width=10)
         c += 1
@@ -267,24 +256,27 @@ class Polar_Definition_Dialog (Dialog):
                             disable=True,
                             hide = lambda: self._fixed_chord is None or self.polar_def.type==polarType.T2)
             r += 1 
-            SpaceR (l, r, height=10, stretch=0) 
+            SpaceR (l, r, height=15, stretch=0) 
 
             r += 1 
-            CheckBox (l,r,c, text="Force transition at x ...", colSpan=7,
-                            obj=self, prop=Polar_Definition_Dialog.has_xtrip)
+            CheckBox (l,r,c, text="Force transition at ...", colSpan=7,
+                            obj=self.polar_def, prop=Polar_Definition.has_xtrip,
+                            toolTip="Define a forced laminar-turbulent transition." )
             r += 1
             FieldF  (l,r,c, lab="Upper Side", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
                             obj=self.polar_def, prop=Polar_Definition.xtript,
-                            hide=lambda: not self.has_xtrip)
+                            hide=lambda: not self.polar_def.has_xtrip)
             FieldF  (l,r,c+4, lab="Lower", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
                             obj=self.polar_def, prop=Polar_Definition.xtripb,
-                            hide=lambda: not self.has_xtrip)
+                            hide=lambda: not self.polar_def.has_xtrip)
             r += 1 
-            SpaceR (l, r, height=5, stretch=1) 
+            SpaceR (l, r, height=5, stretch=0) 
 
             r += 1 
-            CheckBox (l,r,c, text="Set flap just for this polar ...", colSpan=7,
-                            obj=self.polar_def, prop=Polar_Definition.is_flapped)
+            CheckBox (l,r,c, text="Set flap for this polar ...", colSpan=7,
+                            obj=self.polar_def, prop=Polar_Definition.is_flapped,
+                            toolTip="This polar will be calculated with a flap definition.\n" + 
+                                     "The flap definition is stored in the polar definition.")
             r += 1
             FieldF  (l,r,c, lab="Flap Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
                             obj=lambda: self.flap_def, prop=Flap_Definition.flap_angle,
@@ -295,13 +287,14 @@ class Polar_Definition_Dialog (Dialog):
             FieldF  (l,r,c+7, lab="Hinge y", width=60, step=1, lim=(0, 100), dec=0, unit='%',
                             obj=lambda: self.flap_def, prop=Flap_Definition.y_flap,
                             hide=lambda: not self.polar_def.is_flapped)
-            # Label   (l,r,c+10, get="of thickness", style=style.COMMENT)
 
             r += 1
-            SpaceR (l, r, height=5, stretch=1) 
+            SpaceR (l, r, height=5, stretch=0) 
             r += 1 
-            CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values for a complete polar", colSpan=7,
-                            get=self.polar_def.autoRange)
+            CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values", colSpan=7,
+                            get=self.polar_def.autoRange,
+                            toolTip="If checked, the range of polar values is optimized by Worker\n" + 
+                                    "to cover the range from cl_min to cl_max")
             r += 1
             FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
@@ -309,10 +302,14 @@ class Polar_Definition_Dialog (Dialog):
             FieldF (l,r,c, lab=f"Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
                             hide = lambda: self.polar_def.specVar != var.CL)
-            Label  (l,r,c+3, style=style.COMMENT, colSpan=6, 
-                            get="The smaller the value, the more time is needed")
-        r += 1
-        l.setRowStretch (r,1)
+            Label  (l,r,c+2, style=style.COMMENT, colSpan=6, 
+                            get="the smaller the value, the more time is needed")
+            r += 1
+            SpaceR (l, r, height=10, stretch=1)
+        else:
+            r += 1
+            SpaceR (l, r, height=1, stretch=1)
+
         return l
 
 
@@ -320,40 +317,32 @@ class Polar_Definition_Dialog (Dialog):
         """ calc re from velocity and chord length"""
 
         if self.polar_def.type == polarType.T1:
-            dialog = Calc_Reynolds_Dialog (self, re_asK=self.polar_def.re_asK, fixed_chord=self._fixed_chord,
-                                        parentPos=(0.5, 0.5), dialogPos=(0,1))
+            dialog = Calc_Reynolds_Dialog (self, self.polar_def.re_asK, fixed_chord=self._fixed_chord,
+                                        parentPos=(0.4, 0.4), dialogPos=(0,1.0))
         else:
-            dialog = Calc_Re_Sqrt_Cl_Dialog (self, re_asK=self.polar_def.re_asK, fixed_chord=self._fixed_chord,
-                                        parentPos=(0.5, 0.5), dialogPos=(0,1))
+            dialog = Calc_Re_Sqrt_Cl_Dialog (self, self.polar_def.re_asK, fixed_chord=self._fixed_chord,
+                                        parentPos=(0.4, 0.4), dialogPos=(0,1.0))
 
-        dialog.exec()     
-
-        if dialog.has_been_set:
-            self.polar_def.set_re_asK (dialog.re_asK)
-            self.refresh()
+        dialog.sig_changed.connect (self._set_polar_re_asK)
+        dialog.show()   
 
 
-    @override
-    def _on_widget_changed (self):
-        """ slot a input field changed - repanel and refresh"""
+    def _set_polar_re_asK (self, re_asK : int):
+        """ apply calculated Reynolds value returned by helper dialog """
+
+        self.polar_def.set_re_asK (re_asK)
         self.refresh()
-        # Adjust dialog size to fit content after widgets are shown/hidden
-        self.adjustSize()
+
+
+    def _tooltip_calc_re (self):
+        if self.polar_def.type == polarType.T1:
+            return "Calculate Reynolds number from velocity and chord length"
+        else:
+            return "Calculate Re·√Cl from wing load and chord length"
 
 
     @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-
-        return buttonBox 
-
-
-    @override
-    def reject(self): 
+    def done(self , result: int) -> None: 
         """ close or x-Button pressed"""
 
         # ensure no flap def with flap angle == 0.0 
@@ -361,102 +350,74 @@ class Polar_Definition_Dialog (Dialog):
             self.polar_def.set_is_flapped (False) 
 
         # normal close 
-        super().reject()
+        super().done(result)
 
 
 
-class Airfoil_Scale_Dialog (Dialog):
+class Airfoil_Scale_Dialog (Dialog_Modeless):
     """ small dialog to edit scale factor of an (reference) airfoil"""
 
     _width  = 320
-    _height = 170
-
-    name = "Set Scale Value"
-
-    def __init__ (self, *args, **kwargs): 
-
-        self._close_btn  : QPushButton = None 
-
-        super().__init__ ( *args, **kwargs)
-
-        self._close_btn.clicked.connect  (self.close)
-
+ 
+    name = "Scale Airfoil"
 
     @property
     def scale_factor (self) -> float:
-        return self.dataObject_copy
+        return self.dataObject
 
     def set_scale_factor (self, aVal):
-        self._dataObject_copy = aVal
+        self._dataObject = aVal
 
 
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
         r,c = 0,0 
-        Label  (l,r,c, style=style.COMMENT, height=80, colSpan=3,
-                get="Set a scale value for the selected reference airfoil.<br>" +\
-                    "This also scales the Reynolds number of its polars<br>" +\
-                    "allowing to compare airfoils at their wing section.<br>")
+        Label  (l,r,c, style=style.COMMENT, height=50, colSpan=3,
+                get="Set a scale factor for the selected reference airfoil.<br>" +\
+                    "This also scales the Reynolds numbers of its polars,<br>" +\
+                    "so airfoils can be compared at their wing section.<br>")
         r += 1
         FieldF (l,r,c, lab="Scale to", width=60, unit="%", step=10, dec=0, lim=(5,500),
                 obj=self, prop=Airfoil_Scale_Dialog.scale_factor)
         r += 1
-
-        l.setRowStretch (r,1)    
+        SpaceR (l, r, height=5, stretch=0)
         l.setColumnMinimumWidth (0,80)
         l.setColumnStretch (2,2)
 
         return l
 
 
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
 
-        buttonBox = QDialogButtonBox (QDialogButtonBox.StandardButton.Close) #  | QDialogButtonBox.StandardButton.Cancel)
-        self._close_btn  = buttonBox.button(QDialogButtonBox.StandardButton.Close)
-        return buttonBox 
-
-
-
-class Calc_Reynolds_Dialog (Dialog):
+class Calc_Reynolds_Dialog (Dialog_Modeless):
     """ Little dialog to calculate Reynolds from velocity and chord"""
 
-    _width  = 310
-    _height = 200
+    _width  = 180
 
-    name = "Calculate Reynolds Number"
+    name = "Calculate Re"
 
-
-    def __init__ (self, parent : QWidget,  
-                  re_asK : int = None,                  # initial Reynolds in 1000
+    def __init__ (self, *args, 
                   fixed_chord : float = None,           # fixed chord length in mm
                   **kwargs): 
 
-       
-        self._has_been_set = False
         self._v      = 30.0
         self._chord  = fixed_chord if fixed_chord is not None else 200
         self._chord_fixed = fixed_chord is not None
 
-        super().__init__ (parent, **kwargs)
+        super().__init__ (*args, **kwargs)
         
-        if re_asK is not None:
-            self.set_re_asK (re_asK)                # will also set v
-            self._has_been_set = False              # but not yet confirmed by user
-
-
+        if self.re_asK is not None:   # we have an initial value for re_asK, so we can calculate v from it
+            self.set_v (v_from_re(self.re_asK*1000, self.chord/1000, round_dec=None))              # chord in m
+            self.refresh()    # update v field
+  
     @property
     def re_asK (self) -> int: 
         """ Reynolds number base 1000"""
-        return int(re_from_v(self.v, self.chord/1000, round_to=None) / 1000)
-     
-    def set_re_asK (self, aVal : float): 
+        return self._dataObject
 
-        if not isinstance(aVal, (int, float)):
-            return
-        self.set_v (v_from_re(aVal*1000, self.chord/1000, round_dec=None))              # chord in m
+    def _update_re_asK (self):
+        """ update re_asK from v and chord"""
+        self._dataObject = int(re_from_v(self.v, self.chord/1000, round_to=None) / 1000)    
 
 
     @property
@@ -465,11 +426,9 @@ class Calc_Reynolds_Dialog (Dialog):
         return self._v  
     
     def set_v (self, aVal : float):
-        if not isinstance(aVal, (int, float)):
-            return
-        self._v = aVal
-        self._has_been_set = True
-        self.refresh()
+        if isinstance(aVal, (int, float)):
+            self._v = aVal
+            self._update_re_asK()   # update re_asK from v and chord
 
 
     @property
@@ -477,114 +436,75 @@ class Calc_Reynolds_Dialog (Dialog):
         """ chord in mm """
         return self._chord
     def set_chord (self, aVal : float):
-        if not isinstance(aVal, (int, float)):
-            return
-        self._chord = aVal
-        self._has_been_set = True
-        self.refresh()  
-
-
-    @property
-    def has_been_set (self) -> bool:
-        """ True if Reynolds was been set in this dialog """
-        return self._has_been_set 
+        if isinstance(aVal, (int, float)):
+            self._chord = aVal
+            self._update_re_asK()   # update re_asK from v and chord
 
 
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
         r,c = 0,0 
-        SpaceR (l, r, stretch=0, height=5) 
-        r += 1
         FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
                         obj=self, prop=Calc_Reynolds_Dialog.chord,
                         disable=self._chord_fixed)
-        Slider  (l,r,c+3, width=80,  lim=(10, 500),   
-                        obj=self, prop=Calc_Reynolds_Dialog.chord,
-                        hide=self._chord_fixed)
         r += 1
         FieldF  (l,r,c, lab="Velocity", width=80, unit="m/s", step=1, lim=(1, 360), dec=1,
                         obj=self, prop=Calc_Reynolds_Dialog.v)
+        r += 1
+        SpaceR  (l, r, stretch=0, height=5) 
+        r += 1
+        Label   (l,r,c, style=style.COMMENT, colSpan=5, height=50,
+                        get=f"ρ={AIR_RHO}, η={AIR_ETA:.2E} <br> at {TEMP_DEFAULT}°C and {ALT_DEFAULT}m")
 
-        Slider  (l,r,c+3, width=80, lim=(1,100), 
-                        obj=self, prop=Calc_Reynolds_Dialog.v)
-        r += 1
-        SpaceR  (l, r, stretch=2, height=5) 
-        r += 1
-        FieldF  (l,r,c, lab="Reynolds", width=80, unit="k", step=10, lim=(1, 9999), dec=0,
-                        obj=self, prop=Calc_Reynolds_Dialog.re_asK)
-        r += 1
-        Label   (l,r,c+1, style=style.COMMENT, colSpan=5, 
-                        get=f"ρ={AIR_RHO}, η={AIR_ETA:.2E} at {TEMP_DEFAULT}°C and {ALT_DEFAULT}m")
-
-        l.setColumnMinimumWidth (0,70)
-        l.setColumnMinimumWidth (2,5)
-        l.setColumnMinimumWidth (3,50)
-        l.setColumnStretch (5,2)   
+        l.setColumnMinimumWidth (0,60)
+        l.setColumnStretch (2,2)   
 
         return l
 
 
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-
-        return buttonBox 
 
 
-
-class Calc_Re_Sqrt_Cl_Dialog (Dialog):
+class Calc_Re_Sqrt_Cl_Dialog (Dialog_Modeless):
     """ Little dialog to calculate Re.sqrt(Cl) from wing load and chord"""
 
-    _width  = 310
-    _height = 200
+    _width  = 180
 
     name = "Calculate Re·√Cl"
 
-    def __init__ (self, parent : QWidget,  
-                  re_asK : int = None,                  # initial Reynolds in 1000
+    def __init__ (self, *args,  
                   fixed_chord : float = None,           # fixed chord length in mm
                   **kwargs): 
 
-        self._has_been_set = False
         self._load   = 40.0                             # wing load in g/dm²
         self._chord  = fixed_chord if fixed_chord is not None else 200
         self._chord_fixed = fixed_chord is not None
 
-        super().__init__ (parent, **kwargs)
+        super().__init__ (*args, **kwargs)
         
-        if re_asK is not None:
-            self.set_re_asK (re_asK)                    # will also set load
-            self._has_been_set = False                  # but not yet confirmed by user
+        if self.re_asK is not None:
+            self.set_load (load_from_re_sqrt(self.re_asK*1000, self.chord/1000, round_dec=None)*10)   # chord in m
+            self.refresh()   # update widgets with new values
 
 
     @property
     def re_asK (self) -> int: 
         """ Reynolds number base 1000"""
-        return int(re_sqrt_from_load(self.load/10, self.chord/1000, round_to=None) / 1000)
+        return self._dataObject
+    
+    def _update_re_asK (self):
+        """ update re_asK from load and chord"""
+        self._dataObject = int(re_sqrt_from_load(self.load/10, self.chord/1000, round_to=None) / 1000)
      
-    def set_re_asK (self, aVal : float): 
-
-        if not isinstance(aVal, (int, float)):
-            return
-        self.set_load (load_from_re_sqrt(aVal*1000, self.chord/1000, round_dec=None)*10)   # chord in m
-
 
     @property
     def load (self) -> float:
         """ wing load in g/dm² """
         return self._load   
     def set_load (self, aVal : float):
-        if not isinstance(aVal, (int, float)):
-            return
-        self._load = aVal
-        self._has_been_set = True
-        self.refresh()
-
+        if isinstance(aVal, (int, float)):
+            self._load = aVal
+            self._update_re_asK()
 
 
     @property
@@ -592,61 +512,28 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog):
         """ chord in mm """
         return self._chord
     def set_chord (self, aVal : float):
-        if not isinstance(aVal, (int, float)):
-            return
-        self._chord = aVal
-        self._has_been_set = True
-        self.refresh()  
-
-
-    @property
-    def has_been_set (self) -> bool:
-        """ True if Re sqrt(cl) was been set in this dialog """
-        return self._has_been_set 
+        if isinstance(aVal, (int, float)):
+            self._chord = aVal
+            self._update_re_asK()
 
 
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
         r,c = 0,0 
-        SpaceR (l, r, stretch=0, height=5) 
-        r += 1
         FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord,
                         disable=self._chord_fixed)
-        Slider  (l,r,c+3, width=80,  lim=(10, 500),   
-                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord,
-                        hide=self._chord_fixed)
         r += 1
         FieldF  (l,r,c, lab="Wing load", width=80, unit="g/dm²", step=1, lim=(1, 999), dec=0,
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
+        r += 1
+        SpaceR  (l, r, stretch=0, height=5) 
+        r += 1
+        Label   (l,r,c, style=style.COMMENT, colSpan=5, height=50,
+                        get=f"ρ={AIR_RHO}, η={AIR_ETA:.2E} <br> at {TEMP_DEFAULT}°C and {ALT_DEFAULT}m")
 
-        Slider  (l,r,c+3, width=80, lim=(1,200), 
-                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
-        r += 1
-        SpaceR  (l, r, stretch=2, height=5) 
-        r += 1
-        FieldF  (l,r,c, lab="Re·√Cl", width=80, unit="k", step=10, lim=(1, 999), dec=0,
-                        obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.re_asK)
-        r += 1
-        Label   (l,r,c+1, style=style.COMMENT, colSpan=5, 
-                        get=f"ρ={AIR_RHO}, η={AIR_ETA:.2E} at {TEMP_DEFAULT}°C and {ALT_DEFAULT}m")
-
-        l.setColumnMinimumWidth (0,70)
-        l.setColumnMinimumWidth (2,5)
-        l.setColumnMinimumWidth (3,50)
-        l.setColumnStretch (5,2)   
+        l.setColumnMinimumWidth (0,60)
+        l.setColumnStretch (2,2)   
 
         return l
-
-
-    @override
-    def _button_box (self):
-        """ returns the QButtonBox with the buttons of self"""
-
-        buttons = QDialogButtonBox.StandardButton.Close
-        buttonBox = QDialogButtonBox(buttons)
-        buttonBox.rejected.connect(self.close)
-
-        return buttonBox 
-

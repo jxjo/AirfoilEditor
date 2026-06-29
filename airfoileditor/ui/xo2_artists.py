@@ -9,15 +9,24 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 
 from PyQt6.QtGui                import QColor, QPainterPath, QTransform
 from PyQt6.QtCore               import Qt, pyqtSignal, QRectF
+from math                        import sin, cos, radians, tan, atan, degrees
 
 from ..base.artist              import *
 from ..base.common_utils        import *
 
 from ..model.polar_set          import * 
-from ..model.xo2_input          import (OpPoint_Definition, OpPoint_Definitions, OPT_TARGET, OPT_MAX, OPT_MIN)
+from ..model.geometry           import geo_parm
+from ..model.xo2_input          import (
+    OpPoint_Definition,
+    OpPoint_Definitions,
+    GeoConstraint_Definition,
+    OPT_TARGET,
+    OPT_MAX,
+    OPT_MIN,
+)
 from ..model.xo2_results        import OpPoint_Result, Optimization_History_Entry
 
-from .ae_artists                import _color_airfoil, SYMBOL_TRANSITION_RIGHT
+from .ae_artists                import _color_airfoil
 
 
 import logging
@@ -30,7 +39,6 @@ logger = logging.getLogger(__name__)
 def _size_opPoint (weighting : float, normal_size = 13) -> float:
     """ returns plot size of an opPoint (def) depending on weighting"""
 
-    # weighting can be negative (meaning fixed weighting - no dynamic)
     return abs(weighting) ** 0.8 * normal_size 
 
 
@@ -165,17 +173,13 @@ class Movable_OpPoint_Def (Movable_Point):
     def xy_in_xyVars (self) -> tuple: 
         """ returns the x,y coordinates of self in xyVars"""
 
-        polar_point = self._opPoint_def.polar_point ()
-        if polar_point is None:
-            return None, None
-        
-        x= polar_point.get_value(self._xyVars[0])
-        y= polar_point.get_value(self._xyVars[1])     
+        # if target variable is in diagram, take target value as coordinate        
+        x= self._opPoint_def.get_polar_value(self._xyVars[0], or_target=True)    
+        y= self._opPoint_def.get_polar_value(self._xyVars[1], or_target=True)     
         if x is None or y is None:
             return None, None       
         
         return x,y 
-
 
 
     @override
@@ -234,6 +238,359 @@ class Movable_OpPoint_Def (Movable_Point):
         self._highlight_item = aItem
         if self._highlight_item:
             self._highlight_item.setPos (self.pos())
+
+
+
+class Movable_GeoConstraint (Movable_Point):
+    """Display a single active geometry constraint as point marker."""
+
+    name = "Geo Constraint"
+
+    HELPER_LEN = 0.2
+    TE_SIDE_HELPER_LEN = 0.15
+
+    def __init__ (self, pi : pg.PlotItem,
+                  constraint : GeoConstraint_Definition,
+                  te : tuple[float, float, float, float] | None = None,
+                  movable=False,
+                  symbol='d',
+                  size=10,
+                  label_anchor=(0, 0.5),
+                  color="orangered",
+                  on_selected = None,
+                  **kwargs):
+
+        self._pi = pi
+        self._constraint = constraint
+        self._te = te
+        self._callback_selected = on_selected if callable(on_selected) else None
+        self._helper_pen = pg.mkPen(QColor(color), width=1, style=Qt.PenStyle.SolidLine)
+
+        self._xy = self._xy_for_constraint ()
+        self._is_plottable = self._xy != (None, None)
+
+        # Keep base class initialized even for unsupported constraints.
+        xy = self._xy if self._is_plottable else (0.0, 0.0)
+
+        super().__init__(xy,
+                         movable=movable and self._is_plottable,
+                         color=QColor(color) ,
+                         brush=QColor("black"),
+                         symbol=symbol,
+                         size=size,
+                         show_label_static=True,
+                         label_anchor=label_anchor,
+                         **kwargs)
+
+        self._helper_items = self._create_helper_items()
+        self._update_helper_items()
+
+
+    @property
+    def is_plottable (self) -> bool:
+        return self._is_plottable
+
+
+    def xy_in_diagram (self) -> tuple:
+        return self._xy
+
+
+    @property
+    def helper_items(self) -> list[pg.PlotDataItem]:
+        return self._helper_items
+
+
+    def _xy_for_constraint (self) -> tuple:
+        """Map a supported active constraint to diagram x/y coordinates."""
+
+        parm = self._constraint.parm
+        val  = self._constraint.value
+
+        if val is None:
+            return None, None
+
+        if parm == geo_parm.THICKNESS_AT:
+            return val[0], val[1]
+
+        seed_at = self._constraint.seed_at
+
+        if parm in (geo_parm.THICKNESS, geo_parm.CAMBER):
+            return seed_at, val
+
+        if parm == geo_parm.TE_ANGLE:
+            try:
+                angle = float(val)
+            except (TypeError, ValueError):
+                return None, None
+
+            helper_pts = self._te_angle_helper_points(angle)
+            if helper_pts is None:
+                return None, None
+
+            # Marker sits on the endpoint of the upper helper line.
+            _, _, x_end, y_up, _ = helper_pts
+            return x_end, y_up
+
+        if parm in (geo_parm.TE_ANGLE_UPPER, geo_parm.TE_ANGLE_LOWER):
+            try:
+                angle = float(val)
+            except (TypeError, ValueError):
+                return None, None
+
+            side_pts = self._te_side_helper_points(parm, angle)
+            if side_pts is None:
+                return None, None
+
+            # Marker sits on the left endpoint (helper start when read left -> right).
+            x0, y0, x1, y1 = side_pts
+            return x1, y1
+
+        return None, None
+
+
+    def _create_helper_items(self) -> list[pg.PlotDataItem]:
+
+        parm = self._constraint.parm
+        items: list[pg.PlotDataItem] = []
+
+        if parm in (geo_parm.THICKNESS, geo_parm.CAMBER, geo_parm.THICKNESS_AT):
+            p_main = pg.PlotDataItem([], [], pen=self._helper_pen)
+            p_main.setZValue(5)  # above airfoil
+            items.append(p_main)
+
+        elif parm == geo_parm.TE_ANGLE:
+            p1 = pg.PlotDataItem([], [], pen=self._helper_pen)
+            p2 = pg.PlotDataItem([], [], pen=self._helper_pen)
+            p1.setZValue(5)  # above airfoil
+            p2.setZValue(5)  # above airfoil
+            items.extend([p1, p2])
+
+        elif parm in (geo_parm.TE_ANGLE_UPPER, geo_parm.TE_ANGLE_LOWER):
+            p = pg.PlotDataItem([], [], pen=self._helper_pen)
+            p.setZValue(5)  # above airfoil
+            items.append(p)
+
+        return items
+
+
+    def _set_helper_data(self, idx: int, x, y):
+        if 0 <= idx < len(self._helper_items):
+            self._helper_items[idx].setData(x, y)
+
+
+    def _helper_span_x(self, x_center: float) -> tuple[float, float]:
+        half = self.HELPER_LEN / 2.0
+        return max(0.0, x_center - half), min(1.0, x_center + half)
+
+
+    def _hide_all_helpers(self):
+        for item in self._helper_items:
+            item.setData([], [])
+
+
+    def _te_angle_helper_points(self, angle: float) -> tuple[float, float, float, float, float] | None:
+        """Return TE angle helper geometry as (x_te, y_te, x_end, y_up, y_lo)."""
+        if self._te is None:
+            return None
+
+        x_u, y_u, x_l, y_l = self._te
+        x_te = (x_u + x_l) / 2.0
+        y_te = (y_u + y_l) / 2.0
+
+        angle_rad = radians(max(0.0, angle))
+
+        # Keep same convention as thickness/camber helpers: x/c span of 0.2.
+        dx = min(self.HELPER_LEN, max(0.0, x_te))
+        x_end = x_te - dx
+        dy = dx * tan(angle_rad)
+
+        y_up = y_te + dy
+        # Lower helper is baseline along thickness/x-axis direction.
+        y_lo = y_te
+
+        return (x_te, y_te, x_end, y_up, y_lo)
+
+
+    def _te_side_helper_points(self, parm: geo_parm, angle: float) -> tuple[float, float, float, float] | None:
+        """Return side TE helper geometry as (x0, y0, x1, y1)."""
+        if self._te is None:
+            return None
+
+        x_u, y_u, x_l, y_l = self._te
+        if parm == geo_parm.TE_ANGLE_UPPER:
+            x0, y0 = x_u, y_u
+        elif parm == geo_parm.TE_ANGLE_LOWER:
+            x0, y0 = x_l, y_l
+        else:
+            return None
+
+        dx = min(self.TE_SIDE_HELPER_LEN, max(0.0, x0))
+        dy = dx * tan(radians(angle))
+
+        x1 = x0 - dx
+        y1 = y0 + dy
+        return (x0, y0, x1, y1)
+
+
+    def _update_helper_items(self):
+        con = self._constraint
+        seed_at = con.seed_at
+
+        if con.parm in (geo_parm.THICKNESS, geo_parm.CAMBER):
+            y = float(con.value)
+            x0, x1 = self._helper_span_x(seed_at)
+            self._set_helper_data(0, [x0, x1], [y, y])
+            return
+
+        if con.parm == geo_parm.THICKNESS_AT :
+            x_center = con.value[0]
+            t = con.value[1]
+            if x_center is None or t is None:
+                self._hide_all_helpers()
+                return
+
+            x0, x1 = self._helper_span_x(x_center)
+            self._set_helper_data(0, [x0, x1], [t, t])
+            return
+
+        if con.parm == geo_parm.TE_ANGLE:
+            try:
+                angle = float(con.value)
+            except (TypeError, ValueError):
+                self._hide_all_helpers()
+                return
+
+            helper_pts = self._te_angle_helper_points(angle)
+            if helper_pts is None:
+                self._hide_all_helpers()
+                return
+
+            x_te, y_te, x_end, y_up, y_lo = helper_pts
+
+            self._set_helper_data(0, [x_te, x_end], [y_te, y_up])
+            self._set_helper_data(1, [x_te, x_end], [y_te, y_lo])
+            return
+
+        if con.parm in (geo_parm.TE_ANGLE_UPPER, geo_parm.TE_ANGLE_LOWER):
+            try:
+                angle = float(con.value)
+            except (TypeError, ValueError):
+                self._hide_all_helpers()
+                return
+
+            side_pts = self._te_side_helper_points(con.parm, angle)
+            if side_pts is None:
+                self._hide_all_helpers()
+                return
+
+            x0, y0, x1, y1 = side_pts
+
+            self._set_helper_data(0, [x0, x1], [y0, y1])
+            return
+
+        self._hide_all_helpers()
+
+
+    @override
+    def _moving(self, _):
+        if self._constraint is None:
+            return
+
+        parm = self._constraint.parm
+        if parm == geo_parm.THICKNESS_AT:
+            self._constraint.set_value((self.x, self.y))
+        elif parm in (geo_parm.THICKNESS, geo_parm.CAMBER):
+            self._constraint.set_value(self.y)
+        elif parm == geo_parm.TE_ANGLE:
+            helper_pts = self._te_angle_helper_points(float(self._constraint.value))
+            if helper_pts is None:
+                return
+
+            x_te, y_te, x_end, _, _ = helper_pts
+            dx = x_te - x_end
+            if dx <= 0.0:
+                return
+
+            angle = degrees(atan((self.y - y_te) / dx))
+            self._constraint.set_value(angle)
+        elif parm in (geo_parm.TE_ANGLE_UPPER, geo_parm.TE_ANGLE_LOWER):
+            if self._te is None:
+                return
+
+            x_u, y_u, x_l, y_l = self._te
+            if parm == geo_parm.TE_ANGLE_UPPER:
+                x0, y0 = x_u, y_u
+            else:
+                x0, y0 = x_l, y_l
+
+            dx = x0 - self.x
+            if dx <= 0.0:
+                dx = min(self.TE_SIDE_HELPER_LEN, max(0.0, x0))
+            if dx <= 0.0:
+                return
+
+            angle = degrees(atan((self.y - y0) / dx))
+            self._constraint.set_value(angle)
+        else:
+            return
+
+        self._xy = self._xy_for_constraint()
+        if self._xy != (None, None):
+            self.setPos(self._xy)
+
+        self._update_helper_items()
+
+
+    @override
+    def label_static (self, *_):
+        return self._label_text()
+
+
+    def _value_as_label(self) -> str | None:
+        con = self._constraint
+        val = con.value
+
+        if val is None:
+            return None
+
+        parm = con.parm
+        if parm in (geo_parm.THICKNESS, geo_parm.CAMBER):
+            return f"{float(val):.2%}"
+
+        if parm == geo_parm.THICKNESS_AT and isinstance(val, (tuple, list)) and len(val) >= 2:
+            x_val, t_val = val[0], val[1]
+            if x_val is None or t_val is None:
+                return None
+            return f" {float(x_val):.2f}, t={float(t_val):.2%}"
+
+        if parm in (geo_parm.TE_ANGLE, geo_parm.TE_ANGLE_UPPER, geo_parm.TE_ANGLE_LOWER, geo_parm.FLAP_ANGLE):
+            angle = float(val)
+            if parm == geo_parm.TE_ANGLE:
+                angle = abs(angle)
+            return f"{angle:.2f}°"
+
+        return f"{val}"
+
+
+    def _label_text(self) -> str:
+        key = self._constraint.key.replace('_', ' ')
+        value_label = self._value_as_label()
+        return key if value_label is None else f"{key}: {value_label}"
+
+
+    @override
+    def label_moving (self, *_):
+        return self._label_text()
+
+
+    @override
+    def mouseClickEvent(self, ev):
+        if not self.moving and ev.button() == Qt.MouseButton.LeftButton:
+            if callable(self._callback_selected):
+                ev.accept()
+                QTimer() .singleShot(0, lambda: self._callback_selected (self._constraint))
+        else:
+            super().mouseClickEvent (ev)
 
 
 
@@ -376,6 +733,71 @@ class Xo2_OpPoint_Defs_Artist (Artist):
         self.sig_opPoint_def_changed.emit ()
 
 
+class Xo2_GeoConstraint_Artist (Artist):
+    """Plot active geometry constraints as markers in the airfoil diagram."""
+
+    sig_geo_constraint_selected = pyqtSignal (GeoConstraint_Definition)
+
+    def __init__ (self, *args,
+                  airfoil_fn : Callable = None,
+                  **kwargs):
+
+        self._airfoil_fn = airfoil_fn
+
+        super().__init__(*args, **kwargs)
+
+
+    @property
+    def constraints (self) -> list[GeoConstraint_Definition]:
+        return self.data_list if self.data_list else []
+
+
+    @property
+    def airfoil (self) -> Airfoil | None:
+        return self._airfoil_fn() if callable(self._airfoil_fn) else None
+
+
+    def _plot (self):
+
+        legend_name = "Geo Constraint"
+        te = self.airfoil.geo.te if self.airfoil is not None else None
+
+        for con in self.constraints:
+
+            if not con.is_active:
+                continue
+
+            symbol = 'd'
+            label_anchor_y = 0.5
+
+            if con.parm == geo_parm.THICKNESS_AT:
+                symbol = 't'
+            elif con.is_min:
+                symbol = 't'
+            elif con.is_max:
+                symbol = 't1'
+
+            if con.is_max:
+                label_anchor_y = 1.2
+            elif con.is_min:
+                label_anchor_y = -0.2
+
+            label_anchor = (0.5, label_anchor_y)
+
+            pt = Movable_GeoConstraint(self._pi, con,
+                                       te=te,
+                                       movable=True,
+                                       symbol=symbol,
+                                       label_anchor=label_anchor,
+                                       on_selected=self.sig_geo_constraint_selected.emit)
+
+            if pt.is_plottable:
+                for helper_item in pt.helper_items:
+                    self._add(helper_item)
+                self._add (pt, name=legend_name)
+                legend_name = None
+
+
 class Xo2_OpPoint_Artist (Artist):
     """ Plot Xoptfoil2 operating point results """
 
@@ -439,7 +861,7 @@ class Xo2_OpPoint_Artist (Artist):
             color  = self._opPoint_color  (opPoint, opPoint_def)
             symbol = self._opPoint_symbol (opPoint, prev_opPoint)
             label  = self._opPoint_label  (opPoint, opPoint_def, self.xyVars)
-            size   = _size_opPoint (opPoint.weighting)
+            size   = _size_opPoint (opPoint_def.weighting if opPoint_def is not None else 1.0)
 
             textColor = QColor (color).darker(130)
 
@@ -447,11 +869,6 @@ class Xo2_OpPoint_Artist (Artist):
                               text=label, anchor=(0, 0.5), textOffset = (8,0), textColor=textColor, textFill=textFill)
 
             legend_name = None 
-
-        # message if dynamic weighting of opPoints occurred 
-
-        if any (op.is_new_weighting for op in opPoints):
-            self._plot_text ('Dynamic weightings applied', color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
 
 
         
@@ -662,6 +1079,43 @@ class Xo2_Improvement_Artist (Artist):
 class Xo2_Transition_Artist (Artist):
     """ Plot Xoptfoil2 point of transition on design airfoil """
 
+    # ----------  Symbol transition - create an arrow up and rotate to right 
+    #
+    #               .--x
+    #               |
+    #               y
+
+    @staticmethod
+    def _symbol_transition_right ():
+        path = QPainterPath()
+        # coords = [(-0.125, 0.125), (0, 0), (0.125, 0.125),
+        #             (0.05, 0.125), (0.05, 0.5), (-0.05, 0.5), (-0.05, 0.125)]
+        coords = [
+                (0,0),
+                (0,0.125),
+                (-0.04, 0.125),
+                (-0.04, -0.125),
+                (0, -0.125),
+                (0,0),
+                (0.05, 0.075),
+                (0.15, -0.075),
+                (0.25, 0.075),
+                (0.35, -0.075),
+                (0.4, 0)]
+        path.moveTo(*coords[0])
+        for x,y in coords[1:]:
+            path.lineTo(x, y)
+        # path.closeSubpath()
+        return path
+    # tr : QTransform = QTransform()
+    # tr.rotate(90)                                   # because y is downward
+    # tr.translate (0,-0.5)                          # translate is after rotation ...
+
+    # SYMBOL_TRANSITION_RIGHT  = tr.map (_symbol_transition_up())                         
+    SYMBOL_TRANSITION_RIGHT  = _symbol_transition_right()                         
+
+    # ----------------
+
     def __init__ (self, *args, 
                   opPoints_result_fn : Callable = None,
                   **kwargs):
@@ -682,7 +1136,8 @@ class Xo2_Transition_Artist (Artist):
         legend_name = "Point of Transition xtr"
 
         color  = _color_airfoil ([], airfoil).darker (120) 
-        size   = 10
+        symbol = self.SYMBOL_TRANSITION_RIGHT
+        size   = 40
         brush  = QColor ("black")
         fill   = QColor ("black")
         fill.setAlphaF (0.5) 
@@ -698,7 +1153,7 @@ class Xo2_Transition_Artist (Artist):
                 text   = f"{iop+1}"
                 anchor = (0.5, 1.2) if side.isUpper else (0.5, -0.2)
 
-                self._plot_point (x,y, color=color, symbol=SYMBOL_TRANSITION_RIGHT, size=size, brush=brush, 
+                self._plot_point (x,y, color=color, symbol=symbol, size=size, brush=brush, 
                                   text=text, textColor=color, anchor=anchor, textFill=fill, name=legend_name)
 
                 legend_name = None                                      # only once for legend 
