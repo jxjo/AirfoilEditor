@@ -883,26 +883,33 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
 
         l = QGridLayout()     
         r,c = 0, 0 
-        FieldF (l,r,c, lab="Leading edge x,y", get=lambda: self.geo.le[0], width=75, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
+        FieldF (l,r,c, lab="LE x", get=lambda: self.geo.le[0], width=70, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
         r += 1
-        FieldF (l,r,c, lab="  ... of spline", get=lambda: self.geo.le_real[0], width=75, dec=7, style=self._style_le_real,
+        FieldF (l,r,c, lab="LE spline x", get=lambda: self.geo.le_real[0], width=70, dec=7, style=self._style_le_real,
                 hide=lambda: not self.is_mode_modify)
         r += 1
-        FieldF (l,r,c, lab="Trailing edge x,y", get=lambda: self.geo.te[0], width=75, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
+        FieldF (l,r,c, lab="TE upper x", get=lambda: self.geo.te[0], width=70, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
         r += 1
-        FieldF (l,r,c,lab="  ... lower", get=lambda: self.geo.te[2], width=75, dec=7, style=lambda: self._style (self.geo.te[0], 1.0))
-        l.setColumnMinimumWidth (0,95)
+        FieldF (l,r,c, lab="TE lower x", get=lambda: self.geo.te[2], width=70, dec=7, style=lambda: self._style (self.geo.te[2], 1.0))
+        l.setColumnMinimumWidth (0,85)
         l.setColumnMinimumWidth (2,10)
+        l.setColumnMinimumWidth (3,35)
         l.setColumnStretch (2,1)
         r,c = 0, 3 
-        FieldF (l,r,c+1,get=lambda: self.geo.le[1], width=75, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
+        FieldF (l,r,c,lab="y",get=lambda: self.geo.le[1], width=70, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
         r += 1
-        FieldF (l,r,c+1,get=lambda: self.geo.le_real[1], width=75, dec=7, style=self._style_le_real,
+        FieldF (l,r,c,lab="y", get=lambda: self.geo.le_real[1], width=70, dec=7, style=self._style_le_real,
                 hide=lambda: not self.is_mode_modify)
         r += 1
-        FieldF (l,r,c+1,get=lambda: self.geo.te[1], width=75, dec=7, style=lambda: self._style (self.geo.te[1], -self.geo.te[3]))
+        FieldF (l,r,c,lab="y",get=lambda: self.geo.te[1], width=70, dec=7, style=lambda: self._style (self.geo.te[1], -self.geo.te[3]))
         r += 1
-        FieldF (l,r,c+1,get=lambda: self.geo.te[3], width=75, dec=7, style=lambda: self._style (self.geo.te[3], -self.geo.te[1]))
+        FieldF (l,r,c,lab="y",get=lambda: self.geo.te[3], width=70, dec=7, style=lambda: self._style (self.geo.te[3], -self.geo.te[1]))
+        r += 1
+
+        c = 0
+        FieldF (l,r,c, lab="TE angle upper", get=lambda: self.geo.upper.te_angle, width=70, dec=2, unit='°')
+        FieldF (l,r,c+3,lab="lower", get=lambda: self.geo.lower.te_angle, width=70, dec=2, unit='°')
+
         r += 1
         SpaceR (l,r, height=5)
         r += 1

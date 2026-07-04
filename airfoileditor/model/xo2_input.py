@@ -2299,11 +2299,11 @@ class Nml_bezier_options (Nml_Abstract):
         return f"Bezier  ({self.ncp_top} top, {self.ncp_bot} bot)"
     
     @property
-    def ncp_top (self) -> int:                  return self._get ('ncp_top', default=5) 
+    def ncp_top (self) -> int:                  return self._get ('ncp_top', default=6) 
     def set_ncp_top (self, aVal : int):         self._set ('ncp_top', clip (int(aVal), 3, 10) )
 
     @property
-    def ncp_bot (self) -> int:                  return self._get ('ncp_bot', default=5) 
+    def ncp_bot (self) -> int:                  return self._get ('ncp_bot', default=6) 
     def set_ncp_bot (self, aVal : int):         self._set ('ncp_bot', clip (int(aVal), 3, 10) )
 
     @property

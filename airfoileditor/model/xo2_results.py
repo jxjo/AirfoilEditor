@@ -1009,7 +1009,6 @@ class Reader_Airfoils_Bezier (Reader_Abstract):
             airfoil.set_newSide_for (Line.Type.LOWER, px, py)
 
             airfoil.set_usedAs (usedAs.DESIGN)
-            airfoil.set_isLoaded (True)
             airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  
 
             self._results.append(airfoil)
@@ -1123,6 +1122,7 @@ class Reader_Airfoils_HH (Reader_Abstract):
             airfoil.set_pathFileName (fileName, noCheck=True)
             airfoil.set_hh_data (name, self._seed_name, self._seed_x, self._seed_y, top_hhs, bot_hhs)
             airfoil.set_usedAs (usedAs.DESIGN)
+            airfoil.set_isLoaded (True)
             airfoil.set_isModified (True)             # up to now airfoil file doesn't exist  
             self._results.append(airfoil)
             n_new += 1           

@@ -773,27 +773,27 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
         l = QGridLayout()
         r,c = 0, 0
 
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_constraints.isDefault,
-                     set=self._edit_constraints)
-        Label       (l,r,c+1, get="Geometry Constraints", lab_disable=True)
+        CheckBox    (l,r,c, text="Geometry Constraints", colSpan=2,
+                    get=lambda: not self.input_file.nml_constraints.isDefault,
+                    set=self._edit_constraints)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_constraints,
                      toolTip="Edit options")
         r += 1
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_particle_swarm_options.isDefault,
-                     set=self._edit_particle_swarm_options)
-        Label       (l,r,c+1, get="Particle Swarm Options", lab_disable=True)
+        CheckBox    (l,r,c, text="Particle Swarm Options", colSpan=2,
+                    get=lambda: not self.input_file.nml_particle_swarm_options.isDefault,
+                    set=self._edit_particle_swarm_options)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_particle_swarm_options,
                      toolTip="Edit options")
         r += 1
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_xfoil_run_options.isDefault,
-                     set=self._edit_xfoil_run_options)
-        Label       (l,r,c+1, get="Xfoil Options",lab_disable=True)
+        CheckBox    (l,r,c, text="Xfoil Options", colSpan=2,
+                    get=lambda: not self.input_file.nml_xfoil_run_options.isDefault,
+                    set=self._edit_xfoil_run_options)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_xfoil_run_options,
                      toolTip="Edit options")
         r += 1
-        CheckBox    (l,r,c,   get=lambda: not self.input_file.nml_paneling_options.isDefault,
-                     set=self._edit_paneling_options)
-        Label       (l,r,c+1, get="Paneling Options", lab_disable=True)
+        CheckBox    (l,r,c, text="Paneling Options", colSpan=2,
+                    get=lambda: not self.input_file.nml_paneling_options.isDefault,
+                    set=self._edit_paneling_options)
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self._edit_paneling_options,
                      toolTip="Edit options")
 
@@ -848,6 +848,7 @@ class Panel_Xo2_Advanced (Panel_Xo2_Abstract):
         if edit:
             diag = Xo2_Constraints_Dialog (self, getter=self.input_file.nml_constraints, 
                                                 parentPos=(0.0, 0.4), dialogPos=(1,1))
+            diag.sig_changed.connect (self.refresh_and_notify)
             diag.sig_final_changed.connect (self.refresh_and_notify)         
             diag.show ()
         else:

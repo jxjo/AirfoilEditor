@@ -17,7 +17,7 @@ import types
 from typing             import override
 from enum               import Enum
 
-from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer
+from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QEvent
 
 from PyQt6.QtWidgets    import QLayout, QFormLayout, QGridLayout, QVBoxLayout, QHBoxLayout, QWIDGETSIZE_MAX
 from PyQt6.QtWidgets    import (QApplication, QWidget, QPushButton, QMenu,
@@ -97,6 +97,7 @@ class Icon (QIcon):
     OPEN       = "open"    
     SAVE       = "save" 
     EDIT       = "edit"            # https://icons8.com/icon/set/edit/family-windows--static
+    EDIT_LIVE  = "edit_red.png"
     DELETE     = "delete"          # https://icons8.com/icon/set/delete/family-windows--static
     ADD        = "add"      
     NEXT       = "next"     
@@ -719,6 +720,19 @@ class Widget:
             toolTip = self._toolTip() if callable (self._toolTip) else self._toolTip
             widget : QWidget = self
             widget.setToolTip (toolTip)
+
+
+    @override
+    def event(self, event: QEvent):
+        """Suppress parent tooltip fallback when no explicit tooltip is defined."""
+
+        if event.type() == QEvent.Type.ToolTip:
+            toolTip = self._toolTip() if callable(self._toolTip) else self._toolTip
+            # Also honor tooltips set directly via QWidget.setToolTip(...).
+            if not toolTip and not self.toolTip():
+                return True
+
+        return super().event(event)
 
 
     def _set_Qwidget_disabled (self):

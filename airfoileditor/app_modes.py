@@ -106,11 +106,11 @@ class Mode_Abstract (QObject):
         return f"<{self.__class__.__name__}>"
 
 
-    def _toast_message (self, msg, toast_style = style.HINT):
+    def _toast_message (self, msg, toast_style = style.HINT, parentWindow = False):
         """ show toast message """
         
         Toaster.showMessage (self.stacked_panel, msg, corner=Qt.Corner.BottomLeftCorner, margin=QMargins(10, 10, 10, 5),
-                             toast_style=toast_style)
+                             toast_style=toast_style, parentWindow = parentWindow)
 
     @property
     def panel(self):
@@ -835,7 +835,7 @@ class Mode_Optimize (Mode_Abstract):
             saved = case.input_file.save_nml()
 
             if toast and saved:
-                self._toast_message (f"Options saved to Input file", toast_style=style.GOOD)
+                self._toast_message (f"Options saved to Input file", toast_style=style.GOOD, parentWindow=True)
 
 
     def on_enter(self, pathFileName: str):

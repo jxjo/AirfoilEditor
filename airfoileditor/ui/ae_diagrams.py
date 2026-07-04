@@ -750,6 +750,16 @@ class Item_Airfoil (Diagram_Item):
         else:
             return [] 
 
+    @property
+    def geo_constraints (self) -> list:
+        """ Xo2 geo constraints definitions"""
+
+        if isinstance (self.case, Case_Optimize):
+            return self.case.input_file.nml_constraints.all_constraints
+        else:
+            return [] 
+
+
 
     @property
     def stretch_y (self) -> bool:
@@ -950,6 +960,9 @@ class Item_Airfoil (Diagram_Item):
                                     opPoints_result_fn=lambda: self.design_opPoints)
         self._add_artist (a)
 
+        a  = Xo2_GeoConstraint_Artist (self, lambda: self.geo_constraints,
+                                       airfoil_fn=lambda: self.app_model.airfoil_seed, show=False, show_legend=True)
+        self._add_artist (a)
 
     @override
     def setup_viewRange (self):
@@ -1983,17 +1996,18 @@ class Diagram_Airfoil_Polar (Diagram):
 
         if self._panel_optimization is None:
 
-            case : Case_Optimize = self.case
-        
             l = QGridLayout()
             r,c = 0, 0
-
             CheckBox (l,r,c, text="Op Point Definitions", colSpan=6,
                             get=lambda: self.show_xo2_opPoint_def, set=self.set_show_xo2_opPoint_def) 
             r += 1
             CheckBox (l,r,c, text="Op Point Results", colSpan=6,
                             get=lambda: self.show_xo2_opPoint_result, set=self.set_show_xo2_opPoint_result,
-                            disable=lambda: not case.results.designs_opPoints)               
+                            hide=self.show_xo2_opPoint_result_hidden)               
+            r += 1
+            CheckBox (l,r,c, text="Geometry Constraints", colSpan=6,
+                            get=lambda: self.show_xo2_constraints, set=self.set_show_xo2_constraints,
+                            hide=self.show_xo2_constraints_hidden)               
 
             self._panel_optimization = Edit_Panel (title="Optimization", layout=l, switchable=False, height=(100,None),
                                                    hide=lambda: not self.is_mode_optimize)
@@ -2081,6 +2095,28 @@ class Diagram_Airfoil_Polar (Diagram):
     def set_show_xo2_opPoint_result (self, aBool : bool, refresh=True):
         self._show_artist (Xo2_OpPoint_Artist, aBool, refresh=refresh)
         self._show_artist (Xo2_Transition_Artist, aBool, refresh=refresh)
+
+    def show_xo2_opPoint_result_hidden(self) -> bool:
+        """ True if geo constraints are hidden because they are not defined"""
+        case : Case_Optimize = self.case
+        return not case.results.designs_opPoints if case else True
+
+
+    @property 
+    def show_xo2_constraints (self) -> bool:
+        """ show geo constraints"""
+        artists = self._get_artist (Xo2_GeoConstraint_Artist)
+        return artists[0].show if artists else False 
+
+    def set_show_xo2_constraints (self, aBool : bool, refresh=True):
+        self._show_artist (Xo2_GeoConstraint_Artist, aBool, refresh=refresh)
+        self._show_artist (Airfoil_Line_Artist, aBool, refresh=refresh)
+
+    def show_xo2_constraints_hidden(self) -> bool:
+        """ True if geo constraints are hidden because they are not defined"""
+        case : Case_Optimize = self.case
+        return case.input_file.nml_constraints.isDefault if case else True
+
 
 
     @property

@@ -519,7 +519,8 @@ class Line:
     isBSpline       = False
     isHicksHenne    = False
 
-    CURV_THRESHOLD  = 0.01       # threshold for curvature to be counted as reversal 
+    CURV_THRESHOLD  = 0.01                      # threshold for curvature to be counted as reversal 
+    TE_ANGLE_RANGE  = (0.9, 1.0)                # x range to calculate TE angle - ! sync with xo2
     
     # ----------------------------------------------
 
@@ -781,13 +782,15 @@ class Line:
         return y
 
 
-    def angle_in_range (self, x_min=0.95, x_max=1.0) -> float:
+    def angle_in_range (self, x_range = (0.9, 1.0)) -> float:
         """
         Computes tangent angle in degrees in x-range [x_min, x_max].
 
         If the tangent is falling down, angle is positive.
         If the tangent is rising, angle is negative.
         """
+        x_min, x_max = x_range[0], x_range[1]
+
         # Select points within the chosen x-range
         mask = (self.x >= x_min) & (self.x <= x_max)
         x_sel = self.x[mask]
@@ -820,14 +823,19 @@ class Line:
 
     @property
     def te_angle (self) -> float:
-        """ tangent angle at TE in degrees - positive is downward, negative upward"""
+        """ 
+        Angle at TE in degrees - positive is downward, negative upward
+        The angle is calculated by linear regression of the last few points in the TE_ANGLE_RANGE.
+        """
 
-        return self.angle_in_range (x_min=0.95, x_max=1.0)
+        return self.angle_in_range (self.TE_ANGLE_RANGE)
 
 
     @property
     def te_gap (self):
-        """ returns signed y value of the y point which is half the te gap"""
+        """ 
+        Returns signed y value of the y point which is half the TE gap.
+        """
         return self.y[-1]
 
 

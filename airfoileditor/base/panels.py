@@ -1701,9 +1701,11 @@ class Dialog_Modeless (Dialog_Modal):
 
         self._live_connections : list[tuple[object, callable]] = []
 
+        icon = Icon(Icon.EDIT) if close_on_click_outside else Icon(Icon.EDIT_LIVE)
+
         super().__init__ (*args,
                             flags=Qt.WindowType.Window,
-                            window_icon=Icon(Icon.EDIT),
+                            window_icon=icon,
                             **kwargs)
 
         # Live dialogs are transient editors; delete on close so external

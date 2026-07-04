@@ -898,7 +898,7 @@ class Worker (X_Program):
         # outname = Path(os.path.basename(airfoil_pathFileName)).stem
         outname = '' 
 
-        args = self._build_worker_args ('polar-flapped',airfoil1=airfoil_pathFileName, inputfile=self._tmp_inpFile, outname=outname)
+        args = self._build_worker_args ('polar',airfoil1=airfoil_pathFileName, inputfile=self._tmp_inpFile, outname=outname)
 
         # .execute either sync or async
 

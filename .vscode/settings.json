@@ -12,5 +12,16 @@
         "improv",
         "nsteps",
         "qtext"
-    ]
+    ],
+    "chat.tools.terminal.autoApprove": {
+        "git stash": true,
+        "C:/Users/jochen/AppData/Local/Python/pythoncore-3.13-64/python.exe": true,
+        "/^python -m pytest tests/test_constraints_model\\.py -q$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "%{Write-Host": true,
+        "Show-Conflict": true,
+        "git -C \"e:\\GitHub\\AirfoilEditor\"": true
+    }
 }

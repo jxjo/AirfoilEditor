@@ -21,7 +21,7 @@ from .geometry      import (Geometry, Line, Panelling, Curvature_Abstract)
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 # -----------------------------------------------------------------------------
