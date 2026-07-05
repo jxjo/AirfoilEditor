@@ -883,7 +883,8 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
 
         l = QGridLayout()     
         r,c = 0, 0 
-        FieldF (l,r,c, lab="LE x", get=lambda: self.geo.le[0], width=70, dec=7, style=lambda: self._style (self.geo.le[0], 0.0))
+        FieldF (l,r,c, lab="LE x", get=lambda: self.geo.le[0], width=70, dec=7, style=lambda: self._style (self.geo.le[0], 0.0),
+                hide=lambda: self.is_mode_modify)
         r += 1
         FieldF (l,r,c, lab="LE spline x", get=lambda: self.geo.le_real[0], width=70, dec=7, style=self._style_le_real,
                 hide=lambda: not self.is_mode_modify)
@@ -896,7 +897,8 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         l.setColumnMinimumWidth (3,35)
         l.setColumnStretch (2,1)
         r,c = 0, 3 
-        FieldF (l,r,c,lab="y",get=lambda: self.geo.le[1], width=70, dec=7, style=lambda: self._style (self.geo.le[1], 0.0))
+        FieldF (l,r,c,lab="y",get=lambda: self.geo.le[1], width=70, dec=7, style=lambda: self._style (self.geo.le[1], 0.0),
+                hide=lambda: self.is_mode_modify)
         r += 1
         FieldF (l,r,c,lab="y", get=lambda: self.geo.le_real[1], width=70, dec=7, style=self._style_le_real,
                 hide=lambda: not self.is_mode_modify)
