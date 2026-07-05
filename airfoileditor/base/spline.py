@@ -9,6 +9,7 @@
 import bisect
 import math
 import numpy as np
+import numpy.typing as npt
 from copy                   import deepcopy
 from timeit                 import default_timer as timer
 
@@ -96,6 +97,46 @@ def print_array_compact (aArr,header=None):
         #print ("%8.4f" % val, end=" ")
         print ("%8.5f" % val, end=",")
     print()
+
+
+def bernstein_product(a: npt.ArrayLike, b: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """Multiply two Bernstein polynomials and return Bernstein coefficients."""
+
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    n = len(a) - 1
+    m = len(b) - 1
+    c = np.zeros(n + m + 1)
+
+    for i, ai in enumerate(a):
+        for j, bj in enumerate(b):
+            k = i + j
+            c[k] += ai * bj * math.comb(n, i) * math.comb(m, j) / math.comb(n + m, k)
+
+    return c
+
+
+def bernstein_elevate(a: npt.ArrayLike, degree: int) -> npt.NDArray[np.float64]:
+    """Elevate Bernstein coefficients to a higher degree."""
+
+    a = np.asarray(a, dtype=float)
+    n = len(a) - 1
+
+    if degree < n:
+        raise ValueError("target degree must be greater than or equal to source degree")
+    if degree == n:
+        return np.copy(a)
+
+    b = np.zeros(degree + 1)
+    degree_delta = degree - n
+
+    for j in range(degree + 1):
+        i_min = max(0, j - degree_delta)
+        i_max = min(n, j)
+        for i in range(i_min, i_max + 1):
+            b[j] += a[i] * math.comb(n, i) * math.comb(degree_delta, j - i) / math.comb(degree, j)
+
+    return b
 
 
 
