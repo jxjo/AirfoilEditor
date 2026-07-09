@@ -66,8 +66,10 @@ PACKAGE_NAME     = "airfoileditor"
 __version__      = "4.3.0"                  # hatch "version dynamic" - PEP440 compliant version string
                                             # for Github use SemVer "4.2.0-beta.3"
 
-CHANGE_TEXT      = "- Switch between polar diagram variables" # + \
-                #    "- Revised Match Bezier UI<br>"
+CHANGE_TEXT      = "- Support for Xoptfoil2 version2<br>"  + \
+                   "- Export airfoil to DXF<br>" + \
+                   "- Match B-Spline (experimental)<br>" + \
+                   "- Set TE gap for Bezier and B-Spline airfoils<br>" 
 
 
 class Main (QMainWindow):

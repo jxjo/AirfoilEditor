@@ -1162,8 +1162,11 @@ class Item_Welcome (Diagram_Item):
         super().__init__(*args, **kwargs)
 
         # set margins (inset) of self 
-        self.setContentsMargins ( 0,40,0,0)
-        self.setFixedHeight(280)
+        self.setContentsMargins ( 0,10,0,0)
+        if self.app_model.airfoil.isExample:
+            self.setFixedHeight(230)
+        else:
+            self.setFixedHeight(200)
 
         # add Welcome text as html label item
         p1 = pg.LabelItem(self._welcome_message(), color=QColor(Artist.COLOR_HEADER), size=f"{Artist.SIZE_HEADER}pt")    
@@ -1192,14 +1195,13 @@ Try out the functionality with this example or <strong><span style="color: silve
         else:
             example = ""
 
-        new =   "- Match airfoil with B-Spline<br>" + \
-                "- ...<br>"
+        new =  self.app_model._change_text
         
         # ... can't get column width working ...
 
         message = f"""
 <span style="font-size: 18pt; color: whitesmoke">Welcome to the <strong>Airfoil<span style="color:deeppink">Editor</span></strong></span>
-    <span style="font-size: 10pt">{version}</span>  <br>
+    <span style="font-size: 12pt">{version}</span>  <br>
 <span style="font-size: 10pt; color: darkgray">
 <table style="width:100%">
   <tr>
@@ -1207,26 +1209,22 @@ Try out the functionality with this example or <strong><span style="color: silve
         {example} 
         <p>
         You can view the properties of an airfoil like thickness distribution,<br> 
-        analyze with <strong><span style="color: silver;">View Curvature</span></strong> the upper and lower surface or <br>
-        examine the polars created by Worker & Xfoil with <strong><span style="color: silver;">View Polar</span></strong>. 
+        analyze the upper and lower surface with <strong><span style="color: silver;">View Curvature</span></strong>, or <br>
+        examine the polars created by XFOIL with <strong><span style="color: silver;">View Polar</span></strong>. 
         </p> 
         <p>
-        <span style="color: deepskyblue;">Tip: </span>Assign the file extension '.dat' to the AirfoilEditor to open <br>
-         an airfoil with a double click in the file Explorer.
-        </p>
+        <strong><span style="color: silver;">Modify</span></strong> lets you change the geometry of the airfoil,<br> 
+        creating a new design for each change.
+        </p> 
     </td>
     <td><p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p></td>
     <td style="width:40%">
         <p>
-        <strong><span style="color: silver;">Modify</span></strong> lets you change the geometry of the airfoil<br> 
-        creating a new design for each change.
+        <strong><span style="color: silver;">As Bezier based</span></strong> lets you represent the airfoil <br> 
+        as two Bezier curves. 
         </p> 
         <p>
-        <strong><span style="color: silver;">As Bezier based</span></strong> allows to convert the airfoil into <br> 
-         a new airfoil based on two Bezier curves. 
-        </p> 
-        <p>
-        <strong><span style="color: silver;">Optimize</span></strong> switches to airfoil optimization mode <br>
+        <strong><span style="color: silver;">Optimize</span></strong> switches to airfoil optimization mode,<br>
         which uses Xoptfoil2 as the optimization engine. 
         </p> 
     </td>

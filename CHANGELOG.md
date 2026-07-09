@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.3.0
+
+### Added
+
+- Support for Xoptfoil2 version 2.0 new features
+  - Geometry constraints 
+  - cp_min: being optimization target, added to polar generation 
+  - B-Spline shape functions (experimental)
+  - see Xoptfoil2 [CHANGELOG](https://github.com/jxjo/Xoptfoil2/blob/main/CHANGELOG.md) for details
+
+- Export airfoil to DXF file - either as B-Spline or cubic spline
+- Set trailing edge gap of Bezier based airfoils
+- Match B-Spline (experimental) 
+
+### Removed
+
+- Xoptfoil2 version 2.0 deprecated parameters in particular:
+  - Shape functions `camb-thick`
+  - Negative target values interpreted as factor
+  - Dynamic weighting during particle swarm optimization
+  - see Xoptfoil2 [CHANGELOG](https://github.com/jxjo/Xoptfoil2/blob/main/CHANGELOG.md) for details
+
+### More ...
+
+* New light weight dialogs for small edits
+* Support multi screens 
+* Some Bug fixes
+
+
 ## 4.2.0
 
 ### Added
