@@ -16,7 +16,8 @@ The **AirfoilEditor** is a fast airfoil viewer and advanced geometry editor with
 * Adjust thickness, camber, high points, and trailing edge gap
 * Blend two airfoils
 * Set flap
-* Generate airfoil replicas using Bezier curves.
+* Generate airfoil replicas using Bezier curves
+* Export airfoil to DXF format (as B-Spline or cubic spline curves)
 
 #### Optimize
 * User Interface of [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
@@ -51,7 +52,7 @@ This method is also used to adjust the highpoint of both the upper and lower sur
 
 ## Curvature
 
-On of the major views on an airfoil in the AirfoilEditor is the curvature of the airfoils surface. It allows a quick assessment of the surface quality and to detect artifacts like a 'spoiler' at the trailing edge which is quite common.
+One of the major views in the AirfoilEditor is the curvature of the airfoil surface. It allows a quick assessment of the surface quality and to detect artifacts like a 'spoiler' at the trailing edge which is quite common.
 
 > [!TIP]
 Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) for more information about an airfoils geometry.  
@@ -78,7 +79,7 @@ The match function fits the Bezier curve to an existing airfoil as accurately as
 
 ## Polars of an Airfoil
 
-To generate the polars of an airfoil the **AirfoilEditor** uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). On of the Worker actions is the multi-threaded creation of a polar set using Xfoil.
+To generate the polars of an airfoil, the **AirfoilEditor** uses the Worker tool of the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). One of the Worker's functions is the multi-threaded creation of polar sets using XFOIL.
 
 For polar generation the auto_range feature of the Worker is applied which optimizes the alpha range of the polar to show the complete T1 polar from cl_min to cl_max of the airfoil. For T2 polars (constant lift) the range starts right above cl=0.0 to cl_max.
 
@@ -91,9 +92,9 @@ This method enables the sequential review of airfoils or airfoil designs, displa
 ### Flapped Polars
 
 A polar can be 'flapped', meaning the airfoil has temporary flaps set before XFOIL computes the polar data. 
-A 'flapped polar' is convenient when different airfoils should be compared having set a certain flap angle as setting a flap and calculating the associated polar is done on the fly.
+A 'flapped polar' is convenient for comparing different airfoils at a specific flap angle without manually adjusting and recalculating.
 
-In difference, a flap can be configured in 'Modify Mode' for an individual airfoil and saved as a separate airfoil. This method is used when the modified flapped airfoil is needed for further processing for example in Xflr5. (see 'Modification of an Airfoil') 
+Alternatively, a flap can be configured in 'Modify Mode' for an individual airfoil and saved as a separate airfoil. This method is used when the modified flapped airfoil is needed for further processing for example in Xflr5. (see 'Modification of an Airfoil') 
 
 ![AE](images/polars.png "Flapped polars")
 
@@ -148,16 +149,15 @@ One of the possible modifications is to set a trailing edge flap – either perm
 
 ![AE](images/set_flap.png "Setting flap")
 
-Remark: As a flap may not be set on an already 'flapped' airfoil, the app remembers the initial unflapped design airfoil. This enables multiple sequential flap settings to be applied during a design session.
+Note: A flap cannot be set on an already 'flapped' airfoil. The app remembers the initial unflapped design airfoil, enabling multiple sequential flap settings to be applied during a design session.
 
-## Bezier based Airfoils
+## Bezier and B-Spline based Airfoils
 
-Bezier-based airfoils can also be adjusted in 'Modify Mode'. As the geometry of such an airfoil is defined by two Bezier curves for the upper and lower side, the typical geometry parameters like thickness cannot be changed directly. 
+Bezier-based and B-Spline-based airfoils can be adjusted in 'Modify Mode'. Since the geometry of such airfoils is defined by curves rather than coordinate points, traditional geometry parameters like thickness cannot be changed directly.
 
-Instead, the control points of the Bezier curves can be moved with mouse directly in the diagram.
-Each modification results in a new 'Design' with newly generated polars. This allows for observation of how adjustments to the Bezier curve impact the polar.
+Instead, control points of the curves can be moved directly in the diagram with the mouse. Each modification results in a new 'Design' with newly generated polars, making it easy to observe how adjustments impact performance.
 
-The optional match function fits the Bezier curve to an existing airfoil as accurately as possible. 
+The match function fits the curve (Bezier or B-Spline, experimental) to an existing airfoil as accurately as possible using simplex optimization. 
 
 ![AE](images/match_bezier.png)
 
@@ -169,8 +169,10 @@ In 'Optimization Mode', the **AirfoilEditor** serves as a wrapper for [Xoptfoil2
 Xoptfoil2 is a particle swarm based airfoil optimizer which supports different 'shaping methods' to modify the airfoil during optimization: 
 
 *	Hicks-Henne shape functions
-*	Bezier curve defining the shape
-*	Geometry parameters like maximum thickness and its position
+*	Bezier curves defining the shape
+*	B-Spline shape functions (experimental)
+*	Geometry parameters like maximum thickness, camber, and their positions
+*	Geometry constraints for defining allowed variations
 
 The **AirfoilEditor** covers all steps needed for airfoil optimization with Xoptfoil2: 
 

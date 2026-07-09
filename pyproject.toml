@@ -65,7 +65,7 @@ exclude = [
 ]
 include = [
   "airfoileditor",
-  "examples/optimize",
+  "examples_optimize",
   "assets",
   "icons",
   "README.md",

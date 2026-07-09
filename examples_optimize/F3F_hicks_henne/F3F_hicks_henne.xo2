@@ -1,0 +1,53 @@
+&info
+  description(1) = 'Fast F3F airfoil for good conditions. Using Hicks-Henne'
+/
+
+&optimization_options
+  airfoil_file = 'seed.dat'
+  show_details = .true.
+/
+
+&hicks_henne_options
+  nfunctions_top = 4
+/
+
+&operating_conditions
+  noppoint = 6
+  re_default = 600000
+
+  op_point(1) = -0.1
+  optimization_type(1) = 'target-drag'
+  target_value(1) = 0.0081
+
+  op_point(2) = 0.0
+  optimization_type(2) = 'target-drag'
+  target_value(2) = 0.00595
+
+  op_point(3) = 0.2
+  optimization_type(3) = 'target-drag'
+  target_value(3) = 0.00491
+  weighting(3) = 2
+
+  op_point(4) = 0.5
+  optimization_type(4) = 'target-glide'
+  target_value(4) = 74.8
+
+  op_point(5) = 0.75
+  optimization_type(5) = 'target-glide'
+  target_value(5) = 75.1
+
+  op_point(6) = 1.1
+  optimization_type(6) = 'target-glide'
+  target_value(6) = 56.03
+/
+
+&geometry_targets
+  ngeo_targets = 1
+  target_type(1) = 'Thickness'
+  target_value(1) = 0.076
+/
+
+&xfoil_run_options
+  ncrit = 7
+/
+

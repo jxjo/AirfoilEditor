@@ -1,0 +1,51 @@
+&info
+  description(1) = 'F3F medium conditions'
+/
+
+&operating_conditions
+  noppoint = 5
+  re_default = 500000
+
+  op_point(1) = -0.1
+  optimization_type(1) = 'target-drag'
+  target_value(1) = 0.00865
+
+  op_point(2) = 0.08
+  optimization_type(2) = 'target-drag'
+  target_value(2) = 0.0055
+
+  op_point(3) = 0.4
+  optimization_type(3) = 'target-glide'
+  target_value(3) = 67.1
+
+  op_point(4) = 0.8
+  optimization_type(4) = 'target-glide'
+  target_value(4) = 74.2
+
+  op_point(5) = 1.1
+  optimization_type(5) = 'target-glide'
+  target_value(5) = 62.0
+/
+
+&optimization_options
+  airfoil_file = 'Seed.dat'
+/
+
+&bezier_options
+  initial_perturb = 0.1
+/
+
+&xfoil_run_options
+  ncrit = 7.0
+/
+
+&geometry_targets
+  ngeo_targets = 1
+  target_type(1) = 'Thickness'
+  target_value(1) = 0.077
+/
+
+&curvature
+  max_curv_reverse_bot = 1
+/
+
