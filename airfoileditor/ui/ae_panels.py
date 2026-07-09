@@ -120,6 +120,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     sig_new_as_bezier = pyqtSignal()                    # wants to create new Bezier based airfoil
     sig_new_as_bspline = pyqtSignal()                   # wants to create new B-Spline based airfoil
     sig_save_as = pyqtSignal()                          # wants to save current airfoil as new file
+    sig_export_dxf = pyqtSignal()                       # wants to export current airfoil as dxf
     sig_rename = pyqtSignal()                           # wants to rename current airfoil
     sig_delete = pyqtSignal()                           # wants to delete current airfoil
     sig_delete_temp_files = pyqtSignal()                # wants to delete all temp files
@@ -193,6 +194,8 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menu.addSeparator ()
         menu.addAction (MenuAction ("Save as...", self, set=self.sig_save_as.emit,
                                      toolTip="Create a copy of the current airfoil with new name and filename"))
+        menu.addAction (MenuAction ("Export DXF...", self, set=self.sig_export_dxf.emit,
+                         toolTip="Export the current airfoil to a DXF file"))
         menu.addAction (MenuAction ("Rename...", self, set=self.sig_rename.emit,
                                      toolTip="Rename name and/or filename of current airfoil"))
         menu.addAction (MenuAction ("Delete", self, set=self.sig_delete.emit,

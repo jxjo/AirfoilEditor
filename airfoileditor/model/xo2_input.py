@@ -397,8 +397,8 @@ class Input_File:
                 # if seed is bezier, init shape Bezier with number of control points of seed 
                 #   as Xo2 will do it 
                 geo : Geometry_Bezier = airfoil.geo
-                ncp_top = geo.upper.nControlPoints
-                ncp_bot = geo.lower.nControlPoints
+                ncp_top = geo.upper.ncp
+                ncp_bot = geo.lower.ncp
                 self.nml_bezier_options.set_ncp_top (ncp_top)
                 self.nml_bezier_options.set_ncp_bot (ncp_bot)
 

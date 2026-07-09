@@ -12,7 +12,7 @@ class Test_Line_Angle_In_Range:
         y = -2.0 * x + 1.0
         line = Line(x, y)
 
-        angle = line.angle_in_range(x_min=0.0, x_max=1.0)
+        angle = line.angle_in_range(x_range = (0.0, 1.0))
 
         assert np.isclose(angle, 63.4349488, atol=1e-6)
 
@@ -21,7 +21,7 @@ class Test_Line_Angle_In_Range:
         y = 2.0 * x
         line = Line(x, y)
 
-        angle = line.angle_in_range(x_min=0.0, x_max=1.0)
+        angle = line.angle_in_range(x_range = (0.0, 1.0))
 
         assert np.isclose(angle, -63.4349488, atol=1e-6)
 
@@ -30,7 +30,7 @@ class Test_Line_Angle_In_Range:
         y = np.array([0.0, 0.1, 0.0])
         line = Line(x, y)
 
-        angle = line.angle_in_range(x_min=0.9, x_max=1.0)
+        angle = line.angle_in_range(x_range = (0.9, 1.0))
 
         assert np.isclose(angle, 11.30993247, atol=1e-6)
 
@@ -39,6 +39,6 @@ class Test_Line_Angle_In_Range:
         y = np.array([0.0, 1.0, 2.0])
         line = Line(x, y)
 
-        angle = line.angle_in_range(x_min=0.0, x_max=0.0)
+        angle = line.angle_in_range(x_range = (0.0, 0.0))
 
         assert angle == 0.0

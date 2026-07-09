@@ -1878,7 +1878,7 @@ class Polar_Artist (Artist):
         # bubble line in xtr style and color        
         color_line   =  QColor (color) 
         color_line.setAlphaF (0.4) 
-        color_red   =  QColor ('red') 
+        color_red   =  QColor ('orangered') 
         color_red.setAlphaF (0.5)
         pen     = pg.mkPen(color_line, width=3)  
         pen_red = pg.mkPen(color_red, width=3)

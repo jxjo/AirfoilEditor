@@ -161,6 +161,7 @@ class App_Model (QObject):
         self._airfoil           = None                  # current airfoil 
         self._airfoils_ref      = []                    # reference airfoils 
         self._airfoil_2         = None                  # 2nd airfoil for blend  
+        self._exporter_airfoil  = None                  # current airfoil exporter
         self._show_airfoil_design = True                # show design airfoil by default
 
         self._xo2_iopPoint_def  = 0                     # current xo2 opPoint definition index
@@ -434,7 +435,27 @@ class App_Model (QObject):
     def airfoil (self) -> Airfoil:
         """ current airfoil with current polar definitions"""
         return self._airfoil 
+
+
+    @property
+    def exporter_airfoil(self):
+        """stateful exporter for the current airfoil"""
+        from .model.airfoil_exports import Export_Airfoil_Dxf
+
+        if self.airfoil is None:
+            return None
+
+        if self._exporter_airfoil is None:
+
+            dxf_settings = Settings().get('export_dxf', None)
+            self._exporter_airfoil = Export_Airfoil_Dxf(self.airfoil, dataDict=dxf_settings)
+
+        else:
+            self._exporter_airfoil.set_airfoil(self.airfoil)
+
+        return self._exporter_airfoil
     
+
     def set_airfoil (self, aNew : Airfoil, 
                      silent: bool = False,
                      load_settings: bool = False,
@@ -974,6 +995,9 @@ class App_Model (QObject):
         for polar_def in self.polar_definitions:
             def_list.append (polar_def._as_dict())
         s.set ('polar_definitions', def_list)
+
+        # add export dxf settings
+        s.set ('export_dxf', self.exporter_airfoil._as_dict())
 
         # add additional settings
         if add_key:

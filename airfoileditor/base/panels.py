@@ -1336,12 +1336,12 @@ class Dialog_Modal (QDialog):
 
         l_main   = QVBoxLayout()
         l_main.addWidget (self._panel, stretch=1)
-        l_main.setContentsMargins (QMargins(5, 5, 5, 5))
+        l_main.setContentsMargins (QMargins(5, 0, 5, 5))
         l_main.setSpacing(5)
 
         l_footer = self._init_footer_layout()
         if l_footer is not None:
-            l_footer.setContentsMargins (QMargins(15, 0, 15, 10))
+            l_footer.setContentsMargins (QMargins(15, 5, 15, 10))
             l_main.addLayout (l_footer)
 
         self.setLayout (l_main)
@@ -1458,6 +1458,25 @@ class Dialog_Modal (QDialog):
         for w in self.widgets:
             w.refresh(disable=disable)
         logger.debug (f"{self} - refresh")
+
+
+    def _toast_message(self,
+                       msg: str,
+                       toast_style=style.GOOD,
+                       duration: int = 2000,
+                       corner: Qt.Corner = Qt.Corner.BottomLeftCorner,
+                       margin: QMargins = QMargins(10, 10, 10, 5),
+                       parentWindow: bool = True):
+        """Show a toaster message relative to this dialog or its window."""
+
+        parent = self.parent() if self.parent() is not None else self
+
+        Toaster.showMessage(parent, msg,
+                            corner=corner,
+                            margin=margin,
+                            toast_style=toast_style,
+                            duration=duration,
+                            parentWindow=parentWindow)
 
 
     @override

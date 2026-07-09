@@ -10,12 +10,13 @@ Extra functions (dialogs) to modify airfoil
 import numpy as np
 
 from PyQt6.QtCore               import Qt, QCoreApplication
-from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
+from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox, QFileDialog
 
 from ..base.widgets             import * 
-from ..base.panels              import Dialog_Modal, Dialog_Modeless
+from ..base.panels              import Dialog_Modal, Dialog_Modeless, MessageBox
 
 from ..model.airfoil            import Airfoil, Flap_Setter
+from ..model.airfoil_exports    import Export_Airfoil_Dxf
 from ..model.geometry           import Geometry
 from ..model.geometry_spline    import Geometry_Splined, Panelling_Spline
 from ..model.case               import Match_Targets
@@ -28,6 +29,122 @@ from ..app_model                import App_Model
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
+
+
+class Airfoil_Export_DXF_Dialog (Dialog_Modal):
+    """Dialog to export the current airfoil to a DXF file."""
+
+    _width = 450
+
+    name = "Export Airfoil as DXF"
+
+    def __init__(self, parent: QWidget, app_model: App_Model, **kwargs):
+
+        self._app_model = app_model
+        self._export_btn: QPushButton = None
+        self._cancel_btn: QPushButton = None
+        super().__init__(parent=parent, **kwargs)
+
+        self._cancel_btn.clicked.connect(self.close)
+        self._export_btn.clicked.connect(self._export_dxf)
+
+
+    @property
+    def app_model(self) -> App_Model:
+        return self._app_model
+
+
+    @property
+    def airfoil(self) -> Airfoil:
+        return self.app_model.airfoil
+
+
+    @property
+    def exporter_airfoil(self) -> Export_Airfoil_Dxf:
+        return self.app_model.exporter_airfoil
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r = 0
+        SpaceR   (l, r, stretch=0, height=5)
+        r += 1
+        Field    (l, r, 0, lab="File Name", width=250, get=lambda: self.exporter_airfoil.export_fileName)
+        r += 1
+        Field    (l, r, 0, width=250, lab="To Directory", get=lambda: self.exporter_airfoil.export_dir)
+        ToolButton(l, r,2, icon=Icon.OPEN, set=self._select_directory)
+        r += 1
+        SpaceR   (l, r, stretch=0, height=15)
+
+        r += 1
+        CheckBox (l, r, 0, text="Set chord length",
+                  obj=self.exporter_airfoil, prop=Export_Airfoil_Dxf.adapt_chord)
+        FieldF   (l, r, 1, width=90, unit="mm", dec=1, lim=(0.1, 10000), step=1.0,
+                  obj=self.exporter_airfoil, prop=Export_Airfoil_Dxf.chord_mm,
+                  disable=lambda: not self.exporter_airfoil.adapt_chord)
+        r += 1
+        CheckBox (l, r, 0, text="Set TE gap",
+                  obj=self.exporter_airfoil, prop=Export_Airfoil_Dxf.adapt_te_gap)
+        FieldF   (l, r, 1, width=90,  unit="mm", dec=1, lim=(0.0, 10), step=0.1,
+                  obj=self.exporter_airfoil, prop=Export_Airfoil_Dxf.te_gap_mm,
+                  disable=lambda: not self.exporter_airfoil.adapt_te_gap)
+        r += 1
+        SpaceR(l, r, stretch=1, height=15)
+        r += 1
+        CheckBox (l, r, 0, colSpan=4, text=self._just_as_cubic_message(),
+                  obj=self.exporter_airfoil, prop=Export_Airfoil_Dxf.always_as_cubic_fit,
+                  hide=lambda: not self._just_as_cubic_message(),
+                  toolTip="Export as cubic spline fit if your CAD software" +
+                          " does not support to import uniform B-Splines")
+
+        l.setColumnMinimumWidth(0, 95)
+        l.setColumnStretch(4, 5)
+        return l
+
+
+    def _select_directory(self):
+        directory = QFileDialog.getExistingDirectory(self, caption="Select Export Directory",
+                                                     directory=self.exporter_airfoil.export_dir_abs)
+        if directory:
+            self.exporter_airfoil.set_export_dir(directory)
+            self.refresh()
+
+
+    def _just_as_cubic_message (self) -> str:
+        if self.exporter_airfoil.airfoil.isBezierBased or self.exporter_airfoil.airfoil.isBSplineBased:
+            curve = "Bezier" if self.exporter_airfoil.airfoil.isBezierBased else "B-Spline"
+            return f"Export {curve} based airfoil as cubic spline fit not as uniform B-Spline"
+        else:
+            return None
+
+
+    def _export_dxf(self, *_):
+        try:
+            pathFileName = self.exporter_airfoil.do_it()
+        except Exception as e:
+            MessageBox.error(self, "Export Airfoil as DXF", f"DXF export failed.\n\n{e}", min_height=80)
+            return
+
+        self.close()
+        self._toast_message(f"Airfoil exported to {pathFileName}")
+
+
+    @override
+    def _on_widget_changed(self):
+        self.refresh()
+
+
+    @override
+    def _button_box(self):
+        buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+
+        self._cancel_btn = buttonBox.button(QDialogButtonBox.StandardButton.Cancel)
+        self._export_btn = QPushButton("&Export", parent=self)
+        self._export_btn.setFixedWidth(80)
+        buttonBox.addButton(self._export_btn, QDialogButtonBox.ButtonRole.ActionRole)
+
+        return buttonBox
 
 
 class Blend_Airfoil_Dialog (Dialog_Modeless):

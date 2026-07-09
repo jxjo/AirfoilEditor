@@ -20,6 +20,7 @@ from .model.case             import Case_Direct_Design, Case_Match_Target
 from .model.airfoil          import Airfoil_BSpline
 
 from .ui.util_dialogs        import Airfoil_Save_Dialog
+from .ui.ae_dialogs          import Airfoil_Export_DXF_Dialog
 from .ui.ae_panels           import *
 
 from .ui.xo2_dialogs         import Xo2_Select_Dialog, Xo2_New_Dialog
@@ -225,6 +226,7 @@ class Mode_View (Mode_Abstract):
             p.sig_new_as_bezier.connect         (self.new_as_Bezier)
             p.sig_new_as_bspline.connect        (self.new_as_BSpline)
             p.sig_save_as.connect               (self.save_as)
+            p.sig_export_dxf.connect            (self.export_dxf)
             p.sig_rename.connect                (self.rename)
             p.sig_delete.connect                (self.delete)
             p.sig_delete_temp_files.connect     (self.delete_temp_files)
@@ -257,6 +259,7 @@ class Mode_View (Mode_Abstract):
             p.sig_new_as_bezier.connect         (self.new_as_Bezier)
             p.sig_new_as_bspline.connect        (self.new_as_BSpline)
             p.sig_save_as.connect               (self.save_as)
+            p.sig_export_dxf.connect            (self.export_dxf)
             p.sig_rename.connect                (self.rename)
             p.sig_delete.connect                (self.delete)
             p.sig_delete_temp_files.connect     (self.delete_temp_files)
@@ -340,6 +343,14 @@ class Mode_View (Mode_Abstract):
 
             self._toast_message (f"Airfoil renamed to {airfoil.fileName}", toast_style=style.GOOD)
             logger.info (f"Airfoil renamed to {airfoil.fileName}")
+
+
+    def export_dxf(self):
+        """export current airfoil as dxf"""
+
+        dlg = Airfoil_Export_DXF_Dialog(self.stacked_panel, self._app_model,
+                                        parentPos=(0.25, 0), dialogPos=(0,1.4))
+        dlg.exec()
 
 
     def delete (self): 
