@@ -1578,8 +1578,9 @@ class ToolButton (Widget, QToolButton):
         self._text_getter = text 
 
         self._always_enabled = always_enabled
-        self._disabled = False if self._always_enabled else self._disabled
-        self._disabled_getter = None   
+        if self._always_enabled:
+            self._disabled = False
+            self._disabled_getter = None
 
         if text is not None and self._width == 22:
             self._width = (22, None)

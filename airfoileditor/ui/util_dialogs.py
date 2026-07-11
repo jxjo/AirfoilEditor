@@ -331,7 +331,9 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         """ apply calculated Reynolds value returned by helper dialog """
 
         self.polar_def.set_re_asK (re_asK)
-        self.refresh()
+
+        # refresh and register changes
+        self._on_widget_changed(None)
 
 
     def _tooltip_calc_re (self):
