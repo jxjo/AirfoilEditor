@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": ["./airfoileditor"],
+    "python.analysis.exclude": ["build", "dist", ".pytest_cache", "tests", "images", "icons", "**/__pycache__"],
     "python.analysis.typeCheckingMode": "off",
     "markdown.preview.fontSize": 10,
     "python.testing.pytestArgs": [],            // ["-m", "not slow"] to skip slow tests

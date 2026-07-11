@@ -55,8 +55,6 @@ for /d /r %%D in (*_temp) do (
 )
 
 
-pause 
-
 :end
 cd %CUR_DIR%
 pause
