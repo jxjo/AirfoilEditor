@@ -954,11 +954,16 @@ class Label (Widget, QLabel):
                  styleRole = QPalette.ColorRole.WindowText,  # for background: QPalette.ColorRole.Window
                  disable = None,                             
                  lab_disable : bool = False,                 # label can be disabled (color)
+                 icon = None,                                # optional icon name for icon-only label
+                 icon_size : tuple[int, int] = (17, 17),     # icon size in px
                  wordWrap = False,                           # activate word wrap
                  **kwargs):
 
         # special disable handling for Label as typically it is not disabled 
         self._label_disable = lab_disable
+        self._icon_getter = icon
+        self._icon_name = None
+        self._icon_size = icon_size
 
         # labels are typically not disabled 
         disable = False if disable is None else disable 
@@ -980,6 +985,13 @@ class Label (Widget, QLabel):
 
 
     @override
+    def _get_properties (self): 
+        " get all the properties like disable"
+        super()._get_properties ()
+        self._icon_name = self._get_value (self._icon_getter)
+
+
+    @override
     def _initial_palette(self) -> QPalette | None:
         """ returns initial normal palette of self"""
 
@@ -995,7 +1007,15 @@ class Label (Widget, QLabel):
         """ set value and properties of self Qwidget"""
 
         super()._set_Qwidget (**kwargs)
-        self.setText (self._val)
+        if self._icon_name is not None:
+            icon_qt = Icon (self._icon_name, self.light_mode)
+            if icon_qt is not None:
+                self.clear()
+                self.setPixmap (icon_qt.pixmap(QSize(*self._icon_size)))
+            else:
+                self.setText (str(self._val) if self._val is not None else '')
+        else:
+            self.setText (str(self._val) if self._val is not None else '')
 
 
     @override
@@ -1549,12 +1569,20 @@ class ToolButton (Widget, QToolButton):
                  text = None, 
                  signal = False,                        # default is not to signal change 
                  styleRole = QPalette.ColorRole.Button, # to apply style for background
+                 always_enabled = False,                # button is always enabled (no disable)
                  **kwargs):
         super().__init__(*args, signal=signal, styleRole=styleRole, **kwargs)
 
         self._icon_name = icon                           # icon name 
         self._text = None 
         self._text_getter = text 
+
+        self._always_enabled = always_enabled
+        self._disabled = False if self._always_enabled else self._disabled
+        self._disabled_getter = None   
+
+        if text is not None and self._width == 22:
+            self._width = (22, None)
 
         self._get_properties ()
         self._layout_add ()                                 # put into layout - so it gets parent early
@@ -1575,7 +1603,13 @@ class ToolButton (Widget, QToolButton):
     def _get_properties (self): 
         " get all the properties like disable"
         super()._get_properties () 
-        self._text = self._get_value (self._text_getter, default='')
+        self._text     = self._get_value (self._text_getter, default='')
+
+
+    @override
+    def _should_be_disabled (self) -> bool:
+        """ True if self currently should be disabled but maybe not set into QWidget"""
+        return super()._should_be_disabled() and not self._always_enabled   
 
 
     @override
@@ -1584,6 +1618,10 @@ class ToolButton (Widget, QToolButton):
         super()._set_Qwidget_static ()
 
         self.setAutoRaise (True)            # button frame only on focus
+        if self._text_getter is not None:
+            self.setToolButtonStyle (Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        else:
+            self.setToolButtonStyle (Qt.ToolButtonStyle.ToolButtonIconOnly)
 
         if self._icon_name is not None: 
 
@@ -1591,12 +1629,9 @@ class ToolButton (Widget, QToolButton):
             if icon_qt is not None: 
                 self.setIcon (icon_qt)
                 self.setIconSize (QSize(17,17))                         # seems good size not to get blurred  
-            else: 
-                pass
 
         if self._text is not None:
-            self.setToolButtonStyle (Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-            self.setText (self._text)                             # text as tooltip
+            self.setText (self._text)
 
     @override
     def _set_Qwidget (self, **kwargs):

@@ -1050,6 +1050,8 @@ class Item_Airfoil (Diagram_Item):
                     toolTip="Show deviation of Design airfoil to the original airfoil",
                     hide=lambda : not self._is_design_and_curve() or isinstance (self.case, Case_Optimize)) 
             r += 1
+            # Give last row stretch to push widgets to top (auto_height only fixes panel height, not grid spacing)
+            l.setRowStretch (r,2)
             l.setColumnMinimumWidth (1,55)
             l.setColumnStretch (3,2)
 

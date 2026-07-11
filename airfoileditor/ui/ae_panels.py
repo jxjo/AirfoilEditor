@@ -10,8 +10,8 @@ UI panels
 import logging
 import numpy as np
 
-from PyQt6.QtWidgets            import QMenu
-from PyQt6.QtGui                import QDesktopServices
+from PyQt6.QtWidgets            import QMenu, QToolButton
+from PyQt6.QtGui                import QDesktopServices, QCursor
 from PyQt6.QtCore               import QUrl
 
 from ..base.widgets             import * 
@@ -407,6 +407,13 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
 
     name = 'Geometry'
 
+    def __init__ (self, *args, **kwargs):
+
+        self._issues = None
+
+        super().__init__(*args, **kwargs)
+
+
     @override
     def _add_to_header_layout(self, l_head: QHBoxLayout):
         """ add Widgets to header layout"""
@@ -416,6 +423,26 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 set=self.do_blend_with, 
                 hide=lambda: not self.is_mode_modify or self.airfoil.isBezierBased,
                 toolTip="Blend original airfoil with another airfoil")
+
+    @override
+    def refresh (self, *args, **kwargs):
+        """ refresh panel - update widgets"""
+        self._issues = None
+        super().refresh(*args, **kwargs)
+
+
+    @property
+    def issues (self) -> list[str]:
+        """ list of issues of current geometry"""
+        if self._issues is None:
+            self._issues = self.geo.assess_quality()
+        return self._issues
+    
+    @property
+    def is_quality_good (self) -> bool:
+        """ True if geometry has no issues"""
+        return not self.issues
+    
 
     def _init_layout (self): 
 
@@ -440,13 +467,6 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         ToolButton  (l,r,c+2, icon=Icon.EDIT, set=self.do_te_gap,
                 hide=lambda: not self.is_mode_modify , # or self.geo.isCurve,
                 toolTip="Set trailing edge gap with a flexible blending range")
-        r += 1
-        SpaceR (l,r, height=5)
-        r += 1
-        Label  (l,r,0,colSpan=5, get=self._messageText, style=style.COMMENT, height=(None,None))
-        l.setColumnMinimumWidth (c,80)
-        l.setColumnMinimumWidth (c+2,30)
-        l.setColumnStretch (c+3,2)
 
         r,c = 0,4 
         FieldF (l,r,c, lab="at", width=75, unit="%", step=0.2,
@@ -464,18 +484,62 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
                 obj=lambda: self.geo.curvature, prop=Curvature_Abstract.max_te,
                 style=lambda: style.NORMAL if self.geo.curvature.max_te <2 else style.WARNING)
 
+        # show warnings if geometry has issues
+
+        r += 1
+        SpaceR (l,r, height=1)
+        r += 1
+
+        row_widget = QWidget()
+        row_l = QHBoxLayout()
+        row_l.setContentsMargins(0, 0, 0, 0)
+        row_l.setSpacing(4)
+
+        Label  (row_l, icon=Icon.WARNING, width=20,
+            hide=lambda: self.is_quality_good)
+        Label  (row_l, get=self._messageText, style=style.COMMENT)
+
+        ToolButton  (row_l, width=50,
+            text = lambda: f"{len(self.issues)-1} More",
+            set = self._show_issues_popup,
+            hide=lambda: self.is_quality_good or len(self.issues) == 1,
+            always_enabled=True,
+            toolTip=lambda: '\n'.join(self.issues))
+
+        row_l.addStretch(1)
+        row_widget.setLayout(row_l)
+        l.addWidget(row_widget, r, 0, 1, 7)
+
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,30)
         l.setColumnMinimumWidth (4,60)
+        l.setColumnStretch (6,2)
+
         return l 
 
 
     def _messageText (self): 
         """ text to show at bottom of panel"""
 
-        if self.geo.curvature.max_te >= 2:
-            text = f"- Curvature at trailing edge is quite high"
-        else:
+        if self.is_quality_good:
             text = f"Geometry {self.geo.description}"
+        else: 
+            text = self.issues[0]
         return text 
+
+
+    def _show_issues_popup (self):
+        """Show all current quality issues in a compact popup menu."""
+
+        if self.is_quality_good:
+            return
+
+        menu = QMenu(self)
+        for issue in self.issues:
+            action = menu.addAction(issue)
+            action.setEnabled(False)
+
+        menu.exec(QCursor.pos())
 
 
     def do_blend_with (self): 
@@ -589,8 +653,6 @@ class Panel_Panels (Panel_Airfoil_Abstract):
         Label  (l,r,c+3, get=lambda: f"at index {self.geo.panelAngle_min[1]}", style=style.COMMENT)
         r += 1
         SpaceR (l,r,height=5)
-        r += 1
-        Label  (l,r,0,colSpan=4, get=self._messageText, style=style.COMMENT, height=(None,None))
 
         l.setColumnMinimumWidth (0,80)
         l.setColumnStretch (c+4,1)    
@@ -622,27 +684,6 @@ class Panel_Panels (Panel_Airfoil_Abstract):
             return style.WARNING
         else: 
             return style.NORMAL
-
-    def _messageText (self): 
-
-        text = []
-        minAngle, iAngle = self.geo.panelAngle_min
-
-        if self.geo.panelAngle_le == 180.0: 
-            text.append("- Leading edge has 2 points")
-        elif self.geo.panelAngle_le > Geometry.LE_PANEL_ANGLE_TOO_BLUNT: 
-            text.append(f"- Panel angle at LE {self.geo.panelAngle_le:.1f}° is too blunt")
-
-        if self.geo.panelAngle_le < Geometry.PANEL_ANGLE_TOO_SHARP: 
-            text.append(f"- Panel angle at LE {self.geo.panelAngle_le:.1f}° is too sharp")
-        elif minAngle < Geometry.PANEL_ANGLE_TOO_SHARP: 
-            text.append(f"- Panel angle at i={iAngle} is < {Geometry.PANEL_ANGLE_TOO_SHARP}°")
-
-        if self.geo.nPanels < 100 or self.geo.nPanels > 200: 
-            text.append("- No of panels should be > 100 and < 200")
-        
-        text = '\n'.join(text)
-        return text 
 
 
 
@@ -925,10 +966,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
     def _style_le_real (self):
         """ returns style.WARNING if LE spline isn't close to LE"""
         if self.geo.isLe_closeTo_le_real: 
-            if self.geo.isBasic:
-                return style.NORMAL
-            else: 
-                return style.NORMAL
+            return style.NORMAL
         else: 
             return style.WARNING
 
@@ -943,35 +981,14 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
 
     def _messageText (self): 
 
-        text = []
-        te_not_at_1 = ""
-        te_not_sym  = ""
-        if not self.geo.isNormalized:
-            if self.geo.isSplined and not self.geo.isLe_closeTo_le_real:
-                text.append("- LE of spline is not at 0,0")
-            elif self.geo.le[0] != 0.0 or self.geo.le[1] != 1.0 : 
-                text.append("- LE is not at 0,0")
-        if not self.airfoil.isFlapped:
-            if self.geo.te[0] != 1.0 or self.geo.te[2] != 1.0 : 
-                te_not_at_1 = "- TE x is not at 1.0"
-            if self.geo.te[1] != -self.geo.te[3]: 
-                if te_not_at_1:
-                    te_not_at_1 += " and y is not symmetrical"
-                else:   
-                    te_not_sym = "- TE y is not symmetrical"
-            if te_not_at_1:
-                text.append (te_not_at_1)
-            if te_not_sym:
-                text.append (te_not_sym)
+        text = ""
 
-        if not text:
-            if self.geo.isSymmetrical: 
-                text.append("Airfoil is symmetrical")
-            else: 
-                text.append("Airfoil is normalized")
+        if self.geo.isSymmetrical: 
+            text = "Airfoil is symmetrical"
+        elif self.geo.isNormalized: 
+            text = "Airfoil is normalized"
 
-        text = '\n'.join(text)
-        return text 
+        return text
 
 
     def do_normalize (self):

@@ -10,6 +10,7 @@ Extra functions (dialogs) to modify airfoil
 import numpy as np
 
 from PyQt6.QtCore               import Qt, QCoreApplication
+from PyQt6.QtGui                import QCursor
 from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox, QFileDialog
 
 from ..base.widgets             import * 
@@ -68,6 +69,9 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
 
         l = QGridLayout()
         r = 0
+        l.addWidget (self._quality_widget(), r, 0, 1, 5)
+
+        r += 1
         SpaceR   (l, r, stretch=0, height=5)
         r += 1
         Field    (l, r, 0, lab="File Name", width=250, get=lambda: self.exporter_airfoil.export_fileName)
@@ -101,6 +105,62 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
         l.setColumnMinimumWidth(0, 95)
         l.setColumnStretch(4, 5)
         return l
+
+
+    def _quality_widget(self) -> QWidget:
+        """ returns a widget with quality information about the airfoil"""
+
+        exporter = self.exporter_airfoil
+
+        widget = QWidget()
+        l = QGridLayout()
+        l.setContentsMargins(0, 0, 0, 10)
+        l.setHorizontalSpacing(5)
+        l.setVerticalSpacing(0)
+
+        if exporter.is_quality_good:
+            icon = Icon.SUCCESS
+            if exporter.airfoil.geo.isCurve:
+                assess = f"Airfoil is {exporter.airfoil.geo.description} - geometry quality is excellent."
+            else:
+                assess = f"Airfoil geometry quality check passed."
+            hint  = f"Ready to export to DXF for CAD construction."
+        else:
+            icon   = Icon.WARNING
+            assess = f"Geometry: {exporter.issues[0]}."
+            hint   = f"Match airfoil with Bezier curves to improve quality."
+
+        Label  (l, 0, 0, rowSpan=2, icon=icon, width=30)
+
+        Label  (l, 0, 1, get=assess, height=17, style=style.COMMENT)
+        if not exporter.is_quality_good and len(exporter.issues) >1:
+            ToolButton  (l, 0, 2, width=50, height=17,
+                text = lambda: f"{len(exporter.issues)-1} More",
+                set = self._show_issues_popup,
+                toolTip=lambda: '\n'.join(exporter.issues))
+
+        Label  (l, 1, 1, colSpan=3, get=hint, height=17, style=style.COMMENT)
+
+        # Keep the issue text and "More" button compact and adjacent.
+        l.setColumnMinimumWidth(1, 10)
+        l.setColumnStretch(1, 0)
+        l.setColumnStretch(2, 0)
+        l.setColumnStretch(3, 5)
+        widget.setLayout(l)
+        return widget
+
+
+    def _show_issues_popup (self):
+        """Show all current quality issues in a compact popup menu."""
+
+        exporter = self.exporter_airfoil
+        menu = QMenu(self)
+        for issue in exporter.issues:
+            action = menu.addAction(issue)
+            action.setEnabled(False)
+
+        menu.exec(QCursor.pos())
+
 
 
     def _select_directory(self):

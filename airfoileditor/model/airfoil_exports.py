@@ -180,6 +180,20 @@ class Export_Abstract:
 
 
     @property
+    def issues (self) -> list[str]:
+        """ list of issues of current airfoil geometry"""
+        if self.airfoil:
+            return self.airfoil.geo.assess_quality()
+        else:
+            return None
+    
+    @property
+    def is_quality_good (self) -> bool:
+        """ True if geometry has no issues"""
+        return not self.issues
+    
+
+    @property
     def export_dir_default(self) -> str:
         return self.airfoil.fileName_stem + self.EXPORT_DIR_SUFFIX
 

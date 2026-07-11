@@ -1979,6 +1979,73 @@ class Geometry ():
                 self._changed (Geometry.MOD_BLEND, f"{blendBy*100:.0f}")
 
 
+    def assess_quality (self) -> list [str]:
+        """ 
+        Assess the quality of the geometry and curvature.
+        Return a list of issues found
+        """
+        issues = []
+
+        if not self.isNormalized:
+            if self.isSplined and not self.isLe_closeTo_le_real:
+                issues.append("Spline LE not at (0,0)")
+            elif self.le[0] != 0.0 or self.le[1] != 1.0 : 
+                issues.append("LE not at (0,0)")
+        if not self.isFlapped:
+            te_not_at_1 = ""
+            te_not_sym  = ""
+            if self.te[0] != 1.0 or self.te[2] != 1.0 : 
+                te_not_at_1 = "TE x not at 1.0"
+            if self.te[1] != -self.te[3]: 
+                if te_not_at_1:
+                    te_not_at_1 += " and y not symmetric"
+                else:   
+                    te_not_sym = "TE y not symmetric"
+            if te_not_at_1:
+                issues.append (te_not_at_1)
+            if te_not_sym:
+                issues.append (te_not_sym)
+
+        if not self.isNormalized:
+            issues.append("Airfoil not normalized")
+
+        if not self.isLe_closeTo_le_real:
+            issues.append("LE does not match real LE")
+
+        if abs(self.te_gap) > 0.01:
+            issues.append(f"TE gap too large: {self.te_gap:.4f}")
+
+        if self.nPanels <100 or self.nPanels > 200:
+            issues.append("Panel count should be 100..200")
+
+        if self.panelAngle_le == 180.0: 
+            issues.append("LE has two points")
+        elif self.panelAngle_le > Geometry.LE_PANEL_ANGLE_TOO_BLUNT: 
+            issues.append(f"LE panel angle {self.panelAngle_le:.1f}° too blunt")
+
+        if self.panelAngle_le < Geometry.PANEL_ANGLE_TOO_SHARP: 
+            issues.append(f"LE panel angle {self.panelAngle_le:.1f}° too sharp")
+        elif self.panelAngle_min[0] < Geometry.PANEL_ANGLE_TOO_SHARP: 
+            issues.append(f"Panel angle i={self.panelAngle_min[1]} < {Geometry.PANEL_ANGLE_TOO_SHARP}°")
+
+        if not self.curvature.max_is_at_le:
+            issues.append("Max curvature not at LE")
+       
+        if (self.curvature.upper.needles() + self.curvature.lower.needles()):    
+            issues.append("Curvature spikes; check .dat decimals")
+    
+        if self.curvature.upper.nreversals() > 1:
+            issues.append(f"Upper curvature reversals: {self.curvature.upper.nreversals()}")
+
+        if self.curvature.lower.nreversals() > 1:
+            issues.append(f"Lower curvature reversals: {self.curvature.lower.nreversals()}")
+
+        if self.curvature.max_te > 2.0:
+            issues.append(f"TE max curvature {self.curvature.max_te:.1f} high (spoiler?)")
+
+        return issues
+
+
     # ------------------ private ---------------------------
 
     def _le_real_norm2 (self) -> float:
