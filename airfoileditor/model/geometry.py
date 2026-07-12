@@ -1989,7 +1989,7 @@ class Geometry ():
         if not self.isNormalized:
             if self.isSplined and not self.isLe_closeTo_le_real:
                 issues.append("Spline LE not at (0,0)")
-            elif self.le[0] != 0.0 or self.le[1] != 1.0 : 
+            elif self.le[0] != 0.0 or self.le[1] != 0.0 : 
                 issues.append("LE not at (0,0)")
         if not self.isFlapped:
             te_not_at_1 = ""
@@ -2006,8 +2006,8 @@ class Geometry ():
             if te_not_sym:
                 issues.append (te_not_sym)
 
-        if not self.isNormalized:
-            issues.append("Airfoil not normalized")
+        # if not self.isNormalized:
+        #     issues.append("Airfoil not normalized")
 
         if not self.isLe_closeTo_le_real:
             issues.append("LE does not match real LE")
