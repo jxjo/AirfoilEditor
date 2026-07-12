@@ -16,8 +16,8 @@ dependencies = [
   "numpy~=2.2.0",
   "packaging>=24.0",
   "requests",
-  "pyqt6>=6.9.1",
-  "pyqtgraph>=0.13.7",
+  "pyqt6>=6.11.0",
+  "pyqtgraph>=0.14.0",
   "f90nml>=1.4.4",
   "termcolor>=2.3.0",
   "platformdirs>=4.3.0",
@@ -75,6 +75,10 @@ include = [
 [tool.pytest.ini_options]
 pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor modules
 testpaths = ["tests"]
+filterwarnings = [
+  "ignore::DeprecationWarning:ezdxf\\..*",
+  "ignore:.*parseAll.*deprecated.*:DeprecationWarning:pyparsing\\.util",
+]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
