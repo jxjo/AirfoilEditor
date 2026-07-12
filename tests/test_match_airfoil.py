@@ -35,6 +35,23 @@ def match_airfoil_bspline(qapp, seed_airfoil) -> Match_Airfoil:
     return Match_Airfoil(seed_airfoil, Airfoil_BSpline)
 
 
+@pytest.fixture(scope="module")
+def matched_airfoil_bezier(qapp, seed_airfoil) -> tuple[Match_Airfoil, float, bool]:
+    """Run expensive Bezier sequential matching once and reuse results."""
+    ma = Match_Airfoil(seed_airfoil, Airfoil_Bezier)
+    rms_before = ma.get_result_upper().rms
+    success = ma.do_match_sequential()
+    return ma, rms_before, success
+
+
+@pytest.fixture(scope="module")
+def matched_airfoil_bspline(qapp, seed_airfoil) -> tuple[Match_Airfoil, bool]:
+    """Run expensive BSpline sequential matching once and reuse results."""
+    ma = Match_Airfoil(seed_airfoil, Airfoil_BSpline)
+    success = ma.do_match_sequential()
+    return ma, success
+
+
 # ── Match_Result ──────────────────────────────────────────────────────────────
 
 
@@ -145,32 +162,27 @@ class Test_Match_Airfoil_Sequential:
     """End-to-end matching tests – marked slow because the optimiser is involved."""
 
     @pytest.mark.slow
-    def test_do_match_sequential_bezier_returns_true(self, qapp, seed_airfoil):
+    def test_do_match_sequential_bezier_returns_true(self, matched_airfoil_bezier):
         """Successful sequential match for Bezier returns True."""
-        ma = Match_Airfoil(seed_airfoil, Airfoil_Bezier)
-        success = ma.do_match_sequential()
+        _, _, success = matched_airfoil_bezier
         assert success is True
 
     @pytest.mark.slow
-    def test_do_match_sequential_improves_rms(self, qapp, seed_airfoil):
+    def test_do_match_sequential_improves_rms(self, matched_airfoil_bezier):
         """Upper-side RMS must improve after matching."""
-        ma = Match_Airfoil(seed_airfoil, Airfoil_Bezier)
-        rms_before = ma.get_result_upper().rms
-        ma.do_match_sequential()
+        ma, rms_before, _ = matched_airfoil_bezier
         rms_after = ma.get_result_upper().rms
         assert rms_after < rms_before
 
     @pytest.mark.slow
-    def test_do_match_sequential_bspline_returns_true(self, qapp, seed_airfoil):
+    def test_do_match_sequential_bspline_returns_true(self, matched_airfoil_bspline):
         """Successful sequential match for BSpline returns True."""
-        ma = Match_Airfoil(seed_airfoil, Airfoil_BSpline)
-        success = ma.do_match_sequential()
+        _, success = matched_airfoil_bspline
         assert success is True
 
     @pytest.mark.slow
-    def test_matched_airfoil_result_is_good_enough(self, qapp, seed_airfoil):
+    def test_matched_airfoil_result_is_good_enough(self, matched_airfoil_bezier):
         """After matching, the result should qualify as good enough."""
-        ma = Match_Airfoil(seed_airfoil, Airfoil_Bezier)
-        ma.do_match_sequential()
+        ma, _, _ = matched_airfoil_bezier
         assert ma.get_result_upper().is_good_enough()
         assert ma.get_result_lower().is_good_enough()

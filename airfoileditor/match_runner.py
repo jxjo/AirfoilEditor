@@ -49,7 +49,12 @@ class Matcher (QThread):
 
 
     def __del__(self):  
-        self.wait()
+        try:
+            self.wait()
+        except RuntimeError:
+            # Can happen at interpreter/Qt teardown when the wrapped C++ object
+            # is already deleted before __del__ runs.
+            pass
 
 
     @property
