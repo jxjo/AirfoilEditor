@@ -1,15 +1,16 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 4.3.0  WIP 
+### Version 4.3.0 
 
 ---
 
-The **AirfoilEditor** is a fast airfoil viewer and advanced geometry editor with integrated Xoptfoil2-based optimization. The app provides three operating modes:
+The **AirfoilEditor** is a fast airfoil viewer, analyzer, and advanced geometry editor with integrated Xoptfoil2-based optimization. The app provides three operating modes:
 
 #### View
 * Browse and view airfoils in subdirectories
 * Analyze curvature of airfoil surface
 * Show polars generated using XFOIL
+* Export airfoil to DXF format 
 
 #### Modify
 * Repanel and normalize airfoils
@@ -17,7 +18,6 @@ The **AirfoilEditor** is a fast airfoil viewer and advanced geometry editor with
 * Blend two airfoils
 * Set flap
 * Generate airfoil replicas using Bezier or B-Spline curves
-* Export airfoil to DXF format (as B-Spline or cubic spline curves)
 
 #### Optimize
 * User Interface of [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
@@ -26,6 +26,12 @@ The **AirfoilEditor** is a fast airfoil viewer and advanced geometry editor with
 
 The app was initially developed to address artifacts found in other tools like Xflr5 when using xfoil geometry routines. The aim has been an intuitive, user-friendly experience that encourages exploration.
 The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. Linux and MacOS users are required to compile the underlying programs for polar viewing and airfoil optimization - see 'Installation' for details.
+
+## Quick Start
+
+* Windows (recommended): download and run the latest installer from the [GitHub releases page](https://github.com/jxjo/AirfoilEditor/releases).
+* Python package: `pip3 install airfoileditor`, then run `airfoileditor`.
+* Linux/macOS note: View and Modify mode work directly after installation; Polars and Optimize mode require compiled `worker` and `xoptfoil2` binaries.
 
 
 ![AE](images/AirfoilEditor_App_dark.png "AirfoilEditor App")
@@ -57,7 +63,7 @@ This method also enables separate adjustment of the upper and lower surfaces' hi
 One of the major views in the AirfoilEditor is the airfoil's curvature. It provides quick assessment of surface quality and helps detect undesirable artifacts like a 'spoiler' at the trailing edge.
 
 > [!TIP]
-Have a look at the [documentation of Xoptfoil2](https://jxjo.github.io/Xoptfoil2/docs/geometry) for more information about an airfoils geometry.  
+Have a look at the [Xoptfoil2 geometry documentation](https://jxjo.github.io/Xoptfoil2/docs/geometry) for more information about an airfoil's geometry.  
 
 ![AE](images/curvature.png "curvature")
 
@@ -82,11 +88,25 @@ The match function (experimental for B-Spline) fits the curve to an existing air
 ![AE](images/match_bezier.png "match bezier")
 
 
+
+### Export to DXF 
+
+Bezier- or B-Spline-based airfoils are especially useful for downstream work in 3D CAD, for example when building a wing from multiple airfoil sections.
+
+The Export to DXF feature transfers curve-based airfoils as uniform B-splines with no loss of geometric precision. Since CAD systems also store curves internally as uniform B-splines, these exports are ideal for creating high-quality lofted 3D bodies.
+
+Classic `.dat` airfoils are exported as cubic splines, which are widely supported and interpreted correctly by CAD software.
+
+During export, the airfoil can be scaled to the chord length of a wing section and assigned a specific trailing-edge thickness.
+
+<img src="images/export_to_dxf.png" alt="Export to DXF" width="600">
+
+
 ## Polars of an Airfoil
 
 To generate the polars of an airfoil, the **AirfoilEditor** uses the Worker tool from the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). One of its functions is multi-threaded polar set generation using XFOIL.
 
-For polar generation the auto_range feature of the Worker is applied which optimizes the alpha range of the polar to show the complete T1 polar from cl_min to cl_max of the airfoil. For T2 polars (constant lift) the range starts right above cl=0.0 to cl_max.
+For polar generation, the Worker's `auto_range` feature optimizes the alpha range to show the complete T1 polar from `cl_min` to `cl_max`. For T2 polars (constant lift), the range starts just above `cl=0.0` up to `cl_max`.
 
 ### Polars on Demand
 
@@ -106,7 +126,7 @@ Alternatively, a flap can be set in 'Modify Mode' for an individual airfoil and 
 
 When designing airfoils as wing sections along the wing span, they must be compared at different Reynolds numbers corresponding to each section's chord length. This is supported by defining a 'scale' value (in percent) for the reference airfoils of the main airfoil. 
 
-This allows to compare the airfoils of a wing with a single polar definition for the main airfoil.
+This allows comparison of wing airfoils using a single polar definition for the main airfoil.
 
 ![AE](images/polars_scaled.png "Scaled polars")
 
@@ -166,7 +186,7 @@ Instead, control points of the curves can be moved directly in the diagram with 
 
 In 'Optimization Mode', the **AirfoilEditor** serves as a wrapper for [Xoptfoil2](https://github.com/jxjo/Xoptfoil2).
 
-Xoptfoil2 is a particle swarm based airfoil optimizer which supports different 'shaping methods' to modify the airfoil during optimization: 
+Xoptfoil2 is a particle-swarm-based airfoil optimizer that supports different 'shaping methods' to modify the airfoil during optimization: 
 
 *	Bezier curves defining the shape
 *	Hicks-Henne shape functions
@@ -192,7 +212,7 @@ Multiple versions of an optimization case can be created, making it easier to se
 
 ## Setting up an Optimization Case
 
-The main task when setting up a new optimization case is to define the 'operating points' on a (virtual) polar and to choose the type of objective for each of this operating points. 
+The main task when setting up a new optimization case is to define the 'operating points' on a (virtual) polar and choose the objective type for each of these operating points. 
 
 Within the polar diagram of the AirfoilEditor operating points can be added, deleted or moved with the mouse. A little dialog allows to enter additional specifications for the selected operating point.
 
@@ -236,7 +256,7 @@ Install the app:
 pip3 install airfoileditor 
 ```
 
-To upgrade to the actual version use `pip3 install airfoileditor -U`.
+To upgrade to the latest version, use `pip3 install airfoileditor -U`.
 
 Run the app by typing `airfoileditor` on the command line.
 
@@ -248,11 +268,13 @@ If you want to try the app and ensure the installation doesn't affect other pack
 
 The app is installed as a Python 'package'. Please ensure to have a Python version >=3.12.
 
+View and Modify mode work after package installation. Polars and Optimize mode additionally require compiled `worker` and `xoptfoil2` binaries.
+
 ```
 pip3 install airfoileditor 
 ```
 
-To upgrade to the actual version use `pip3 install airfoileditor -U`.
+To upgrade to the latest version, use `pip3 install airfoileditor -U`.
 
 Run the app by typing `airfoileditor` on the command line.
 
@@ -261,13 +283,13 @@ To use polar generation and airfoil optimization the two programs `worker` and `
 
 Please have a look into [Xoptfoil2 README Installation](https://github.com/jxjo/Xoptfoil2) for further information.
 
-As a little reward for the extra effort polar generation and airfoil optimization will run 2-3 times faster on Linux compared to the Windows version.
+As a bonus for the extra setup effort, polar generation and airfoil optimization typically run 2-3 times faster on Linux than on Windows.
 
 #### Ubuntu
 
 If there is warning message like "Failed to create wl_display" when starting the app, set a QT environment variable with `export QT_QPA_PLATFORM=xcb`.
 
-### Cloning from Github
+### Cloning from GitHub
 
 If you want to clone the AirfoilEditor repository from GitHub for local development, install the following packages in your Python environment: 
 
@@ -291,4 +313,4 @@ See [CHANGELOG.md](CHANGELOG.md) for history of changes.
 I hope you enjoy working with the **AirfoilEditor**.
 
 > [!TIP]
-For Windows: Use the "Open with ..." Explorer command to connect the AirfoilEditor.exe to the file extension .dat. Later a double click on an airfoil dat-file will open the AirfoilEditor and you can browse through the files in the directory (if you are using the Python version, create a little batch job to open an airfoils dat-file)
+For Windows: Use the "Open with ..." Explorer command to associate AirfoilEditor.exe with the `.dat` extension. Then double-clicking a `.dat` airfoil file will open AirfoilEditor and allow browsing other files in the same directory. If you use the Python package version, create a small batch script to open `.dat` files.
