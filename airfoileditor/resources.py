@@ -8,6 +8,7 @@ Supports both pip-installed packages and PyInstaller frozen executables.
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 # subdirectory for resources in PyInstaller frozen executable onedir mode
 FROZEN_RESOURCES_SUBDIR   = '_internal/airfoileditor'
@@ -21,11 +22,32 @@ def _is_frozen() -> bool:
     return getattr(sys, 'frozen', False)
 
 
-def _get_resources_dir_pyinstaller() -> Path:
-    """Get resources directory for PyInstaller frozen executable."""
-    # PyInstaller bundles to _internal directory
-    exe_dir = Path(sys.executable).parent
-    return exe_dir  / FROZEN_RESOURCES_SUBDIR
+def _is_resource_root(path: Path) -> bool:
+    """A valid resource root contains at least one expected subdirectory."""
+    return any((path / subdir).is_dir() for subdir in ("icons", "assets", XO2_EXAMPLE_DIR))
+
+
+def get_resources_root() -> Optional[Path]:
+    """Resolve the resource root for frozen, pip, and development layouts."""
+    if _is_frozen():
+        exe_dir = Path(sys.executable).parent
+        for candidate in (
+            exe_dir / FROZEN_RESOURCES_SUBDIR,
+            exe_dir / "_internal",
+            exe_dir,
+        ):
+            if _is_resource_root(candidate):
+                return candidate
+        return None
+
+    for candidate in (
+        Path(__file__).parent,
+        Path(__file__).parent.parent,
+    ):
+        if _is_resource_root(candidate):
+            return candidate
+
+    return None
 
 
 def _get_resources_dir_pip() -> Path:
@@ -56,16 +78,11 @@ def get_resource_path(resource_type: str, *path_parts: str) -> Path:
         >>> get_resource_path('icons', 'PC2.ico')
         >>> get_resource_path('examples', 'VJX.glide', 'VJX.glide.pc2')
     """
-    if _is_frozen():
-        # PyInstaller: resources are in _internal directory
-        base = _get_resources_dir_pyinstaller()
-    else:
-        # Pip package: resources are at project root level
-        # (icons/, templates/, examples/ next to planformcreator2/)
+    base = get_resources_root()
+    if base is None:
+        # Safe fallback keeps previous behavior for unexpected layouts.
         base = _get_resources_dir_pip()
-
         if not (base / resource_type).exists():
-            # Development mode: resources are in parent directory
             base = _get_resources_dir_dev()
     
     resource_path = base / resource_type / Path(*path_parts) if path_parts else base / resource_type

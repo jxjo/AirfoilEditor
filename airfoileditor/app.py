@@ -36,7 +36,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = "airfoileditor"
 
-from .                       import resources_dir_ae
+from .resources              import get_resources_root
 from .base.common_utils      import * 
 
 from .model.xo2_input        import Input_File
@@ -128,7 +128,8 @@ class Main (QMainWindow):
 
         # main window style - dark or light mode
 
-        self._set_win_style (resources_dir_ae(), 'AE.ico')
+        resources_root = get_resources_root()
+        self._set_win_style (str(resources_root) if resources_root else None, 'AE.ico')
         self._set_win_title ()
         self._set_win_geometry ()
 
