@@ -2028,8 +2028,8 @@ class Geometry ():
         elif self.panelAngle_min[0] < Geometry.PANEL_ANGLE_TOO_SHARP: 
             issues.append(f"Panel angle i={self.panelAngle_min[1]} < {Geometry.PANEL_ANGLE_TOO_SHARP}°")
 
-        if not self.curvature.max_is_at_le:
-            issues.append("Max curvature not at LE")
+        # if not self.curvature.max_is_at_le:
+        #     issues.append("Max curvature not at LE")
        
         if (self.curvature.upper.needles() + self.curvature.lower.needles()):    
             issues.append("Curvature spikes; check .dat decimals")
