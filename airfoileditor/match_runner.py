@@ -143,7 +143,7 @@ class Matcher (QThread):
             segment_bounds = [0] + list(sign_changes_idx) + [len(curv_body)]
             
             # Calculate the "area" (sum of absolute values) for each segment
-            segment_maxs = []
+            segment_max = []
             for i in range(len(segment_bounds) - 1):
 
                 start_idx = segment_bounds[i]
@@ -151,14 +151,14 @@ class Matcher (QThread):
                 segment = curv_body[start_idx:end_idx]
 
                 max_val = np.max(np.abs(segment))
-                segment_maxs.append(max_val)
+                segment_max.append(max_val)
             
             # Sort segments by max value (largest to smallest)
-            segment_maxs.sort(reverse=True)
+            segment_max.sort(reverse=True)
             # We want to keep (max_reversals + 1) most significant segments
             # The smaller rest should be penalized
             n_segments_to_keep = max_reversals + 1
-            max_to_penalize = segment_maxs[n_segments_to_keep:]
+            max_to_penalize = segment_max[n_segments_to_keep:]
             
             # Sum the max values minus threshold of the segments we're penalizing
             for val in max_to_penalize:
@@ -341,7 +341,7 @@ class Matcher (QThread):
 
     def _map_curve_to_dv (self) -> list [float]: 
         """ 
-        Map curve control points to the optimization designvariable vector.
+        Map curve control points to the optimization design variable vector.
             LE (cp0), cp1 and TE (cp-1) are fixed, 
             so only the inner control points are design variables.
 
@@ -478,7 +478,7 @@ class Matcher (QThread):
         bounds      = self._calc_dv_bounds (ncp, self._targets._side.max_xy[1])   
 
         # -- reset Bezier/B-Spline to standard start position before each run 
-        #       Golbal search don't need it - but cp arrays must be resized to ncp
+        #       Global search don't need it - but cp arrays must be resized to ncp
 
         self._side.re_fit_curve(self._targets.side, le_curvature=self._targets.le_curvature, ncp=ncp)   
 
@@ -814,7 +814,7 @@ class Match_Result:
     def is_ncp_good(self) -> bool:
         """Determine if the number of control points is good based on targets."""
         if self.targets.max_nreversals:
-            # reflexed or rearload - more complex shapes - allow higher ncp
+            # reflexed or rearloaded - more complex shapes - allow higher ncp
             good_ncp = self._ncp_default + 2
         else:
             # simple shapes - lower ncp is sufficient and more robust

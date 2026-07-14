@@ -1298,7 +1298,7 @@ class Panel_Match_Result_Small (Panel_Match_Result):
 
 
 class Panel_Match_Curve (Panel_Airfoil_Abstract):
-    """ Match BezCurveier functions  """
+    """ Match Curve functions  """
 
     name = 'Match Targets'
 

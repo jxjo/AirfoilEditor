@@ -462,7 +462,7 @@ class Panel_Polar_Defs (Edit_Panel):
         # sort polar definitions ascending re number 
         self.polar_defs.sort (key=lambda aDef : aDef.re)
 
-        # ensure if only 1 polardef, this has to be active 
+        # ensure if only 1 polar_def, this has to be active 
         if len(self.polar_defs) == 1 and not self.polar_defs[0].active:
             self.polar_defs[0].set_active(True)
 
@@ -612,7 +612,7 @@ class Item_Airfoil (Diagram_Item):
         self._le_artist             : LE_Radius_Artist = None
         self._te_artist             : TE_Gap_Artist = None
         self._deviation_line_artist : Deviation_Line_Artist = None
-        self._curvaturve_comb_artist : Curvature_Comb_Artist = None
+        self._curvature_comb_artist : Curvature_Comb_Artist = None
 
         super().__init__(*args, **kwargs)
 
@@ -1021,7 +1021,7 @@ class Item_Airfoil (Diagram_Item):
                     set=self.set_show_curvature_comb,
                     toolTip="Show curvature as a 'comb' along the airfoil surface."+\
                             "Useful to identify curvature discontinuities and artifacts.<br>"+
-                            "The length of the comb corresponds to the squareroot of curvature.")
+                            "The length of the comb corresponds to the square root of curvature.")
             r += 1
             CheckBox (l,r,c, text="Curve control points", colSpan=2,
                     get=lambda: self.show_control_points,
@@ -2162,7 +2162,7 @@ class Diagram_Airfoil_Polar (Diagram):
                 CheckBox (l,r,c, text="Forced transition versions", colSpan=2,
                             get=lambda: self.show_VLM_polars, set=self.set_show_VLM_polars,
                             toolTip=f"Include polars with forced transition at {Polar_Definition.XTRIP_VLM:.0%} chord.<br>" + \
-                                    "These simplified polars are used by VLM wing calculation to evaluate alpha0 and Clmax.")
+                                    "These simplified polars are used by VLM wing calculation to evaluate alpha0 and Cl_max.")
                 
                 l.setColumnMinimumWidth (0,18)
                 l.setColumnStretch (1,1)
