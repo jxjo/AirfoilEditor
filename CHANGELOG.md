@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.3.1
+
+### Fixed
+
+- Changed got lost, wenn modeless dialog was directly closed via close-Button after an edit
+
+
+
 ## 4.3.0
 
 ### Added
