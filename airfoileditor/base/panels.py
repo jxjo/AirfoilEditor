@@ -18,7 +18,7 @@ from PyQt6.QtWidgets    import (QLayout, QGridLayout, QVBoxLayout, QHBoxLayout, 
                                 QWidget, QDialog, QDialogButtonBox, QLabel, QMessageBox, QFrame,
                                 QApplication,
                                 QGraphicsOpacityEffect, QTabWidget)
-from PyQt6.QtGui        import QGuiApplication, QScreen, QColor, QPalette, QPainterPath, QRegion, QTransform, QIcon
+from PyQt6.QtGui        import QGuiApplication, QScreen, QColor, QPalette, QPainterPath, QRegion, QTransform, QCloseEvent
 from PyQt6              import sip
 
 from .widgets           import set_background, style
@@ -1585,7 +1585,7 @@ class Dialog_Modeless (Dialog_Modal):
             l = QHBoxLayout()
             Label (l, get="You may also edit in diagrams", style=style.COMMENT)  
             l.addStretch()
-            Button (l, text="Close",  width=60, set=self.close)
+            Button (l, text="Close",  width=60, set=self.accept)
             return l  
         else:  
             return None
@@ -1617,7 +1617,7 @@ class Dialog_Modeless (Dialog_Modal):
         def _close_from_signal (*_):
             if only_if_visible and not self.isVisible():
                 return
-            self.close()
+            self.accept()
 
         self.connect_live_signal (signal, _close_from_signal)
 
@@ -1636,7 +1636,8 @@ class Dialog_Modeless (Dialog_Modal):
     @override
     def done (self, r : int):
         """ ensure lifecycle filter is removed before dialog teardown """
-
+        # `done()` is the last reliable place where the dialog still knows whether
+        # any field change signal has already arrived.
         self._unlock_target_widget ()
 
         # final change signal if desired
@@ -1667,7 +1668,22 @@ class Dialog_Modeless (Dialog_Modal):
                     if p is self:
                         return
                     p = p.parent()
-            self.close()
+            self.accept()
+
+
+    @override
+    def closeEvent(self, event: QCloseEvent):
+        """Route the titlebar close button through the dialog accept path."""
+        # The titlebar close comes in before the focused field has necessarily
+        # emitted its change signal. Clearing focus first lets Qt deliver the
+        # pending editing-finished path while the dialog is still alive.
+        focus_widget = QApplication.focusWidget()
+        if focus_widget is not None:
+            focus_widget.clearFocus()
+
+        # Close via `accept()` so the normal `done()` teardown and final-change
+        # emission still happen.
+        self.accept()
 
 
     @override
@@ -1689,7 +1705,7 @@ class Dialog_Modeless (Dialog_Modal):
         """ close this modeless dialog if its lifecycle parent gets hidden/closed """
         if watched is self.parentWidget() and event.type() in (QEvent.Type.Hide, QEvent.Type.Close):
             if self.isVisible():
-                self.close()
+                self.accept()
         return super().eventFilter (watched, event)
 
 
