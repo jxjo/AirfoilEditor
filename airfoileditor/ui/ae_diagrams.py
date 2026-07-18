@@ -413,13 +413,13 @@ class Panel_Polar_Defs (Edit_Panel):
         return l 
 
 
-    def edit_polar_def (self, id : int = None, polar_def : Polar_Definition = None):
+    def edit_polar_def (self, id : int = None, polar_def : Polar_Definition = None, is_new=False):
         """ edit polar definition with index idef"""
 
         if isinstance (id, int):
             polar_def = self.polar_defs[id]
 
-        diag = Polar_Definition_Dialog (self, polar_def, 
+        diag = Polar_Definition_Dialog (self, polar_def, is_new=is_new,
                                         parentPos=(1.1, 0.5), dialogPos=(0,0.5), fixed_chord=self.chord)
         
         diag.sig_final_changed.connect (self._on_polar_def_changed)
@@ -453,7 +453,7 @@ class Panel_Polar_Defs (Edit_Panel):
 
         # open edit dialog for new def 
 
-        self.edit_polar_def (polar_def=new_polar_def)
+        self.edit_polar_def (polar_def=new_polar_def, is_new=True)
 
 
     def _on_polar_def_changed (self):
