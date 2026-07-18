@@ -462,6 +462,8 @@ class App_Model (QObject):
                      assign_polar_set: bool = True):
 
         if aNew == self.airfoil:
+            if not silent: 
+                self.sig_new_airfoil.emit()                         # airfoil name could have been changed...
             return  
 
         logger.debug (f"{self} Set new airfoil {aNew}")

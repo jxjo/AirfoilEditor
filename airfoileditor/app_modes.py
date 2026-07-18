@@ -334,9 +334,14 @@ class Mode_View (Mode_Abstract):
 
         if ok_save: 
 
-            # delete old one 
-            if os.path.isfile (old_pathFileName):  
-                os.remove (old_pathFileName)
+            new_pathFileName = airfoil.pathFileName_abs
+
+            # delete old one only if the dialog changed the actual path
+            if old_pathFileName and new_pathFileName:
+                old_path = os.path.normcase (os.path.abspath (old_pathFileName))
+                new_path = os.path.normcase (os.path.abspath (new_pathFileName))
+                if old_path != new_path and os.path.isfile (old_pathFileName):
+                    os.remove (old_pathFileName)
 
             # a copy with new name was created 
             self._app_model.set_airfoil (airfoil)
