@@ -785,6 +785,8 @@ class Polar_Set:
         else: 
             polar_def_list = [polar_defs]
 
+        polars_to_add = []
+
         # create polar for each polar definition 
         polar_def : Polar_Definition
         for polar_def in polar_def_list:
@@ -800,7 +802,9 @@ class Polar_Set:
                         polar.polar_set_detach ()
                         self.polars.remove(polar)
 
-                self.polars.append (new_polar)
+                polars_to_add.append (new_polar)
+
+        self.polars.extend(polars_to_add)
 
 
     def remove_polars (self):
