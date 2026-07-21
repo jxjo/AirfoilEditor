@@ -559,20 +559,32 @@ class Polar_Definition:
 
 
     def is_equal_to (self, aDef: 'Polar_Definition', 
-                     ignore_active=False, ignore_xtrip=False) -> bool:
+                     ignore_active=False, ignore_xtrip=False,
+                     re_abs_tolerance: float | None = None) -> bool:
         """ True if aPolarDef is equals self"""
 
         if isinstance (aDef, Polar_Definition):
+            if re_abs_tolerance is not None:
+                if abs (self.re - aDef.re) > re_abs_tolerance:
+                    return False
+
             self_dict = self._as_dict()
             aDef_dict = aDef._as_dict()
+
+            if re_abs_tolerance is not None:
+                self_dict.pop('re', None)
+                aDef_dict.pop('re', None)
+
             if ignore_active:
                 self_dict.pop('active', None)
                 aDef_dict.pop('active', None)
+
             if ignore_xtrip:
                 self_dict.pop('xtript', None)
                 self_dict.pop('xtripb', None)
                 aDef_dict.pop('xtript', None)
                 aDef_dict.pop('xtripb', None)
+
             return self_dict == aDef_dict
         else:
             return False

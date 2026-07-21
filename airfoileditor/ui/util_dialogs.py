@@ -181,11 +181,13 @@ class Polar_Definition_Dialog (Dialog_Modeless):
                   polar_type_fixed = False,                                 # change of polar type not allowed 
                   fixed_chord : float = None,                               # fixed chord length in mm
                   is_new : bool = False,                                    # new polar definition, ensure changed
+                  allow_transition : bool = True,                           # allow transition definition
                   **kwargs): 
 
         self._small_mode        = small_mode
         self._polar_type_fixed  = polar_type_fixed
         self._fixed_chord       = fixed_chord
+        self._allow_transition  = allow_transition
 
         # init layout etc 
         super().__init__ (*args, **kwargs)
@@ -221,9 +223,11 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         l = QGridLayout()
         r,c = 0,0 
         Label  (l,r,c, get="Polar type")
-        ComboBox (l,r,c+1,  width=55, options=polarType.values(),
+        ComboBox (l,r,c+1,  width=70, options=polarType.values(),
                         obj=self.polar_def, prop=Polar_Definition.type,
                         disable=self._polar_type_fixed)
+        Label  (l,r,c+2, get="Fix", style=style.COMMENT,
+                hide=lambda: not self._polar_type_fixed)
         r += 1
         FieldF (l,r,c, width=70, step=10, lim=(1, 99999), unit="k", dec=0,
                         lab=lambda: "Re number" if self.polar_def.type == polarType.T1 else "Re · √Cl", 
@@ -258,19 +262,20 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             r += 1 
             SpaceR (l, r, height=15, stretch=0) 
 
-            r += 1 
-            CheckBox (l,r,c, text="Force transition at ...", colSpan=7,
-                            obj=self.polar_def, prop=Polar_Definition.has_xtrip,
-                            toolTip="Define a forced laminar-turbulent transition." )
-            r += 1
-            FieldF  (l,r,c, lab="Upper Side", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
-                            obj=self.polar_def, prop=Polar_Definition.xtript,
-                            hide=lambda: not self.polar_def.has_xtrip)
-            FieldF  (l,r,c+4, lab="Lower", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
-                            obj=self.polar_def, prop=Polar_Definition.xtripb,
-                            hide=lambda: not self.polar_def.has_xtrip)
-            r += 1 
-            SpaceR (l, r, height=5, stretch=0) 
+            if self._allow_transition:
+                r += 1 
+                CheckBox (l,r,c, text="Force transition at ...", colSpan=7,
+                                obj=self.polar_def, prop=Polar_Definition.has_xtrip,
+                                toolTip="Define a forced laminar-turbulent transition." )
+                r += 1
+                FieldF  (l,r,c, lab="Upper Side", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
+                                obj=self.polar_def, prop=Polar_Definition.xtript,
+                                hide=lambda: not self.polar_def.has_xtrip)
+                FieldF  (l,r,c+4, lab="Lower", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
+                                obj=self.polar_def, prop=Polar_Definition.xtripb,
+                                hide=lambda: not self.polar_def.has_xtrip)
+                r += 1 
+                SpaceR (l, r, height=5, stretch=0) 
 
             r += 1 
             CheckBox (l,r,c, text="Set flap for this polar ...", colSpan=7,
@@ -290,16 +295,16 @@ class Polar_Definition_Dialog (Dialog_Modeless):
 
             r += 1
             SpaceR (l, r, height=5, stretch=0) 
-            r += 1 
-            CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values", colSpan=7,
-                            get=self.polar_def.autoRange,
-                            toolTip="If checked, the range of polar values is optimized by Worker\n" + 
-                                    "to cover the range from cl_min to cl_max")
+            # r += 1 
+            # CheckBox (l,r,c, text=lambda: f"Auto Range of polar {self.polar_def.specVar} values", colSpan=7,
+            #                 get=self.polar_def.autoRange,
+            #                 toolTip="If checked, the range of polar values is optimized by Worker\n" + 
+            #                         "to cover the range from cl_min to cl_max")
             r += 1
-            FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
+            FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=70, step=0.1, lim=(0.1, 1.0), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
                             hide = lambda: self.polar_def.specVar != var.ALPHA)
-            FieldF (l,r,c, lab=f"Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
+            FieldF (l,r,c, lab=f"Step {var.CL}", width=70, step=0.01, lim=(0.01, 0.1), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
                             hide = lambda: self.polar_def.specVar != var.CL)
             Label  (l,r,c+2, style=style.COMMENT, colSpan=6, 
