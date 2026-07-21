@@ -344,6 +344,7 @@ class Repanel_Airfoil_Dialog (Dialog_Modeless):
 
         # do a first repanel with the actual parameters 
         self.geo._repanel (based_on_org=True)              # repanel based on original x,y
+        self._changes = True
 
         # switch on show panels mode in diagram
         self._app_model.notify_airfoil_geo_paneling (True)
