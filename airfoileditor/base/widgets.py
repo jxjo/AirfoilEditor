@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 import os
 import sys
 import types
+import traceback
 from typing             import override
 from enum               import Enum
 
@@ -360,8 +361,8 @@ class Widget:
 
         self._signal = signal if isinstance (signal, bool) else True  
 
-        # connect to parent refresh signal 
-
+        # Trace only the first unexpected parentless show per widget instance.
+        self._parentless_show_traced = False
 
 
     def __repr__(self) -> str:
@@ -725,6 +726,17 @@ class Widget:
     @override
     def event(self, event: QEvent):
         """Suppress parent tooltip fallback when no explicit tooltip is defined."""
+
+        # A parentless show can spawn a transient ghost window during startup.
+        # Log a short stack once, then keep quiet on subsequent show events.
+        if event.type() in (QEvent.Type.Show, QEvent.Type.ShowToParent):
+            if self.parentWidget() is None and not self._parentless_show_traced:
+                self._parentless_show_traced = True
+                logger.warning(
+                    "Parentless Widget shown: %r\n%s",
+                    self,
+                    "".join(traceback.format_stack(limit=12)),
+                )
 
         if event.type() == QEvent.Type.ToolTip:
             toolTip = self._toolTip() if callable(self._toolTip) else self._toolTip

@@ -8,6 +8,7 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 """
 
 import os
+import traceback
 
 from copy               import copy
 from typing             import override, Callable
@@ -293,6 +294,23 @@ class Panel_Abstract (QWidget):
         self._doubleClick : callable|None = doubleClick
         self._doubleClick_hint_widget : Label | None = None
         Panel_Abstract._doubleClick_hint : str|None = hint          # class variable - common for all instances
+
+        # Trace only the first unexpected parentless show per panel instance.
+        self._parentless_show_traced = False
+
+
+    @override
+    def showEvent(self, event):
+        # A parentless show can create a transient ghost window during startup.
+        # Log a short stack once, then stay quiet for subsequent show events.
+        if self.parentWidget() is None and not self._parentless_show_traced:
+            self._parentless_show_traced = True
+            logger.warning(
+                "Parentless Panel_Abstract shown: %r\n%s",
+                self,
+                "".join(traceback.format_stack(limit=12)),
+            )
+        super().showEvent(event)
 
 
     def __repr__(self) -> str:
