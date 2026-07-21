@@ -181,11 +181,24 @@ class Win_Util:
 class Disabled_Overlay(QWidget):
     """ Create a semi-transparent overlay to indicate disabled state """
 
-    def __init__(self, parent: QWidget):
+    def __init__(self, parent: QWidget, text_to_show = "Disabled"):
+
+        self._text_to_show = text_to_show
+        
         super().__init__(parent)
 
         self.setGeometry(parent.rect())
         set_background (self, color=QColor("#202020"), alpha=0.4)
+
+        # Center an optional status text above the dimmed overlay.
+        self._label = QLabel(self._text_to_show, self)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setStyleSheet("color: rgba(255, 255, 255, 140); font-size: 14pt;")
+
+        l_main = QVBoxLayout(self)
+        l_main.setContentsMargins(QMargins(0, 0, 0, 0))
+        l_main.addWidget(self._label, alignment=Qt.AlignmentFlag.AlignCenter)
+
         self.raise_()                               # Ensure it's on top
         self.show()
     
