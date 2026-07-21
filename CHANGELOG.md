@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## 4.3.2
+
+### Fixed
+
+- Polar view now refreshes automatically after adding a new polar
+- Prevented accidental airfoil deletion when renaming an airfoil
+- Added a user message when the app is disabled (for example during startup)
+- Ensured view refresh after closing the repanel dialog
+
+### Tweaks
+
+- Refined the polar definition dialog (context-dependent field visibility and helper comments)
+
+
+
 ## 4.3.1
 
 ### Fixed
