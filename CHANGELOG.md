@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
 
 - Refined the polar definition dialog (context-dependent field visibility and helper comments)
 
+### Thanks
+
+- Special thanks to Christian for his huge support in finding bugs and improving the app.
 
 
 ## 4.3.1
