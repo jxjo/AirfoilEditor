@@ -149,6 +149,25 @@ class Test_Case_Match_Target:
         assert case.targets_upper.le_curvature > 0
         assert case.targets_lower.le_curvature > 0
 
+    def test_targets_share_pso_options(self, seed_airfoil):
+        """Upper and lower targets share one in-memory PSO options object"""
+        case = Case_Match_Target(seed_airfoil, Airfoil_Bezier)
+
+        assert case.targets_upper.pso_options is case.targets_lower.pso_options
+
+    def test_default_pso_options_match_runtime_defaults(self, seed_airfoil):
+        """Defaults stay aligned with current PSO runtime tuning setup"""
+        case = Case_Match_Target(seed_airfoil, Airfoil_Bezier)
+        options = case.targets_upper.pso_options
+
+        assert options.pop_size == 40
+        assert options.initial_perturb == pytest.approx(0.1)
+        assert options.max_iter == 200
+        assert options.min_iter == 20
+        assert options.seed == 100
+        assert options.min_radius_best == pytest.approx(1e-4)
+        assert options.bound_mode == "reflect"
+
     def test_initial_airfoil_design_returns_copy(self, seed_airfoil):
         """initial_airfoil_design returns a usable Airfoil copy"""
         case = Case_Match_Target(seed_airfoil, Airfoil_Bezier)

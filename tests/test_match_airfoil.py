@@ -186,3 +186,16 @@ class Test_Match_Airfoil_Sequential:
         ma, _, _ = matched_airfoil_bezier
         assert ma.get_result_upper().is_good_enough()
         assert ma.get_result_lower().is_good_enough()
+
+    @pytest.mark.slow
+    def test_do_match_sequential_with_pso_improves_rms(self, qapp, seed_airfoil):
+        """PSO-enabled sequential match should improve upper-side RMS."""
+        ma = Match_Airfoil(seed_airfoil, Airfoil_Bezier)
+        ma.set_use_pso(True, seed=42)
+        rms_before = ma.get_result_upper().rms
+
+        success = ma.do_match_sequential()
+        rms_after = ma.get_result_upper().rms
+
+        assert success is True
+        assert rms_after < rms_before

@@ -25,7 +25,8 @@ from ..model.xo2_driver         import Xoptfoil2
 
 from .ae_widgets                import * 
 from .ae_dialogs                import (LE_Radius_Dialog, TE_Gap_Dialog, Matcher_Run_Info,
-                                        Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
+                                        Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog,
+                                        Match_Pso_Options_Dialog)
 from ..app_model                import App_Model
 from ..match_runner             import Match_Result
 
@@ -1456,9 +1457,22 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
                   style=style.HINT,
                   toolTip=_tip, hide=lambda: self._small or self.target_airfoil.geo.curvature.max_is_at_le)
         r += 1
+        c = 0
+        Label  (l,r,c, get=self._message_text, colSpan=14, height=(None, None), hide=self._small, style=style.COMMENT)
+        r += 1
         l.setRowStretch (r,2)
         r += 1
-        Label  (l,r,0, get=self._message_text, colSpan=14, height=(None, None), hide=self._small, style=style.COMMENT)
+
+        _tip = "Select optimizer used for matching on both upper and lower sides."
+        Label  (l,r,c, get="Optimizer", hide=self._small)
+        ComboBox (l,r,c+1, colSpan=3, width=95,
+                get=lambda: self.optimizer, set=self.set_optimizer,
+                options=["nelder_mead", "pso"],
+                hide=lambda: self._small,  toolTip=_tip)
+        ToolButton (l,r,c+5, icon=Icon.SETTINGS,
+            set=self._edit_pso_options,
+            hide=lambda: self._small or self.optimizer != "pso",
+            toolTip="Edit PSO options for development tuning")
     
         return l
 
@@ -1515,6 +1529,33 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
 
         self.targets_upper.set_le_monoton(not monoton)
         self.targets_lower.set_le_monoton(not monoton)
+
+
+    @property
+    def optimizer (self) -> str:
+        """ shared optimizer shown in UI; uses upper-side value as source """
+        return self.targets_upper.optimizer
+
+
+    def set_optimizer (self, optimizer: str):
+        """ set optimizer for both sides """
+        self.targets_upper.set_optimizer(optimizer)
+        self.targets_lower.set_optimizer(optimizer)
+
+
+    def _edit_pso_options (self):
+        """Open modal dialog for PSO development options."""
+
+        diag = Match_Pso_Options_Dialog(
+            self,
+            getter=lambda: self.targets_upper.pso_options,
+            parentPos=(0.5, 0.2),
+            dialogPos=(0.5, 1.1),
+        )
+        diag.exec()
+
+        # Keep result panel state in sync after tuning settings.
+        self.app_model.notify_match_target_changed()
 
 
     def _message_text (self):

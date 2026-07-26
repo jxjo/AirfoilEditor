@@ -21,6 +21,7 @@ from ..model.airfoil_exports    import Export_Airfoil_Dxf
 from ..model.geometry           import Geometry
 from ..model.geometry_spline    import Geometry_Splined, Panelling_Spline
 from ..model.case               import Match_Targets
+from ..base.pso                 import Pso_Options
 from ..match_runner             import Match_Result, Matcher
 
 from .ae_widgets                import Airfoil_Select_Open_Widget
@@ -631,6 +632,104 @@ class TE_Gap_Dialog (Dialog_Modeless):
         self.app_model.notify_airfoil_geo_te_gap (None)  
 
         return super().done(result)
+
+
+
+class Match_Pso_Options_Dialog (Dialog_Modal):
+    """Modal dialog to tune PSO options used by Match mode."""
+
+    name = "PSO Options (Dev)"
+
+    @property
+    def pso_options (self) -> Pso_Options:
+        return self.dataObject
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r, c = 0, 0
+
+        Label  (l,r,c, colSpan=5, style=style.COMMENT,
+                get="Tune PSO parameters for development runs in Match mode")
+
+        r += 1
+        SpaceR (l, r, height=5)
+
+        r += 1
+        FieldI (l,r,c,   lab="Pop size", width=70, lim=(1, 400),
+            get=lambda: self.pso_options.pop_size,
+            set=lambda v: self.pso_options.set_pop_size(int(v)),
+            toolTip="Particles in swarm.")
+
+        r += 1
+        ComboBox (l,r,c, lab="Bounds", width=70,
+            get=lambda: self.pso_options.bound_mode,
+            set=lambda v: self.pso_options.set_bound_mode(v),
+                options=["reflect", "clip"],
+                toolTip="Boundary handling mode for design variables.")
+
+        FieldI (l,r,c+3, lab="Seed", width=70, lim=(-1, 999999),
+            get=lambda: self.pso_options.seed_ui,
+            set=lambda v: self.pso_options.set_seed_ui(int(v)),
+                toolTip="Random seed for deterministic runs. -1 means random seed.")
+        r += 1
+        SpaceR (l, r, height=10)
+
+        r += 1
+        FieldF (l,r,c, lab="Init perturb", width=70, dec=2, lim=(0.0, 1.0), step=0.01,
+            get=lambda: self.pso_options.initial_perturb,
+            set=lambda v: self.pso_options.set_initial_perturb(float(v)),
+                toolTip="Fraction of bound span for initial particle spread and speed limit.")
+        r += 1
+        FieldF (l,r,c,   lab="Inertia high", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.w_high,
+            set=lambda v: self.pso_options.set_w_high(float(v)),
+                toolTip="Initial inertia weight at early iterations.")
+        FieldF (l,r,c+3, lab="Inertia low", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.w_low,
+            set=lambda v: self.pso_options.set_w_low(float(v)),
+                toolTip="Final inertia weight after convergence schedule.")
+        FieldF (l,r,c+6,   lab="Convrate", width=70, dec=2, lim=(0.0, 1.0), step=0.01,
+            get=lambda: self.pso_options.convrate,
+            set=lambda v: self.pso_options.set_convrate(float(v)),
+                toolTip="Convergence rate for inertia reduction.")
+
+        r += 1
+        FieldF (l,r,c, lab="Cognitive", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.cognitive,
+            set=lambda v: self.pso_options.set_cognitive(float(v)),
+                toolTip="Attraction to each particle's personal best.")
+        FieldF (l,r,c+3,   lab="Social", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.social,
+            set=lambda v: self.pso_options.set_social(float(v)),
+                toolTip="Attraction to the swarm global best.")
+
+        r += 1
+        SpaceR (l, r, height=10)
+
+        r += 1
+        FieldI (l,r,c,   lab="Min iter", width=70, lim=(0, 10000),
+            get=lambda: self.pso_options.min_iter,
+            set=lambda v: self.pso_options.set_min_iter(int(v)),
+                toolTip="Minimum generations before stop criteria may terminate.")
+        FieldI (l,r,c+3, lab="Max iter", width=70, lim=(1, 10000),
+            get=lambda: self.pso_options.max_iter,
+            set=lambda v: self.pso_options.set_max_iter(int(v)),
+            toolTip="Maximum PSO generations.")
+        FieldF (l,r,c+6,   lab="Best radius", width=70, dec=5, lim=(0.0, 1.0), step=1e-4,
+            get=lambda: self.pso_options.min_radius_best_ui,
+            set=lambda v: self.pso_options.set_min_radius_best_ui(float(v)),
+                toolTip="Stop threshold for swarm radius around best. 0 disables this criterion.")
+
+        l.setColumnMinimumWidth (0, 80)
+        l.setColumnMinimumWidth (2, 20)
+        l.setColumnMinimumWidth (3, 70)
+        l.setColumnMinimumWidth (5, 20)
+        l.setColumnMinimumWidth (6, 70)
+        SpaceC (l, 8, width=10)
+
+        return l
 
 
 

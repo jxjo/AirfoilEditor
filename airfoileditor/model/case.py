@@ -20,6 +20,7 @@ from .xo2_driver            import Worker
 from .xo2_input             import Input_File
 from .xo2_controller        import Xo2_Controller
 from .xo2_results           import Xo2_Results
+from ..base.pso             import Pso_Options
 
 import logging
 import time
@@ -429,15 +430,15 @@ class Case_Direct_Design (Case_Abstract):
 # -------------------------------------------------------------------
 
 
-
 class Match_Targets:
     """ 
     Helper Container for target values for matching 
     - curvature at LE, max curvature at TE, max number of reversals in curvature, etc. 
     """
 
-    def __init__ (self, side : Line, curvature : Line,  
-                  ncp = 5, ncp_auto = True, min_rms = True, le_curvature = None, le_monoton = True):
+    def __init__ (self, side : Line, curvature : Line,
+                  ncp = 5, ncp_auto = True, min_rms = True, le_curvature = None, le_monoton = True,
+                  pso_options: Pso_Options | None = None):
 
         self._side              = side                              # target upper or lower Line 
         self._curvature         = curvature                         # target curvature Line
@@ -457,8 +458,12 @@ class Match_Targets:
 
         self._bump_control      = True                              # avoid bumps in curvature
 
+        self._optimizer         = "pso"                            # runtime switch: "nelder_mead" or "pso"
+        self._pso_options       = pso_options if pso_options is not None else Pso_Options()
+
     @classmethod
-    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int) -> 'Match_Targets':
+    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int,
+                      pso_options: Pso_Options | None = None) -> 'Match_Targets':
         """ create Match_Targets from an Airfoil and side name 'upper' or 'lower' """
 
         if not isinstance (airfoil, Airfoil):
@@ -479,8 +484,9 @@ class Match_Targets:
         le_curvature   = round (airfoil.geo.curvature.at_le, 0)
         le_monoton     = airfoil.geo.curvature.max_is_at_le
 
-        instance =  cls (side, curv, ncp=ncp, 
-                         le_curvature=le_curvature, le_monoton=le_monoton)
+        instance =  cls (side, curv, ncp=ncp,
+                 pso_options=pso_options,
+                 le_curvature=le_curvature, le_monoton=le_monoton)
 
         return instance
 
@@ -525,6 +531,22 @@ class Match_Targets:
     @property
     def bump_control (self) -> bool:
         return self._bump_control
+
+    @property
+    def optimizer(self) -> str:
+        return self._optimizer
+
+    @property
+    def use_pso(self) -> bool:
+        return self._optimizer == "pso"
+
+    @property
+    def pso_seed(self) -> int:
+        return self._pso_options.seed if self._pso_options.seed is not None else -1
+
+    @property
+    def pso_options(self) -> Pso_Options:
+        return self._pso_options
         
     # --- setters ---
 
@@ -550,6 +572,17 @@ class Match_Targets:
         self._max_te_curvature, self._max_te_is_proposed = self._get_max_te_curvature(self._curvature.y, val)
 
     def set_bump_control (self, val : bool ): self._bump_control = val
+
+    def set_optimizer(self, optimizer: str):
+        if optimizer not in ("nelder_mead", "pso"):
+            raise ValueError("optimizer must be 'nelder_mead' or 'pso'")
+        self._optimizer = optimizer
+
+    def set_use_pso(self, val: bool):
+        self._optimizer = "pso" if val else "nelder_mead"
+
+    def set_pso_seed(self, seed: int):
+        self._pso_options.set_seed(int(seed))
 
 
     def _get_max_te_curvature (self, curvature: np.ndarray, nreversals: int) -> tuple [float, bool]:
@@ -612,11 +645,15 @@ class Case_Match_Target (Case_Direct_Design):
 
         # -- setup match targets 
 
+        pso_options = Pso_Options()
+
         ncp = airfoil_initial.geo.upper.ncp
-        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp)
+        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp,
+                                                          pso_options=pso_options)
 
         ncp = airfoil_initial.geo.lower.ncp
-        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp)
+        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp,
+                                                          pso_options=pso_options)
 
         self._match_result_upper = None     # last Match_Result from real optimizer run
         self._match_result_lower = None

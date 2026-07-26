@@ -15,6 +15,7 @@ from typing                         import Type, override
 from PyQt6.QtCore                   import QThread, pyqtSignal, QEventLoop
 
 from .base.math_util                import nelder_mead, derivative1, interpolate, differential_evolution
+from .base.pso                      import Pso, Pso_Options
 from .base.spline                   import Bezier
 from .base.widgets                  import style 
 from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline
@@ -515,7 +516,7 @@ class Matcher (QThread):
 
             dv_start = self._map_curve_to_dv ()
 
-        # ----- nelder mead find minimum --------
+        # ----- local optimizer find minimum --------
 
         self.sig_pass_start.emit (self._ipass, ncp, False)      # dialog can update UI, new ncp
         self.msleep(10)                                         # give parent some time to do updates
@@ -524,17 +525,30 @@ class Matcher (QThread):
 
         max_iter  = len(dv_start) * 300                         # max_iter based on current number of variables
 
-        res, niter = nelder_mead (f, dv_start,
-                    step=step_size, no_improve_thr=1e-7,             
-                    no_improv_break_beginning=150, no_improv_break=100, #20
-                    min_iter=200, max_iter=max_iter,        
-                    bounds = bounds,
-                    stop_callback=self.isInterruptionRequested)  # QThread method 
+        if self._targets.use_pso:
+            pso_options = self._targets.pso_options
+
+            pso_runner = Pso (f, dv_start, bounds, pso_options,
+                                stop_callback=self.isInterruptionRequested)
+            pso_runner.run()
+
+            res = (pso_runner.best_position, pso_runner.best_score)
+            niter = pso_runner.iterations
+
+            logger.info (f"Finished PSO after {niter} generations and {self._nevals} evaluations.")
+        else:
+            res, niter = nelder_mead (f, dv_start,
+                        step=step_size, no_improve_thr=1e-7,
+                        no_improv_break_beginning=150, no_improv_break=100, #20
+                        min_iter=200, max_iter=max_iter,
+                        bounds=bounds,
+                        stop_callback=self.isInterruptionRequested)  # QThread method
+
+            logger.info (f"Finished nelder mead after {niter} iterations and {self._nevals} evaluations.")
 
         dv = res[0]
 
         objective = self._objectiveFn (dv, show_info=True)          # final evaluation with info printout
-        logger.info (f"Finished nelder mead after {niter} iterations and {self._nevals} evaluations.") 
 
         #-- evaluate the new y values on Bezier for the target x-coordinate
 
@@ -942,6 +956,13 @@ class Match_Airfoil:
     def targets_lower(self) -> Match_Targets:
         """Match targets for lower side."""
         return self._targets_lower
+
+    def set_use_pso(self, use_pso: bool, seed: int = 42):
+        """Enable or disable PSO for both side matchers."""
+        self._targets_upper.set_use_pso(use_pso)
+        self._targets_lower.set_use_pso(use_pso)
+        self._targets_upper.set_pso_seed(seed)
+        self._targets_lower.set_pso_seed(seed)
     
     def interrupt(self):
         """Request interruption of the matching process."""
