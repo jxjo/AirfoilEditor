@@ -20,6 +20,8 @@ from ..base.panels              import Edit_Panel
 from ..model.airfoil            import Airfoil
 from ..model.geometry   import Geometry, Curvature_Abstract, Line 
 from ..model.geometry_curve     import Geometry_Curve, Side_Airfoil_Curve, Deviation_Line
+from ..model.geometry_bezier    import Side_Airfoil_Bezier
+from ..model.geometry_bspline   import Side_Airfoil_BSpline
 from ..model.case               import Case_Abstract, Case_Direct_Design, Case_Match_Target, Match_Targets
 from ..model.xo2_driver         import Xoptfoil2
 
@@ -75,7 +77,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     @property
     def is_mode_match (self) -> bool:
         """ panel in mode_match or disabled ? """ 
-        return self.app_model.is_mode_as_bezier or self.app_model.is_mode_as_bspline
+        return self.app_model.is_mode_as_bezier or self.app_model.is_mode_as_bspline or self.app_model.is_mode_as_cst
 
     @property
     def is_mode_optimize (self) -> bool:
@@ -120,6 +122,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     sig_exit = pyqtSignal()                             # wants to exit the application
     sig_new_as_bezier = pyqtSignal()                    # wants to create new Bezier based airfoil
     sig_new_as_bspline = pyqtSignal()                   # wants to create new B-Spline based airfoil
+    sig_new_as_cst = pyqtSignal()                       # wants to create new CST based airfoil
     sig_save_as = pyqtSignal()                          # wants to save current airfoil as new file
     sig_export_dxf = pyqtSignal()                       # wants to export current airfoil as dxf
     sig_rename = pyqtSignal()                           # wants to rename current airfoil
@@ -192,6 +195,9 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menu.addAction (MenuAction ("As B-Spline based", self, set=self.sig_new_as_bspline, 
                                      # disable=lambda: self.airfoil.isBSplineBased,
                                      toolTip="Create new B-Spline based airfoil of current airfoil"))
+        menu.addAction (MenuAction ("As CST based", self, set=self.sig_new_as_cst, 
+                                     # disable=lambda: self.airfoil.isCSTBased,
+                                     toolTip="Create new CST based airfoil of current airfoil"))
         menu.addSeparator ()
         menu.addAction (MenuAction ("Save as...", self, set=self.sig_save_as.emit,
                                      toolTip="Create a copy of the current airfoil with new name and filename"))
@@ -1067,17 +1073,22 @@ class Panel_Curve (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Label (l,r,c, get="# Control Points", colSpan=4)
+        FieldI (l,r,c, lab=lambda: "# Weights upper" if self.geo.isCST else "# Ctrl Points upper",
+                get=lambda: self.upper.ncp,  width=40)
         r += 1
-        FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.ncp,  width=40)
+        FieldI (l,r,c, lab=lambda: "# Weights lower" if self.geo.isCST else "# Ctrl Points lower",
+                get=lambda: self.lower.ncp,  width=40)
         r += 1
-        FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.ncp,  width=40)
-        l.setColumnMinimumWidth (0,80)
+        FieldF (l,r,c,   lab="LE weight",  get=lambda: self.geo.le_weight,  dec=2,width=50,
+                hide=lambda: not self.geo.isCST)
+        r += 1
+        FieldF (l,r,c,   lab="TE thickness",  get=lambda: self.geo.te_gap,  dec=4, width=50,
+                hide=lambda: not self.geo.isCST)
+        l.setColumnMinimumWidth (0,110)
 
         r += 1
         l.setRowStretch (r,2)
         r += 1 
-        Label  (l,r,0,colSpan=5, get=self._message, style=style.COMMENT, height=(None,None), hide=lambda: self.is_mode_modify)
         Label  (l,r,0,colSpan=5, get=self._hint, style=style.HINT, height=(None,None), 
                 width=(150, 150), wordWrap=True, hide=lambda: not self.is_mode_modify)
         return l
@@ -1085,22 +1096,6 @@ class Panel_Curve (Panel_Airfoil_Abstract):
 
     def _hint (self) -> str:
         return f"You may change number of control points in diagram."
-
-    def _message (self)  -> str:
-
-        lines = []
-        for side in [self.upper, self.lower]:
-            side : Side_Airfoil_Curve
-            curve = side.curve
-            text = f"{side.name}: degree {curve.degree}"
-            if self.geo.isBSpline:
-                if curve.is_uniform:
-                    text += ", uniform"
-                else:
-                    text += ", non-uniform"
-            lines.append(text)
-
-        return '\n'.join(lines) 
 
 
 class Panel_Curve_Small (Panel_Curve):
@@ -1334,11 +1329,11 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         return super().geo
     
     @property
-    def upper (self) -> Side_Airfoil_Curve:
+    def upper (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
         return self.geo.upper
 
     @property
-    def lower (self) -> Side_Airfoil_Curve:
+    def lower (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
         return self.geo.lower
     
     @property
@@ -1487,7 +1482,7 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
             diag.show()
 
 
-    def set_ncp_auto (self, aSide : Side_Airfoil_Curve, targets : Match_Targets, auto: bool):
+    def set_ncp_auto (self, aSide : Side_Airfoil_Bezier | Side_Airfoil_BSpline, targets : Match_Targets, auto: bool):
         """ set ncp auto mode of a side and update targets with new auto mode"""
         targets.set_ncp_auto(auto)
         if not auto:
@@ -1498,7 +1493,7 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
             self.app_model.notify_match_target_changed (aSide, aSide.curve.ncp)
 
 
-    def set_ncp (self, aSide : Side_Airfoil_Curve, targets : Match_Targets, ncp: int):
+    def set_ncp (self, aSide : Side_Airfoil_Bezier | Side_Airfoil_BSpline, targets : Match_Targets, ncp: int):
         """ set ncp of a side and update targets with new ncp"""                
 
         targets.set_ncp (ncp)

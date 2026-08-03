@@ -326,13 +326,15 @@ class Curvature_Abstract:
         ny = -np.concatenate ((-np.flip(self._upper_dx), self._lower_dx))
 
         # Normalize to unit length
+        # At the LE, a round nose (e.g. CST with n1=0.5) has a vertical tangent, so
+        # dy/dx (and therefore nx) is +-inf there - the limiting unit normal is
+        # horizontal (+-1, 0). Handle that case explicitly instead of letting
+        # inf/inf produce nan (which would silently drop the LE comb line).
         nn = np.sqrt(nx**2 + ny**2)
-        nx /= nn
-        ny /= nn
-
-        # Scale factor based on maximum curvature magnitude
-        # curvature_vals = np.sqrt(np.abs(vals)) * np.sign(vals) * 0.01
-        # curvature_vals = np.abs(vals) * 0.001
+        le_mask = np.isinf(nn)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            nx = np.where(le_mask, np.sign(nx), nx / nn)
+            ny = np.where(le_mask, 0.0, ny / nn)
 
         # Scale factor based on maximum curvature magnitude
         # Linear scale with soft saturation via tanh:
@@ -517,6 +519,7 @@ class Line:
     isCurve         = False
     isBezier        = False
     isBSpline       = False
+    isCST           = False
     isHicksHenne    = False
 
     CURV_THRESHOLD  = 0.01                      # threshold for curvature to be counted as reversal 
@@ -1052,6 +1055,7 @@ class Geometry ():
     isSplined       = False 
     isBezier        = False
     isBSpline       = False
+    isCST           = False
     isCurve         = False                         # either Bezier or B-Spline
     isHicksHenne    = False
     description     = "based on linear interpolation"

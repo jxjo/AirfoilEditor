@@ -11,7 +11,7 @@ from datetime               import datetime
 from pathlib                import Path
 from typing                 import override, Type
 
-from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, GEO_SPLINE, usedAs
+from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, Airfoil_CST, GEO_SPLINE, usedAs
 from .geometry              import Line
 from .geometry_spline       import Geometry_Splined
 from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
@@ -603,14 +603,14 @@ class Match_Targets:
 
 class Case_Match_Target (Case_Direct_Design):
     """
-    A Direct Design Case: New Bezier of B-Spline airfoil based on a .dat airfoil
+    A Direct Design Case: New Bezier, B-Spline or CST airfoil based on a .dat airfoil
     """
 
-    def __init__(self, airfoil: Airfoil, new_airfoil_cls : Type [Airfoil_Bezier | Airfoil_BSpline]):
-        """ new_airfoil_cls should be either Airfoil_Bezier or Airfoil_BSpline"""
+    def __init__(self, airfoil: Airfoil, new_airfoil_cls : Type [Airfoil_Bezier | Airfoil_BSpline | Airfoil_CST]):
+        """ new_airfoil_cls should be Airfoil_Bezier, Airfoil_BSpline or Airfoil_CST"""
 
-        if not new_airfoil_cls in [Airfoil_Bezier, Airfoil_BSpline]:
-            raise ValueError (f"new_airfoil_cls should be either Airfoil_Bezier or Airfoil_BSpline")
+        if not new_airfoil_cls in [Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST]:
+            raise ValueError (f"new_airfoil_cls should be Airfoil_Bezier, Airfoil_BSpline or Airfoil_CST")
         
         # remove existing design dir - start with new designs - do it before super init, because it reads existing designs
 
@@ -643,7 +643,13 @@ class Case_Match_Target (Case_Direct_Design):
         self._airfoil_designs = []                                  # reset designs - start new
         self.add_design (airfoil_initial)
 
-        # -- setup match targets 
+        # -- setup match targets - not (yet) applicable for CST, which is a direct analytic fit
+
+        self._match_result_upper = None     # last Match_Result from real optimizer run
+        self._match_result_lower = None
+
+        if new_airfoil_cls is Airfoil_CST:
+            return
 
         pso_options = Pso_Options()
 
@@ -654,9 +660,6 @@ class Case_Match_Target (Case_Direct_Design):
         ncp = airfoil_initial.geo.lower.ncp
         self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp,
                                                           pso_options=pso_options)
-
-        self._match_result_upper = None     # last Match_Result from real optimizer run
-        self._match_result_lower = None
 
 
     @property

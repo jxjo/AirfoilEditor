@@ -12,14 +12,14 @@ import fnmatch
 
 from typing                     import override, Callable    
 
-from PyQt6.QtCore               import QMargins
+from PyQt6.QtCore               import QMargins, QTimer
 from PyQt6.QtWidgets            import QHBoxLayout
 from PyQt6.QtWidgets            import QFileDialog, QWidget
 
 from ..base.widgets             import * 
 from ..base.panels              import MessageBox
 
-from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline
+from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST
 from ..model.airfoil            import GEO_BASIC
 from ..model.airfoil_examples   import Example
 
@@ -87,7 +87,7 @@ def get_airfoil_fileNames_sameDir (airfoil_or_dir : Airfoil | str | None) -> lis
     """ 
     Returns list of airfoil file names in the same directory as airfoil
         airfoil can be either an Airfoil or a subdirectory
-    Returns all .dat, .bez and .hicks files 
+    Returns all .dat, .bez, .bsp, .cst and .hicks files 
     """
 
     if airfoil_or_dir is None: return []
@@ -107,8 +107,9 @@ def get_airfoil_fileNames_sameDir (airfoil_or_dir : Airfoil | str | None) -> lis
         dat_files = fnmatch.filter(os.listdir(airfoil_dir), '*.dat')
         bez_files = fnmatch.filter(os.listdir(airfoil_dir), '*.bez')
         bsp_files = fnmatch.filter(os.listdir(airfoil_dir), '*.bsp')
+        cst_files = fnmatch.filter(os.listdir(airfoil_dir), '*.cst')
         hh_files  = fnmatch.filter(os.listdir(airfoil_dir), '*.hicks')
-        airfoil_files = dat_files + bez_files + bsp_files + hh_files
+        airfoil_files = dat_files + bez_files + bsp_files + cst_files + hh_files
         return sorted (airfoil_files, key=str.casefold)
     else:
         return []
@@ -297,7 +298,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         """ open a new airfoil and load it"""
 
         directory  = None
-        extensions = f"*{Airfoil.Extension} *{Airfoil_Bezier.Extension} *{Airfoil_BSpline.Extension}"
+        extensions = f"*{Airfoil.Extension} *{Airfoil_Bezier.Extension} *{Airfoil_BSpline.Extension} *{Airfoil_CST.Extension}"
         filters    = f"Airfoil files ({extensions});;All files (*.*)"
 
         if isinstance (self.airfoil, Airfoil):

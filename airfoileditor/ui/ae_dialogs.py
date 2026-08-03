@@ -599,10 +599,12 @@ class TE_Gap_Dialog (Dialog_Modeless):
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
         FieldF  (l,r,c, lab="Blend from TE", width=75, step=1, lim=(10, 100), dec=1, unit="%",
-                        obj=self, prop=TE_Gap_Dialog.xBlend)
+                        obj=self, prop=TE_Gap_Dialog.xBlend,
+                        disable=lambda: self.airfoil.geo.isCST) # CST airfoils have fixed 100% blending distance
         Slider  (l,r,c+3, colSpan=2, width=100,  
                         lim=(0.1, 1.0), dec=2,  
-                        obj=self, prop=TE_Gap_Dialog.xBlend)
+                        obj=self, prop=TE_Gap_Dialog.xBlend,
+                        disable=lambda: self.airfoil.geo.isCST) # CST airfoils have fixed 100% blending distance
         r += 1
         SpaceR  (l, r, stretch=1, height=10) 
         r += 1

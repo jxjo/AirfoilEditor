@@ -55,6 +55,7 @@ class Mode_Id(Enum):
     OPTIMIZE   = auto()
     AS_BEZIER  = auto()
     AS_BSPLINE = auto()
+    AS_CST     = auto()
 
 
 # -----------------------------------------------------------------------------
@@ -359,6 +360,8 @@ class App_Model (QObject):
             ok = True
         elif mode_id == Mode_Id.AS_BSPLINE  and isinstance (case, Case_Match_Target):
             ok = True
+        elif mode_id == Mode_Id.AS_CST      and isinstance (case, Case_Match_Target):
+            ok = True
         elif mode_id == Mode_Id.VIEW and case is None:
             ok = True
 
@@ -401,6 +404,12 @@ class App_Model (QObject):
     def is_mode_as_bspline (self) -> bool:
         """ is current mode as bspline """
         return self._mode_id == Mode_Id.AS_BSPLINE
+
+
+    @property
+    def is_mode_as_cst (self) -> bool:
+        """ is current mode as cst """
+        return self._mode_id == Mode_Id.AS_CST
 
 
     @property

@@ -24,7 +24,6 @@ from ..model.xo2_driver     import Worker, Xoptfoil2
 from ..model.xo2_results    import OpPoint_Result, GeoTarget_Result
 
 from .ae_artists            import *
-from .ae_artists            import BSpline_Artist, Deviation_Line_Artist
 from .ae_widgets            import Airfoil_Select_Open_Widget
 from .xo2_artists           import *
 from .util_dialogs          import Polar_Definition_Dialog, Airfoil_Scale_Dialog
@@ -606,6 +605,7 @@ class Item_Airfoil (Diagram_Item):
 
         self._bezier_artist         : Bezier_Artist = None 
         self._bspline_artist        : BSpline_Artist = None                
+        self._cst_artist            : CST_Artist = None
         self._flap_artist           : Flap_Artist = None
         self._line_artist           : Airfoil_Line_Artist = None
         self._airfoil_artist        : Airfoil_Artist = None
@@ -655,28 +655,9 @@ class Item_Airfoil (Diagram_Item):
         return Case_Abstract.get_iDesign (self.design_airfoil)
             
 
-    def _is_one_airfoil_curve (self) -> bool: 
-        """ is one of airfoils Bezier or B-spline based? """
-        for a in self.airfoils:
-            if a.isBezierBased or a.isBSplineBased: return True
-        return False 
-
-
-    def _is_one_airfoil_hicks_henne (self) -> bool: 
-        """ is one of airfoils Hicks Henne based? """
-
-        for a in self.airfoils:
-            if a.isHicksHenneBased: return True
-        return False 
-
-
     def _is_design_and_curve (self) -> bool: 
-        """ is one airfoil used as design and is Bezier or B-spline based?"""
-
-        for a in self.airfoils:
-            if a.usedAsDesign and (a.isBezierBased or a.isBSplineBased):
-                return True 
-        return False
+        """ is one airfoil used as design and is Bezier, B-spline or CST based?"""
+        return any (a.usedAsDesign and a.geo.isCurve for a in self.airfoils)
 
 
     def _on_paneling_changed (self, is_paneling : bool):
@@ -697,6 +678,7 @@ class Item_Airfoil (Diagram_Item):
 
         self._bezier_artist.refresh_from_side (side_type)
         self._bspline_artist.refresh_from_side (side_type)
+        self._cst_artist.refresh_from_side (side_type)
 
         
     def _on_new_design (self):
@@ -809,6 +791,7 @@ class Item_Airfoil (Diagram_Item):
         self._show_control_points = aBool
         self._bezier_artist.set_show (aBool)
         self._bspline_artist.set_show (aBool)
+        self._cst_artist.set_show (aBool)
 
     @override
     def resizeEvent(self, ev):
@@ -932,6 +915,11 @@ class Item_Airfoil (Diagram_Item):
         self._bspline_artist = a
         self._add_artist (a)
 
+        a = CST_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
+        a.sig_cst_changed.connect (self.app_model.notify_airfoil_changed)
+        self._cst_artist = a
+        self._add_artist (a)
+
         a = Hicks_Henne_Artist (self, lambda: self.airfoils, show_legend=True, show=False)
         self._hicks_henne_artist = a
         self._add_artist (a)
@@ -1026,13 +1014,13 @@ class Item_Airfoil (Diagram_Item):
             CheckBox (l,r,c, text="Curve control points", colSpan=2,
                     get=lambda: self.show_control_points,
                     set=self.set_show_control_points,
-                    hide=lambda : not self._is_one_airfoil_curve(),
-                    toolTip="Show control points of Bezier or B-spline curves")
+                    hide=lambda : not any (a.geo.isCurve for a in self.airfoils),
+                    toolTip="Show control points of Bezier, B-Spline or CST curves")
             r += 1
             CheckBox (l,r,c, text="Hicks Henne functions", colSpan=2,
                     get=lambda: self._hicks_henne_artist.show,
                     set=self._hicks_henne_artist.set_show,
-                    hide=lambda : not self._is_one_airfoil_hicks_henne(),
+                    hide=lambda : not any (a.isHicksHenneBased for a in self.airfoils),
                     toolTip="Show Hicks Henne functions which build the airfoil")
             r += 1
             CheckBox (l,r,c, text="Stretch y axis", 

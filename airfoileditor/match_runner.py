@@ -895,7 +895,6 @@ class Match_Airfoil:
         
         # Determine default ncp from Side class
         side_class = Side_Airfoil_Bezier if airfoil_class == Airfoil_Bezier else Side_Airfoil_BSpline
-        ncp = side_class.NCP_DEFAULT
         
         # Create target airfoil for matching - repanel and normalize like in UI
         airfoil_target = airfoil.asCopy(geometry=Geometry_Splined)
@@ -907,11 +906,12 @@ class Match_Airfoil:
         self._airfoil_target = airfoil_target
         
         # Create targets automatically from target airfoil
+        ncp = side_class.NCP_DEFAULT
         self._targets_upper = Match_Targets.from_airfoil(airfoil_target, Line.Type.UPPER, ncp)
         self._targets_lower = Match_Targets.from_airfoil(airfoil_target, Line.Type.LOWER, ncp)
         
         # Create the resulting airfoil
-        self._airfoil = airfoil_class.on_airfoil(airfoil_target, ncp=ncp)
+        self._airfoil = airfoil_class.on_airfoil(airfoil_target)
         
         # Get the geometry to access sides
         geo: Geometry_Curve = self._airfoil.geo
