@@ -648,9 +648,6 @@ class Case_Match_Target (Case_Direct_Design):
         self._match_result_upper = None     # last Match_Result from real optimizer run
         self._match_result_lower = None
 
-        if new_airfoil_cls is Airfoil_CST:
-            return
-
         pso_options = Pso_Options()
 
         ncp = airfoil_initial.geo.upper.ncp

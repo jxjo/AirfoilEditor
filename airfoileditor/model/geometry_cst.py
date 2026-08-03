@@ -427,7 +427,7 @@ class Geometry_CST(Geometry_Curve):
 
     @classmethod
     def geometry_as_CST (cls, geometry: Geometry, n_weights: int | None = None,
-                         smooth_lambda: float = 0.0001
+                         smooth_lambda: float = 0.00001
                          ) -> tuple[np.ndarray, np.ndarray, float, float]:
         """
         Fit CST parameters (fast linear least squares, see fit_from_xy) approximating

@@ -932,6 +932,7 @@ class Mode_As_CST (Mode_Abstract):
 
             l.addWidget (Panel_Geometry        (self, self._app_model, lazy=True))
             l.addWidget (Panel_Curve           (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Fit_CST_Curve   (self, self._app_model, lazy=True))
 
             self._panel    = Data_Panel (self, self._app_model, layout = l)
 

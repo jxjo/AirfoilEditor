@@ -1575,6 +1575,149 @@ class Panel_Match_Curve_Small (Panel_Match_Curve):
 
 
 
+class Panel_Fit_CST_Curve (Panel_Airfoil_Abstract):
+    """ CST fit airfoil  """
+
+    name = 'CST Fit'
+
+    _small = False
+
+    @override
+    @property
+    def _isDisabled (self) -> bool:
+        return not self.is_mode_match
+    
+    @override
+    def _on_widget_changed (self, widget):
+        """ user changed data in widget"""
+
+        # reset results and refresh match result panel
+        self.app_model.notify_match_target_changed()
+
+
+    @property
+    def case (self) -> Case_Match_Target:
+        return self.app_model.case
+
+    @property
+    def geo (self) -> Geometry_Curve:
+        return super().geo
+    
+    @property
+    def upper (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
+        return self.geo.upper
+
+    @property
+    def lower (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
+        return self.geo.lower
+    
+    @property
+    def target_airfoil (self) -> Airfoil:
+        return self.app_model.airfoil_target
+    
+    @property
+    def targets_upper (self) -> Match_Targets:
+        return self.case.targets_upper
+    
+    @property
+    def targets_lower (self) -> Match_Targets:
+        return self.case.targets_lower
+
+    @property
+    def target_curv_le (self) -> float:
+        return self.target_airfoil.geo.curvature.at_le
+
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+
+        r,c = 0, 0 
+        Label  (l,r+1,c,   get="Upper Side")
+        Label  (l,r+2,c,   get="Lower Side")
+        l.setColumnMinimumWidth (c,80)
+
+        c += 1
+        Label  (l,r,c, colSpan=3, get="# Weights", hide=self._small)
+        c +=1
+        _tip = "Number of weights, the matching curve will have.\n"+ \
+               "A higher number may allow a better fit, but could cause undesired bumps. "
+        FieldI (l,r+1,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                get=lambda: self.targets_upper.ncp, 
+                set=lambda n: self.set_ncp(self.upper, self.targets_upper, n),
+                hide=lambda: self.targets_upper.ncp_auto,
+                toolTip=_tip)
+        FieldI (l,r+2,c, width=40, step=1, lim =lambda: self.lower.NCP_BOUNDS,
+                get=lambda: self.targets_lower.ncp, 
+                set=lambda n: self.set_ncp(self.lower, self.targets_lower, n),
+                hide=lambda: self.targets_lower.ncp_auto,
+                toolTip=_tip)
+        l.setColumnMinimumWidth (c+1,10)
+
+        c += 2
+        _tip = "Curvature at leading edge which is essential for a good fit.\n" + \
+               "Have a look at the curvature comb of the airfoil at leading edge,\n" + \
+               "if the match doesn't find a good result."
+        Label  (l,r,c, colSpan=3, get="LE curv", hide=self._small)
+        FieldF (l,r+1,c, rowSpan=2, width=45, dec=0, step=1, lim =(50,800),
+                get=lambda: self.le_curv, set=self.set_le_curv, toolTip=_tip)
+        l.setColumnMinimumWidth (c+1,10)
+
+
+        # c += 2
+        # _tip = "Suppress curvature bumps to achieve a smoother airfoil.\n" + \
+        #        "For B-Splines, bumps are penalized via the 5th-derivative jumps at inner knots.\n" + \
+        #        "Use 'Derivative of curvature' in the Curvature diagram to monitor the effect."
+        # Label  (l,r,c, colSpan=2, get="Bumps", hide=lambda: self._small or self.geo.isBezier)
+        # CheckBox (l,r+1,c, text="No", get=lambda: self.targets_upper.bump_control,
+        #         set=lambda b: self.targets_upper.set_bump_control(b),
+        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
+        # CheckBox (l,r+2,c, text="No", get=lambda: self.targets_lower.bump_control,
+        #         set=lambda b: self.targets_lower.set_bump_control(b),
+        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
+        l.setColumnMinimumWidth (c+1,20)
+
+        c += 2
+        _tip = "Re-Fit the airfoil to the target."
+        Button (l,r+1,c  , rowSpan=2, text="Fit", width=80, button_style = button_style.PRIMARY,
+                        set=lambda: self.app_model.fit_to_target(), toolTip=_tip)
+
+        return l
+
+
+    def set_ncp (self, aSide : Side_Airfoil_Bezier | Side_Airfoil_BSpline, targets : Match_Targets, ncp: int):
+        """ set ncp of a side and update targets with new ncp"""                
+
+        targets.set_ncp (ncp)
+
+        # will create new design with new ncp and update airfoil 
+        self.app_model.notify_match_target_changed (aSide, ncp)
+
+
+    @property
+    def le_curv (self) -> float:
+        upper_curv =self.targets_upper.le_curvature
+        return upper_curv
+
+
+    def set_le_curv (self, le_curv: float):
+
+        self.targets_upper.set_le_curvature (le_curv)
+        self.targets_lower.set_le_curvature (le_curv)
+
+
+
+    def _message_text (self):
+        """ user info"""
+
+        text = []
+        text = '<br>'.join(text)
+        return text
+
+
+
+
+
 class Panel_Target_Curv (Panel_Airfoil_Abstract):
     """ Curvature values of target airfoil (Match)  """
 
