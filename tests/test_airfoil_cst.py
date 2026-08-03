@@ -181,6 +181,32 @@ def test_fit_from_xy_invalid_arguments_raise():
     with pytest.raises(ValueError):
         Geometry_CST.fit_from_xy(x, y, x, y, le_curvature=0.0)
 
+    with pytest.raises(ValueError):
+        Geometry_CST.fit_from_xy(x, y, x, y, smooth_lambda=-1.0)
+
+
+def test_fit_from_xy_smoothing_reduces_weight_second_difference_energy():
+    seed_airfoil = Root_Example(geometry=GEO_BASIC)
+
+    x_upper, y_upper = seed_airfoil.geo.upper.x, seed_airfoil.geo.upper.y
+    x_lower, y_lower = seed_airfoil.geo.lower.x, seed_airfoil.geo.lower.y
+
+    w_u_plain, w_l_plain, _, _ = Geometry_CST.fit_from_xy(
+        x_upper, y_upper, x_lower, y_lower,
+        n_weights=8, le_curvature=None, smooth_lambda=0.0)
+
+    w_u_smooth, w_l_smooth, _, _ = Geometry_CST.fit_from_xy(
+        x_upper, y_upper, x_lower, y_lower,
+        n_weights=8, le_curvature=None, smooth_lambda=1e-3)
+
+    def d2_energy(w: np.ndarray) -> float:
+        return float(np.sum((w[2:] - 2.0 * w[1:-1] + w[:-2]) ** 2))
+
+    e_plain = d2_energy(w_u_plain) + d2_energy(w_l_plain)
+    e_smooth = d2_energy(w_u_smooth) + d2_energy(w_l_smooth)
+
+    assert e_smooth < e_plain
+
 
 def test_fit_from_xy_real_airfoil_roundtrip():
     seed_airfoil = Root_Example(geometry=GEO_BASIC)
