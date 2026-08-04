@@ -437,8 +437,7 @@ class Match_Targets:
     """
 
     def __init__ (self, side : Line, curvature : Line,
-                  ncp = 5, ncp_auto = True, min_rms = True, le_curvature = None, le_monoton = True,
-                  pso_options: Pso_Options | None = None):
+                  ncp = 5, ncp_auto = True, le_curvature = None, le_monoton = True):
 
         self._side              = side                              # target upper or lower Line 
         self._curvature         = curvature                         # target curvature Line
@@ -446,7 +445,6 @@ class Match_Targets:
         self._ncp               = ncp                               # number of control points for matching curve
         self._ncp_auto          = ncp_auto                          # automatically ncp for best fit
 
-        self._min_rms           = min_rms                           # minimze deviation
         self._le_curvature      = le_curvature                      # target curvature at leading edge 
         self._le_monoton        = le_monoton                        # LE curvature is montonically descending 
                                                                     # or just the curvature at LE 
@@ -458,12 +456,12 @@ class Match_Targets:
 
         self._bump_control      = True                              # avoid bumps in curvature
 
-        self._optimizer         = "pso"                            # runtime switch: "nelder_mead" or "pso"
-        self._pso_options       = pso_options if pso_options is not None else Pso_Options()
+        self._optimizer         = "pso"                             # runtime switch: "nelder_mead" or "pso"
+        self._pso_options       = Pso_Options()
+
 
     @classmethod
-    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int,
-                      pso_options: Pso_Options | None = None) -> 'Match_Targets':
+    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int) -> 'Match_Targets':
         """ create Match_Targets from an Airfoil and side name 'upper' or 'lower' """
 
         if not isinstance (airfoil, Airfoil):
@@ -484,9 +482,8 @@ class Match_Targets:
         le_curvature   = round (airfoil.geo.curvature.at_le, 0)
         le_monoton     = airfoil.geo.curvature.max_is_at_le
 
-        instance =  cls (side, curv, ncp=ncp,
-                 pso_options=pso_options,
-                 le_curvature=le_curvature, le_monoton=le_monoton)
+        instance = cls (side, curv, ncp=ncp,
+                        le_curvature=le_curvature, le_monoton=le_monoton)
 
         return instance
 
@@ -503,10 +500,6 @@ class Match_Targets:
     @property
     def ncp_auto (self) -> bool:
         return self._ncp_auto
-
-    @property
-    def min_rms (self) -> bool:
-        return self._min_rms
     
     @property
     def le_curvature (self) -> float:
@@ -648,15 +641,11 @@ class Case_Match_Target (Case_Direct_Design):
         self._match_result_upper = None     # last Match_Result from real optimizer run
         self._match_result_lower = None
 
-        pso_options = Pso_Options()
-
         ncp = airfoil_initial.geo.upper.ncp
-        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp,
-                                                          pso_options=pso_options)
+        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp)
 
         ncp = airfoil_initial.geo.lower.ncp
-        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp,
-                                                          pso_options=pso_options)
+        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp)
 
 
     @property

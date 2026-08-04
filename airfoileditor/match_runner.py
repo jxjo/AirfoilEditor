@@ -15,7 +15,7 @@ from typing                         import Type, override
 from PyQt6.QtCore                   import QThread, pyqtSignal, QEventLoop
 
 from .base.math_util                import nelder_mead, derivative1, interpolate, differential_evolution
-from .base.pso                      import Pso, Pso_Options
+from .base.pso                      import Pso
 from .base.spline                   import Bezier
 from .base.widgets                  import style 
 from .model.airfoil                 import Airfoil, Airfoil_Bezier, Airfoil_BSpline
