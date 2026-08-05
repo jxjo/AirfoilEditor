@@ -276,16 +276,6 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
 
 
     @property
-    def controlPoints (self) -> list[tuple]: 
-        """ bezier control points as xy"""
-        return self.curve.cpoints
-    
-    def set_controlPoints(self, cpx_or_cp, cpy=None):
-        """ set the bezier control points"""
-        self.curve.set_cpoints (cpx_or_cp, cpy)
-        self.reset_target_deviation ()
-
-    @property
     def controlPoints_as_jpoints (self) -> list[JPoint]: 
         """ bezier control points as JPoints"""
         jpoints = []
@@ -540,3 +530,21 @@ class Geometry_Bezier (Geometry_Curve):
             self._panelling = Panelling_Bezier()  
         return self._panelling
 
+
+    @override
+    def set_curve_parms_and_fit (self, side : Side_Airfoil_Bezier, ncp : int,
+                        target_side : Line,
+                        le_curvature : float):
+        """ set new no bezier control points for side with fit to target_side - update geometry"""
+
+        ncp = np.clip (ncp, side.NCP_BOUNDS[0], side.NCP_BOUNDS[1])  # limit number of control points to reasonable range
+
+        if ncp != side.ncp:
+            
+            # re-fit curve to current target coordinates or to self if no target coordinates defined 
+            side.re_fit_curve ( target_side=target_side, ncp=ncp, le_curvature=le_curvature)   
+
+            self._reset()
+
+            mod = self.MOD_CURVE + " " + side.name
+            self._changed (mod, f"#Ctrl Points={ncp}")

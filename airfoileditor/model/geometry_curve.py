@@ -11,6 +11,7 @@
 
 import numpy as np
 from typing                 import override
+from enum                   import StrEnum
 from timeit                 import default_timer as timer
 
 from ..base.math_util       import * 
@@ -23,6 +24,13 @@ import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
+
+class LE_Mode(StrEnum):
+    FREE = "free"
+    C2 = "c2"
+    FIXED = "fixed"
+
+LE_MODE_DEFAULT = LE_Mode.FIXED
 
 # -----------------------------------------------------------------------------
 #  Panel Distribution  
@@ -196,6 +204,18 @@ class Side_Airfoil_Curve (Line):
         """ returns the number of control points (or weights for CST) of the curve"""
 
         return self.curve.ncp
+
+
+    @property
+    def controlPoints (self) -> list[tuple]: 
+        """ curve control points as xy"""
+        return self.curve.cpoints
+    
+    def set_controlPoints(self, cpx_or_cp, cpy=None):
+        """ set the curve control points"""
+        self.curve.set_cpoints (cpx_or_cp, cpy)
+        self.reset_target_deviation ()
+
 
     @property
     def x (self):
@@ -371,6 +391,7 @@ class Geometry_Curve (Geometry):
     isBezier        = False
     isBSpline       = False
     isCurve         = True
+
     description     = "based on 2 Bezier or B-Spline curves"
 
     side_class      = Side_Airfoil_Curve
@@ -516,21 +537,14 @@ class Geometry_Curve (Geometry):
         self._changed (mod, mod_info)
 
 
-    def set_ncp_of (self, side : Side_Airfoil_Curve, ncp : int,
-                    target_side : Line, le_curvature : float):
-        """ set new no bezier control points for side with fit to target_side - update geometry"""
-
-        ncp = np.clip (ncp, side.NCP_BOUNDS[0], side.NCP_BOUNDS[1])  # limit number of control points to reasonable range
-
-        if ncp != side.ncp:
-            
-            # re-fit curve to current target coordinates or to self if no target coordinates defined 
-            side.re_fit_curve ( target_side=target_side, ncp=ncp, le_curvature=le_curvature)   
-
-            self._reset()
-
-            mod = self.MOD_CURVE + " " + side.name
-            self._changed (mod, f"#Ctrl Points={ncp}")
+    @override
+    def set_curve_parms_and_fit (self, side : Side_Airfoil_Curve, ncp : int,
+                        target_side : Line,
+                        le_curvature : float,
+                        le_mode : LE_Mode = LE_Mode.FIXED):
+        """ set new no curve control points (or weights)for side with fit to target_side - update geometry"""
+        # must be implemented in Bezier, B-Spline or CST subclass
+        raise NotImplementedError
 
 
     @override

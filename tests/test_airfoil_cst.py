@@ -8,6 +8,7 @@ from airfoileditor.base.spline import CST
 from airfoileditor.model.airfoil import Airfoil, Airfoil_CST, GEO_BASIC
 from airfoileditor.model.airfoil_examples import Root_Example
 from airfoileditor.model.geometry_cst import Geometry_CST
+from airfoileditor.model.geometry_curve import LE_Mode
 
 
 def test_cst_curve_eval_and_endpoints():
@@ -119,7 +120,8 @@ def test_airfoil_cst_save_load_roundtrip(tmp_path):
 
 def test_fit_from_xy_recovers_known_weights_free_le_curvature():
     # weights_lower[0] must mirror weights_upper[0] (equal magnitude, opposite sign):
-    # fit_from_xy ties the leading-edge weight of both sides to a single shared unknown.
+    # fit_from_xy with le_mode="c2" ties the leading-edge weight of both sides
+    # to a single shared unknown.
     weights_upper = np.array([0.18, 0.16, 0.14, 0.11, 0.09, 0.07, 0.05, 0.03])
     weights_lower = np.array([-0.18, -0.14, -0.12, -0.10, -0.08, -0.06, -0.04, -0.02])
     le_weight = 0.015
@@ -133,7 +135,7 @@ def test_fit_from_xy_recovers_known_weights_free_le_curvature():
     y_lower = cst_lower.eval_y(x)
 
     fit_upper, fit_lower, fit_le_weight, fit_te_thickness = Geometry_CST.fit_from_xy(
-        x, y_upper, x, y_lower, n_weights=len(weights_upper), le_curvature=-1.0)
+        x, y_upper, x, y_lower, n_weights=len(weights_upper), le_mode=LE_Mode.C2)
 
     np.testing.assert_allclose(fit_upper, weights_upper, atol=1e-8)
     np.testing.assert_allclose(fit_lower, weights_lower, atol=1e-8)
@@ -159,7 +161,8 @@ def test_fit_from_xy_with_fixed_le_curvature():
     le_curvature = abs(cst_upper.curvature(0.0))
 
     fit_upper, fit_lower, fit_le_weight, fit_te_thickness = Geometry_CST.fit_from_xy(
-        x, y_upper, x, y_lower, n_weights=len(weights_upper), le_curvature=le_curvature)
+        x, y_upper, x, y_lower, n_weights=len(weights_upper),
+        le_mode=LE_Mode.FIXED, le_curvature=le_curvature)
 
     # weights[0] is pinned exactly by the fixed le_curvature (equal magnitude, opposite sign)
     assert np.isclose(fit_upper[0], weights_upper[0], atol=1e-10)
@@ -179,10 +182,36 @@ def test_fit_from_xy_invalid_arguments_raise():
         Geometry_CST.fit_from_xy(x, y, x, y, n_weights=1)
 
     with pytest.raises(ValueError):
-        Geometry_CST.fit_from_xy(x, y, x, y, le_curvature=0.0)
+        Geometry_CST.fit_from_xy(x, y, x, y, le_mode=LE_Mode.FIXED, le_curvature=0.0)
+
+    with pytest.raises(ValueError):
+        Geometry_CST.fit_from_xy(x, y, x, y, le_mode="invalid")
+
+    # tolerated: le_curvature is ignored unless mode is FIXED
+    Geometry_CST.fit_from_xy(x, y, x, y, le_mode=LE_Mode.C2, le_curvature=100.0)
 
     with pytest.raises(ValueError):
         Geometry_CST.fit_from_xy(x, y, x, y, smooth_lambda=-1.0)
+
+
+def test_smoothness_lambda_mapping_endpoints_and_midpoint():
+    lam_zero = Geometry_CST.smoothness_to_lambda(0.0)
+    lam_mid = Geometry_CST.smoothness_to_lambda(0.5)
+    lam_max = Geometry_CST.smoothness_to_lambda(1.0)
+
+    assert np.isclose(lam_zero, 0.0)
+    assert lam_mid > Geometry_CST.SMOOTH_LAMBDA_MIN
+    assert lam_mid < Geometry_CST.SMOOTH_LAMBDA_MAX
+    assert np.isclose(lam_max, Geometry_CST.SMOOTH_LAMBDA_MAX)
+
+
+def test_smoothness_lambda_mapping_roundtrip():
+    for smoothness in (0.0, 0.2, 0.5, 0.8, 1.0):
+        lam = Geometry_CST.smoothness_to_lambda(smoothness)
+        smoothness_back = Geometry_CST.lambda_to_smoothness(lam)
+        assert np.isclose(smoothness_back, smoothness, atol=1e-12)
+
+    assert np.isclose(Geometry_CST.lambda_to_smoothness(0.0), 0.0)
 
 
 def test_fit_from_xy_smoothing_reduces_weight_second_difference_energy():
@@ -193,11 +222,11 @@ def test_fit_from_xy_smoothing_reduces_weight_second_difference_energy():
 
     w_u_plain, w_l_plain, _, _ = Geometry_CST.fit_from_xy(
         x_upper, y_upper, x_lower, y_lower,
-        n_weights=8, le_curvature=None, smooth_lambda=0.0)
+        n_weights=8, le_mode=LE_Mode.FREE, smooth_lambda=0.0)
 
     w_u_smooth, w_l_smooth, _, _ = Geometry_CST.fit_from_xy(
         x_upper, y_upper, x_lower, y_lower,
-        n_weights=8, le_curvature=None, smooth_lambda=1e-3)
+        n_weights=8, le_mode=LE_Mode.FREE, smooth_lambda=1e-3)
 
     def d2_energy(w: np.ndarray) -> float:
         return float(np.sum((w[2:] - 2.0 * w[1:-1] + w[:-2]) ** 2))
@@ -215,7 +244,7 @@ def test_fit_from_xy_real_airfoil_roundtrip():
     x_lower, y_lower = seed_airfoil.geo.lower.x, seed_airfoil.geo.lower.y
 
     weights_upper, weights_lower, le_weight, te_thickness = Geometry_CST.fit_from_xy(
-        x_upper, y_upper, x_lower, y_lower, n_weights=8, le_curvature=-1.0)
+        x_upper, y_upper, x_lower, y_lower, n_weights=8, le_mode=LE_Mode.C2)
 
     geo = Geometry_CST(weights_upper, weights_lower, le_weight=le_weight, te_thickness=te_thickness)
 

@@ -1785,8 +1785,7 @@ class Curvature_Comb_Artist (Artist):
 
             x, y, xe, ye, vals = airfoil.geo.curvature.as_curvature_comb ()
 
-            pen = pg.mkPen(color.darker(140), width=1, style=Qt.PenStyle.DotLine)
-            # pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+            pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DotLine)
 
             label   = f"Curvature Comb"
             zValue = 3 if airfoil.usedAsDesign else 1
@@ -1794,7 +1793,7 @@ class Curvature_Comb_Artist (Artist):
             self._plot_dataItem (xe, ye, name=label, pen=pen, zValue=zValue)
 
             # plot comb lines - interleave base and end points for connect='pairs'
-            pen = pg.mkPen(color.darker(300), width=1, style=Qt.PenStyle.SolidLine)
+            pen = pg.mkPen(color.darker(150), width=1, style=Qt.PenStyle.SolidLine)
             
             # Create arrays: [x[0], xe[0], x[1], xe[1], ...]
             x_pairs = np.empty(len(x) * 2)

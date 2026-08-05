@@ -18,10 +18,11 @@ from ..base.widgets             import *
 from ..base.panels              import Edit_Panel
 
 from ..model.airfoil            import Airfoil
-from ..model.geometry   import Geometry, Curvature_Abstract, Line 
-from ..model.geometry_curve     import Geometry_Curve, Side_Airfoil_Curve, Deviation_Line
+from ..model.geometry           import Geometry, Curvature_Abstract, Line 
+from ..model.geometry_curve     import Geometry_Curve, Side_Airfoil_Curve, Deviation_Line, LE_Mode
 from ..model.geometry_bezier    import Side_Airfoil_Bezier
 from ..model.geometry_bspline   import Side_Airfoil_BSpline
+from ..model.geometry_cst       import Side_Airfoil_CST, Geometry_CST
 from ..model.case               import Case_Abstract, Case_Direct_Design, Case_Match_Target, Match_Targets
 from ..model.xo2_driver         import Xoptfoil2
 
@@ -1633,77 +1634,117 @@ class Panel_Fit_CST_Curve (Panel_Airfoil_Abstract):
         l = QGridLayout()
 
         r,c = 0, 0 
-        Label  (l,r+1,c,   get="Upper Side")
-        Label  (l,r+2,c,   get="Lower Side")
-        l.setColumnMinimumWidth (c,80)
-
-        c += 1
-        Label  (l,r,c, colSpan=3, get="# Weights", hide=self._small)
-        c +=1
         _tip = "Number of weights, the matching curve will have.\n"+ \
                "A higher number may allow a better fit, but could cause undesired bumps. "
-        FieldI (l,r+1,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
-                get=lambda: self.targets_upper.ncp, 
-                set=lambda n: self.set_ncp(self.upper, self.targets_upper, n),
-                hide=lambda: self.targets_upper.ncp_auto,
+        FieldI (l,r,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "# Weights",
+                get=lambda: self.ncp, set=self.set_ncp,
                 toolTip=_tip)
-        FieldI (l,r+2,c, width=40, step=1, lim =lambda: self.lower.NCP_BOUNDS,
-                get=lambda: self.targets_lower.ncp, 
-                set=lambda n: self.set_ncp(self.lower, self.targets_lower, n),
-                hide=lambda: self.targets_lower.ncp_auto,
-                toolTip=_tip)
-        l.setColumnMinimumWidth (c+1,10)
 
-        c += 2
-        _tip = "Curvature at leading edge which is essential for a good fit.\n" + \
-               "Have a look at the curvature comb of the airfoil at leading edge,\n" + \
-               "if the match doesn't find a good result."
-        Label  (l,r,c, colSpan=3, get="LE curv", hide=self._small)
-        FieldF (l,r+1,c, rowSpan=2, width=45, dec=0, step=1, lim =(50,800),
-                get=lambda: self.le_curv, set=self.set_le_curv, toolTip=_tip)
-        l.setColumnMinimumWidth (c+1,10)
+        r += 1
+        _tip = "Smoothness of CST weights during fit (log scale internally, 1e-6..1e-4)."
+        FieldF (l,r,c, width=50, step=0.05, dec=2, lim=(0.0, 1.0),
+            lab="Smoothness",
+            get=lambda: self.smoothness, set=self.set_smoothness,
+            toolTip=_tip)
+
+        r += 1
+        _tip = "Enable fixed LE curvature for CST fit."
+        CheckBox (l,r,c, text="LE curvature",
+            get=lambda: self.use_le_curvature,
+            set=self.set_use_le_curvature,
+            toolTip=_tip)
+
+        _tip = "Fixed curvature value at leading edge used when LE curvature is enabled."
+        FieldF (l,r,c+1, width=50, step=1, dec=0, lim=(50, 800),
+            get=lambda: self.le_curv,
+            set=self.set_le_curv,
+            disable=lambda: not self.use_le_curvature,
+            toolTip=_tip)
+
+        r += 1
+        _tip = "Use coupled C2-like leading-edge continuity when fixed LE curvature is disabled."
+        CheckBox (l,r,c, text="C2 continuity",
+            get=lambda: self.c2_continuity,
+            set=self.set_c2_continuity,
+            disable=lambda: self.use_le_curvature,
+            toolTip=_tip)
 
 
-        # c += 2
-        # _tip = "Suppress curvature bumps to achieve a smoother airfoil.\n" + \
-        #        "For B-Splines, bumps are penalized via the 5th-derivative jumps at inner knots.\n" + \
-        #        "Use 'Derivative of curvature' in the Curvature diagram to monitor the effect."
-        # Label  (l,r,c, colSpan=2, get="Bumps", hide=lambda: self._small or self.geo.isBezier)
-        # CheckBox (l,r+1,c, text="No", get=lambda: self.targets_upper.bump_control,
-        #         set=lambda b: self.targets_upper.set_bump_control(b),
-        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
-        # CheckBox (l,r+2,c, text="No", get=lambda: self.targets_lower.bump_control,
-        #         set=lambda b: self.targets_lower.set_bump_control(b),
-        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
-        l.setColumnMinimumWidth (c+1,20)
-
-        c += 2
-        _tip = "Re-Fit the airfoil to the target."
-        Button (l,r+1,c  , rowSpan=2, text="Fit", width=80, button_style = button_style.PRIMARY,
-                        set=lambda: self.app_model.fit_to_target(), toolTip=_tip)
-
+        r += 1
+        l.setRowStretch (r,2)
+        l.setColumnMinimumWidth (0,80)
         return l
 
+    @property
+    def ncp (self) -> int:
+        """ returns ncp of upper side (both sides have same ncp)"""
+        return self.targets_upper.ncp
 
-    def set_ncp (self, aSide : Side_Airfoil_Bezier | Side_Airfoil_BSpline, targets : Match_Targets, ncp: int):
+    def set_ncp (self, ncp: int):
         """ set ncp of a side and update targets with new ncp"""                
 
-        targets.set_ncp (ncp)
+        self.targets_upper.set_ncp (ncp)
+        self.targets_lower.set_ncp (ncp)
 
         # will create new design with new ncp and update airfoil 
-        self.app_model.notify_match_target_changed (aSide, ncp)
+        self.app_model.notify_fit_target_changed ()
+
+
+    @property
+    def smoothness (self) -> float:
+        return Geometry_CST.lambda_to_smoothness(self.targets_upper.fit_smooth_lambda)
+
+
+    def set_smoothness (self, smoothness: float):
+        smooth_lambda = Geometry_CST.smoothness_to_lambda(smoothness)
+        self.targets_upper.set_fit_smooth_lambda (smooth_lambda)
+        self.targets_lower.set_fit_smooth_lambda (smooth_lambda)
+        self.app_model.notify_fit_target_changed ()
 
 
     @property
     def le_curv (self) -> float:
-        upper_curv =self.targets_upper.le_curvature
-        return upper_curv
+        upper_curv = self.targets_upper.le_curvature
+        return upper_curv if upper_curv is not None else self.target_curv_le
+
+
+    @property
+    def use_le_curvature (self) -> bool:
+        return self.targets_upper.le_mode == LE_Mode.FIXED
+
+
+    @property
+    def c2_continuity (self) -> bool:
+        return self.targets_upper.le_mode == LE_Mode.C2
+
+
+    def _set_le_mode (self, mode: LE_Mode):
+        self.targets_upper.set_le_mode (mode)
+        self.targets_lower.set_le_mode (mode)
 
 
     def set_le_curv (self, le_curv: float):
 
         self.targets_upper.set_le_curvature (le_curv)
         self.targets_lower.set_le_curvature (le_curv)
+        self._set_le_mode (LE_Mode.FIXED)
+        self.app_model.notify_fit_target_changed ()
+
+
+    def set_use_le_curvature (self, enabled: bool):
+        if enabled:
+            mode = LE_Mode.FIXED
+        else:
+            mode = LE_Mode.FREE
+        self._set_le_mode (mode)
+        self.app_model.notify_fit_target_changed ()
+
+
+    def set_c2_continuity (self, enabled: bool):
+        mode = LE_Mode.C2 if enabled else LE_Mode.FREE
+        self._set_le_mode (mode)
+        self.app_model.notify_fit_target_changed ()
 
 
 

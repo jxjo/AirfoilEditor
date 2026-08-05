@@ -14,7 +14,8 @@ from typing                 import override, Type
 from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, Airfoil_CST, GEO_SPLINE, usedAs
 from .geometry              import Line
 from .geometry_spline       import Geometry_Splined
-from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
+from .geometry_curve        import Geometry_Curve, LE_Mode, LE_MODE_DEFAULT
+from .geometry_cst          import Geometry_CST
 
 from .xo2_driver            import Worker
 from .xo2_input             import Input_File
@@ -437,7 +438,8 @@ class Match_Targets:
     """
 
     def __init__ (self, side : Line, curvature : Line,
-                  ncp = 5, ncp_auto = True, le_curvature = None, le_monoton = True):
+                  ncp = 5, ncp_auto = True, le_curvature = None, le_monoton = True,
+                  le_mode: LE_Mode | None = None):
 
         self._side              = side                              # target upper or lower Line 
         self._curvature         = curvature                         # target curvature Line
@@ -446,6 +448,10 @@ class Match_Targets:
         self._ncp_auto          = ncp_auto                          # automatically ncp for best fit
 
         self._le_curvature      = le_curvature                      # target curvature at leading edge 
+        if le_mode is None:
+            self._le_mode = LE_Mode.FREE if le_curvature is None else LE_Mode.FIXED
+        else:
+            self._le_mode = LE_Mode(le_mode)
         self._le_monoton        = le_monoton                        # LE curvature is montonically descending 
                                                                     # or just the curvature at LE 
         self._max_nreversals    = np.clip(curvature.nreversals(), 0, 1)     # maximum allowed reversals in curvature
@@ -458,10 +464,12 @@ class Match_Targets:
 
         self._optimizer         = "pso"                             # runtime switch: "nelder_mead" or "pso"
         self._pso_options       = Pso_Options()
+        self._fit_smooth_lambda = Geometry_CST.SMOOTH_LAMBDA_DEFAULT
 
 
     @classmethod
-    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int) -> 'Match_Targets':
+    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int,
+                      le_mode: LE_Mode  = LE_Mode.FIXED) -> 'Match_Targets':
         """ create Match_Targets from an Airfoil and side name 'upper' or 'lower' """
 
         if not isinstance (airfoil, Airfoil):
@@ -479,11 +487,13 @@ class Match_Targets:
 
         # propose a good le_curvature if max of airfoil is not at LE
 
-        le_curvature   = round (airfoil.geo.curvature.at_le, 0)
-        le_monoton     = airfoil.geo.curvature.max_is_at_le
+        le_curvature = round (airfoil.geo.curvature.at_le, 0)
+        le_monoton   = airfoil.geo.curvature.max_is_at_le
 
         instance = cls (side, curv, ncp=ncp,
-                        le_curvature=le_curvature, le_monoton=le_monoton)
+                        le_curvature=le_curvature, 
+                        le_monoton=le_monoton,
+                        le_mode=le_mode)
 
         return instance
 
@@ -502,9 +512,13 @@ class Match_Targets:
         return self._ncp_auto
     
     @property
-    def le_curvature (self) -> float:
+    def le_curvature (self) -> float | None:
         return self._le_curvature
-    
+
+    @property
+    def le_mode (self) -> LE_Mode:
+        return self._le_mode
+
     @property
     def le_monoton (self) -> bool:
         return self._le_monoton
@@ -540,6 +554,11 @@ class Match_Targets:
     @property
     def pso_options(self) -> Pso_Options:
         return self._pso_options
+
+    @property
+    def fit_smooth_lambda(self) -> float:
+        """Technical regularization lambda used by CST fit."""
+        return self._fit_smooth_lambda
         
     # --- setters ---
 
@@ -549,9 +568,15 @@ class Match_Targets:
 
     def set_ncp_auto (self, auto : bool): self._ncp_auto = auto
 
+    def set_le_mode (self, mode: LE_Mode):
+        try:
+            self._le_mode = LE_Mode(mode)
+        except ValueError as ex:
+            raise ValueError ("le_mode must be 'free', 'c2' or 'fixed'") from ex
+
     def set_le_curvature (self, val : float): 
-        self._le_curvature     = abs(val)
-        self._le_monton   = False
+        self._le_curvature = abs(float(val))
+        self._le_monoton = False
 
     def set_le_monoton (self, monoton: bool):
         self._le_monoton = monoton
@@ -576,6 +601,11 @@ class Match_Targets:
 
     def set_pso_seed(self, seed: int):
         self._pso_options.set_seed(int(seed))
+
+    def set_fit_smooth_lambda(self, value: float):
+        self._fit_smooth_lambda = np.clip(
+            float(value), 0.0, Geometry_CST.SMOOTH_LAMBDA_MAX
+        )
 
 
     def _get_max_te_curvature (self, curvature: np.ndarray, nreversals: int) -> tuple [float, bool]:
@@ -636,16 +666,17 @@ class Case_Match_Target (Case_Direct_Design):
         self._airfoil_designs = []                                  # reset designs - start new
         self.add_design (airfoil_initial)
 
-        # -- setup match targets - not (yet) applicable for CST, which is a direct analytic fit
+        # -- setup match targets 
 
-        self._match_result_upper = None     # last Match_Result from real optimizer run
+        self._match_result_upper = None                             # last Match_Result from real optimizer run
         self._match_result_lower = None
 
+        le_mode = airfoil_initial.geo.LE_MODE_DEFAULT               # le curvature is contrain or not (CST free)
         ncp = airfoil_initial.geo.upper.ncp
-        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp)
+        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp, le_mode=le_mode)
 
         ncp = airfoil_initial.geo.lower.ncp
-        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp)
+        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp, le_mode=le_mode)
 
 
     @property

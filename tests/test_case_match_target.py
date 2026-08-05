@@ -13,6 +13,7 @@ from airfoileditor.model.airfoil_examples   import Root_Example
 from airfoileditor.model.geometry           import Line
 from airfoileditor.model.geometry_bspline   import Side_Airfoil_BSpline
 from airfoileditor.model.geometry_bezier    import Side_Airfoil_Bezier
+from airfoileditor.model.geometry_curve     import LE_Mode
 
 
 @pytest.fixture
@@ -75,6 +76,34 @@ class Test_Match_Targets:
         mt = Match_Targets.from_airfoil(seed_airfoil, Line.Type.UPPER, ncp=6)
         mt.set_le_curvature(12.5)
         assert mt.le_curvature == pytest.approx(12.5)
+
+    def test_le_mode_defaults_to_fixed_when_value_exists(self, seed_airfoil):
+        """A numeric LE curvature defaults to fixed mode."""
+        mt = Match_Targets.from_airfoil(seed_airfoil, Line.Type.UPPER, ncp=6)
+
+        assert mt.le_mode == LE_Mode.FIXED
+
+    def test_cst_fit_le_curvature_mapping_modes(self, seed_airfoil):
+        """Mode and numeric value are stored independently for CST fit API."""
+        mt = Match_Targets.from_airfoil(seed_airfoil, Line.Type.UPPER, ncp=6)
+
+        mt.set_le_curvature(123.0)
+        mt.set_le_mode(LE_Mode.FIXED)
+        assert mt.le_mode == LE_Mode.FIXED
+        assert mt.le_curvature == pytest.approx(123.0)
+
+        mt.set_le_mode(LE_Mode.C2)
+        assert mt.le_mode == LE_Mode.C2
+
+        mt.set_le_mode(LE_Mode.FREE)
+        assert mt.le_mode == LE_Mode.FREE
+
+    def test_set_le_mode_rejects_invalid_value(self, seed_airfoil):
+        """Invalid mode values are rejected."""
+        mt = Match_Targets.from_airfoil(seed_airfoil, Line.Type.UPPER, ncp=6)
+
+        with pytest.raises(ValueError):
+            mt.set_le_mode("invalid")
 
     def test_set_max_te_curvature(self, seed_airfoil):
         """set_max_te_curvature overrides the computed value"""

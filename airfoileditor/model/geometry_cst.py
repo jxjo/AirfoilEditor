@@ -14,7 +14,7 @@ from ..base.math_util     import JPoint
 from ..base.spline        import CST, bernstein_basis
 
 from .geometry            import Geometry, Line, Panelling
-from .geometry_curve      import Geometry_Curve, Side_Airfoil_Curve
+from .geometry_curve      import Geometry_Curve, Side_Airfoil_Curve, LE_Mode
 
 import logging
 logger = logging.getLogger(__name__)
@@ -108,6 +108,20 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
         return self._curve
 
 
+    @override
+    @property
+    def controlPoints (self) -> list[tuple]: 
+        """ cst weights (control points) as xy"""
+        return self.curve.cpoints
+    
+    def set_controlPoints(self, weights : list | np.ndarray):
+        """ set CST weights (control points) - compatibility with other side classes"""
+
+        # create dummy cpx array for compatibility with set_cpoints
+        self.curve.set_cpoints (np.zeros_like(weights), weights)
+        self.reset_target_deviation ()
+
+
     @property
     def controlPoints_as_jpoints (self) -> list[JPoint]: 
         """ CST control points (weights, LE weight, TE gap) as JPoints"""
@@ -141,11 +155,18 @@ class Geometry_CST(Geometry_Curve):
     CURVE_NAME = "CST"
     MOD_CURVE = CURVE_NAME
 
-    DEFAULT_N_WEIGHTS = 8
-    DEFAULT_WEIGHTS_UPPER = np.array([0.17, 0.16, 0.14, 0.11, 0.09, 0.07, 0.05, 0.03], dtype=float)
-    DEFAULT_WEIGHTS_LOWER = np.array([-0.17, -0.16, -0.14, -0.11, -0.09, -0.07, -0.05, -0.03], dtype=float)
-    DEFAULT_LE_WEIGHT = 0.0
-    DEFAULT_TE_THICKNESS = 0.0
+    NCP_DEFAULT          = 8                        # number of weights (control points) per side
+    NCP_BOUNDS           = (4, 12)                  # min/max number of weights per side
+    LE_WEIGHT_DEFAULT    = 0.0
+    TE_THICKNESS_DEFAULT = 0.0
+    SMOOTH_LAMBDA_MIN    = 1e-7
+    SMOOTH_LAMBDA_MAX    = 1e-4
+    SMOOTH_LAMBDA_DEFAULT = 0.00001
+
+    WEIGHTS_UPPER_SAMPLE = np.array([0.17, 0.16, 0.14, 0.11, 0.09, 0.07, 0.05, 0.03], dtype=float)
+    WEIGHTS_LOWER_SAMPLE = np.array([-0.17, -0.16, -0.14, -0.11, -0.09, -0.07, -0.05, -0.03], dtype=float)
+
+    LE_MODE_DEFAULT = LE_Mode.FREE                  # default leading-edge mode for fit: no le_curvature constraint
 
     # override as CST thickness is always 100% blending distance
     TE_GAP_XBLEND       = 1.0                       # default x position from TE where te gap blending starts
@@ -189,19 +210,20 @@ class Geometry_CST(Geometry_Curve):
     def upper(self) -> Side_Airfoil_CST:
         if self._upper is None:
             self._upper = Side_Airfoil_CST(Line.Type.UPPER, 
-                                           np.copy(self.DEFAULT_WEIGHTS_UPPER), 
-                                           le_weight=self.DEFAULT_LE_WEIGHT, 
-                                           te_gap=0.5 * self.DEFAULT_TE_THICKNESS)
+                                           np.copy(self.WEIGHTS_UPPER_SAMPLE), 
+                                           le_weight=self.LE_WEIGHT_DEFAULT, 
+                                           te_gap=0.5 * self.TE_THICKNESS_DEFAULT)
         return self._upper
+
 
     @override
     @property
     def lower(self) -> Side_Airfoil_CST:
         if self._lower is None:
             self._lower = Side_Airfoil_CST(Line.Type.LOWER, 
-                                           np.copy(self.DEFAULT_WEIGHTS_LOWER), 
-                                           le_weight=self.DEFAULT_LE_WEIGHT, 
-                                           te_gap=0.5 * self.DEFAULT_TE_THICKNESS)
+                                           np.copy(self.WEIGHTS_LOWER_SAMPLE), 
+                                           le_weight=self.LE_WEIGHT_DEFAULT, 
+                                           te_gap=0.5 * self.TE_THICKNESS_DEFAULT)
         return self._lower
 
 
@@ -214,9 +236,9 @@ class Geometry_CST(Geometry_Curve):
         if weights is None or len(weights) == 0:
             return
         if le_weight is None:
-            le_weight = self.DEFAULT_LE_WEIGHT
+            le_weight = self.LE_WEIGHT_DEFAULT
         if te_thickness is None:
-            te_thickness = self.DEFAULT_TE_THICKNESS
+            te_thickness = self.TE_THICKNESS_DEFAULT
 
         te_gap  = 0.5 * te_thickness
 
@@ -228,10 +250,113 @@ class Geometry_CST(Geometry_Curve):
             self.set_lower(new_side)
 
 
+    @override
+    @property
+    def panelling(self) -> Panelling_CST:
+        if self._panelling is None:
+            self._panelling = Panelling_CST()
+        return self._panelling
+
+
+    @property
+    def description_long(self) -> str:
+        return (
+            f"{self.__class__.description}  "
+            f"(#W {len(self.upper.cst.weights)}, {len(self.lower.cst.weights)})")
+
+
+    @property
+    def le_weight(self) -> float:
+        """ leading edge weight (same for upper and lower)"""
+        return self.upper.cst.le_weight
+
+    def set_le_weight(self, le_weight: float, moving=False):
+        le_weight = round(le_weight,3)
+        self.upper.cst.set_le_weight(le_weight)
+        self.lower.cst.set_le_weight(le_weight)
+        if not moving:
+          self._reset()
+          self._changed(self.MOD_CURVE + " LE weight", le_weight)
+
+
+    @property
+    def te_gap(self) -> float:
+        """ trailing edge gap (upper + lower)"""
+        return self.upper.cst.te_gap - self.lower.cst.te_gap
+
+    @override
+    def set_te_gap(self, new_gap: float, xBlend=None, moving=False):
+        new_gap = clip(new_gap, 0.0, 0.1)
+
+        if abs(new_gap - self.te_gap) < 1e-10:
+            return
+
+        self.upper.cst.set_te_gap(0.5 * new_gap)
+        self.lower.cst.set_te_gap(-0.5 * new_gap)
+
+        if not moving:
+            self._reset()
+            self._changed(Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))
+
+
+    @override
+    def repanel(self, nPanels: int = None, just_finalize=False):
+        if not just_finalize:
+            self._repanel(nPanels)
+        else:
+            self._panelling.save()
+
+        self._reset_lines()
+        self._changed(Geometry.MOD_REPANEL)
+
+
+    @override
+    def _repanel(self, nPanels: int = None, **kwargs):
+        nPanels = nPanels if nPanels is not None else self.panelling.nPanels
+
+        nPanels_upper = Panelling.nPanels_for(Line.Type.UPPER, nPanels)
+        nPanels_lower = Panelling.nPanels_for(Line.Type.LOWER, nPanels)
+
+        self.upper.set_panelling(nPanels_upper, self.panelling.le_bunch, self.panelling.te_bunch)
+        self.lower.set_panelling(nPanels_lower, self.panelling.le_bunch, self.panelling.te_bunch)
+
+        return True
+
+
+    def as_dict(self) -> dict:
+        return {
+            "weights_upper": self.upper.cst.weights.tolist(),
+            "weights_lower": self.lower.cst.weights.tolist(),
+            "leading_edge_weight": self.upper.cst.le_weight,
+            "te_thickness": self.te_gap,
+        }
+
+
+    @classmethod
+    def smoothness_to_lambda(cls, smoothness: float) -> float:
+        """Map user smoothness in [0,1] to solver regularization lambda."""
+        s = clip(float(smoothness), 0.0, 1.0)
+        if s <= 0.0:
+            return 0.0
+        return cls.SMOOTH_LAMBDA_MIN * ((cls.SMOOTH_LAMBDA_MAX / cls.SMOOTH_LAMBDA_MIN) ** s)
+
+
+    @classmethod
+    def lambda_to_smoothness(cls, smooth_lambda: float) -> float:
+        """Map solver regularization lambda back to user smoothness in [0,1]."""
+        if smooth_lambda <= 0.0:
+            return 0.0
+        lam = clip(float(smooth_lambda), cls.SMOOTH_LAMBDA_MIN, cls.SMOOTH_LAMBDA_MAX)
+        return (np.log10(lam) - np.log10(cls.SMOOTH_LAMBDA_MIN)) / (
+            np.log10(cls.SMOOTH_LAMBDA_MAX) - np.log10(cls.SMOOTH_LAMBDA_MIN)
+        )
+
+
     @staticmethod
     def fit_from_xy (x_upper, y_upper, x_lower, y_lower,
-                     n_weights: int = DEFAULT_N_WEIGHTS,
-                     le_curvature: float | None = -1.0,
+                     n_weights: int = NCP_DEFAULT,
+                     le_mode: LE_Mode = LE_Mode.C2,
+                     le_curvature: float | None = None,
                      smooth_lambda: float = 0.0,
                      n1: float = CST.DEFAULT_N1,
                      n2: float = CST.DEFAULT_N2) -> tuple[np.ndarray, np.ndarray, float, float]:
@@ -248,13 +373,13 @@ class Geometry_CST(Geometry_Curve):
             x_upper, y_upper: sampled coordinates of the upper side (x in [0,1]).
             x_lower, y_lower: sampled coordinates of the lower side (x in [0,1]).
             n_weights: number of CST weights (Bernstein degree + 1) per side.
-            le_curvature: -1 (default) fits the leading-edge weight (weights[.][0])
-                freely, but ties upper/lower to equal magnitude / opposite sign (shared
-                nose radius). A value > 0 fixes the target |curvature| at the leading
-                edge for both sides instead (kappa_le = -2*sign(a0)/a0**2 for the
-                standard n1=0.5 case, so a0 = sqrt(2/le_curvature)). None fits
-                weights_upper[0] and weights_lower[0] fully independently - no coupling
-                between upper and lower at all.
+            le_mode: Leading-edge coupling mode:
+                - "c2" (default): fit shared free a0 with upper/lower tied to
+                  equal magnitude and opposite sign.
+                - "fixed": pin |a0| from target le_curvature (must be > 0).
+                - "free": fit upper/lower a0 independently (no coupling).
+            le_curvature: target leading-edge curvature magnitude used only when
+                le_mode="fixed".
             smooth_lambda: optional smoothing weight for second-difference regularization
                 on both upper and lower weight vectors:
                 smooth_lambda * sum((W[i+2] - 2*W[i+1] + W[i])**2).
@@ -267,8 +392,14 @@ class Geometry_CST(Geometry_Curve):
         """
         if n_weights < 2:
             raise ValueError ("Geometry_CST.fit_from_xy: n_weights must be >= 2")
-        if le_curvature is not None and le_curvature != -1.0 and le_curvature <= 0.0:
-            raise ValueError ("Geometry_CST.fit_from_xy: le_curvature must be None (independent), -1 (free) or > 0")
+        if le_mode not in (LE_Mode.FREE, LE_Mode.C2, LE_Mode.FIXED):
+            raise ValueError ("Geometry_CST.fit_from_xy: le_mode must be 'free', 'c2' or 'fixed'")
+        if le_mode == LE_Mode.FIXED:
+            if le_curvature is None or le_curvature <= 0.0:
+                raise ValueError ("Geometry_CST.fit_from_xy: le_curvature must be > 0 when le_mode='fixed'")
+        else:
+            # Be tolerant if callers pass a stale LE curvature while mode is not fixed.
+            le_curvature = None
         if smooth_lambda < 0.0:
             raise ValueError ("Geometry_CST.fit_from_xy: smooth_lambda must be >= 0")
 
@@ -299,8 +430,8 @@ class Geometry_CST(Geometry_Curve):
 
         rhs = np.concatenate ((y_u, y_l))
 
-        independent_a0 = (le_curvature is None)
-        free_a0        = (le_curvature == -1.0)
+        independent_a0 = (le_mode == LE_Mode.FREE)
+        free_a0        = (le_mode == LE_Mode.C2)
 
         columns = []
 
@@ -427,7 +558,7 @@ class Geometry_CST(Geometry_Curve):
 
     @classmethod
     def geometry_as_CST (cls, geometry: Geometry, n_weights: int | None = None,
-                         smooth_lambda: float = 0.00001
+                         smooth_lambda: float = SMOOTH_LAMBDA_DEFAULT
                          ) -> tuple[np.ndarray, np.ndarray, float, float]:
         """
         Fit CST parameters (fast linear least squares, see fit_from_xy) approximating
@@ -453,90 +584,41 @@ class Geometry_CST(Geometry_Curve):
             passed directly as Geometry_CST(weights_upper, weights_lower, le_weight, te_thickness).
         """
         if n_weights is None:
-            n_weights = cls.DEFAULT_N_WEIGHTS
+            n_weights = cls.NCP_DEFAULT
 
         return cls.fit_from_xy (
             geometry.upper.x, geometry.upper.y, geometry.lower.x, geometry.lower.y,
             n_weights    = n_weights,
-            le_curvature = None,
+            le_mode = LE_Mode.FREE,
             smooth_lambda = smooth_lambda)
 
 
     @override
-    @property
-    def panelling(self) -> Panelling_CST:
-        if self._panelling is None:
-            self._panelling = Panelling_CST()
-        return self._panelling
+    def set_curve_parms_and_fit (self, 
+                        target_side_upper : Line,
+                        target_side_lower : Line,
+                        ncp : int|None = None,
+                        le_mode : LE_Mode = LE_Mode.FREE,
+                        le_curvature : float|None = None,
+                        smooth_lambda : float = SMOOTH_LAMBDA_DEFAULT):
+        """ set new number of CST weights for both sides with fit to target_sides - update geometry"""
 
+        if ncp is None:
+            ncp = self.upper.ncp
+        ncp = np.clip (ncp, self.NCP_BOUNDS[0], self.NCP_BOUNDS[1])  # limit number of control points to reasonable range
 
-    @property
-    def description_long(self) -> str:
-        return (
-            f"{self.__class__.description}  "
-            f"(#W {len(self.upper.cst.weights)}, {len(self.lower.cst.weights)})")
+        weights_upper, weights_lower, le_weight, te_thickness = self.fit_from_xy (
+                                                target_side_upper.x, target_side_upper.y,
+                                                target_side_lower.x, target_side_lower.y,
+                                                n_weights=ncp,
+                                                le_mode=le_mode,
+                                                le_curvature=le_curvature,
+                                                smooth_lambda=smooth_lambda)
 
-    @property
-    def le_weight(self) -> float:
-        """ leading edge weight (same for upper and lower)"""
-        return self.upper.cst.le_weight
+        self.upper.set_controlPoints (weights_upper)
+        self.lower.set_controlPoints (weights_lower)
+        self.set_le_weight (le_weight, moving=True)             # moving - avoid double changed
+        self.set_te_gap (te_thickness, moving=True)
 
-    def set_le_weight(self, le_weight: float, moving=False):
-        le_weight = round(le_weight,3)
-        self.upper.cst.set_le_weight(le_weight)
-        self.lower.cst.set_le_weight(le_weight)
-        if not moving:
-          self._reset()
-          self._changed(self.MOD_CURVE + " LE weight", le_weight)
-
-    @property
-    def te_gap(self) -> float:
-        """ trailing edge gap (upper + lower)"""
-        return self.upper.cst.te_gap - self.lower.cst.te_gap
-
-    @override
-    def set_te_gap(self, new_gap: float, xBlend=None, moving=False):
-        new_gap = clip(new_gap, 0.0, 0.1)
-
-        if abs(new_gap - self.te_gap) < 1e-10:
-            return
-
-        self.upper.cst.set_te_gap(0.5 * new_gap)
-        self.lower.cst.set_te_gap(-0.5 * new_gap)
-
-        if not moving:
-            self._reset()
-            self._changed(Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))
-
-
-    @override
-    def repanel(self, nPanels: int = None, just_finalize=False):
-        if not just_finalize:
-            self._repanel(nPanels)
-        else:
-            self._panelling.save()
-
-        self._reset_lines()
-        self._changed(Geometry.MOD_REPANEL)
-
-
-    @override
-    def _repanel(self, nPanels: int = None, **kwargs):
-        nPanels = nPanels if nPanels is not None else self.panelling.nPanels
-
-        nPanels_upper = Panelling.nPanels_for(Line.Type.UPPER, nPanels)
-        nPanels_lower = Panelling.nPanels_for(Line.Type.LOWER, nPanels)
-
-        self.upper.set_panelling(nPanels_upper, self.panelling.le_bunch, self.panelling.te_bunch)
-        self.lower.set_panelling(nPanels_lower, self.panelling.le_bunch, self.panelling.te_bunch)
-
-        return True
-
-
-    def as_dict(self) -> dict:
-        return {
-            "weights_upper": self.upper.cst.weights.tolist(),
-            "weights_lower": self.lower.cst.weights.tolist(),
-            "leading_edge_weight": self.upper.cst.le_weight,
-            "te_thickness": self.te_gap,
-        }
+        self._reset()
+        self._changed (self.MOD_CURVE + " ", f"#Weights={ncp}")
