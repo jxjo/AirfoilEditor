@@ -29,7 +29,7 @@ from ..model.xo2_driver         import Xoptfoil2
 from .ae_widgets                import * 
 from .ae_dialogs                import (LE_Radius_Dialog, TE_Gap_Dialog, Matcher_Run_Info,
                                         Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog,
-                                        Match_Pso_Options_Dialog)
+                                        Match_Pso_Options_Dialog, CST_Fit_Dialog)
 from ..app_model                import App_Model
 from ..match_runner             import Match_Result
 
@@ -1585,7 +1585,7 @@ class Panel_Match_Curve_Small (Panel_Match_Curve):
 
 
 
-class Panel_Fit_CST_Curve (Panel_Airfoil_Abstract):
+class Panel_Fit_CST (Panel_Airfoil_Abstract):
     """ CST fit airfoil  """
 
     name = 'CST Fit'
@@ -1633,52 +1633,34 @@ class Panel_Fit_CST_Curve (Panel_Airfoil_Abstract):
     def targets_lower (self) -> Match_Targets:
         return self.case.targets_lower
 
-    @property
-    def target_curv_le (self) -> float:
-        return self.target_airfoil.geo.curvature.at_le
-
 
     def _init_layout (self):
 
         l = QGridLayout()
 
         r,c = 0, 0 
+        Label  (l,r,c+1, colSpan=2, get="# Weights")
         _tip = "Number of weights, the matching curve will have.\n"+ \
                "A higher number may allow a better fit, but could cause undesired bumps. "
+        r += 1
         FieldI (l,r,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
-                lab = "# Weights",
+                lab = "Upper Side",
                 get=lambda: self.ncp, set=self.set_ncp,
                 toolTip=_tip)
+        FieldI (l,r+1,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "Lower Side",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+        Button (l,r,c+3, rowSpan=2, text="Tune Fit", width=70, button_style = button_style.PRIMARY,
+                        set=self.open_cst_fit_dialog)
 
-        r += 1
-        _tip = "Smoothness of CST weights during fit (log scale internally, 1e-6..1e-4)."
-        FieldF (l,r,c, width=50, step=0.05, dec=2, lim=(0.0, 1.0),
-            lab="Smoothness",
-            get=lambda: self.smoothness, set=self.set_smoothness,
-            toolTip=_tip)
-
-        r += 1
-        _tip = "Enable fixed LE curvature for CST fit."
-        CheckBox (l,r,c, text="LE curvature",
-            get=lambda: self.use_le_curvature, set=self.set_use_le_curvature,
-            toolTip=_tip)
-
-        _tip = "Fixed curvature value at leading edge used when LE curvature is enabled."
-        FieldF (l,r,c+1, width=50, step=1, dec=0, lim=(50, 800),
-            get=lambda: self.le_curv, set=self.set_le_curv,
-            disable=lambda: not self.use_le_curvature,
-            toolTip=_tip)
-
-        r += 1
-        _tip = "Use coupled C2-like leading-edge continuity when fixed LE curvature is disabled."
-        CheckBox (l,r,c, text="C2 continuity",
-            get=lambda: self.c2_continuity, set=self.set_c2_continuity,
-            disable=lambda: self.use_le_curvature,
-            toolTip=_tip)
-
-        r += 1
+        r += 2
         l.setRowStretch (r,2)
+        r += 1
+        Label  (l,r,c, get=self._message_text, colSpan=14, height=(None, None), hide=self._small, style=style.COMMENT)
+
         l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,10)
         return l
 
     @property
@@ -1696,70 +1678,35 @@ class Panel_Fit_CST_Curve (Panel_Airfoil_Abstract):
         self.app_model.notify_match_target_changed (refit_for=self.geo)
 
 
-    @property
-    def smoothness (self) -> float:
-        return Geometry_CST.lambda_to_smoothness(self.targets_upper.fit_smooth_lambda)
+    def open_cst_fit_dialog (self):
+        """Open modal dialog for CST fit options."""
 
+        diag = CST_Fit_Dialog(self, app_model=self.app_model,
+                                parentPos=(0.9, 0.0),
+                                dialogPos=(0.0, 1.0))
 
-    def set_smoothness (self, smoothness: float):
-
-        smooth_lambda = Geometry_CST.smoothness_to_lambda(smoothness)
-        self.targets_upper.set_fit_smooth_lambda (smooth_lambda)
-        self.targets_lower.set_fit_smooth_lambda (smooth_lambda)
-
-        self.app_model.notify_match_target_changed (refit_for=self.geo)
-
-
-    @property
-    def le_curv (self) -> float:
-        upper_curv = self.targets_upper.le_curvature
-        return upper_curv if upper_curv is not None else self.target_curv_le
-
-
-    @property
-    def use_le_curvature (self) -> bool:
-        return self.targets_upper.le_mode == LE_Mode.FIXED
-
-
-    @property
-    def c2_continuity (self) -> bool:
-        return self.targets_upper.le_mode == LE_Mode.C2
-
-
-    def _set_le_mode (self, mode: LE_Mode):
-        self.targets_upper.set_le_mode (mode)
-        self.targets_lower.set_le_mode (mode)
-
-
-    def set_le_curv (self, le_curv: float):
-
-        self.targets_upper.set_le_curvature (le_curv)
-        self.targets_lower.set_le_curvature (le_curv)
-        self._set_le_mode (LE_Mode.FIXED)
-
-        self.app_model.notify_match_target_changed (refit_for=self.geo)
-
-
-    def set_use_le_curvature (self, enabled: bool):
-        if enabled:
-            mode = LE_Mode.FIXED
-        else:
-            mode = LE_Mode.FREE
-        self._set_le_mode (mode)
-        self.app_model.notify_match_target_changed (refit_for=self.geo)
-
-
-    def set_c2_continuity (self, enabled: bool):
-        mode = LE_Mode.C2 if enabled else LE_Mode.FREE
-        self._set_le_mode (mode)
-        self.app_model.notify_match_target_changed (refit_for=self.geo)
+        diag.sig_changed.connect(lambda: self.app_model.notify_match_target_changed(refit_for=self.geo, moving=True))
+        diag.sig_final_changed.connect(lambda: self.app_model.notify_match_target_changed(refit_for=self.geo))
+        diag.show()
 
 
     def _message_text (self):
         """ user info"""
 
-        text = []
-        text = '<br>'.join(text)
+        smoothed          = Geometry_CST.lambda_to_smoothness(self.targets_upper.fit_smooth_lambda) > 0.0
+        le_curv             = self.targets_upper.le_curvature
+        use_le_curvature    = self.targets_upper.le_mode == LE_Mode.FIXED
+        c2_continuity       = self.targets_upper.le_mode == LE_Mode.C2
+
+        text = ""
+        if smoothed:
+            text += "Smoothed weights, "
+        if use_le_curvature:
+            text += f"\nLE curvature fixed to {le_curv:.0f} "
+        elif c2_continuity:
+            text += "\nLE curvature continuity enforced "
+        else:
+            text += "\nLE curvature free "
         return text
 
 
@@ -1888,10 +1835,10 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
                 text.append(f"- {curv.name}: Curvature at TE is quite high.")     
 
         if len(text) < 2:
-            t = f"The target airfoil has been repaneled to {self.target_airfoil.nPanels} panels <br>"
+            t = f"Target repaneled to {self.target_airfoil.nPanels} panels"
             if "_norm" in self.target_airfoil.name:
                 t += "and normalized"
-            t += " for good match results."
+            t += " for matching."
             text.insert(0, t)
 
         text = '<br>'.join(text[:3])

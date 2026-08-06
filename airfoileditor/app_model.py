@@ -559,15 +559,18 @@ class App_Model (QObject):
         self.sig_airfoil_geo_paneling.emit (is_paneling)
 
 
-    def notify_match_target_changed (self, refit_for : Side_Airfoil_Curve | Geometry_CST= None):
+    def notify_match_target_changed (self, refit_for : Side_Airfoil_Curve | Geometry_CST= None, moving=False):
         """ 
         notify self one of the match targets changed 
         - refit either to a single side (Bezier, BSpline) or to both sides (CST)
+        - moving: True if the target is still moving (no final fit yet, no new design airfoil created yet)
         """  
 
         case : Case_Match_Target = self.case
         if not isinstance (case, Case_Match_Target):
             raise ValueError (f"{self} notify_fit_target_changed: case is not Case_Match_Target - cannot fit")
+
+        new_design = False 
 
         # reset match result of case to ensure new match run
         case.set_match_result (None)
@@ -589,7 +592,7 @@ class App_Model (QObject):
             geo: Geometry_Curve = self.airfoil.geo
             geo.set_curve_parms_and_fit (refit_for, ncp, target_side, le_curvature)
 
-            self.notify_airfoil_changed()         # notify change of airfoil - new design
+            new_design = not moving
 
         # cst fit for both sides with explicit le curvature and smoothness
         elif self.airfoil.isCSTBased and isinstance (refit_for, Geometry_CST):
@@ -605,13 +608,12 @@ class App_Model (QObject):
                             le_mode = le_mode, le_curvature = le_curvature,
                             smooth_lambda = smooth_lambda)
 
+            new_design = not moving
+
+        if new_design:
             self.notify_airfoil_changed()         # notify change of airfoil - new design
-
         else:
-
-            # just trigger refresh to show new results 
-            self.sig_new_airfoil.emit()    
-          
+            self.sig_new_airfoil.emit()           # notify change of airfoil - no new design yet
 
     @property
     def airfoil_2 (self) -> Airfoil:

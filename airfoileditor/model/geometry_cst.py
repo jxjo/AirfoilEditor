@@ -608,7 +608,8 @@ class Geometry_CST(Geometry_Curve):
                         ncp : int|None = None,
                         le_mode : LE_Mode = LE_Mode.FREE,
                         le_curvature : float|None = None,
-                        smooth_lambda : float = SMOOTH_LAMBDA_DEFAULT):
+                        smooth_lambda : float = SMOOTH_LAMBDA_DEFAULT,
+                        moving=False):
         """ set new number of CST weights for both sides with fit to target_sides - update geometry"""
 
         if ncp is None:
@@ -629,4 +630,6 @@ class Geometry_CST(Geometry_Curve):
         self.set_te_gap (te_thickness, moving=True)
 
         self._reset()
-        self._changed (self.MOD_CURVE + " ", f"#Weights={ncp}")
+
+        if not moving:
+            self._changed (self.MOD_CURVE + " ", f"#Weights={ncp}")

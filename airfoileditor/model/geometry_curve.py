@@ -254,7 +254,8 @@ class Side_Airfoil_Curve (Line):
         if isinstance(target, Line):
             self._target_deviation = Deviation_Line (target, lambda: self.curve, u=self.u)
         else:
-            logger.warning (f"{self} set_target_deviation_from: target is not a Line - ignoring")
+            if target is not None:
+                logger.warning (f"{self} set_target_deviation_from: target is not a Line - ignoring")
             self._target_deviation = None
 
 
@@ -547,7 +548,8 @@ class Geometry_Curve (Geometry):
     def set_curve_parms_and_fit (self, side : Side_Airfoil_Curve, ncp : int,
                         target_side : Line,
                         le_curvature : float,
-                        le_mode : LE_Mode = LE_Mode.FIXED):
+                        le_mode : LE_Mode = LE_Mode.FIXED,
+                        moving : bool = False):
         """ set new no curve control points (or weights)for side with fit to target_side - update geometry"""
         # must be implemented in Bezier, B-Spline or CST subclass
         raise NotImplementedError

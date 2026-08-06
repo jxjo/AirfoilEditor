@@ -1789,7 +1789,8 @@ class CheckBox (Widget, QCheckBox):
     def _get_properties (self): 
         """ get properties from parent"""
         super()._get_properties () 
-        self._val = self._val is True 
+        # Accept bool-like values (e.g. numpy.bool_) from model getters.
+        self._val = bool(self._val)
         self._text = self._get_value (self._text_getter, default='')
 
 

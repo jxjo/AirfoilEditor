@@ -531,7 +531,8 @@ class Geometry_Bezier (Geometry_Curve):
     @override
     def set_curve_parms_and_fit (self, side : Side_Airfoil_Bezier, ncp : int,
                         target_side : Line,
-                        le_curvature : float):
+                        le_curvature : float,
+                        moving : bool = False):
         """ set new no bezier control points for side with fit to target_side - update geometry"""
 
         ncp = np.clip (ncp, side.NCP_BOUNDS[0], side.NCP_BOUNDS[1])  # limit number of control points to reasonable range
@@ -543,5 +544,6 @@ class Geometry_Bezier (Geometry_Curve):
 
             self._reset()
 
-            mod = self.MOD_CURVE + " " + side.name
-            self._changed (mod, f"#Ctrl Points={ncp}")
+            if not moving:
+                mod = self.MOD_CURVE + " " + side.name
+                self._changed (mod, f"#Ctrl Points={ncp}")
