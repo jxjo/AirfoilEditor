@@ -42,7 +42,8 @@ from ..base.spline            import Spline1D, Spline2D
 
 from .airfoil               import Airfoil, Airfoil_Bezier
 from .airfoil               import Flap_Definition
-from .xo2_driver            import Worker, file_in_use   
+from .polar_dto             import Polar_Data_Row, Polar_Data_Set
+from .xo2_driver            import Worker, XfoilPolarParser, file_in_use   
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1050,6 +1051,9 @@ class Polar (Polar_Definition):
                 |--- Polar    <-- Polar_Definition
     """
 
+    USE_DTO_XFOIL_LOADER = False                 # staged rollout: keep legacy loader as default
+    SHADOW_COMPARE_DTO_XFOIL_LOADER = True      # parse DTO in parallel and compare against legacy result
+
     def __init__(self, mypolarSet: Polar_Set, 
                        polar_def : Polar_Definition = None, 
                        re_scale = 1.0):
@@ -1517,7 +1521,15 @@ class Polar (Polar_Definition):
 
             if polar_pathFileName and not file_in_use (polar_pathFileName): 
 
-                self._import_from_file(polar_pathFileName)
+                if self.USE_DTO_XFOIL_LOADER:
+                    data_set = XfoilPolarParser.parse_file(polar_pathFileName)
+                    self._import_from_data_set(data_set)
+                else:
+                    self._import_from_file(polar_pathFileName)
+
+                    if self.SHADOW_COMPARE_DTO_XFOIL_LOADER:
+                        self._shadow_compare_legacy_vs_dto (polar_pathFileName)
+
                 logger.debug (f'{self} loaded for {self.polar_set.airfoil}') 
 
         except (RuntimeError) as exc:  
@@ -1618,6 +1630,147 @@ class Polar (Polar_Definition):
         else: 
             logger.error (f"{self} - import from {polarPathFileName} failed")
             raise RuntimeError(f"Could not read polar file" )
+
+
+    def _import_from_data_set (self, data_set: Polar_Data_Set):
+        """
+        Map backend-agnostic polar DTO payload into Polar_Point list.
+
+        Note:
+            This helper is added for staged refactoring and is not wired into
+            the production loader yet.
+        """
+
+        self._validate_data_set_meta (data_set)
+
+        op_points = [self._polar_point_from_data_row(row) for row in data_set.rows]
+
+        if len(op_points) > 0:
+            self._polar_points = op_points
+        else:
+            raise RuntimeError("Could not map polar dataset")
+
+
+    def _validate_data_set_meta (self, data_set: Polar_Data_Set):
+        """Validate DTO metadata against this Polar definition where available."""
+
+        meta = data_set.meta
+
+        if meta.re is not None and self.re != meta.re:
+            raise RuntimeError(
+                f"Re Number of polar ({self.re}) and of polar file ({meta.re}) not equal"
+            )
+
+        if meta.ncrit is not None and self.ncrit != meta.ncrit:
+            raise RuntimeError(
+                f"Ncrit of polar ({self.ncrit}) and of polar file ({meta.ncrit}) not equal"
+            )
+
+
+    def _polar_point_from_data_row (self, row: Polar_Data_Row) -> Polar_Point:
+        """Build a Polar_Point from one backend-agnostic DTO row."""
+
+        op = Polar_Point ()
+        op.alpha = row.alpha
+        op.cl = row.cl
+        op.cd = row.cd
+        op.cdp = row.cdp
+        op.cm = row.cm
+        op.xtrt = row.xtrt
+        op.xtrb = row.xtrb
+        op.cp_min = row.cp_min
+
+        if row.bubble_top is not None:
+            op.bubble_top = (row.bubble_top.x_start, row.bubble_top.x_end)
+        else:
+            op.bubble_top = None
+
+        if row.bubble_bot is not None:
+            op.bubble_bot = (row.bubble_bot.x_start, row.bubble_bot.x_end)
+        else:
+            op.bubble_bot = None
+
+        return op
+
+
+    def _shadow_compare_legacy_vs_dto (self, polarPathFileName: str):
+        """
+        Shadow mode: compare legacy-imported polar points against DTO parser output.
+
+        This never changes active behavior; it only logs parity status.
+        """
+
+        try:
+            data_set = XfoilPolarParser.parse_file (polarPathFileName)
+            mismatches = self._compare_loaded_points_with_data_set (data_set)
+
+            if mismatches:
+                logger.error (
+                    f"{self} shadow-compare ERROR ({len(mismatches)} mismatch(es)) for '{polarPathFileName}': "
+                    f"{mismatches[0]}"
+                )
+            else:
+                logger.info (f"{self} shadow-compare OK for '{polarPathFileName}'")
+
+        except Exception as exc:
+            logger.error (f"{self} shadow-compare ERROR for '{polarPathFileName}': {exc}")
+
+
+    def _compare_loaded_points_with_data_set (self, data_set: Polar_Data_Set) -> list[str]:
+        """
+        Compare already-loaded Polar_Point list against DTO rows.
+
+        Returns a list of mismatch descriptions (empty when equal within tolerance).
+        """
+
+        mismatches: list[str] = []
+
+        if len(self._polar_points) != len(data_set.rows):
+            mismatches.append(
+                f"row-count differs: legacy={len(self._polar_points)} dto={len(data_set.rows)}"
+            )
+            return mismatches
+
+        for i, (point, row) in enumerate(zip(self._polar_points, data_set.rows)):
+            self._append_mismatch_if_not_close (mismatches, i, "alpha", point.alpha, row.alpha)
+            self._append_mismatch_if_not_close (mismatches, i, "cl", point.cl, row.cl)
+            self._append_mismatch_if_not_close (mismatches, i, "cd", point.cd, row.cd)
+            self._append_mismatch_if_not_close (mismatches, i, "cdp", point.cdp, row.cdp)
+            self._append_mismatch_if_not_close (mismatches, i, "cm", point.cm, row.cm)
+            self._append_mismatch_if_not_close (mismatches, i, "xtrt", point.xtrt, row.xtrt)
+            self._append_mismatch_if_not_close (mismatches, i, "xtrb", point.xtrb, row.xtrb)
+            self._append_mismatch_if_not_close (mismatches, i, "cp_min", point.cp_min, row.cp_min)
+
+            legacy_top = point.bubble_top
+            dto_top = (row.bubble_top.x_start, row.bubble_top.x_end) if row.bubble_top else None
+            self._append_mismatch_if_not_equal (mismatches, i, "bubble_top", legacy_top, dto_top)
+
+            legacy_bot = point.bubble_bot
+            dto_bot = (row.bubble_bot.x_start, row.bubble_bot.x_end) if row.bubble_bot else None
+            self._append_mismatch_if_not_equal (mismatches, i, "bubble_bot", legacy_bot, dto_bot)
+
+        return mismatches
+
+
+    def _append_mismatch_if_not_equal (self, mismatches: list[str], i_row: int, field: str, legacy, dto):
+        """Append mismatch text if two scalar/tuple values are not equal."""
+
+        if legacy != dto:
+            mismatches.append(f"row {i_row} field {field}: legacy={legacy} dto={dto}")
+
+
+    def _append_mismatch_if_not_close (self, mismatches: list[str], i_row: int, field: str,
+                                        legacy_val: float | None, dto_val: float | None,
+                                        atol: float = 1e-12):
+        """Append mismatch text if two float-like values differ beyond tolerance."""
+
+        if legacy_val is None or dto_val is None:
+            if legacy_val != dto_val:
+                mismatches.append(f"row {i_row} field {field}: legacy={legacy_val} dto={dto_val}")
+            return
+
+        if not np.isclose (legacy_val, dto_val, atol=atol, rtol=0.0):
+            mismatches.append(f"row {i_row} field {field}: legacy={legacy_val} dto={dto_val}")
  
 
 
