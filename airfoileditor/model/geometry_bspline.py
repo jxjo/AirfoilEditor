@@ -19,8 +19,7 @@ from ..base.math_util       import *
 from ..base.spline          import BSpline
 
 from .geometry      import Geometry, Line
-from .geometry_curve        import (Geometry_Curve, Side_Airfoil_Curve,
-                                    Deviation_Line)
+from .geometry_curve        import Geometry_Curve, Side_Airfoil_Curve
 from .geometry      import Panelling
 
 import logging
@@ -124,10 +123,6 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         # lazy filling B-Spline cached values for x,y
         if not self._curve.has_u:
             self._curve.eval(self.u)
-
-        # for fitting - store target coordinates to fit to - used for curvature comb and error calculation
-        self._target_side : Line = None
-        self._target_deviation : Deviation_Line = None
 
 
     @classmethod

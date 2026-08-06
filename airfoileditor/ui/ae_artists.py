@@ -15,6 +15,7 @@ from ..base.spline              import Bezier, HicksHenne, BSpline, CST
 from ..model.airfoil            import (Airfoil, Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST, 
                                         usedAs, Geometry, Flap_Setter)
 from ..model.geometry           import Line, Panelling
+from ..model.geometry_curve     import Geometry_Curve
 from ..model.geometry_bezier    import Geometry_Bezier,  Side_Airfoil_Bezier
 from ..model.geometry_bspline   import Geometry_BSpline, Side_Airfoil_BSpline
 from ..model.geometry_hicks_henne import Side_Airfoil_HicksHenne
@@ -1517,9 +1518,9 @@ class Deviation_Line_Artist (Artist):
     
         # get geo of design airfoil - if it is Bezier or BSpline based
 
-        geo : Geometry_BSpline | Geometry_Bezier = None
+        geo : Geometry_Curve = None
         for airfoil in self.airfoils:
-            if airfoil.usedAsDesign and (airfoil.isBSplineBased or airfoil.isBezierBased):
+            if airfoil.usedAsDesign and airfoil.geo.isCurve:
                 geo = airfoil.geo 
 
         if geo is None: return 

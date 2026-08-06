@@ -14,7 +14,7 @@ from typing                 import override, Type
 from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, Airfoil_CST, GEO_SPLINE, usedAs
 from .geometry              import Line
 from .geometry_spline       import Geometry_Splined
-from .geometry_curve        import Geometry_Curve, LE_Mode, LE_MODE_DEFAULT
+from .geometry_curve        import Geometry_Curve, LE_Mode
 from .geometry_cst          import Geometry_CST
 
 from .xo2_driver            import Worker
@@ -462,8 +462,9 @@ class Match_Targets:
 
         self._bump_control      = True                              # avoid bumps in curvature
 
-        self._optimizer         = "pso"                             # runtime switch: "nelder_mead" or "pso"
+        self._use_pso           = False                             # runtime switch: "nelder_mead" or "pso"
         self._pso_options       = Pso_Options()
+        
         self._fit_smooth_lambda = Geometry_CST.SMOOTH_LAMBDA_DEFAULT
 
 
@@ -540,12 +541,8 @@ class Match_Targets:
         return self._bump_control
 
     @property
-    def optimizer(self) -> str:
-        return self._optimizer
-
-    @property
     def use_pso(self) -> bool:
-        return self._optimizer == "pso"
+        return self._use_pso
 
     @property
     def pso_seed(self) -> int:
@@ -591,21 +588,14 @@ class Match_Targets:
 
     def set_bump_control (self, val : bool ): self._bump_control = val
 
-    def set_optimizer(self, optimizer: str):
-        if optimizer not in ("nelder_mead", "pso"):
-            raise ValueError("optimizer must be 'nelder_mead' or 'pso'")
-        self._optimizer = optimizer
-
     def set_use_pso(self, val: bool):
-        self._optimizer = "pso" if val else "nelder_mead"
+        self._use_pso = val
 
     def set_pso_seed(self, seed: int):
         self._pso_options.set_seed(int(seed))
 
     def set_fit_smooth_lambda(self, value: float):
-        self._fit_smooth_lambda = np.clip(
-            float(value), 0.0, Geometry_CST.SMOOTH_LAMBDA_MAX
-        )
+        self._fit_smooth_lambda = np.clip(float(value), 0.0, Geometry_CST.SMOOTH_LAMBDA_MAX)
 
 
     def _get_max_te_curvature (self, curvature: np.ndarray, nreversals: int) -> tuple [float, bool]:

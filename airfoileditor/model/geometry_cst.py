@@ -57,24 +57,20 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
 
     isCST = True
 
-    def __init__(
-        self,
-        linetype: Line.Type,
-        weights,
-        nPanels: int | None = None,
-        le_weight: float = 0.0,
-        te_gap: float = 0.0,
-        n1: float = CST.DEFAULT_N1,
-        n2: float = CST.DEFAULT_N2,
-    ):
+    NCP_DEFAULT          = 8          # hack: copy from Geometry_CST.NCP_DEFAULT - used for Match_Result
+
+    def __init__(self,
+                    linetype: Line.Type,
+                    weights,
+                    nPanels: int | None = None,
+                    le_weight: float = 0.0,
+                    te_gap: float = 0.0,
+                    n1: float = CST.DEFAULT_N1,
+                    n2: float = CST.DEFAULT_N2):
+        
         super().__init__(linetype=linetype)
 
-        self._curve = CST(
-            weights=weights,
-            le_weight=le_weight,
-            te_gap=te_gap,
-            n1=n1,
-            n2=n2)
+        self._curve = CST(weights=weights,le_weight=le_weight, te_gap=te_gap, n1=n1, n2=n2)
 
         self._nPanels = nPanels if nPanels is not None else Panelling.nPanels_for(linetype)
         self._le_bunch = Panelling.LE_BUNCH_DEFAULT
@@ -122,6 +118,18 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
         self.reset_target_deviation ()
 
 
+    def set_le_weight(self, le_weight: float):
+        """ set leading edge weight and recalculate deviation """
+        self.cst.set_le_weight (le_weight)
+        self.reset_target_deviation ()
+
+
+    def set_te_gap(self, te_gap: float):
+        """ set trailing edge gap and recalculate deviation """
+        self.cst.set_te_gap (te_gap)
+        self.reset_target_deviation ()
+
+
     @property
     def controlPoints_as_jpoints (self) -> list[JPoint]: 
         """ CST control points (weights, LE weight, TE gap) as JPoints"""
@@ -161,12 +169,12 @@ class Geometry_CST(Geometry_Curve):
     TE_THICKNESS_DEFAULT = 0.0
     SMOOTH_LAMBDA_MIN    = 1e-7
     SMOOTH_LAMBDA_MAX    = 1e-4
-    SMOOTH_LAMBDA_DEFAULT = 0.00001
+    SMOOTH_LAMBDA_DEFAULT = 6.3096e-06              # results in 0.6 tranformed to 0..1
 
     WEIGHTS_UPPER_SAMPLE = np.array([0.17, 0.16, 0.14, 0.11, 0.09, 0.07, 0.05, 0.03], dtype=float)
     WEIGHTS_LOWER_SAMPLE = np.array([-0.17, -0.16, -0.14, -0.11, -0.09, -0.07, -0.05, -0.03], dtype=float)
 
-    LE_MODE_DEFAULT = LE_Mode.FREE                  # default leading-edge mode for fit: no le_curvature constraint
+    LE_MODE_DEFAULT     = LE_Mode.FREE              # default leading-edge mode for fit: no le_curvature constraint
 
     # override as CST thickness is always 100% blending distance
     TE_GAP_XBLEND       = 1.0                       # default x position from TE where te gap blending starts
@@ -272,8 +280,8 @@ class Geometry_CST(Geometry_Curve):
 
     def set_le_weight(self, le_weight: float, moving=False):
         le_weight = round(le_weight,3)
-        self.upper.cst.set_le_weight(le_weight)
-        self.lower.cst.set_le_weight(le_weight)
+        self.upper.set_le_weight(le_weight)
+        self.lower.set_le_weight(le_weight)
         if not moving:
           self._reset()
           self._changed(self.MOD_CURVE + " LE weight", le_weight)
@@ -291,8 +299,8 @@ class Geometry_CST(Geometry_Curve):
         if abs(new_gap - self.te_gap) < 1e-10:
             return
 
-        self.upper.cst.set_te_gap(0.5 * new_gap)
-        self.lower.cst.set_te_gap(-0.5 * new_gap)
+        self.upper.set_te_gap(0.5 * new_gap)
+        self.lower.set_te_gap(-0.5 * new_gap)
 
         if not moving:
             self._reset()

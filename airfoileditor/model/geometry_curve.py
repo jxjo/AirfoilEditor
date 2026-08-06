@@ -25,16 +25,12 @@ logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 
+# enum for fitting leading edge curvature - free, fixed or c2 continuity
+
 class LE_Mode(StrEnum):
     FREE = "free"
     C2 = "c2"
     FIXED = "fixed"
-
-LE_MODE_DEFAULT = LE_Mode.FIXED
-
-# -----------------------------------------------------------------------------
-#  Panel Distribution  
-# -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 #  Curvature  
@@ -90,6 +86,9 @@ class Side_Airfoil_Curve (Line):
 
     isCurve         = True
 
+    NCP_DEFAULT     = None          # to be defined in subclass 
+
+
     def __init__ (self, linetype : Line.Type|None = None, name : str|None = None):
         """
         1D line of an airfoil like upper, lower side based on a curve with x 0..1
@@ -109,7 +108,8 @@ class Side_Airfoil_Curve (Line):
         self._u = None                              # cached panel distribution
         self._u_state_key = None                    # curve state key when u was calculated
         
-        self._target_deviation = None               # deviation to target side for fitting - will be
+        # for fitting - store current deviation to target
+        self._target_deviation : Deviation_Line = None
         self._is_matched       = False              # true if side is finally matched to target
 
 
@@ -251,7 +251,11 @@ class Side_Airfoil_Curve (Line):
     def set_target_deviation_from (self, target : Line):
         """ set a new target deviation of fitting """
 
-        self._target_deviation = Deviation_Line (target, lambda: self.curve, u=self.u)
+        if isinstance(target, Line):
+            self._target_deviation = Deviation_Line (target, lambda: self.curve, u=self.u)
+        else:
+            logger.warning (f"{self} set_target_deviation_from: target is not a Line - ignoring")
+            self._target_deviation = None
 
 
     def reset_target_deviation (self):
@@ -296,8 +300,8 @@ class Deviation_Line (Line):
             raise ValueError ("target_line must be a Line object")
         if not callable (curve_fn) :
             raise ValueError ("curve_fn must be a callable function which returns the Bezier or B-Spline ")
-        if not isinstance (curve_fn(), (Bezier, BSpline)) :
-            raise ValueError ("curve_fn must return a Bezier or BSpline object")
+        if not isinstance (curve_fn(), (Bezier, BSpline, CST)) :
+            raise ValueError ("curve_fn must return a Bezier, BSpline or CST object")
 
         self._curve_fn = curve_fn           
         self._fast = False 
@@ -397,8 +401,10 @@ class Geometry_Curve (Geometry):
     side_class      = Side_Airfoil_Curve
     line_class      = Line
 
-    CURVE_NAME      = "Curve"                    # curve name - to override
-    MOD_CURVE       = CURVE_NAME                 # modification string overritten from Geometry
+    CURVE_NAME      = "Curve"                   # curve name - to override
+    MOD_CURVE       = CURVE_NAME                # modification string overritten from Geometry
+
+    LE_MODE_DEFAULT = LE_Mode.FIXED             # default leading-edge mode for fit: le_curvature constraint
 
 
     def __init__ (self, **kwargs):

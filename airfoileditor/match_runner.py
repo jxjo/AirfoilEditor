@@ -654,10 +654,11 @@ class Match_Result:
 
         self._targets = targets
 
-        self._cpoints = side.curve.cpoints.copy()           # store control points of the final curve
         self._name    = f"{side.name}"
         self._isUpper = side.isUpper
+
         self._ncp_default = side.NCP_DEFAULT
+        self._ncp     = side.curve.ncp
         
         # Calculate and store all metrics
         self._rms = rms if rms is not None else side.target_deviation.rms()
@@ -707,7 +708,7 @@ class Match_Result:
     @property
     def ncp(self) -> int:
         """Number of control points."""
-        return len(self._cpoints) 
+        return self._ncp 
     
     @property
     def le_curvature(self) -> float:

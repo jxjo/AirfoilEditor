@@ -930,9 +930,9 @@ class Mode_As_CST (Mode_Abstract):
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
 
-            l.addWidget (Panel_Geometry        (self, self._app_model, lazy=True))
-            l.addWidget (Panel_Curve           (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Target_Curv     (self, self._app_model, lazy=True))
             l.addWidget (Panel_Fit_CST_Curve   (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Match_Result    (self, self._app_model, lazy=True))
 
             self._panel    = Data_Panel (self, self._app_model, layout = l)
 
@@ -952,8 +952,8 @@ class Mode_As_CST (Mode_Abstract):
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
 
-            l.addWidget (Panel_Geometry_Small      (self, self._app_model, lazy=True, has_head=False))
-            l.addWidget (Panel_Curve_Small         (self, self._app_model, lazy=True, has_head=False))
+            l.addWidget (Panel_Fit_CST_Curve        (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Match_Result_Small   (self, self._app_model, lazy=True, has_head=False))
 
             self._panel_small = Data_Panel (self, self._app_model, layout=l)
 

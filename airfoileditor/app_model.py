@@ -559,66 +559,59 @@ class App_Model (QObject):
         self.sig_airfoil_geo_paneling.emit (is_paneling)
 
 
-    def notify_match_target_changed (self, side : Side_Airfoil_Curve = None, new_ncp: int = None):
-        """ notify self one of the match targets changed """  
-
-        case : Case_Match_Target = self.case
-        if isinstance (case, Case_Match_Target):
-
-            # reset match result of case to ensure new match run
-            case.set_match_result (None)
-
-            if side and new_ncp:
-
-                # get target side and le curvature for new ncp initial fit 
-                if side.isUpper:
-                    target_side  = case.targets_upper.side
-                    le_curvature = case.targets_upper.le_curvature
-                else:
-                    target_side  = case.targets_lower.side
-                    le_curvature = case.targets_lower.le_curvature
-
-                # create new design with new ncp of the side upper or lower
-                geo: Geometry_Curve = self.airfoil.geo
-                geo.set_curve_parms_and_fit (side, new_ncp, target_side, le_curvature)
-
-                self.notify_airfoil_changed()         # notify change of airfoil - new design
-                
-            else:
-
-                # just trigger refresh to show new results 
-                self.sig_new_airfoil.emit()    
-
-
-
-    def notify_fit_target_changed (self):
-        """ notify self one of the targets for airfoil fit changed """
-
-        # sanity - ensure we have a CST geometry and a Case_Match_Target
-        geo : Geometry_CST = self.airfoil.geo
-        if not isinstance (geo, Geometry_CST):
-            raise ValueError (f"{self} notify_fit_target_changed: airfoil geo is not CST - cannot fit")
+    def notify_match_target_changed (self, refit_for : Side_Airfoil_Curve | Geometry_CST= None):
+        """ 
+        notify self one of the match targets changed 
+        - refit either to a single side (Bezier, BSpline) or to both sides (CST)
+        """  
 
         case : Case_Match_Target = self.case
         if not isinstance (case, Case_Match_Target):
             raise ValueError (f"{self} notify_fit_target_changed: case is not Case_Match_Target - cannot fit")
 
-        # reset match result - will be re-calculated 
+        # reset match result of case to ensure new match run
         case.set_match_result (None)
 
-        smooth_lambda = case.targets_upper.fit_smooth_lambda
-        le_mode = case.targets_upper.le_mode
-        le_curvature = case.targets_upper.le_curvature if le_mode == LE_Mode.FIXED else None
+        # Bezier and Bspline fit for a single side
+        if (self.airfoil.isBezierBased or self.airfoil.isBSplineBased) and isinstance (refit_for, Side_Airfoil_Curve):
 
-        # fit airfoil geometry to the targets with explicit LE mode/value and smoothness
-        geo.set_curve_parms_and_fit (case.targets_upper.side, case.targets_lower.side,
-                         ncp = case.targets_upper.ncp,
-                         le_mode = le_mode,
-                         le_curvature = le_curvature,
-                         smooth_lambda = smooth_lambda)
+            # get target side and le curvature for new ncp initial fit 
+            if refit_for.isUpper:
+                target_side  = case.targets_upper.side
+                le_curvature = case.targets_upper.le_curvature
+                ncp          = case.targets_upper.ncp
+            else:
+                target_side  = case.targets_lower.side
+                le_curvature = case.targets_lower.le_curvature
+                ncp          = case.targets_lower.ncp
 
-        self.notify_airfoil_changed()         # notify change of airfoil - new design
-            
+            # create new design with new ncp of the side upper or lower
+            geo: Geometry_Curve = self.airfoil.geo
+            geo.set_curve_parms_and_fit (refit_for, ncp, target_side, le_curvature)
+
+            self.notify_airfoil_changed()         # notify change of airfoil - new design
+
+        # cst fit for both sides with explicit le curvature and smoothness
+        elif self.airfoil.isCSTBased and isinstance (refit_for, Geometry_CST):
+
+            smooth_lambda = case.targets_upper.fit_smooth_lambda
+            le_mode       = case.targets_upper.le_mode
+            le_curvature  = case.targets_upper.le_curvature if le_mode == LE_Mode.FIXED else None
+
+            # fit airfoil geometry to the targets with explicit LE mode/value and smoothness
+            geo: Geometry_CST = self.airfoil.geo
+            geo.set_curve_parms_and_fit (case.targets_upper.side, case.targets_lower.side,
+                            ncp = case.targets_upper.ncp,
+                            le_mode = le_mode, le_curvature = le_curvature,
+                            smooth_lambda = smooth_lambda)
+
+            self.notify_airfoil_changed()         # notify change of airfoil - new design
+
+        else:
+
+            # just trigger refresh to show new results 
+            self.sig_new_airfoil.emit()    
+          
 
     @property
     def airfoil_2 (self) -> Airfoil:

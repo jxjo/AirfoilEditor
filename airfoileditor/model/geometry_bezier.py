@@ -15,10 +15,9 @@ from copy                   import deepcopy
 from ..base.math_util       import * 
 from ..base.spline          import Bezier
 
-from .geometry      import Geometry, Line
-from .geometry_curve        import (Side_Airfoil_Curve, Geometry_Curve,
-                                    Deviation_Line)
-from .geometry      import Panelling
+from .geometry              import Geometry, Line
+from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
+from .geometry              import Panelling
 
 import logging
 logger = logging.getLogger(__name__)
@@ -115,8 +114,6 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         if not self._curve.has_u:
             self._curve.eval(self.u)
 
-        # for fitting - store current deviation to target
-        self._target_deviation : Deviation_Line = None
 
 
     @classmethod

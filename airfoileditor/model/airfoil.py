@@ -1237,10 +1237,8 @@ class Airfoil_Curve (Airfoil):
                        cp_lower = self.geo.lower.controlPoints)
 
         # copy target_definition - as it is not part of geometry but important for design airfoils
-        if self.geo.upper.target_deviation is not None:
-            airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
-        if self.geo.lower.target_deviation is not None:
-            airfoil.geo.lower.set_target_deviation_from (self.geo.lower.target_deviation)
+        airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
+        airfoil.geo.lower.set_target_deviation_from (self.geo.lower.target_deviation)
 
         return airfoil 
 
@@ -1575,6 +1573,11 @@ class Airfoil_CST (Airfoil_Curve):
                            le_weight=le_weight,
                            te_thickness=te_thickness)
 
+        # Set target deviation
+        airfoil_new.geo.upper.set_target_deviation_from(anAirfoil.geo.upper)
+        airfoil_new.geo.lower.set_target_deviation_from(anAirfoil.geo.lower)
+
+
         # new pathFileName
         fileName_stem = anAirfoil.fileName_stem
         pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + cls.NAME_SUFFIX + cls.Extension)
@@ -1646,6 +1649,10 @@ class Airfoil_CST (Airfoil_Curve):
             weights_lower=self.geo.lower.cst.weights,
             le_weight=self.geo.le_weight,
             te_thickness=self.geo.te_gap)
+
+        # copy target_definition - as it is not part of geometry but important for design airfoils
+        airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
+        airfoil.geo.lower.set_target_deviation_from (self.geo.lower.target_deviation)
 
         return airfoil
 
