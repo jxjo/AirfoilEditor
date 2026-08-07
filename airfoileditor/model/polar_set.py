@@ -42,8 +42,8 @@ from ..base.spline            import Spline1D, Spline2D
 
 from .airfoil               import Airfoil, Airfoil_Bezier
 from .airfoil               import Flap_Definition
-from .polar_dto             import Polar_Data_Row, Polar_Data_Set
-from .xo2_driver            import Worker, XfoilPolarParser, file_in_use   
+from .polar_dto             import Polar_Data_Row, Polar_Data_Set, Polar_File_Meta
+from .xo2_driver            import Worker
 
 import logging
 logger = logging.getLogger(__name__)
@@ -617,6 +617,24 @@ class Polar_Definition:
         self._flap_def = aDef
 
 
+    @property
+    def as_meta (self) -> Polar_File_Meta:
+        """ polar parameters as a Polar_File_Meta DTO """
+        flap = self._flap_def
+        return Polar_File_Meta (
+            polar_type  = str (self.type),
+            re          = self.re,
+            ma          = self.ma,
+            ncrit       = self.ncrit,
+            xtript      = self._xtript,
+            xtripb      = self._xtripb,
+            flap_angle  = flap.flap_angle  if flap else None,
+            x_flap      = flap.x_flap      if flap else None,
+            y_flap      = flap.y_flap      if flap else None,
+            y_flap_spec = flap.y_flap_spec if flap else None,
+        )
+
+
     def calc_v_for_chord (self, chord : float) -> float | None:
         """ 
         calc velocity for given chord length in mm based on Re
@@ -1008,6 +1026,24 @@ class Polar_Point:
         else:
             raise ValueError (f"Op point variable '{op_var}' not supported")
 
+
+    @classmethod
+    def from_data_row (cls, row: 'Polar_Data_Row') -> 'Polar_Point':
+        """Alternate constructor: build a Polar_Point from a backend-agnostic DTO row."""
+        op = cls ()
+        op.alpha  = row.alpha
+        op.cl     = row.cl
+        op.cd     = row.cd
+        op.cdp    = row.cdp
+        op.cm     = row.cm
+        op.xtrt   = row.xtrt
+        op.xtrb   = row.xtrb
+        op.cp_min = row.cp_min
+        op.bubble_top = (row.bubble_top.x_start, row.bubble_top.x_end) if row.bubble_top else None
+        op.bubble_bot = (row.bubble_bot.x_start, row.bubble_bot.x_end) if row.bubble_bot else None
+        return op
+
+
     @property
     def is_bubble_bot_turbulent_separated (self) -> bool:
         """ 
@@ -1051,9 +1087,6 @@ class Polar (Polar_Definition):
                 |--- Polar    <-- Polar_Definition
     """
 
-    USE_DTO_XFOIL_LOADER = False                 # staged rollout: keep legacy loader as default
-    SHADOW_COMPARE_DTO_XFOIL_LOADER = True      # parse DTO in parallel and compare against legacy result
-
     def __init__(self, mypolarSet: Polar_Set, 
                        polar_def : Polar_Definition = None, 
                        re_scale = 1.0):
@@ -1073,19 +1106,7 @@ class Polar (Polar_Definition):
         self._error_reason = None                       # if error occurred during polar generation 
 
         self._polar_points = []                         # the single polar points of self
-        self._alpha = None
-        self._cl    = None
-        self._cd    = None
-        self._cdp   = None
-        self._cdf   = None
-        self._cm    = None 
-        self._cp_min = None
-        self._cd    = None 
-        self._xtrt  = None
-        self._xtrb  = None
-        self._glide = None
-        self._sink  = None
-        self._re_calc = None
+        self._values : dict[var, np.ndarray] = {}      # lazy-loaded cache: var → array
 
         if polar_def: 
             self.set_active     (polar_def.active)
@@ -1153,69 +1174,43 @@ class Polar (Polar_Definition):
 
 
     @property
-    def alpha (self) -> np.ndarray:
-        if not np.any(self._alpha): self._alpha = self._get_values_forVar (var.ALPHA)
-        return self._alpha
-    
-    @property
-    def cl (self) -> np.ndarray:
-        if not np.any(self._cl): self._cl = self._get_values_forVar (var.CL)
-        return self._cl
-    
-    @property
-    def cd (self) -> np.ndarray:
-        if not np.any(self._cd): self._cd = self._get_values_forVar (var.CD)
-        return self._cd
-    
-    @property
-    def cdp (self) -> np.ndarray:
-        if not np.any(self._cdp): self._cdp = self._get_values_forVar (var.CDP)
-        return self._cdp
-        
-    @property
-    def cdf (self) -> np.ndarray:
-        if not np.any(self._cdf): self._cdf  = self._get_values_forVar (var.CDF)
-        return self._cdf
-        
-    @property
-    def glide (self) -> np.ndarray:
-        if not np.any(self._glide): self._glide = self._get_values_forVar (var.GLIDE)
-        return self._glide
-    
-    @property
-    def sink (self) -> np.ndarray:
-        if not np.any(self._sink): self._sink = self._get_values_forVar (var.SINK)
-        return self._sink
-    
-    @property
-    def re_calc (self) -> np.ndarray:
-        if not np.any(self._re_calc): self._re_calc = self._get_values_forVar (var.RE_CALC)
-        return self._re_calc
+    def alpha (self) -> np.ndarray:     return self._ofVar (var.ALPHA)
 
     @property
-    def cm (self) -> np.ndarray:
-        if not np.any(self._cm): self._cm = self._get_values_forVar (var.CM)
-        return self._cm
+    def cl (self) -> np.ndarray:        return self._ofVar (var.CL)
 
     @property
-    def cp_min (self) -> np.ndarray:
-        if not np.any(self._cp_min): self._cp_min = self._get_values_forVar (var.CP_MIN)
-        return self._cp_min
-    
-    @property
-    def xtrt (self) -> np.ndarray:
-        if not np.any(self._xtrt): self._xtrt = self._get_values_forVar (var.XTRT)
-        return self._xtrt
-    
-    @property
-    def xtrb (self) -> np.ndarray:
-        if not np.any(self._xtrb): self._xtrb = self._get_values_forVar (var.XTRB)
-        return self._xtrb
+    def cd (self) -> np.ndarray:        return self._ofVar (var.CD)
 
     @property
-    def xtr (self) -> np.ndarray:
-        """ returns the average transition values of self """
-        return (self.xtrb + self.xtrt) / 2.0
+    def cdp (self) -> np.ndarray:       return self._ofVar (var.CDP)
+
+    @property
+    def cdf (self) -> np.ndarray:       return self._ofVar (var.CDF)
+
+    @property
+    def glide (self) -> np.ndarray:     return self._ofVar (var.GLIDE)
+
+    @property
+    def sink (self) -> np.ndarray:      return self._ofVar (var.SINK)
+
+    @property
+    def re_calc (self) -> np.ndarray:   return self._ofVar (var.RE_CALC)
+
+    @property
+    def cm (self) -> np.ndarray:        return self._ofVar (var.CM)
+
+    @property
+    def cp_min (self) -> np.ndarray:    return self._ofVar (var.CP_MIN)
+
+    @property
+    def xtrt (self) -> np.ndarray:      return self._ofVar (var.XTRT)
+
+    @property
+    def xtrb (self) -> np.ndarray:      return self._ofVar (var.XTRB)
+
+    @property
+    def xtr (self) -> np.ndarray:       return self._ofVar (var.XTR)
 
 
     @property
@@ -1340,60 +1335,20 @@ class Polar (Polar_Definition):
 
     def ofVars (self, xyVars: Tuple[var, var]):
         """ returns x,y polar of the tuple xyVars"""
-
-        x, y = [], []
-        
+    
         if isinstance(xyVars, tuple):
             x = self._ofVar (xyVars[0])
             y = self._ofVar (xyVars[1])
-
-            # sink polar - cut values <= 0 
-            if var.SINK in xyVars: 
-                i = 0 
-                if var.SINK == xyVars[0]:
-                    for i, val in enumerate(x):
-                        if val > 0.0: break
-                else: 
-                    for i, val in enumerate(y):
-                        if val > 0.0: break
-                x = x[i:]
-                y = y[i:]
+        else:
+            x, y = np.array([]), np.array([])
         return x,y 
 
-    # -----------------------
 
-    def _ofVar (self, polar_var: var):
-
-        vals = []
-        if   polar_var == var.CL:
-            vals = self.cl
-        elif polar_var == var.CD:
-            vals = self.cd
-        elif polar_var == var.CDP:
-            vals = self.cdp
-        elif polar_var == var.CDF:
-            vals = self.cdf
-        elif polar_var == var.ALPHA:
-            vals = self.alpha
-        elif polar_var == var.GLIDE:
-            vals = self.glide
-        elif polar_var == var.RE_CALC:
-            vals = self.re_calc
-        elif polar_var == var.SINK:
-            vals = self.sink
-        elif polar_var == var.CM:
-            vals = self.cm
-        elif polar_var == var.CP_MIN:
-            vals = self.cp_min
-        elif polar_var == var.XTRT:
-            vals = self.xtrt
-        elif polar_var == var.XTRB:
-            vals = self.xtrb
-        elif polar_var == var.XTR:
-            vals = self.xtr
-        else:
-            raise ValueError ("Unknown polar variable: %s" % polar_var)
-        return vals
+    def _ofVar (self, polar_var: var) -> np.ndarray:
+        """ lazy-loading accessor: return cached array or load from polar_points """
+        if polar_var not in self._values:
+            self._values[polar_var] = self._get_values_forVar (polar_var)
+        return self._values[polar_var]
     
 
     def _get_values_forVar (self, op_var) -> np.ndarray:
@@ -1501,35 +1456,12 @@ class Polar (Polar_Definition):
         if self.isLoaded: return 
 
         try: 
-            # polar file existing?  - if yes, load polar
-            if self.is_flapped:
-                flap_angle  = self.flap_def.flap_angle 
-                x_flap      = self.flap_def.x_flap
-                y_flap      = self.flap_def.y_flap
-                y_flap_spec = self.flap_def.y_flap_spec
-            else:
-                flap_angle  = None 
-                x_flap      = None
-                y_flap      = None
-                y_flap_spec = None
+            path = self.polar_set.airfoil_pathFileName_abs
 
-            airfoil_pathFileName = self.polar_set.airfoil_pathFileName_abs
-            polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
-                                                self.type, self.re, self.ma, 
-                                                self.ncrit, self._xtript, self._xtripb,
-                                                flap_angle, x_flap, y_flap, y_flap_spec)
+            data_set = Worker.load_polar_data_set (path, self.as_meta)
 
-            if polar_pathFileName and not file_in_use (polar_pathFileName): 
-
-                if self.USE_DTO_XFOIL_LOADER:
-                    data_set = XfoilPolarParser.parse_file(polar_pathFileName)
-                    self._import_from_data_set(data_set)
-                else:
-                    self._import_from_file(polar_pathFileName)
-
-                    if self.SHADOW_COMPARE_DTO_XFOIL_LOADER:
-                        self._shadow_compare_legacy_vs_dto (polar_pathFileName)
-
+            if data_set:
+                self._import_from_data_set (data_set)
                 logger.debug (f'{self} loaded for {self.polar_set.airfoil}') 
 
         except (RuntimeError) as exc:  
@@ -1537,113 +1469,15 @@ class Polar (Polar_Definition):
             self.set_error_reason (str(exc))                # polar will be 'loaded' with error
 
 
-    def _import_from_file (self, polarPathFileName):
-        """
-        Read data for self from an Xfoil polar file  
-        """
-
-        opPoints = []
-
-        BeginOfDataSectionTag = "-------"
-        airfoilNameTag = "Calculated polar for:"
-        reTag = "Re ="
-        ncritTag = "Ncrit ="
-        parseInDataPoints = 0
-
-        fpolar = open(polarPathFileName)
-
-        # parse all lines
-        for line in fpolar:
-
-            # scan for airfoil-name
-            if  line.find(airfoilNameTag) >= 0:
-                splitline = line.split(airfoilNameTag)
-                airfoilname = splitline[1].strip()
-            # scan for Re-Number and ncrit
-            if  line.find(reTag) >= 0:
-                splitline = line.split(reTag)
-                splitline = splitline[1].split(ncritTag)
-
-                re_string    = splitline[0].strip()
-                splitstring = re_string.split("e")
-                factor = float(splitstring[0].strip())
-                Exponent = float(splitstring[1].strip())
-                re = factor * (10**Exponent)
-
-                # sanity checks 
-                if self.re != re: 
-                    raise RuntimeError (f"Re Number of polar ({self.re}) and of polar file ({re}) not equal")
-
-                ncrit = float(splitline[1].strip())
-                if self.ncrit != ncrit: 
-                    raise RuntimeError (f"Ncrit of polar ({self.ncrit}) and of polar file ({ncrit}) not equal")
-                # ncrit within file ignored ...
-
-            # scan for start of data-section
-            if line.find(BeginOfDataSectionTag) >= 0:
-                parseInDataPoints = 1
-            else:
-                # get all Data-points from this line
-                if parseInDataPoints == 1:
-                    # split up line detecting white-spaces
-                    splittedLine = line.split(" ")
-                    # remove white-space-elements, build up list of data-points
-                    dataPoints = []
-                    for element in splittedLine:
-                        if element != '':
-                            dataPoints.append(element)
-                    op = Polar_Point ()
-                    op.alpha = float(dataPoints[0])
-                    op.cl    = float(dataPoints[1])
-                    op.cd    = float(dataPoints[2])
-                    op.cdp   = float(dataPoints[3])
-                    op.cm    = float(dataPoints[4])
-                    op.xtrt  = float(dataPoints[5])
-                    op.xtrb  = float(dataPoints[6])
-
-                    # optional cp_min column generated by extended worker
-                    if len(dataPoints) >= 8 and len(dataPoints) != 11:
-                        op.cp_min = float(dataPoints[7])
-
-                    # optional bubble start-end on top and bot 
-                    if len(dataPoints) == 11:
-
-                        bubble_def = (float(dataPoints[7]), float(dataPoints[8]))
-                        op.bubble_top = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
-
-                        bubble_def = (float(dataPoints[9]), float(dataPoints[10]))
-                        op.bubble_bot = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
-                    elif len(dataPoints) >= 12:
-                        bubble_def = (float(dataPoints[8]), float(dataPoints[9]))
-                        op.bubble_top = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
-
-                        bubble_def = (float(dataPoints[10]), float(dataPoints[11]))
-                        op.bubble_bot = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
-
-                    opPoints.append(op)
-        fpolar.close()
-
-        if len(opPoints) > 0: 
-
-            self._polar_points = opPoints
-
-        else: 
-            logger.error (f"{self} - import from {polarPathFileName} failed")
-            raise RuntimeError(f"Could not read polar file" )
-
 
     def _import_from_data_set (self, data_set: Polar_Data_Set):
         """
         Map backend-agnostic polar DTO payload into Polar_Point list.
-
-        Note:
-            This helper is added for staged refactoring and is not wired into
-            the production loader yet.
         """
 
         self._validate_data_set_meta (data_set)
 
-        op_points = [self._polar_point_from_data_row(row) for row in data_set.rows]
+        op_points = [Polar_Point.from_data_row (row) for row in data_set.rows]
 
         if len(op_points) > 0:
             self._polar_points = op_points
@@ -1654,124 +1488,26 @@ class Polar (Polar_Definition):
     def _validate_data_set_meta (self, data_set: Polar_Data_Set):
         """Validate DTO metadata against this Polar definition where available."""
 
-        meta = data_set.meta
+        my  = self.as_meta
+        got = data_set.meta
+        mismatches = []
 
-        if meta.re is not None and self.re != meta.re:
-            raise RuntimeError(
-                f"Re Number of polar ({self.re}) and of polar file ({meta.re}) not equal"
-            )
+        if my.re         != got.re:          mismatches.append (f"Re {my.re} ≠ {got.re}")
+        if my.ma         != got.ma:          mismatches.append (f"Ma {my.ma} ≠ {got.ma}")
+        if my.polar_type != got.polar_type:  mismatches.append (f"type {my.polar_type} ≠ {got.polar_type}")
+        if my.ncrit      != got.ncrit:       mismatches.append (f"Ncrit {my.ncrit} ≠ {got.ncrit}")
+        if my.xtript     != got.xtript:      mismatches.append (f"xtript {my.xtript} ≠ {got.xtript}")
+        if my.xtripb     != got.xtripb:      mismatches.append (f"xtripb {my.xtripb} ≠ {got.xtripb}")
+        if my.flap_angle != got.flap_angle:  mismatches.append (f"flap_angle {my.flap_angle} ≠ {got.flap_angle}")
+        if my.x_flap     != got.x_flap:      mismatches.append (f"x_flap {my.x_flap} ≠ {got.x_flap}")
+        if my.y_flap     != got.y_flap:      mismatches.append (f"y_flap {my.y_flap} ≠ {got.y_flap}")
 
-        if meta.ncrit is not None and self.ncrit != meta.ncrit:
-            raise RuntimeError(
-                f"Ncrit of polar ({self.ncrit}) and of polar file ({meta.ncrit}) not equal"
-            )
-
-
-    def _polar_point_from_data_row (self, row: Polar_Data_Row) -> Polar_Point:
-        """Build a Polar_Point from one backend-agnostic DTO row."""
-
-        op = Polar_Point ()
-        op.alpha = row.alpha
-        op.cl = row.cl
-        op.cd = row.cd
-        op.cdp = row.cdp
-        op.cm = row.cm
-        op.xtrt = row.xtrt
-        op.xtrb = row.xtrb
-        op.cp_min = row.cp_min
-
-        if row.bubble_top is not None:
-            op.bubble_top = (row.bubble_top.x_start, row.bubble_top.x_end)
-        else:
-            op.bubble_top = None
-
-        if row.bubble_bot is not None:
-            op.bubble_bot = (row.bubble_bot.x_start, row.bubble_bot.x_end)
-        else:
-            op.bubble_bot = None
-
-        return op
+        if mismatches:
+            msg = f"Polar Data Set does not match: {', '.join(mismatches)}"
+            logger.error (msg)
+            raise RuntimeError (msg)
 
 
-    def _shadow_compare_legacy_vs_dto (self, polarPathFileName: str):
-        """
-        Shadow mode: compare legacy-imported polar points against DTO parser output.
-
-        This never changes active behavior; it only logs parity status.
-        """
-
-        try:
-            data_set = XfoilPolarParser.parse_file (polarPathFileName)
-            mismatches = self._compare_loaded_points_with_data_set (data_set)
-
-            if mismatches:
-                logger.error (
-                    f"{self} shadow-compare ERROR ({len(mismatches)} mismatch(es)) for '{polarPathFileName}': "
-                    f"{mismatches[0]}"
-                )
-            else:
-                logger.info (f"{self} shadow-compare OK for '{polarPathFileName}'")
-
-        except Exception as exc:
-            logger.error (f"{self} shadow-compare ERROR for '{polarPathFileName}': {exc}")
-
-
-    def _compare_loaded_points_with_data_set (self, data_set: Polar_Data_Set) -> list[str]:
-        """
-        Compare already-loaded Polar_Point list against DTO rows.
-
-        Returns a list of mismatch descriptions (empty when equal within tolerance).
-        """
-
-        mismatches: list[str] = []
-
-        if len(self._polar_points) != len(data_set.rows):
-            mismatches.append(
-                f"row-count differs: legacy={len(self._polar_points)} dto={len(data_set.rows)}"
-            )
-            return mismatches
-
-        for i, (point, row) in enumerate(zip(self._polar_points, data_set.rows)):
-            self._append_mismatch_if_not_close (mismatches, i, "alpha", point.alpha, row.alpha)
-            self._append_mismatch_if_not_close (mismatches, i, "cl", point.cl, row.cl)
-            self._append_mismatch_if_not_close (mismatches, i, "cd", point.cd, row.cd)
-            self._append_mismatch_if_not_close (mismatches, i, "cdp", point.cdp, row.cdp)
-            self._append_mismatch_if_not_close (mismatches, i, "cm", point.cm, row.cm)
-            self._append_mismatch_if_not_close (mismatches, i, "xtrt", point.xtrt, row.xtrt)
-            self._append_mismatch_if_not_close (mismatches, i, "xtrb", point.xtrb, row.xtrb)
-            self._append_mismatch_if_not_close (mismatches, i, "cp_min", point.cp_min, row.cp_min)
-
-            legacy_top = point.bubble_top
-            dto_top = (row.bubble_top.x_start, row.bubble_top.x_end) if row.bubble_top else None
-            self._append_mismatch_if_not_equal (mismatches, i, "bubble_top", legacy_top, dto_top)
-
-            legacy_bot = point.bubble_bot
-            dto_bot = (row.bubble_bot.x_start, row.bubble_bot.x_end) if row.bubble_bot else None
-            self._append_mismatch_if_not_equal (mismatches, i, "bubble_bot", legacy_bot, dto_bot)
-
-        return mismatches
-
-
-    def _append_mismatch_if_not_equal (self, mismatches: list[str], i_row: int, field: str, legacy, dto):
-        """Append mismatch text if two scalar/tuple values are not equal."""
-
-        if legacy != dto:
-            mismatches.append(f"row {i_row} field {field}: legacy={legacy} dto={dto}")
-
-
-    def _append_mismatch_if_not_close (self, mismatches: list[str], i_row: int, field: str,
-                                        legacy_val: float | None, dto_val: float | None,
-                                        atol: float = 1e-12):
-        """Append mismatch text if two float-like values differ beyond tolerance."""
-
-        if legacy_val is None or dto_val is None:
-            if legacy_val != dto_val:
-                mismatches.append(f"row {i_row} field {field}: legacy={legacy_val} dto={dto_val}")
-            return
-
-        if not np.isclose (legacy_val, dto_val, atol=atol, rtol=0.0):
-            mismatches.append(f"row {i_row} field {field}: legacy={legacy_val} dto={dto_val}")
- 
 
 
 #------------------------------------------------------------------------------
