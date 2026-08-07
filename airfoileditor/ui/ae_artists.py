@@ -2242,9 +2242,8 @@ class Polar_Artist (Artist):
 
         if polar.has_bubble_top:
             name     = 'bubble upper side'
-            for i, polar_point in enumerate(polar.polar_points):
-                bubble = polar_point.bubble_top
-                turbulent_separated = polar_point.is_bubble_top_turbulent_separated
+            for i, bubble in enumerate (polar.bubble_top):
+                turbulent_separated = polar.is_bubble_top_turbulent_separated_at (i)
                 n = name_red  if turbulent_separated else name
                 if bubble:
                     if is_xtr_plot:
@@ -2258,9 +2257,8 @@ class Polar_Artist (Artist):
         if polar.has_bubble_bot:
             # plot bubble on lower side
             name = 'bubble lower side'
-            for i, polar_point in enumerate(polar.polar_points):
-                bubble = polar_point.bubble_bot
-                turbulent_separated = polar_point.is_bubble_bot_turbulent_separated
+            for i, bubble in enumerate (polar.bubble_bot):
+                turbulent_separated = polar.is_bubble_bot_turbulent_separated_at (i)
                 n = name_red  if turbulent_separated else name
                 if bubble:
                     if is_xtr_plot:
