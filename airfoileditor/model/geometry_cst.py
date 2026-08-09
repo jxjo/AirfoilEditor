@@ -536,7 +536,7 @@ class Geometry_CST(Geometry_Curve):
             X = _regularized_lstsq (A[:, :-1], rhs)
             X = np.append (X, 0.0)
 
-        print (f"fit_from_xy: {time.perf_counter() - t0:.6f} s")
+        # print (f"fit_from_xy: {time.perf_counter() - t0:.6f} s")
 
         idx = 0
 

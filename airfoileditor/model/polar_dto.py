@@ -32,7 +32,8 @@ class Polar_File_Meta:
     spec_var: str | None = None
     val_range: tuple[float, float, float] | None = None
     auto_range: bool | None = None
-    source_path: str | None = None
+    xf_source_path: str | None = None       # xfoil: path of the parsed polar file
+    nf_model_size: str | None = None        # neuralfoil: model size used for evaluation
 
 
 @dataclass(frozen=True)
@@ -54,9 +55,10 @@ class Polar_Data_Row:
     cm: float
     xtrt: float
     xtrb: float
-    cp_min: float | None = None
-    bubble_top: Polar_Bubble_Range | None = None
-    bubble_bot: Polar_Bubble_Range | None = None
+    xf_cp_min: float | None = None                    # xfoil: minimum pressure coefficient
+    xf_bubble_top: Polar_Bubble_Range | None = None   # xfoil: laminar bubble top side
+    xf_bubble_bot: Polar_Bubble_Range | None = None   # xfoil: laminar bubble bot side
+    nf_confidence: float | None = None                # neuralfoil: prediction confidence [0..1]
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,11 @@
-from .core_api import get_aero_from_kulfan_parameters, bl_x_points
+from .core_api import (
+    available_model_sizes,
+    bl_x_points,
+    get_aero_from_kulfan_parameters,
+)
 
 __all__ = [
+    "available_model_sizes",
     "get_aero_from_kulfan_parameters",
     "bl_x_points",
 ]

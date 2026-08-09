@@ -271,7 +271,7 @@ class Mode_View (Mode_Abstract):
             l.addWidget (Panel_Geometry_Small   (self, self._app_model, has_head=False, lazy=True))
             l.addWidget (Panel_Panels_Small     (self, self._app_model, has_head=False, lazy=True))
             l.addWidget (Panel_LE_TE_Small      (self, self._app_model, has_head=False, lazy=True))
-            l.addWidget (Panel_Curve_Small     (self, self._app_model, has_head=False, lazy=True))
+            l.addWidget (Panel_Curve_Small      (self, self._app_model, has_head=False, lazy=True))
             l.addWidget (Panel_Flap_Small       (self, self._app_model, has_head=False, lazy=True))
 
             self._panel_small = Data_Panel (self, self._app_model, layout=l)
@@ -952,7 +952,7 @@ class Mode_As_CST (Mode_Abstract):
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
 
-            l.addWidget (Panel_Fit_CST        (self, self._app_model, lazy=True))
+            l.addWidget (Panel_Fit_CST_Small        (self, self._app_model, lazy=True, has_head=False))
             l.addWidget (Panel_Match_Result_Small   (self, self._app_model, lazy=True, has_head=False))
 
             self._panel_small = Data_Panel (self, self._app_model, layout=l)

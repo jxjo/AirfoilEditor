@@ -22,6 +22,7 @@ from ..model.polar_set      import *
 from ..model.case           import Case_Abstract, Case_Optimize
 from ..model.xo2_driver     import Worker, Xoptfoil2
 from ..model.xo2_results    import OpPoint_Result, GeoTarget_Result
+from ..model.nf_driver      import Neuralfoil_Evaluator
 
 from .ae_artists            import *
 from .ae_widgets            import Airfoil_Select_Open_Widget
@@ -421,7 +422,8 @@ class Panel_Polar_Defs (Edit_Panel):
         diag = Polar_Definition_Dialog (self, polar_def, is_new=is_new,
                                         parentPos=(1.1, 0.5), dialogPos=(0,0.5), fixed_chord=self.chord)
         
-        diag.sig_final_changed.connect (self._on_polar_def_changed)
+        diag.sig_changed.connect (self._on_polar_def_changed)           # live update with NeuralFoil polars
+        diag.sig_final_changed.connect (self._on_polar_def_changed)     # final update when dialog is closed
         diag.show()
 
 
@@ -441,8 +443,8 @@ class Panel_Polar_Defs (Edit_Panel):
 
         # increase re number for the new polar definition
         if self.polar_defs:
-            new_polar_def  = deepcopy (self.polar_defs[-1])
-            new_polar_def.set_is_mandatory (False)                  # parent could have been mandatory
+            new_polar_def  = self.polar_defs[-1].as_copy()
+            new_polar_def.set_is_mandatory (False)      # parent could have been mandatory
             new_polar_def.set_re (new_polar_def.re + 100000)
             new_polar_def.set_active(True)
         else: 
@@ -450,8 +452,9 @@ class Panel_Polar_Defs (Edit_Panel):
 
         self.polar_defs.append (new_polar_def)
 
-        # open edit dialog for new def 
+        self.refresh()                                  # immediately refresh to show new polar def in list
 
+        # open edit dialog for new def 
         self.edit_polar_def (polar_def=new_polar_def, is_new=True)
 
 
@@ -2116,7 +2119,7 @@ class Diagram_Airfoil_Polar (Diagram):
             l = QGridLayout()
             r,c = 0, 0
 
-            if Worker.ready:
+            if Worker.ready or Neuralfoil_Evaluator.ready:
 
                 Label (l,r,c, colSpan=2, get="Polar definitions") 
                 r += 1
@@ -2164,7 +2167,11 @@ class Diagram_Airfoil_Polar (Diagram):
                 r += 1
                 Label (l,r,c, colSpan=2, get=f"{Worker.NAME} not ready", style=style.ERROR) 
                 r += 1
-                Label (l,r,c, colSpan=2, get=f"{Worker.ready_msg}", style=style.COMMENT, height=(None,100), wordWrap=True) 
+                Label (l,r,c, colSpan=2, get=f"{Worker.ready_msg}", style=style.COMMENT, height=(None,50), wordWrap=True) 
+                r += 1
+                Label (l,r,c, colSpan=2, get=f"{Neuralfoil_Evaluator.NAME} not ready", style=style.ERROR) 
+                r += 1
+                Label (l,r,c, colSpan=2, get=f"{Neuralfoil_Evaluator.ready_msg}", style=style.COMMENT, height=(None,50), wordWrap=True) 
                 r += 1
                 SpaceR (l,r, height=5) 
                 l.setColumnStretch (1,1)
@@ -2174,9 +2181,11 @@ class Diagram_Airfoil_Polar (Diagram):
                                             on_switched = lambda aBool: self.set_show_polars(aBool))
             
             # patch Worker version into head of panel 
-            if Worker.ready:
+            if Worker.ready or Neuralfoil_Evaluator.ready:
                 l_head = self._panel_polar._head.layout()
-                Label  (l_head, get=f"{Worker.NAME} {Worker.version}", style=style.COMMENT, fontSize=size.SMALL,
+                text  = f"{Worker.NAME} {Worker.version} " if Worker.ready else ""
+                text += f"<br>{Neuralfoil_Evaluator.NAME}" if Neuralfoil_Evaluator.ready else ""
+                Label  (l_head, get=text, style=style.COMMENT, fontSize=size.SMALL,
                         align=Qt.AlignmentFlag.AlignBottom)
 
         return self._panel_polar 

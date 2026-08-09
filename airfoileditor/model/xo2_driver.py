@@ -56,7 +56,7 @@ class Xfoil_Polar_Parser:
     def parse_file(path_file_name: str) -> Polar_Data_Set:
         """Parse an XFOIL polar file and return a neutral DTO payload."""
 
-        meta = Polar_File_Meta(source="xfoil", source_path=path_file_name)
+        meta = Polar_File_Meta(source="xfoil", xf_source_path=path_file_name)
         rows: list[Polar_Data_Row] = []
         parse_data_rows = False
 
@@ -149,9 +149,9 @@ class Xfoil_Polar_Parser:
                         cm=cm,
                         xtrt=xtrt,
                         xtrb=xtrb,
-                        cp_min=cp_min,
-                        bubble_top=bubble_top,
-                        bubble_bot=bubble_bot,
+                        xf_cp_min=cp_min,
+                        xf_bubble_top=bubble_top,
+                        xf_bubble_bot=bubble_bot,
                     )
                 )
 
@@ -837,7 +837,7 @@ class Worker (X_Program):
     NAME        = 'Worker'
     NAME_EXE    = 'worker'                             # stem of of exe file 
 
-
+    
     # -- static methods --------------------------------------------
 
     @classmethod

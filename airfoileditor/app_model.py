@@ -16,7 +16,6 @@ The App Model is needed as the 'real' model is QObject agnostic and stateless.
 """
 
 import os
-import stat
 from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
@@ -38,6 +37,7 @@ from .model.geometry_cst     import Geometry_CST
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.xo2_input        import OpPoint_Definition, Input_File
+from .model.nf_driver        import Neuralfoil_Evaluator
 from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_Match_Target
 
 from .match_runner           import Matcher, Match_Result
@@ -114,8 +114,8 @@ class App_Model (QObject):
 
     """
 
-    WORKER_MIN_VERSION          = '1.0.11'
-    XOPTFOIL2_MIN_VERSION       = '1.0.11'
+    WORKER_MIN_VERSION          = '2.0.0'
+    XOPTFOIL2_MIN_VERSION       = '2.0.0'
 
     # --- signals
 
@@ -187,7 +187,11 @@ class App_Model (QObject):
         Worker    (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.WORKER_MIN_VERSION)
         Xoptfoil2 (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.XOPTFOIL2_MIN_VERSION)
 
-        # initialize watchdog thread for polars and xo2 state changes (optional)
+        # is NeuralFoil evaluator avaialble
+        if not Neuralfoil_Evaluator.ready:
+            logger.error (f"{Neuralfoil_Evaluator.NAME} not available: {Neuralfoil_Evaluator.ready_msg}")
+
+        # initialize watchdog thread for xfoil polars and xo2 state changes (optional)
         if start_watchdog:
             self._init_watchdog()
 

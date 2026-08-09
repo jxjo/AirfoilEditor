@@ -66,9 +66,9 @@ def test_xfoil_parser_reads_cp_min_variant(tmp_path):
     data_set = Xfoil_Polar_Parser.parse_file(file_path)
 
     assert len(data_set.rows) == 1
-    assert data_set.rows[0].cp_min == -0.45
-    assert data_set.rows[0].bubble_top is None
-    assert data_set.rows[0].bubble_bot is None
+    assert data_set.rows[0].xf_cp_min == -0.45
+    assert data_set.rows[0].xf_bubble_top is None
+    assert data_set.rows[0].xf_bubble_bot is None
 
 
 def test_xfoil_parser_reads_legacy_bubble_variant(tmp_path):
@@ -90,9 +90,9 @@ def test_xfoil_parser_reads_legacy_bubble_variant(tmp_path):
     data_set = Xfoil_Polar_Parser.parse_file(file_path)
 
     row = data_set.rows[0]
-    assert row.cp_min is None
-    assert row.bubble_top == Polar_Bubble_Range(0.2, 0.3)
-    assert row.bubble_bot == Polar_Bubble_Range(0.4, 0.5)
+    assert row.xf_cp_min is None
+    assert row.xf_bubble_top == Polar_Bubble_Range(0.2, 0.3)
+    assert row.xf_bubble_bot == Polar_Bubble_Range(0.4, 0.5)
 
 
 def test_xfoil_parser_reads_extended_bubble_variant(tmp_path):
@@ -114,9 +114,9 @@ def test_xfoil_parser_reads_extended_bubble_variant(tmp_path):
     data_set = Xfoil_Polar_Parser.parse_file(file_path)
 
     row = data_set.rows[0]
-    assert row.cp_min == -0.55
-    assert row.bubble_top == Polar_Bubble_Range(0.21, 0.31)
-    assert row.bubble_bot == Polar_Bubble_Range(0.41, 0.51)
+    assert row.xf_cp_min == -0.55
+    assert row.xf_bubble_top == Polar_Bubble_Range(0.21, 0.31)
+    assert row.xf_bubble_bot == Polar_Bubble_Range(0.41, 0.51)
 
 
 def test_polar_import_from_data_set_uses_dto_arrays_and_point_views():
@@ -135,9 +135,9 @@ def test_polar_import_from_data_set_uses_dto_arrays_and_point_views():
                 cm=-0.02,
                 xtrt=0.7,
                 xtrb=0.8,
-                cp_min=-0.45,
-                bubble_top=Polar_Bubble_Range(0.2, 0.3),
-                bubble_bot=Polar_Bubble_Range(0.4, 0.5),
+                xf_cp_min=-0.45,
+                xf_bubble_top=Polar_Bubble_Range(0.2, 0.3),
+                xf_bubble_bot=Polar_Bubble_Range(0.4, 0.5),
             )
         ],
     )
@@ -201,8 +201,8 @@ def test_polar_bubble_access_stays_array_backed():
                 cm=-0.02,
                 xtrt=0.7,
                 xtrb=0.8,
-                bubble_top=Polar_Bubble_Range(0.2, 0.73),
-                bubble_bot=Polar_Bubble_Range(0.4, 0.5),
+                xf_bubble_top=Polar_Bubble_Range(0.2, 0.73),
+                xf_bubble_bot=Polar_Bubble_Range(0.4, 0.5),
             )
         ],
     )

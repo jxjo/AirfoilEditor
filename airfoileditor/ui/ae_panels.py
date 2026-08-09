@@ -1844,3 +1844,34 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
         text = '<br>'.join(text[:3])
         return text 
 
+
+class Panel_Fit_CST_Small (Panel_Fit_CST):
+    """ CST fit airfoil  """
+
+    _small = True
+    _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_MINI
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+
+        r,c = 0, 0 
+        _tip = "Number of weights, the matching curve will have.\n"+ \
+               "A higher number may allow a better fit, but could cause undesired bumps. "
+        FieldI (l,r,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "Weights Upper",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+        FieldI (l,r+1,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "Weights Lower",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+        Button (l,r,c+3, rowSpan=2, text="Tune Fit", width=70, button_style = button_style.PRIMARY,
+                        set=self.open_cst_fit_dialog)
+
+        r += 2
+        l.setRowStretch (r,2)
+
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,10)
+        return l

@@ -22,8 +22,9 @@ from ..model.geometry_hicks_henne import Side_Airfoil_HicksHenne
 from ..model.geometry_cst       import Geometry_CST, Side_Airfoil_CST
 from ..model.polar_set          import * 
 
-from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath
-from PyQt6.QtCore               import pyqtSignal, QObject
+from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath, QCursor
+from PyQt6.QtCore               import pyqtSignal, QObject, QTimer
+from PyQt6.QtWidgets            import QToolTip
 
 
 import logging
@@ -2083,6 +2084,46 @@ class Polar_Artist (Artist):
             self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
 
 
+    def _plot_and_connect (self, polar: 'Polar', *args, **kwargs) -> pg.PlotDataItem:
+        """ plot a data item and immediately wire it to the polar click tooltip """
+        item = self._plot_dataItem (*args, **kwargs)
+        item.curve.setClickable (True)          # setClickable is on the underlying PlotCurveItem
+        item.sigClicked.connect (lambda _it, _ev, p=polar:
+            QTimer.singleShot (0, lambda: QToolTip.showText (
+                QCursor.pos(), Polar_Artist._polar_info_html (p), msecShowTime=6000)))
+        return item
+
+
+    @staticmethod
+    def _polar_info_html (polar: 'Polar') -> str:
+        """ polar key values as HTML table for the click-info tooltip """
+        cl_max = polar.max_cl
+        cd_min = polar.min_cd
+        cm_0   = polar.cm_0
+        glide  = polar.max_glide
+
+        def row (label: str, value: str, label_at : str=None, value_at: str=None) -> str:
+            return (f"<tr>"
+                    f"<td style='padding-right: 5px'>{label}</td>"
+                    f"<td style='padding-right:10px'>{value}</td>"
+                    f"<td style='padding-right: 5px'>{'at'     if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{label_at if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{value_at if value_at is not None else ''}</td>"
+                    f"</tr>")
+
+        rows = [
+            row ("cl_max",     f"{cl_max.cl:.3f}",      "alpha", f"{cl_max.alpha:.2f}°"),
+            row ("cd_min",     f"{cd_min.cd:.5f}",      "cl",    f"{cd_min.cl:.3f}"),
+            row ("cl/cd max",  f"{glide.glide:.1f}",    "cl",    f"{glide.cl:.3f}" ),
+            row ("cm_0",       f"{cm_0:.3f}"),
+            row ("alpha_0",    f"{polar.alpha0:.2f}°"),
+        ]
+
+        html  = f"<b>{polar.polar_set.airfoil.fileName}</b><br>"""
+        html += f"{polar.name}<br>"""
+        html += f"<table>{''.join(rows)}</table>"
+        return html
+
 
     def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color : QColor): 
         """ plot a single polar"""
@@ -2162,19 +2203,19 @@ class Polar_Artist (Artist):
                     upper_idx = min(upper_idx, lower_idx)
                     x_natural = x[upper_idx:lower_idx+1]
                     y_natural = y[upper_idx:lower_idx+1]
-                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                    self._plot_and_connect (polar, x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
 
                     x_forced_upper = x[:upper_idx+1]
                     y_forced_upper = y[:upper_idx+1]
-                    self._plot_dataItem  (x_forced_upper, y_forced_upper, name='Forced transition region', pen = pen2,  
+                    self._plot_and_connect (polar, x_forced_upper, y_forced_upper, name='Forced transition region', pen = pen2,  
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                    antialias = antialias, zValue=zValue)                    
-                    
+                                    antialias = antialias, zValue=zValue)
+
                     x_forced_lower = x[lower_idx:]
                     y_forced_lower = y[lower_idx:]
-                    self._plot_dataItem  (x_forced_lower, y_forced_lower, name='Forced transition region', pen = pen2, 
+                    self._plot_and_connect (polar, x_forced_lower, y_forced_lower, name='Forced transition region', pen = pen2, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
                     
@@ -2182,33 +2223,33 @@ class Polar_Artist (Artist):
                     # Only lower transition: natural [0:idx+1], forced [idx:]
                     x_natural = x[:lower_idx+1]
                     y_natural = y[:lower_idx+1]
-                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                    self._plot_and_connect (polar, x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
                     
                     x_forced = x[lower_idx:]
                     y_forced = y[lower_idx:]
-                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
+                    self._plot_and_connect (polar, x_forced, y_forced, name='Forced transition region', pen = pen2, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
                 else:
                     # Only upper transition: forced [0:idx+1], natural [idx:]
                     x_natural = x[upper_idx:]
                     y_natural = y[upper_idx:]
-                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                    self._plot_and_connect (polar, x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
 
                     x_forced = x[:upper_idx+1]
                     y_forced = y[:upper_idx+1]
-                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
+                    self._plot_and_connect (polar, x_forced, y_forced, name='Forced transition region', pen = pen2, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                    antialias = antialias, zValue=zValue)                    
+                                    antialias = antialias, zValue=zValue)
                 plotted = True
         
         # Default plot for all other cases
         if not plotted:
-            self._plot_dataItem  (x, y, name=label, pen = pen, 
+            self._plot_and_connect (polar, x, y, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
 

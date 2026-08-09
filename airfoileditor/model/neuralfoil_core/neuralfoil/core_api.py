@@ -1,4 +1,3 @@
-from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
@@ -56,17 +55,26 @@ _scaled_input_distribution["N_inputs"] = len(
 )
 
 ### For speed, pre-loads the neural network weights and biases.
-_nn_parameter_files: Iterable[Path] = nn_weights_dir.glob("nn-*.npz")
-_allowable_model_sizes: set[str] = {
+_nn_parameter_files: tuple[Path, ...] = tuple(nn_weights_dir.glob("nn-*.npz"))
+_nn_parameter_file_by_model_size: dict[str, Path] = {
     # Parses filenames like "nn-large.npz" into "large", "medium", "small", etc.
-    path.stem.removeprefix("nn-")
+    path.stem.removeprefix("nn-"): path
     for path in _nn_parameter_files
 }
+_allowable_model_sizes: set[str] = set(_nn_parameter_file_by_model_size)
 
 _nn_parameters: dict[str, dict[str, np.ndarray]] = {
-    model_size: dict(np.load(nn_weights_dir / f"nn-{model_size}.npz"))
-    for model_size in _allowable_model_sizes
+    model_size: dict(np.load(parameter_file))
+    for model_size, parameter_file in _nn_parameter_file_by_model_size.items()
 }
+
+### public: list of available model sizes, sorted by increasing file size 
+available_model_sizes: list[str] = list(
+    sorted(
+        _nn_parameter_file_by_model_size,
+        key=lambda model_size: _nn_parameter_file_by_model_size[model_size].stat().st_size,
+    )
+)
 
 
 def _squared_mahalanobis_distance(x: np.ndarray) -> np.ndarray:
