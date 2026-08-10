@@ -317,6 +317,8 @@ class Polar_Definition:
 
         self._autoRange = fromDict (dataDict, "autoRange",True)
         self._valRange  = fromDict (dataDict, "valRange", self.VAL_RANGE_ALPHA)
+        if isinstance(self._valRange, tuple):
+            self._valRange = list(self._valRange)
         self._specVar   = None 
         self.set_specVar (fromDict (dataDict, "specVar",  var.ALPHA))       # it is a enum
         self._type      = None 
@@ -483,12 +485,12 @@ class Polar_Definition:
         if self.is_neuralfoil:
             aVar = var.ALPHA                                            # NeuralFoil supports alpha sweep only
 
-        if aVar == var.ALPHA or aVar == var.CL: 
+        if aVar in (var.ALPHA, var.CL) and self._specVar != aVar:
             self._specVar = aVar 
-            if self._specVar == var.ALPHA:                              # reset value range 
-                self._valRange = self.VAL_RANGE_ALPHA
+            if self._specVar == var.ALPHA:                              # reset value range only when changed
+                self._valRange = self.VAL_RANGE_ALPHA.copy()
             else: 
-                self._valRange = self.VAL_RANGE_CL
+                self._valRange = self.VAL_RANGE_CL.copy()
 
     @property
     def type (self) -> polarType: 
@@ -507,7 +509,7 @@ class Polar_Definition:
         if self.is_neuralfoil:
             aType = polarType.T1                    # NeuralFoil supports T1 only
 
-        if isinstance (aType, polarType): 
+        if isinstance (aType, polarType) and self._type != aType: 
             self._type = aType 
             # set specification variable depending on polar type 
             if self.type == polarType.T1:
@@ -521,8 +523,10 @@ class Polar_Definition:
         return self._valRange  
 
     def set_valRange (self, aRange : list): 
-        if len(aRange) ==3 : 
-            self._valRange = aRange 
+        if isinstance(aRange, list) and len(aRange) == 3:
+            self._valRange = aRange.copy()         # make a copy!
+        elif isinstance(aRange, tuple) and len(aRange) == 3:
+            self._valRange = list(aRange)
 
 
     @property
@@ -1264,7 +1268,7 @@ class Polar (Polar_Definition):
             self.set_xtripb     (polar_def.xtripb)
             self.set_autoRange  (polar_def.autoRange)
             self.set_specVar    (polar_def.specVar)
-            self.set_valRange   (polar_def.valRange)
+            self.set_valRange   (polar_def.valRange)        # at the end to ensure correct specVar and autoRange are set first
 
             if re_scale is not None and re_scale != 1.0:                              # scale reynolds if requested
                 re_scaled = round (self.re * re_scale / RE_SCALE_ROUND_TO, 0)
