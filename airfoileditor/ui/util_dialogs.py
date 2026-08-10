@@ -343,20 +343,22 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             #                 toolTip="If checked, the range of polar values is optimized by Worker\n" + 
             #                         "to cover the range from cl_min to cl_max")
             r += 1
+            _tip = "<br>The smaller the value, the smoother the polar, the more time is needed."
+            _tip_a = "Step size for polar values of alpha." + _tip
+            _tip_c = "Step size for polar values of cl."    + _tip
             FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=70, step=0.1, lim=(0.1, 1.0), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                            hide = lambda: self.polar_def.specVar != var.ALPHA)
+                            hide = lambda: self.polar_def.specVar != var.ALPHA,
+                            toolTip=_tip_a)
             FieldF (l,r,c, lab=f"Step {var.CL}", width=70, step=0.01, lim=(0.01, 0.1), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                            hide = lambda: self.polar_def.specVar != var.CL)
-            Label  (l,r,c+2, style=style.COMMENT, colSpan=6, 
-                            get="the smaller the value, the more time is needed")
+                            hide = lambda: self.polar_def.specVar != var.CL,
+                            toolTip=_tip_c)
             r += 1
             SpaceR (l, r, height=10, stretch=1)
         else:
             r += 1
             SpaceR (l, r, height=1, stretch=1)
-
         return l
 
 
