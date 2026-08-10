@@ -63,13 +63,12 @@ logger = logging.getLogger(__name__)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "4.3.2"                  # hatch "version dynamic" - PEP440 compliant version string
+__version__      = "5.0-dev"                  # hatch "version dynamic" - PEP440 compliant version string
                                             # for Github use SemVer "4.2.0-beta.3"
 
-CHANGE_TEXT      = "- Support for Xoptfoil2 version2<br>"  + \
-                   "- Export airfoil to DXF<br>" + \
-                   "- Match B-Spline (experimental)<br>" + \
-                   "- Set TE gap for Bezier and B-Spline airfoils<br>" 
+CHANGE_TEXT      = "- Airfoils based on CST-Kulfan<br>"  + \
+                   "- Integration of NeuralFoil<br>" + \
+                   "- Added PSO match airfoil optimizer (experimental)<br>"
 
 
 class Main (QMainWindow):

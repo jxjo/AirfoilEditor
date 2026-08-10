@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 5.0
+
+Work in progress:
+
+- New: CST-Kulfan-based airfoil support
+- New: [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation
+- More to come...
+
+
 ## 4.3.2
 
 ### Fixed
