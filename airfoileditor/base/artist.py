@@ -483,6 +483,8 @@ class Movable_Curve (pg.PlotCurveItem):
                   show_label = True,                                # show label P0, P1, ... for control points
                   movable_point_class = Movable_Curve_Point,        # to choose an individual Movable_Point
                   on_changed = None, 
+                  symbol = 's',                                     # symbol of control points
+                  symbol_size = 7,                                  # size of control points
                   **kwargs):
 
         self._callback_changed = on_changed
@@ -492,7 +494,7 @@ class Movable_Curve (pg.PlotCurveItem):
         # Control jpoints  
         self._jpoints : list[JPoint] = jpoints 
         # ... as movable Curve points 
-        self._movable_points = []
+        self._movable_points : list[Movable_Curve_Point] = []
  
 
         # init polyline of control points as PlotCurveItem
@@ -505,7 +507,7 @@ class Movable_Curve (pg.PlotCurveItem):
             clickable = False
         pen = pg.mkPen (penColor, width=1, style=Qt.PenStyle.DotLine)
 
-        super().__init__(*self.jpoints_xy(), pen=pen, clickable=clickable, **kwargs)
+        super().__init__(*self.jpoints_xy(), pen=pen, clickable=clickable, symbol=None, **kwargs)
 
         if movable:
             self.setZValue (10)                         # movable dotted line above other objects 
@@ -514,14 +516,17 @@ class Movable_Curve (pg.PlotCurveItem):
 
         # init control points as Movable_Points 
 
-        symbol = 's'
-
         for i, jpoint in enumerate (jpoints):
 
-            name = f"P{i}" if show_label else ""
+            if show_label:
+                name = f"P{i}" if jpoint.name is None else jpoint.name
+            else:
+                name = ""
             
             p = movable_point_class (jpoint, parent=self, name=name, id = i, movable=movable, 
-                                     color=color, symbol=symbol, size=7, label_anchor=label_anchor,  **kwargs) 
+                                     color=color, symbol=symbol, size=symbol_size, 
+                                     show_label_static=show_label, label_anchor=label_anchor,  
+                                     **kwargs) 
             
             p.sigPositionChanged.connect        (self._moving_point)
             p.sigPositionChangeFinished.connect (self._finished_point)

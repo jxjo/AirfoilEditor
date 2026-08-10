@@ -15,10 +15,9 @@ from copy                   import deepcopy
 from ..base.math_util       import * 
 from ..base.spline          import Bezier
 
-from .geometry      import Line
-from .geometry_curve        import (Side_Airfoil_Curve, Geometry_Curve,
-                                    Deviation_Line)
-from .geometry      import Panelling
+from .geometry              import Geometry, Line
+from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
+from .geometry              import Panelling
 
 import logging
 logger = logging.getLogger(__name__)
@@ -94,7 +93,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
             nPoints : number of points 
              
         """
-        super().__init__(None, None, **kwargs)
+        super().__init__(**kwargs)
 
         if cpx_or_cp is None:
             raise ValueError ("Bezier points missing")
@@ -115,8 +114,33 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         if not self._curve.has_u:
             self._curve.eval(self.u)
 
-        # for fitting - store current deviation to target
-        self._target_deviation : Deviation_Line = None
+
+
+    @classmethod
+    def on_side (cls, target_side : Line, le_curvature : float=200, ncp=None,  **kwargs):
+        """
+        Alternate constructor for a Bezier curve based on a target side 
+        - used for fitting a curve to data points
+
+        Args:
+            target_side: Line object representing the target side to fit
+            le_curvature: target leading edge curvature for initial control point placement
+            ncp: number of control points for the Bezier curve
+        """
+
+        ncp = ncp if ncp is not None else cls.NCP_DEFAULT
+        
+        # Get initial control points
+        cp = cls._get_initial_control_points(
+            target_side.x, target_side.y, ncp, le_curvature)
+        
+        # Create instance with control points
+        instance = cls(cp, **kwargs)
+        
+        # Set target deviation
+        instance.set_target_deviation_from(target_side)
+        
+        return instance
 
 
     @override
@@ -236,8 +260,155 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         
         # Map to curve parameter space via arc-length inversion
         return self._u_of_arc_fractions(curve, u_cos)
-    
-    
+
+
+    def _curve_state_key (self) -> tuple:
+        """ hashable key of current control points + panelling params, for u cache invalidation"""
+        return hash((
+            tuple(float(v) for cp in self.curve.cpoints for v in cp),
+            self._nPanels,
+            self._le_bunch,
+            self._te_bunch
+        ))
+
+
+    @property
+    def controlPoints_as_jpoints (self) -> list[JPoint]: 
+        """ bezier control points as JPoints"""
+        jpoints = []
+        nPoints = self.ncp
+
+        for i in range(nPoints):
+
+            jpoint = JPoint (self.controlPoints[i])              # xy tuple 
+
+            if self.isUpper:
+                y_lim = (0,1)
+            else:
+                y_lim = (-1,0) 
+
+            if i == 0 :                                         # first fixed 
+                jpoint.set_fixed (True)
+            elif i == (nPoints-1):                              # te vertical move
+                if self.isUpper: 
+                    jpoint.set_x_limits ((1,1))
+                    jpoint.set_y_limits (y_lim)
+                else: 
+                    jpoint.set_fixed (True)
+            elif i == 1 :                                       # le tangent vertical move
+                jpoint.set_x_limits ((0,0))
+                jpoint.set_y_limits (y_lim)
+            else:       
+                jpoint.set_x_limits ((0,1))
+
+            jpoints.append(jpoint)
+
+        return jpoints 
+
+
+    def re_fit_curve (self, target_side : Line, le_curvature : float = None, ncp = None): 
+        """ re-fit the Bezier curve to the target coordinates - used after control point changes to update curve"""
+
+        if ncp is None:
+            ncp = self.ncp
+        
+        # Get initial control points using simple direct placement
+        cp = self._get_initial_control_points(
+            target_side.x, target_side.y, ncp, le_curvature)
+
+        # update control points of self
+        self.set_controlPoints(cp)
+
+
+    def move_controlPoint_to (self, index, x, y): 
+        """ move curve control point to x,y - taking care of order of points. 
+        If x OR y is None, the coordinate is not changed
+
+        Returns x, y of new (corrected) position """
+
+        cpx = self.curve.cpoints_x
+        cpy = self.curve.cpoints_y
+
+        if x is None: x = cpx[index]
+        if y is None: y = cpy[index]
+        if index == 0:                          # fixed
+            x, y = 0.0, 0.0 
+        elif index == 1:                        # only vertical move
+            x = 0.0 
+            if cpy[index] > 0: 
+                y = max (y,  0.006)             # LE not too sharp
+            else: 
+                y = min (y, -0.006)
+        elif index == len(cpx) - 1:              # do not move TE gap   
+            x = 1.0 
+            y = cpy[index]                       
+        else:                      
+            x = max (x, 0.01)       
+            x = min (x, 0.99)
+
+        self.curve.set_cpoint (index, x,y)
+
+        return x, y 
+
+
+    @property
+    def te_gap (self):
+        """ returns signed y value of the last bezier control point which is half the te gap"""
+        return self.curve.cpoints_y[-1]
+
+    def set_te_gap(self, dgap: float, xBlend: float = None):
+        """Apply a trailing-edge gap delta to this Bezier side.
+
+        Args:
+            dgap:   delta gap in y-coordinates to be distributed to this side
+            xBlend: blending range from trailing edge, 0.0..1.0
+        """
+
+        if xBlend is None:
+            xBlend = Geometry.TE_GAP_XBLEND
+
+        control_points = self.controlPoints
+        ncp = len(control_points)
+
+        x = np.array([p[0] for p in control_points])
+        y = np.array([p[1] for p in control_points], copy=True)
+
+        if xBlend == 0.0:
+            for i in range(ncp):
+                if x[i] == 1.0:
+                    if self.type == Line.Type.UPPER:
+                        y[i] += 0.5 * dgap
+                    elif self.type == Line.Type.LOWER:
+                        y[i] -= 0.5 * dgap
+
+            self.controlPoints = list(zip(x, y))
+            return
+
+        # Convert trailing-edge blend length in x-space to a curve parameter start.
+        x_start = 1.0 - xBlend
+        u_start = self.curve.eval_u_on_x(x_start, fast=False)
+
+        for i in range(ncp):
+            # Approximate each control point position with a normalized index parameter.
+            u = i / (ncp - 1)
+
+            if u <= u_start:
+                tfac = 0.0
+            else:
+                ub = (u - u_start) / (1.0 - u_start)
+                # Smoothstep-5 ramp for C2-continuous TE blending.
+                tfac = ub**3 * (ub * (ub * 6.0 - 15.0) + 10.0)
+
+            dy = 0.5 * dgap * tfac
+
+            if self.type == Line.Type.UPPER:
+                y[i] += dy
+            elif self.type == Line.Type.LOWER:
+                y[i] -= dy
+
+        self.set_controlPoints(list(zip(x, y)))    
+
+
     # ------------------
 
 
@@ -356,3 +527,23 @@ class Geometry_Bezier (Geometry_Curve):
             self._panelling = Panelling_Bezier()  
         return self._panelling
 
+
+    @override
+    def set_curve_parms_and_fit (self, side : Side_Airfoil_Bezier, ncp : int,
+                        target_side : Line,
+                        le_curvature : float,
+                        moving : bool = False):
+        """ set new no bezier control points for side with fit to target_side - update geometry"""
+
+        ncp = np.clip (ncp, side.NCP_BOUNDS[0], side.NCP_BOUNDS[1])  # limit number of control points to reasonable range
+
+        if ncp != side.ncp:
+            
+            # re-fit curve to current target coordinates or to self if no target coordinates defined 
+            side.re_fit_curve ( target_side=target_side, ncp=ncp, le_curvature=le_curvature)   
+
+            self._reset()
+
+            if not moving:
+                mod = self.MOD_CURVE + " " + side.name
+                self._changed (mod, f"#Ctrl Points={ncp}")

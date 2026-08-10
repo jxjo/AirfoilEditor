@@ -40,13 +40,15 @@ from ..base.common_utils      import *
 from ..base.math_util         import * 
 from ..base.spline            import Spline1D, Spline2D
 
-from .airfoil               import Airfoil, Airfoil_Bezier
-from .airfoil               import Flap_Definition
-from .xo2_driver            import Worker, file_in_use   
+from .airfoil               import Airfoil, Flap_Definition
+from .geometry_cst          import Geometry_CST
+from .polar_dto             import Polar_Data_Set, Polar_File_Meta
+from .xo2_driver            import Worker
+from .nf_driver             import Neuralfoil_Evaluator, Airfoil_As_CST
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 #-------------------------------------------------------------------------------
@@ -63,23 +65,27 @@ class StrEnum_Extended (StrEnum):
 class var (StrEnum_Extended):
 
     @classmethod
-    def list_small (cls):
-        """ returns a small list of main polar variables"""
+    def list_small (cls) -> list['var']:
+        """ returns a small list of main polar variables vars"""
         l = list (cls) [:]
         l.remove(var.CDF)
         l.remove(var.XTR)
+        l.remove(var.BUBBLE_TOP)
+        l.remove(var.BUBBLE_BOT)
         return l
 
 
     @override
     @classmethod
-    def values (cls):
-        """ returns a list of all enum values"""
+    def values (cls) -> list[str]:
+        """ returns a list of all enum values as strings"""
 
         # exclude cdf (friction drag) from list of values
         val_list = super().values()
         val_list.remove("cdf")
         val_list.remove("xtr")
+        val_list.remove("bubble_top")
+        val_list.remove("bubble_bot")
 
         return val_list
 
@@ -98,6 +104,9 @@ class var (StrEnum_Extended):
     XTRT    = "xtrt"               
     XTRB    = "xtrb"    
     XTR     = "xtr"                                     # mean value of xtrt and xtrb (used by xo2)       
+    BUBBLE_TOP      = "bubble_top"                      # bubble chord range on top side
+    BUBBLE_BOT      = "bubble_bot"                      # bubble chord range on bottom side
+    NF_CONFIDENCE   = "nf_confidence"                   # NeuralFoil prediction confidence [0..1]
 
 
 class polarType (StrEnum_Extended):
@@ -276,10 +285,40 @@ class Polar_Definition:
     VAL_RANGE_ALPHA = [-4.0, 13.0, 0.3]         # default value range for alpha polar
     VAL_RANGE_CL    = [-0.2, 1.2, 0.05]
 
+
+    POLAR_XFOIL      = 'XFOIL'                  # driver of polar calculation 
+    POLAR_NEURALFOIL = 'NeuralFoil'
+
+
+    @staticmethod
+    def drivers () -> list[str]:
+        """ list of available polar drivers (e.g. xfoil, neuralfoil)"""
+        drivers = []
+        if Worker.ready:
+            drivers.append(Polar_Definition.POLAR_XFOIL)
+        if Neuralfoil_Evaluator.ready:
+            drivers.append(Polar_Definition.POLAR_NEURALFOIL)
+        return drivers
+
+
     def __init__(self, dataDict : dict = None):
         
+        self._nf_model_size = fromDict (dataDict, "nf_model_size", None)    # None → xfoil polar
+
+        # sanity check for xfoil and neuralfoil availability
+        if self.is_neuralfoil and not Neuralfoil_Evaluator.ready:
+            self.set_is_xfoil(True)
+            logger.warning (f"NeuralFoil is not available, switching to Xfoil polar")
+        elif self.is_xfoil and not Worker.ready:
+            self.set_is_neuralfoil(True)
+            logger.info (f"Worker (Xfoil) is not available, switching to NeuralFoil polar")
+
+        # init instance variables from dataDict or defaults
+
         self._autoRange = fromDict (dataDict, "autoRange",True)
         self._valRange  = fromDict (dataDict, "valRange", self.VAL_RANGE_ALPHA)
+        if isinstance(self._valRange, tuple):
+            self._valRange = list(self._valRange)
         self._specVar   = None 
         self.set_specVar (fromDict (dataDict, "specVar",  var.ALPHA))       # it is a enum
         self._type      = None 
@@ -298,7 +337,6 @@ class Polar_Definition:
         self._active    = fromDict (dataDict, "active",   True)             # a polar definition can be in-active
 
         self._is_mandatory = False                                          #  polar needed e.g. for xo2
-
 
 
     def __repr__(self) -> str:
@@ -327,27 +365,36 @@ class Polar_Definition:
 
         if self._flap_def:
             toDict (d, "flap", self._flap_def._as_dict ())
+        if self._nf_model_size is not None:
+            toDict (d, "nf_model_size", self._nf_model_size)
         return d
 
 
-    def _get_label (self, polarType, re : float, ma : float, 
-                    ncrit : float, 
-                    xtript: float | None, xtripb: float | None,
-                    flap_def : Flap_Definition): 
-        """ return a label of these polar variables"""
-        ncirt_str  = f" N{ncrit:.2f}".rstrip('0').rstrip('.') 
-        ma_str     = f" M{ma:.2f}".rstrip('0').rstrip('.') if ma else ""
-        xtript_str = f" Trt{xtript:.0%}" if xtript is not None else ""
-        xtripb_str = f" Trb{xtripb:.0%}" if xtripb is not None else ""
-
-        if flap_def:
-            flap_str  = f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
-            flap_str += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
-        else:
-            flap_str = ""
-
-        return f"{polarType} Re{int(re/1000)}k{ma_str}{ncirt_str}{flap_str}{xtript_str}{xtripb_str}"
+    def as_meta (self) -> Polar_File_Meta:
+        """ polar parameters as a Polar_File_Meta DTO """
+        flap = self._flap_def
+        return Polar_File_Meta (
+            nf_model_size = self._nf_model_size,
+            polar_type  = str (self.type),
+            re          = self.re,
+            ma          = self.ma,
+            ncrit       = self.ncrit,
+            xtript      = self._xtript,
+            xtripb      = self._xtripb,
+            flap_angle  = flap.flap_angle  if flap else None,
+            x_flap      = flap.x_flap      if flap else None,
+            y_flap      = flap.y_flap      if flap else None,
+            y_flap_spec = flap.y_flap_spec if flap else None,
+            spec_var    = str (self.specVar),
+            val_range   = tuple(self.valRange) if self.valRange is not None else None,
+            auto_range  = self.autoRange,
+        )
     
+    
+    def as_copy (self) -> 'Polar_Definition':
+        """ return a copy of self """
+        return Polar_Definition (dataDict=self._as_dict())
+
 
     @property
     def active (self) -> bool:
@@ -434,13 +481,16 @@ class Polar_Definition:
                 aVar = var(aVar)
             except ValueError:
                 raise ValueError(f"{aVar} is not a valid specVar")
-            
-        if aVar == var.ALPHA or aVar == var.CL: 
+
+        if self.is_neuralfoil:
+            aVar = var.ALPHA                                            # NeuralFoil supports alpha sweep only
+
+        if aVar in (var.ALPHA, var.CL) and self._specVar != aVar:
             self._specVar = aVar 
-            if self._specVar == var.ALPHA:                                       # reset value range 
-                self._valRange = self.VAL_RANGE_ALPHA
+            if self._specVar == var.ALPHA:                              # reset value range only when changed
+                self._valRange = self.VAL_RANGE_ALPHA.copy()
             else: 
-                self._valRange = self.VAL_RANGE_CL
+                self._valRange = self.VAL_RANGE_CL.copy()
 
     @property
     def type (self) -> polarType: 
@@ -455,8 +505,11 @@ class Polar_Definition:
                 aType = polarType(aType)
             except ValueError:
                 raise ValueError(f"{aType} is not a valid polar type")
-            
-        if isinstance (aType, polarType): 
+
+        if self.is_neuralfoil:
+            aType = polarType.T1                    # NeuralFoil supports T1 only
+
+        if isinstance (aType, polarType) and self._type != aType: 
             self._type = aType 
             # set specification variable depending on polar type 
             if self.type == polarType.T1:
@@ -470,8 +523,10 @@ class Polar_Definition:
         return self._valRange  
 
     def set_valRange (self, aRange : list): 
-        if len(aRange) ==3 : 
-            self._valRange = aRange 
+        if isinstance(aRange, list) and len(aRange) == 3:
+            self._valRange = aRange.copy()         # make a copy!
+        elif isinstance(aRange, tuple) and len(aRange) == 3:
+            self._valRange = list(aRange)
 
 
     @property
@@ -537,15 +592,33 @@ class Polar_Definition:
     def ma (self) -> float: 
         """ Mach number like 0.3"""
         return self._ma
+    
     def set_ma (self, aMach):
-        mach = aMach if aMach is not None else 0.0 
-        self._ma = clip (round(mach,2), 0.0, 1.0)   
+        if self.is_neuralfoil:
+            self._ma = 0.0                          # NeuralFoil is incompressible
+        else:
+            mach = aMach if aMach is not None else 0.0 
+            self._ma = clip (round(mach,2), 0.0, 1.0)
 
 
     @property
     def name (self): 
         """ returns polar name as a label  """
-        return self._get_label (self.type, self.re, self.ma, self.ncrit, self._xtript, self._xtripb, self.flap_def)
+
+        text  = f"{self.type} Re{int(self.re/1000)}k"
+        text += f" N{self.ncrit:.2f}".rstrip('0').rstrip('.')
+        text += f" M{self.ma:.2f}".rstrip('0').rstrip('.') if self.ma else ""
+        text += f" Trt{self._xtript:.0%}" if self._xtript is not None else ""
+        text += f" Trb{self._xtripb:.0%}" if self._xtripb is not None else ""
+
+        flap_def = self.flap_def
+        if flap_def:
+            text += f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
+            text += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
+
+        text += " - NF" if self.is_neuralfoil else " - XFOIL"
+        return text
+
 
     @property
     def name_long (self):
@@ -613,7 +686,43 @@ class Polar_Definition:
         return self._flap_def 
     
     def set_flap_def (self, aDef : Flap_Definition | None):
-        self._flap_def = aDef
+        if self.is_xfoil:
+            self._flap_def = aDef
+        else:
+            self._flap_def = None                       # NeuralFoil does not support flaps
+
+
+    @property
+    def nf_model_size (self) -> str | None:
+        """ NeuralFoil model size — None means this is an xfoil polar """
+        return self._nf_model_size
+
+    def set_nf_model_size (self, model_size: str | None):
+        if model_size is not None and model_size not in Neuralfoil_Evaluator.available_model_sizes ():
+            return
+        self._nf_model_size = model_size
+        if model_size is not None:                      # switching to NeuralFoil — enforce constraints
+            self.set_type     (polarType.T1)            # T1 only (fixed Re sweep)
+            self.set_specVar  (var.ALPHA)               # alpha sweep only
+            self.set_ma       (0.0)                     # incompressible only
+            self.set_flap_def (None)                    # no flap support
+
+    @property
+    def is_neuralfoil (self) -> bool:   
+        return self._nf_model_size is not None
+
+    def set_is_neuralfoil (self, aBool : bool):
+        if aBool:
+            self.set_nf_model_size (Neuralfoil_Evaluator.MODEL_SIZE_DEFAULT)
+        else:
+            self.set_nf_model_size (None)
+
+    @property
+    def is_xfoil (self) -> bool:        
+        return self._nf_model_size is None
+
+    def set_is_xfoil (self, aBool : bool):
+        self.set_is_neuralfoil (not aBool)
 
 
     def calc_v_for_chord (self, chord : float) -> float | None:
@@ -661,8 +770,9 @@ class Polar_Set:
             only_active: add only the 'active' polar definitions
         """
 
-        self._airfoil = myAirfoil 
-        self._polars = []                                   # list of Polars of self is holding
+        self._airfoil           = myAirfoil
+        self._airfoil_as_CST    = None                  # CST repersentation of airfoil for NeuralFoil (lazy loaded)
+        self._polars            = []                    # list of Polars of self is holding
 
         re_scale = re_scale if re_scale is not None else 1.0 
         self._re_scale = clip (re_scale, 0.001, 100)
@@ -704,6 +814,21 @@ class Polar_Set:
                 self.airfoil.save()
             logger.debug (f'Airfoil {self.airfoil_pathFileName_abs} saved for polar generation') 
 
+    @property
+    def airfoil_as_CST (self) -> Airfoil_As_CST | None:
+        """ returns a CST representation of the airfoil for NeuralFoil """
+
+        if self._airfoil_as_CST is None and self._airfoil is not None:
+
+            w_upper, w_lower, le_weight, te_thickness = Geometry_CST.geometry_as_CST (self._airfoil.geo, n_weights=8)
+
+            self._airfoil_as_CST = Airfoil_As_CST(
+                upper_weights       = w_upper,
+                lower_weights       = w_lower,
+                leading_edge_weight = le_weight,
+                TE_thickness        = te_thickness)
+            
+        return self._airfoil_as_CST
 
     @property
     def polars (self) -> list ['Polar']: 
@@ -856,9 +981,14 @@ class Polar_Set:
 
         for polar in polars: 
             if not polar.isLoaded:
-                polar.load_xfoil_polar ()
-                if not polar.isLoaded: 
-                    polars_not_loaded.append(polar)
+
+                if polar.is_xfoil:
+                    polar.load_polar ()
+                    if not polar.isLoaded: 
+                        polars_not_loaded.append(polar)                         # lazy load failed - has to be generated
+
+                elif polar.is_neuralfoil:
+                    polar.load_polar ()
 
         # polars missing - if not already done, create polar_task for Worker to generate polar 
 
@@ -903,7 +1033,7 @@ class Polar_Point:
             --> Polar   (1..n) 
                 --> Polar_Point  (1..n) 
     """
-    def __init__(self):
+    def __init__(self, values: dict[var, np.ndarray] | None = None, index: int | None = None):
         """
         Main constructor for new opPoint 
 
@@ -920,6 +1050,27 @@ class Polar_Point:
 
         self.bubble_top : tuple = None                  # bubble top side (x_start, x_end)
         self.bubble_bot : tuple = None                  # bubble bot side (x_start, x_end)
+
+        self.nf_confidence : float = None               # NeuralFoil confidence value for this point
+
+        if values is not None and index is not None:
+            self._set_from_values_cache (values, index)
+
+
+    def _set_from_values_cache (self, values: dict[var, np.ndarray], index: int):
+        """Load one operating point from cached polar value arrays."""
+
+        self.alpha = values[var.ALPHA][index]
+        self.cl = values[var.CL][index]
+        self.cd = values[var.CD][index]
+        self.cdp = values[var.CDP][index]
+        self.cm = values[var.CM][index]
+        self.cp_min = values[var.CP_MIN][index]
+        self.xtrt = values[var.XTRT][index]
+        self.xtrb = values[var.XTRB][index]
+        self.bubble_top = values[var.BUBBLE_TOP][index]
+        self.bubble_bot = values[var.BUBBLE_BOT][index]
+        self.nf_confidence = values[var.NF_CONFIDENCE][index] 
 
     @property
     def cdf (self) -> float: 
@@ -952,10 +1103,10 @@ class Polar_Point:
 
         if op_var == var.CD:
             val = self.cd
-        elif op_var == var.CDP:
-            val = self.cdp
         elif op_var == var.CDF:
             val = self.cdf
+        elif op_var == var.CDP:
+            val = self.cdp
         elif op_var == var.CL:
             val = self.cl
         elif op_var == var.ALPHA:
@@ -968,6 +1119,10 @@ class Polar_Point:
             val = self.xtrt
         elif op_var == var.XTRB:
             val = self.xtrb
+        elif op_var == var.BUBBLE_TOP:
+            val = self.bubble_top
+        elif op_var == var.BUBBLE_BOT:
+            val = self.bubble_bot
         elif op_var == var.GLIDE:
             val = self.glide
         elif op_var == var.RE_CALC:
@@ -976,6 +1131,8 @@ class Polar_Point:
             val = self.sink
         elif op_var == var.XTR:
             val = self.xtr
+        elif op_var == var.NF_CONFIDENCE:
+            val = self.nf_confidence
         else:
             raise ValueError (f"Op point variable '{op_var}' not known")
         return val 
@@ -1004,8 +1161,39 @@ class Polar_Point:
             self.xtrt  = val
         elif op_var == var.XTRB:
             self.xtrb = val
+        elif op_var == var.BUBBLE_TOP:
+            self.bubble_top = val
+        elif op_var == var.BUBBLE_BOT:
+            self.bubble_bot = val
         else:
             raise ValueError (f"Op point variable '{op_var}' not supported")
+
+    @classmethod
+    def from_values (cls,
+                     alpha: float = None,
+                     cl: float = None,
+                     cd: float = None,
+                     cdp: float = None,
+                     cm: float = None,
+                     cp_min: float = None,
+                     xtrt: float = None,
+                     xtrb: float = None,
+                     bubble_top: tuple = None,
+                     bubble_bot: tuple = None) -> 'Polar_Point':
+        """Alternate constructor: build a Polar_Point from cached values."""
+        op = cls ()
+        op.alpha  = alpha
+        op.cl     = cl
+        op.cd     = cd
+        op.cdp    = cdp
+        op.cm     = cm
+        op.cp_min = cp_min
+        op.xtrt   = xtrt
+        op.xtrb   = xtrb
+        op.bubble_top = bubble_top
+        op.bubble_bot = bubble_bot
+        return op
+
 
     @property
     def is_bubble_bot_turbulent_separated (self) -> bool:
@@ -1022,7 +1210,7 @@ class Polar_Point:
         much more pressure drag.
         """
         if self.bubble_bot:
-            x_start, x_end = self.bubble_bot
+            _, x_end = self.bubble_bot
             return x_end >= min(1.0, self.xtrb + 0.02) and self.xtrb < 1.0
         else:
             return False
@@ -1031,7 +1219,7 @@ class Polar_Point:
     def is_bubble_top_turbulent_separated (self) -> bool:
         """ True if top side has turbulent separated bubble """
         if self.bubble_top:
-            x_start, x_end = self.bubble_top
+            _, x_end = self.bubble_top
             return x_end >= min(1.0, self.xtrt + 0.02) and self.xtrt < 1.0
         else:
             return False
@@ -1066,22 +1254,9 @@ class Polar (Polar_Definition):
         self._polar_set = mypolarSet
         self._re_scale  = re_scale
 
-        self._error_reason = None                       # if error occurred during polar generation 
+        self._error_reason = None                           # if error occurred during polar generation 
 
-        self._polar_points = []                         # the single polar points of self
-        self._alpha = None
-        self._cl    = None
-        self._cd    = None
-        self._cdp   = None
-        self._cdf   = None
-        self._cm    = None 
-        self._cp_min = None
-        self._cd    = None 
-        self._xtrt  = None
-        self._xtrb  = None
-        self._glide = None
-        self._sink  = None
-        self._re_calc = None
+        self._values : dict[var, np.ndarray] = {}           # cached polar values: var → array
 
         if polar_def: 
             self.set_active     (polar_def.active)
@@ -1093,7 +1268,7 @@ class Polar (Polar_Definition):
             self.set_xtripb     (polar_def.xtripb)
             self.set_autoRange  (polar_def.autoRange)
             self.set_specVar    (polar_def.specVar)
-            self.set_valRange   (polar_def.valRange)
+            self.set_valRange   (polar_def.valRange)        # at the end to ensure correct specVar and autoRange are set first
 
             if re_scale is not None and re_scale != 1.0:                              # scale reynolds if requested
                 re_scaled = round (self.re * re_scale / RE_SCALE_ROUND_TO, 0)
@@ -1106,6 +1281,9 @@ class Polar (Polar_Definition):
             # sanity - no polar with flap angle == 0.0 
             if polar_def.flap_def and polar_def.flap_def.flap_angle != 0.0:
                 self.set_flap_def   (copy (polar_def.flap_def))
+
+            self.set_nf_model_size  (polar_def.nf_model_size)   # neuralfoil model size - None means xfoil polar
+
 
     def __repr__(self) -> str:
         """ nice print string wie polarType and Re """
@@ -1124,15 +1302,33 @@ class Polar (Polar_Definition):
         """ scale value for reynolds number """
         return self._re_scale
 
+
+    def point_at (self, index: int) -> Polar_Point | None:
+        """Return one Polar_Point view at index."""
+
+        if index < 0 or index >= self._n_points:
+            return None
+
+        return self._make_point_at (index)
+
+
     @property
-    def polar_points (self) -> list [Polar_Point]:
-        """ returns the sorted list of Polar_Points of self """
-        return self._polar_points
+    def _n_points (self) -> int:
+        """Number of cached operating points."""
+
+        alpha = self._values.get (var.ALPHA)
+        return len (alpha) if alpha is not None else 0
+
+
+    def _make_point_at (self, index: int) -> Polar_Point:
+        """Build one Polar_Point view from the cached value arrays."""
+
+        return Polar_Point (self._values, index)
         
     @property
     def isLoaded (self) -> bool: 
         """ is polar data loaded from file (for async polar generation)"""
-        return len(self._polar_points) > 0 or self.error_occurred
+        return bool (self._values) or self.error_occurred
     
     @property 
     def error_occurred (self) -> bool:
@@ -1149,69 +1345,54 @@ class Polar (Polar_Definition):
 
 
     @property
-    def alpha (self) -> np.ndarray:
-        if not np.any(self._alpha): self._alpha = self._get_values_forVar (var.ALPHA)
-        return self._alpha
-    
-    @property
-    def cl (self) -> np.ndarray:
-        if not np.any(self._cl): self._cl = self._get_values_forVar (var.CL)
-        return self._cl
-    
-    @property
-    def cd (self) -> np.ndarray:
-        if not np.any(self._cd): self._cd = self._get_values_forVar (var.CD)
-        return self._cd
-    
-    @property
-    def cdp (self) -> np.ndarray:
-        if not np.any(self._cdp): self._cdp = self._get_values_forVar (var.CDP)
-        return self._cdp
-        
-    @property
-    def cdf (self) -> np.ndarray:
-        if not np.any(self._cdf): self._cdf  = self._get_values_forVar (var.CDF)
-        return self._cdf
-        
-    @property
-    def glide (self) -> np.ndarray:
-        if not np.any(self._glide): self._glide = self._get_values_forVar (var.GLIDE)
-        return self._glide
-    
-    @property
-    def sink (self) -> np.ndarray:
-        if not np.any(self._sink): self._sink = self._get_values_forVar (var.SINK)
-        return self._sink
-    
-    @property
-    def re_calc (self) -> np.ndarray:
-        if not np.any(self._re_calc): self._re_calc = self._get_values_forVar (var.RE_CALC)
-        return self._re_calc
+    def alpha (self) -> np.ndarray:     return self._ofVar (var.ALPHA)
 
     @property
-    def cm (self) -> np.ndarray:
-        if not np.any(self._cm): self._cm = self._get_values_forVar (var.CM)
-        return self._cm
+    def cl (self) -> np.ndarray:        return self._ofVar (var.CL)
 
     @property
-    def cp_min (self) -> np.ndarray:
-        if not np.any(self._cp_min): self._cp_min = self._get_values_forVar (var.CP_MIN)
-        return self._cp_min
-    
-    @property
-    def xtrt (self) -> np.ndarray:
-        if not np.any(self._xtrt): self._xtrt = self._get_values_forVar (var.XTRT)
-        return self._xtrt
-    
-    @property
-    def xtrb (self) -> np.ndarray:
-        if not np.any(self._xtrb): self._xtrb = self._get_values_forVar (var.XTRB)
-        return self._xtrb
+    def cd (self) -> np.ndarray:        return self._ofVar (var.CD)
 
     @property
-    def xtr (self) -> np.ndarray:
-        """ returns the average transition values of self """
-        return (self.xtrb + self.xtrt) / 2.0
+    def cdp (self) -> np.ndarray:       return self._ofVar (var.CDP)
+
+    @property
+    def cdf (self) -> np.ndarray:       return self._ofVar (var.CDF)
+
+    @property
+    def glide (self) -> np.ndarray:     return self._ofVar (var.GLIDE)
+
+    @property
+    def sink (self) -> np.ndarray:      return self._ofVar (var.SINK)
+
+    @property
+    def re_calc (self) -> np.ndarray:   return self._ofVar (var.RE_CALC)
+
+    @property
+    def cm (self) -> np.ndarray:        return self._ofVar (var.CM)
+
+    @property
+    def cp_min (self) -> np.ndarray:    return self._ofVar (var.CP_MIN)
+
+    @property
+    def xtrt (self) -> np.ndarray:      return self._ofVar (var.XTRT)
+
+    @property
+    def xtrb (self) -> np.ndarray:      return self._ofVar (var.XTRB)
+
+    @property
+    def xtr (self) -> np.ndarray:       return self._ofVar (var.XTR)
+
+    @property
+    def bubble_top (self) -> np.ndarray:
+        return self._ofVar (var.BUBBLE_TOP)
+
+    @property
+    def bubble_bot (self) -> np.ndarray:
+        return self._ofVar (var.BUBBLE_BOT)
+
+    @property
+    def nf_confidence (self) -> np.ndarray: return self._ofVar (var.NF_CONFIDENCE)
 
 
     @property
@@ -1258,12 +1439,42 @@ class Polar (Polar_Definition):
     @property
     def has_bubble_top (self) -> bool:
         """ True if bubble top side is defined in any polar point """
-        return any (p.bubble_top for p in self.polar_points)        
+        bubble_top = self._values.get (var.BUBBLE_TOP)
+        return bool (bubble_top is not None and any (bubble_top))        
     
     @property
     def has_bubble_bot (self) -> bool:  
         """ True if bubble bot side is defined in any polar point """
-        return any (p.bubble_bot for p in self.polar_points)
+        bubble_bot = self._values.get (var.BUBBLE_BOT)
+        return bool (bubble_bot is not None and any (bubble_bot))
+
+
+    def is_bubble_top_turbulent_separated_at (self, index: int) -> bool:
+        """True if the top-side bubble at index is turbulent separated."""
+
+        if index < 0 or index >= len (self.xtrt):
+            return False
+
+        bubble = self.bubble_top[index]
+        if bubble:
+            _, x_end = bubble
+            return x_end >= min (1.0, self.xtrt[index] + 0.02) and self.xtrt[index] < 1.0
+        else:
+            return False
+
+
+    def is_bubble_bot_turbulent_separated_at (self, index: int) -> bool:
+        """True if the bottom-side bubble at index is turbulent separated."""
+
+        if index < 0 or index >= len (self.xtrb):
+            return False
+
+        bubble = self.bubble_bot[index]
+        if bubble:
+            _, x_end = bubble
+            return x_end >= min (1.0, self.xtrb[index] + 0.02) and self.xtrb[index] < 1.0
+        else:
+            return False
 
 
     @property
@@ -1271,7 +1482,7 @@ class Polar (Polar_Definition):
         """ returns a Polar_Point at min cd - or None if not valid"""
         if np.any(self.cd):
             ip = np.argmin (self.cd)
-            return self.polar_points [ip]
+            return self.point_at (ip)
 
 
     @property
@@ -1279,22 +1490,21 @@ class Polar (Polar_Definition):
         """ returns a Polar_Point at max glide - or None if not valid"""
         if np.any(self.glide):
             ip = np.argmax (self.glide)
-            return self.polar_points [ip]
+            return self.point_at (ip)
 
     @property
     def max_cl (self) -> Polar_Point:
         """ returns a Polar_Point at max cl - or None if not valid"""
         if np.any(self.cl):
             ip = np.argmax (self.cl)
-            return self.polar_points [ip]
-
+            return self.point_at (ip)
 
     @property
     def min_cl (self) -> Polar_Point:
         """ returns a Polar_Point at min cl - or None if not valid"""
         if np.any(self.cl):
             ip = np.argmin (self.cl)
-            return self.polar_points [ip]
+            return self.point_at (ip)
 
 
     @property
@@ -1334,90 +1544,30 @@ class Polar (Polar_Definition):
             return None
 
 
+    @property
+    def cm_0 (self) -> float:
+        """ returns cm at alpha=0 - or None if not valid"""
+        if np.any(self.cm) and np.any(self.alpha):
+            return self.get_interpolated (var.ALPHA, 0.0, var.CM)
+        else:
+            return None
+
+
+
     def ofVars (self, xyVars: Tuple[var, var]):
         """ returns x,y polar of the tuple xyVars"""
-
-        x, y = [], []
-        
+    
         if isinstance(xyVars, tuple):
             x = self._ofVar (xyVars[0])
             y = self._ofVar (xyVars[1])
-
-            # sink polar - cut values <= 0 
-            if var.SINK in xyVars: 
-                i = 0 
-                if var.SINK == xyVars[0]:
-                    for i, val in enumerate(x):
-                        if val > 0.0: break
-                else: 
-                    for i, val in enumerate(y):
-                        if val > 0.0: break
-                x = x[i:]
-                y = y[i:]
+        else:
+            x, y = np.array([]), np.array([])
         return x,y 
 
-    # -----------------------
 
-    def _ofVar (self, polar_var: var):
-
-        vals = []
-        if   polar_var == var.CL:
-            vals = self.cl
-        elif polar_var == var.CD:
-            vals = self.cd
-        elif polar_var == var.CDP:
-            vals = self.cdp
-        elif polar_var == var.CDF:
-            vals = self.cdf
-        elif polar_var == var.ALPHA:
-            vals = self.alpha
-        elif polar_var == var.GLIDE:
-            vals = self.glide
-        elif polar_var == var.RE_CALC:
-            vals = self.re_calc
-        elif polar_var == var.SINK:
-            vals = self.sink
-        elif polar_var == var.CM:
-            vals = self.cm
-        elif polar_var == var.CP_MIN:
-            vals = self.cp_min
-        elif polar_var == var.XTRT:
-            vals = self.xtrt
-        elif polar_var == var.XTRB:
-            vals = self.xtrb
-        elif polar_var == var.XTR:
-            vals = self.xtr
-        else:
-            raise ValueError ("Unknown polar variable: %s" % polar_var)
-        return vals
-    
-
-    def _get_values_forVar (self, op_var) -> np.ndarray:
-        """ copy values of var from op points to array"""
-
-        nPoints = len(self.polar_points)
-        if nPoints == 0: return np.array([]) 
-
-        values = np.zeros (nPoints)
-        for i, op in enumerate(self.polar_points):
-
-            if op_var == var.RE_CALC:                                   # special case for re_calc    
-                values[i] = self._re_calc_for_op (op)
-            else:
-                values[i] = op.get_value (op_var)
-        return values 
-
-
-    def _re_calc_for_op (self, op : Polar_Point) -> float:
-        """ returns the re_calc value for a single polar point"""
-
-        if self.type == polarType.T2:
-            if op.cl and self.re:
-                return self.re / np.sqrt(abs(op.cl))
-            else:
-                return 0.0      
-        else:
-            return self.re if self.re else 0.0
+    def _ofVar (self, polar_var: var) -> np.ndarray:
+        """ return cached values for a polar variable """
+        return self._values.get (polar_var, np.array([]))
         
 
     def get_interpolated (self, xVar : var, xVal : float, yVar : var,
@@ -1463,8 +1613,7 @@ class Polar (Polar_Definition):
 
         if not self.isLoaded: return None
 
-        point = Polar_Point()
-        point.set_value (xVar, xVal)                            # set xVar value in point
+        point_values = {xVar: xVal}
 
         # do not interpolate self 
         vars =  [var.CL, var.CD, var.CDP, var.ALPHA, var.CM, var.CP_MIN, var.XTRT, var.XTRB]
@@ -1477,19 +1626,55 @@ class Polar (Polar_Definition):
 
             if yVal is None:
                 return None                                     # no interpolation possible     
-            
-            point.set_value (yVar, yVal)
 
-        return point
+            point_values[yVar] = yVal
+
+        return Polar_Point.from_values (
+            alpha = point_values.get (var.ALPHA),
+            cl = point_values.get (var.CL),
+            cd = point_values.get (var.CD),
+            cdp = point_values.get (var.CDP),
+            cm = point_values.get (var.CM),
+            cp_min = point_values.get (var.CP_MIN),
+            xtrt = point_values.get (var.XTRT),
+            xtrb = point_values.get (var.XTRB),
+        )
+
+
+    @property
+    def info_as_html (self) -> str:
+        """ polar key values as HTML table for the click-info tooltip """
+
+        def row (label: str, value: str, label_at : str=None, value_at: str=None) -> str:
+            return (f"<tr>"
+                    f"<td style='padding-right: 5px'>{label}</td>"
+                    f"<td style='padding-right:10px'>{value}</td>"
+                    f"<td style='padding-right: 5px'>{'at'     if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{label_at if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{value_at if value_at is not None else ''}</td>"
+                    f"</tr>")
+
+        rows = [
+            row ("cl_max",     f"{self.max_cl.cl:.2f}",       "alpha", f"{self.max_cl.alpha:.2f}°"),
+            row ("cd_min",     f"{self.min_cd.cd:.5f}",       "cl",    f"{self.min_cd.cl:.2f}"),
+            row ("cl/cd max",  f"{self.max_glide.glide:.1f}", "cl",    f"{self.max_glide.cl:.2f}" ),
+            row ("cm_0",       f"{self.cm_0:.3f}"),
+            row ("alpha_0",    f"{self.alpha0:.2f}°"),
+        ]
+
+        html  = f"<b>{self.polar_set.airfoil.fileName}</b><br>"""
+        html += f"{self.name}<br>"""
+        html += f"<table>{''.join(rows)}</table>"
+        return html
 
 
 
     #--------------------------------------------------------
    
 
-    def load_xfoil_polar (self):
+    def load_polar (self):
         """ 
-        Loads self from Xfoil polar file.
+        Loads self from Xfoil polar file or evaluates via NeuralFoil.
 
         If loading could be done or error occurred, isLoaded will be True 
         """
@@ -1497,128 +1682,119 @@ class Polar (Polar_Definition):
         if self.isLoaded: return 
 
         try: 
-            # polar file existing?  - if yes, load polar
-            if self.is_flapped:
-                flap_angle  = self.flap_def.flap_angle 
-                x_flap      = self.flap_def.x_flap
-                y_flap      = self.flap_def.y_flap
-                y_flap_spec = self.flap_def.y_flap_spec
+            if self.is_xfoil:
+                path = self.polar_set.airfoil_pathFileName_abs
+                data_set = Worker.load_polar_data_set (path, self.as_meta())
             else:
-                flap_angle  = None 
-                x_flap      = None
-                y_flap      = None
-                y_flap_spec = None
-
-            airfoil_pathFileName = self.polar_set.airfoil_pathFileName_abs
-            polar_pathFileName   = Worker.get_existingPolarFile (airfoil_pathFileName, 
-                                                self.type, self.re, self.ma, 
-                                                self.ncrit, self._xtript, self._xtripb,
-                                                flap_angle, x_flap, y_flap, y_flap_spec)
-
-            if polar_pathFileName and not file_in_use (polar_pathFileName): 
-
-                self._import_from_file(polar_pathFileName)
+                cst = self.polar_set.airfoil_as_CST
+                data_set = Neuralfoil_Evaluator.get_polar_data_set (cst,
+                                                                    self.as_meta(),
+                                                                    model_size=self.nf_model_size)
+            if data_set:
+                self._import_from_data_set (data_set)
                 logger.debug (f'{self} loaded for {self.polar_set.airfoil}') 
 
         except (RuntimeError) as exc:  
 
             self.set_error_reason (str(exc))                # polar will be 'loaded' with error
+            logger.error (f'{self} load failed: {exc}')
 
 
-    def _import_from_file (self, polarPathFileName):
+
+    def _import_from_data_set (self, data_set: Polar_Data_Set):
         """
-        Read data for self from an Xfoil polar file  
+        Map backend-agnostic polar DTO payload into cached arrays.
         """
 
-        opPoints = []
+        self._validate_data_set_meta (data_set)
 
-        BeginOfDataSectionTag = "-------"
-        airfoilNameTag = "Calculated polar for:"
-        reTag = "Re ="
-        ncritTag = "Ncrit ="
-        parseInDataPoints = 0
+        if not data_set.rows:
+            raise RuntimeError("Could not map polar dataset")
 
-        fpolar = open(polarPathFileName)
+        self._values.clear ()
 
-        # parse all lines
-        for line in fpolar:
+        n_points = len (data_set.rows)
 
-            # scan for airfoil-name
-            if  line.find(airfoilNameTag) >= 0:
-                splitline = line.split(airfoilNameTag)
-                airfoilname = splitline[1].strip()
-            # scan for Re-Number and ncrit
-            if  line.find(reTag) >= 0:
-                splitline = line.split(reTag)
-                splitline = splitline[1].split(ncritTag)
+        self._values[var.ALPHA] = np.empty (n_points)
+        self._values[var.CL] = np.empty (n_points)
+        self._values[var.CD] = np.empty (n_points)
+        self._values[var.CDP] = np.empty (n_points)
+        self._values[var.CM] = np.empty (n_points)
+        self._values[var.CP_MIN] = np.empty (n_points)
+        self._values[var.XTRT] = np.empty (n_points)
+        self._values[var.XTRB] = np.empty (n_points)
+        self._values[var.BUBBLE_TOP] = np.empty (n_points, dtype=object)
+        self._values[var.BUBBLE_BOT] = np.empty (n_points, dtype=object)
+        self._values[var.NF_CONFIDENCE] = np.empty (n_points)
 
-                re_string    = splitline[0].strip()
-                splitstring = re_string.split("e")
-                factor = float(splitstring[0].strip())
-                Exponent = float(splitstring[1].strip())
-                re = factor * (10**Exponent)
+        for i, row in enumerate (data_set.rows):
+            self._values[var.ALPHA][i] = row.alpha
+            self._values[var.CL][i] = row.cl
+            self._values[var.CD][i] = row.cd
+            self._values[var.CDP][i] = row.cdp if row.cdp is not None else np.nan
+            self._values[var.CM][i] = row.cm
+            self._values[var.CP_MIN][i] = row.xf_cp_min if row.xf_cp_min is not None else np.nan
+            self._values[var.XTRT][i] = row.xtrt
+            self._values[var.XTRB][i] = row.xtrb
+            self._values[var.BUBBLE_TOP][i] = (row.xf_bubble_top.x_start, row.xf_bubble_top.x_end) if row.xf_bubble_top else None
+            self._values[var.BUBBLE_BOT][i] = (row.xf_bubble_bot.x_start, row.xf_bubble_bot.x_end) if row.xf_bubble_bot else None
+            self._values[var.NF_CONFIDENCE][i] = row.nf_confidence if row.nf_confidence is not None else np.nan
 
-                # sanity checks 
-                if self.re != re: 
-                    raise RuntimeError (f"Re Number of polar ({self.re}) and of polar file ({re}) not equal")
+        cl = self._values[var.CL]
+        cd = self._values[var.CD]
+        cdp = self._values[var.CDP]
+        xtrt = self._values[var.XTRT]
+        xtrb = self._values[var.XTRB]
 
-                ncrit = float(splitline[1].strip())
-                if self.ncrit != ncrit: 
-                    raise RuntimeError (f"Ncrit of polar ({self.ncrit}) and of polar file ({ncrit}) not equal")
-                # ncrit within file ignored ...
+        self._values[var.CDF] = cd - cdp
+        self._values[var.XTR] = (xtrt + xtrb) / 2
 
-            # scan for start of data-section
-            if line.find(BeginOfDataSectionTag) >= 0:
-                parseInDataPoints = 1
-            else:
-                # get all Data-points from this line
-                if parseInDataPoints == 1:
-                    # split up line detecting white-spaces
-                    splittedLine = line.split(" ")
-                    # remove white-space-elements, build up list of data-points
-                    dataPoints = []
-                    for element in splittedLine:
-                        if element != '':
-                            dataPoints.append(element)
-                    op = Polar_Point ()
-                    op.alpha = float(dataPoints[0])
-                    op.cl    = float(dataPoints[1])
-                    op.cd    = float(dataPoints[2])
-                    op.cdp   = float(dataPoints[3])
-                    op.cm    = float(dataPoints[4])
-                    op.xtrt  = float(dataPoints[5])
-                    op.xtrb  = float(dataPoints[6])
+        glide = np.zeros (n_points)
+        glide_mask = (cd != 0.0) & (cl != 0.0)
+        glide[glide_mask] = np.round (cl[glide_mask] / cd[glide_mask], 3)
+        self._values[var.GLIDE] = glide
 
-                    # optional cp_min column generated by extended worker
-                    if len(dataPoints) >= 8 and len(dataPoints) != 11:
-                        op.cp_min = float(dataPoints[7])
+        sink = np.zeros (n_points)
+        sink_mask = (cd > 0.0) & (cl >= 0.0)
+        sink[sink_mask] = np.round (cl[sink_mask] ** 1.5 / cd[sink_mask], 3)
+        self._values[var.SINK] = sink
 
-                    # optional bubble start-end on top and bot 
-                    if len(dataPoints) == 11:
+        if self.type == polarType.T2:
+            re_calc = np.zeros (n_points)
+            if self.re:
+                re_mask = cl != 0.0
+                re_calc[re_mask] = self.re / np.sqrt (np.abs (cl[re_mask]))
+        else:
+            re_calc = np.full (n_points, self.re if self.re else 0.0)
+        self._values[var.RE_CALC] = re_calc
 
-                        bubble_def = (float(dataPoints[7]), float(dataPoints[8]))
-                        op.bubble_top = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
 
-                        bubble_def = (float(dataPoints[9]), float(dataPoints[10]))
-                        op.bubble_bot = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
-                    elif len(dataPoints) >= 12:
-                        bubble_def = (float(dataPoints[8]), float(dataPoints[9]))
-                        op.bubble_top = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
+    def _validate_data_set_meta (self, data_set: Polar_Data_Set):
+        """Validate DTO metadata against this Polar definition where available."""
 
-                        bubble_def = (float(dataPoints[10]), float(dataPoints[11]))
-                        op.bubble_bot = bubble_def if bubble_def[0] > 0.0 and bubble_def[1] > 0.0 else None
+        my  = self.as_meta()
+        got = data_set.meta
+        mismatches = []
 
-                    opPoints.append(op)
-        fpolar.close()
+        if my.re         != got.re:          mismatches.append (f"Re {my.re} ≠ {got.re}")
+        if my.ma         != got.ma:          mismatches.append (f"Ma {my.ma} ≠ {got.ma}")
+        if my.polar_type != got.polar_type:  mismatches.append (f"type {my.polar_type} ≠ {got.polar_type}")
+        if my.ncrit      != got.ncrit:       mismatches.append (f"Ncrit {my.ncrit} ≠ {got.ncrit}")
+        if my.xtript     != got.xtript:      mismatches.append (f"xtript {my.xtript} ≠ {got.xtript}")
+        if my.xtripb     != got.xtripb:      mismatches.append (f"xtripb {my.xtripb} ≠ {got.xtripb}")
+        if got.flap_angle is not None and my.flap_angle != got.flap_angle:
+            mismatches.append (f"flap_angle {my.flap_angle} ≠ {got.flap_angle}")
+        if got.x_flap is not None and my.x_flap != got.x_flap:
+            mismatches.append (f"x_flap {my.x_flap} ≠ {got.x_flap}")
+        if got.y_flap is not None and my.y_flap != got.y_flap:
+            mismatches.append (f"y_flap {my.y_flap} ≠ {got.y_flap}")
 
-        if len(opPoints) > 0: 
+        if mismatches:
+            msg = f"Polar Data Set does not match: {', '.join(mismatches)}"
+            logger.error (msg)
+            raise RuntimeError (msg)
 
-            self._polar_points = opPoints
 
-        else: 
-            logger.error (f"{self} - import from {polarPathFileName} failed")
-            raise RuntimeError(f"Could not read polar file" )
- 
 
 
 #------------------------------------------------------------------------------
@@ -1900,7 +2076,7 @@ class Polar_Task:
                     polar.set_error_reason (self._myWorker.finished_errortext)
                 else: 
                     # load - if error occurs, error_reason will be set 
-                    polar.load_xfoil_polar ()
+                    polar.load_polar ()
 
                 if polar.isLoaded: 
                     nLoaded += 1           

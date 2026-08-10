@@ -18,14 +18,18 @@ from ..base.widgets             import *
 from ..base.panels              import Edit_Panel
 
 from ..model.airfoil            import Airfoil
-from ..model.geometry   import Geometry, Curvature_Abstract, Line 
-from ..model.geometry_curve     import Geometry_Curve, Side_Airfoil_Curve, Deviation_Line
+from ..model.geometry           import Geometry, Curvature_Abstract, Line 
+from ..model.geometry_curve     import Geometry_Curve, Side_Airfoil_Curve, Deviation_Line, LE_Mode
+from ..model.geometry_bezier    import Side_Airfoil_Bezier
+from ..model.geometry_bspline   import Side_Airfoil_BSpline
+from ..model.geometry_cst       import Side_Airfoil_CST, Geometry_CST
 from ..model.case               import Case_Abstract, Case_Direct_Design, Case_Match_Target, Match_Targets
 from ..model.xo2_driver         import Xoptfoil2
 
 from .ae_widgets                import * 
 from .ae_dialogs                import (LE_Radius_Dialog, TE_Gap_Dialog, Matcher_Run_Info,
-                                        Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog)
+                                        Blend_Airfoil_Dialog, Flap_Airfoil_Dialog, Repanel_Airfoil_Dialog,
+                                        Match_Pso_Options_Dialog, CST_Fit_Dialog)
 from ..app_model                import App_Model
 from ..match_runner             import Match_Result
 
@@ -74,7 +78,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     @property
     def is_mode_match (self) -> bool:
         """ panel in mode_match or disabled ? """ 
-        return self.app_model.is_mode_as_bezier or self.app_model.is_mode_as_bspline
+        return self.app_model.is_mode_as_bezier or self.app_model.is_mode_as_bspline or self.app_model.is_mode_as_cst
 
     @property
     def is_mode_optimize (self) -> bool:
@@ -119,6 +123,7 @@ class Panel_File_View (Panel_Airfoil_Abstract):
     sig_exit = pyqtSignal()                             # wants to exit the application
     sig_new_as_bezier = pyqtSignal()                    # wants to create new Bezier based airfoil
     sig_new_as_bspline = pyqtSignal()                   # wants to create new B-Spline based airfoil
+    sig_new_as_cst = pyqtSignal()                       # wants to create new CST based airfoil
     sig_save_as = pyqtSignal()                          # wants to save current airfoil as new file
     sig_export_dxf = pyqtSignal()                       # wants to export current airfoil as dxf
     sig_rename = pyqtSignal()                           # wants to rename current airfoil
@@ -191,6 +196,9 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menu.addAction (MenuAction ("As B-Spline based", self, set=self.sig_new_as_bspline, 
                                      # disable=lambda: self.airfoil.isBSplineBased,
                                      toolTip="Create new B-Spline based airfoil of current airfoil"))
+        menu.addAction (MenuAction ("As CST based", self, set=self.sig_new_as_cst, 
+                                     # disable=lambda: self.airfoil.isCSTBased,
+                                     toolTip="Create new CST based airfoil of current airfoil"))
         menu.addSeparator ()
         menu.addAction (MenuAction ("Save as...", self, set=self.sig_save_as.emit,
                                      toolTip="Create a copy of the current airfoil with new name and filename"))
@@ -1066,17 +1074,22 @@ class Panel_Curve (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Label (l,r,c, get="# Control Points", colSpan=4)
+        FieldI (l,r,c, lab=lambda: "# Weights upper" if self.geo.isCST else "# Ctrl Points upper",
+                get=lambda: self.upper.ncp,  width=40)
         r += 1
-        FieldI (l,r,c,   lab="Upper side", get=lambda: self.upper.ncp,  width=40)
+        FieldI (l,r,c, lab=lambda: "# Weights lower" if self.geo.isCST else "# Ctrl Points lower",
+                get=lambda: self.lower.ncp,  width=40)
         r += 1
-        FieldI (l,r,c,   lab="Lower side",  get=lambda: self.lower.ncp,  width=40)
-        l.setColumnMinimumWidth (0,80)
+        FieldF (l,r,c,   lab="LE weight",  get=lambda: self.geo.le_weight,  dec=2,width=50,
+                hide=lambda: not self.geo.isCST)
+        r += 1
+        FieldF (l,r,c,   lab="TE thickness",  get=lambda: self.geo.te_gap,  dec=4, width=50,
+                hide=lambda: not self.geo.isCST)
+        l.setColumnMinimumWidth (0,110)
 
         r += 1
         l.setRowStretch (r,2)
         r += 1 
-        Label  (l,r,0,colSpan=5, get=self._message, style=style.COMMENT, height=(None,None), hide=lambda: self.is_mode_modify)
         Label  (l,r,0,colSpan=5, get=self._hint, style=style.HINT, height=(None,None), 
                 width=(150, 150), wordWrap=True, hide=lambda: not self.is_mode_modify)
         return l
@@ -1084,22 +1097,6 @@ class Panel_Curve (Panel_Airfoil_Abstract):
 
     def _hint (self) -> str:
         return f"You may change number of control points in diagram."
-
-    def _message (self)  -> str:
-
-        lines = []
-        for side in [self.upper, self.lower]:
-            side : Side_Airfoil_Curve
-            curve = side.curve
-            text = f"{side.name}: degree {curve.degree}"
-            if self.geo.isBSpline:
-                if curve.is_uniform:
-                    text += ", uniform"
-                else:
-                    text += ", non-uniform"
-            lines.append(text)
-
-        return '\n'.join(lines) 
 
 
 class Panel_Curve_Small (Panel_Curve):
@@ -1132,6 +1129,13 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
         self._result_lower: Match_Result | None = None
         super().__init__(*args, **kwargs)
 
+
+    @override
+    def title_text (self) -> str: 
+        """ returns text of title - default self.name"""
+        return "Fit Results" if self.is_CST_fit else self.name
+
+
     @property
     def result_upper(self) -> Match_Result:
         """Match_Result: from last optimizer run if available, else rebuilt from current geo."""
@@ -1157,6 +1161,11 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
     @property
     def case (self) -> Case_Match_Target:
         return self.app_model.case
+
+    @property
+    def is_CST_fit (self) -> bool:
+        """True if the current match result is a CST fit, else False."""
+        return self.geo.isCST
 
 
     def _init_layout (self):
@@ -1240,16 +1249,20 @@ class Panel_Match_Result (Panel_Airfoil_Abstract):
 
     def _remark (self, result : Match_Result) -> str: 
 
+        match = "Match" if not self.is_CST_fit else "Fit"
+
         if result.is_perfect():
-            text = f"Match is perfect"
+            text = f"{match} is perfect"
             if not result.is_ncp_good():
                 text += " but more control points were needed."
             else:
                 text += "!"
         elif result.is_good_enough():
-            text = f"Match is good and curvature is smooth."
+            text = f"{match} is good and curvature is smooth."
         else:
-            text = f"Match is not too good. Maybe tweak LE or TE curvature or Reversals"
+            text = f"{match} is not too good."
+            if not self.is_CST_fit:
+                text += " Maybe tweak LE or TE curvature or Reversals"
         return text
 
 
@@ -1333,11 +1346,11 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         return super().geo
     
     @property
-    def upper (self) -> Side_Airfoil_Curve:
+    def upper (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
         return self.geo.upper
 
     @property
-    def lower (self) -> Side_Airfoil_Curve:
+    def lower (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
         return self.geo.lower
     
     @property
@@ -1355,6 +1368,24 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
     @property
     def target_curv_le (self) -> float:
         return self.target_airfoil.geo.curvature.at_le
+
+
+    @override
+    def _add_to_header_layout(self, l_head: QHBoxLayout):
+        """ add Widgets to header layout"""
+
+        l_head.addStretch(1)
+
+        _tip = "Select optimizer used for matching on both upper and lower sides."
+        # Label  (l_head, get="Optimizer", hide=self._small)
+        ComboBox (l_head, colSpan=3, width=70,
+                get=lambda: self.optimizer, set=self.set_optimizer,
+                options=["Simplex", "PSO"],
+                hide=lambda: self._small,  toolTip=_tip)
+        ToolButton (l_head, icon=Icon.SETTINGS,
+                set=self._edit_pso_options,
+                hide=lambda: self._small or self.optimizer != "PSO",
+                toolTip="Edit PSO options for development tuning")
 
 
     def _init_layout (self):
@@ -1426,19 +1457,6 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
                 get=lambda: self.targets_lower.max_te_curvature, 
                 set=lambda c: self.targets_lower.set_max_te_curvature(c), toolTip=_tip,
                 style=lambda: style.HINT if self.targets_lower.max_te_is_proposed else style.NORMAL)
-        # l.setColumnMinimumWidth (c+1,10)
-
-        # c += 2
-        # _tip = "Suppress curvature bumps to achieve a smoother airfoil.\n" + \
-        #        "For B-Splines, bumps are penalized via the 5th-derivative jumps at inner knots.\n" + \
-        #        "Use 'Derivative of curvature' in the Curvature diagram to monitor the effect."
-        # Label  (l,r,c, colSpan=2, get="Bumps", hide=lambda: self._small or self.geo.isBezier)
-        # CheckBox (l,r+1,c, text="No", get=lambda: self.targets_upper.bump_control,
-        #         set=lambda b: self.targets_upper.set_bump_control(b),
-        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
-        # CheckBox (l,r+2,c, text="No", get=lambda: self.targets_lower.bump_control,
-        #         set=lambda b: self.targets_lower.set_bump_control(b),
-        #         toolTip=_tip, hide=lambda: self.geo.isBezier)
         l.setColumnMinimumWidth (c+1,20)
 
         c += 2
@@ -1458,7 +1476,8 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         r += 1
         l.setRowStretch (r,2)
         r += 1
-        Label  (l,r,0, get=self._message_text, colSpan=14, height=(None, None), hide=self._small, style=style.COMMENT)
+        c = 0
+        Label  (l,r,c, get=self._message_text, colSpan=14, height=(None, None), hide=self._small, style=style.COMMENT)
     
         return l
 
@@ -1473,7 +1492,7 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
             diag.show()
 
 
-    def set_ncp_auto (self, aSide : Side_Airfoil_Curve, targets : Match_Targets, auto: bool):
+    def set_ncp_auto (self, aSide : Side_Airfoil_Bezier | Side_Airfoil_BSpline, targets : Match_Targets, auto: bool):
         """ set ncp auto mode of a side and update targets with new auto mode"""
         targets.set_ncp_auto(auto)
         if not auto:
@@ -1481,16 +1500,16 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
             targets.set_ncp (aSide.curve.ncp)
 
             # will create new design with new ncp and update airfoil 
-            self.app_model.notify_match_target_changed (aSide, aSide.curve.ncp)
+            self.app_model.notify_match_target_changed (aSide)
 
 
-    def set_ncp (self, aSide : Side_Airfoil_Curve, targets : Match_Targets, ncp: int):
+    def set_ncp (self, aSide : Side_Airfoil_Bezier | Side_Airfoil_BSpline, targets : Match_Targets, ncp: int):
         """ set ncp of a side and update targets with new ncp"""                
 
         targets.set_ncp (ncp)
 
         # will create new design with new ncp and update airfoil 
-        self.app_model.notify_match_target_changed (aSide, ncp)
+        self.app_model.notify_match_target_changed (aSide)
 
 
     @property
@@ -1517,6 +1536,33 @@ class Panel_Match_Curve (Panel_Airfoil_Abstract):
         self.targets_lower.set_le_monoton(not monoton)
 
 
+    @property
+    def optimizer (self) -> str:
+        """ shared optimizer shown in UI; uses upper-side value as source """
+        return "PSO" if self.targets_upper.use_pso else "Simplex"
+
+
+    def set_optimizer (self, optimizer: str):
+        """ set optimizer for both sides """
+        self.targets_upper.set_use_pso(optimizer == "PSO")
+        self.targets_lower.set_use_pso(optimizer == "PSO")
+
+
+    def _edit_pso_options (self):
+        """Open modal dialog for PSO development options."""
+
+        diag = Match_Pso_Options_Dialog(
+            self,
+            getter=lambda: self.targets_upper.pso_options,
+            parentPos=(0.5, 0.2),
+            dialogPos=(0.5, 1.1),
+        )
+        diag.exec()
+
+        # Keep result panel state in sync after tuning settings.
+        self.app_model.notify_match_target_changed()
+
+
     def _message_text (self):
         """ user info"""
 
@@ -1536,6 +1582,132 @@ class Panel_Match_Curve_Small (Panel_Match_Curve):
 
     _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_MINI
     _small = True
+
+
+
+class Panel_Fit_CST (Panel_Airfoil_Abstract):
+    """ CST fit airfoil  """
+
+    name = 'CST Fit'
+
+    _small = False
+
+    @override
+    @property
+    def _isDisabled (self) -> bool:
+        return not self.is_mode_match
+    
+    @override
+    def _on_widget_changed (self, widget):
+        """ user changed data in widget"""
+
+        # reset results and refresh match result panel
+        # self.app_model.notify_match_target_changed()
+
+
+    @property
+    def case (self) -> Case_Match_Target:
+        return self.app_model.case
+
+    @property
+    def geo (self) -> Geometry_Curve:
+        return super().geo
+    
+    @property
+    def upper (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
+        return self.geo.upper
+
+    @property
+    def lower (self) -> Side_Airfoil_Bezier | Side_Airfoil_BSpline:
+        return self.geo.lower
+    
+    @property
+    def target_airfoil (self) -> Airfoil:
+        return self.app_model.airfoil_target
+    
+    @property
+    def targets_upper (self) -> Match_Targets:
+        return self.case.targets_upper
+    
+    @property
+    def targets_lower (self) -> Match_Targets:
+        return self.case.targets_lower
+
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+
+        r,c = 0, 0 
+        Label  (l,r,c+1, colSpan=2, get="# Weights")
+        _tip = "Number of weights, the matching curve will have.\n"+ \
+               "A higher number may allow a better fit, but could cause undesired bumps. "
+        r += 1
+        FieldI (l,r,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "Upper Side",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+        FieldI (l,r+1,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "Lower Side",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+        Button (l,r,c+3, rowSpan=2, text="Tune Fit", width=70, button_style = button_style.PRIMARY,
+                        set=self.open_cst_fit_dialog)
+
+        r += 2
+        l.setRowStretch (r,2)
+        r += 1
+        Label  (l,r,c, get=self._message_text, colSpan=14, height=(None, None), hide=self._small, style=style.COMMENT)
+
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,10)
+        return l
+
+    @property
+    def ncp (self) -> int:
+        """ returns ncp of upper side (both sides have same ncp)"""
+        return self.targets_upper.ncp
+
+    def set_ncp (self, ncp: int):
+        """ set ncp of a side and update targets with new ncp"""                
+
+        self.targets_upper.set_ncp (ncp)
+        self.targets_lower.set_ncp (ncp)
+
+        # will create new design with new ncp and update airfoil 
+        self.app_model.notify_match_target_changed (refit_for=self.geo)
+
+
+    def open_cst_fit_dialog (self):
+        """Open modal dialog for CST fit options."""
+
+        diag = CST_Fit_Dialog(self, app_model=self.app_model,
+                                parentPos=(0.9, 0.0),
+                                dialogPos=(0.0, 1.0))
+
+        diag.sig_changed.connect(lambda: self.app_model.notify_match_target_changed(refit_for=self.geo, moving=True))
+        diag.sig_final_changed.connect(lambda: self.app_model.notify_match_target_changed(refit_for=self.geo))
+        diag.show()
+
+
+    def _message_text (self):
+        """ user info"""
+
+        smoothed          = Geometry_CST.lambda_to_smoothness(self.targets_upper.fit_smooth_lambda) > 0.0
+        le_curv             = self.targets_upper.le_curvature
+        use_le_curvature    = self.targets_upper.le_mode == LE_Mode.FIXED
+        c2_continuity       = self.targets_upper.le_mode == LE_Mode.C2
+
+        text = ""
+        if smoothed:
+            text += "Smoothed weights, "
+        if use_le_curvature:
+            text += f"\nLE curvature fixed to {le_curv:.0f} "
+        elif c2_continuity:
+            text += "\nLE curvature continuity enforced "
+        else:
+            text += "\nLE curvature free "
+        return text
 
 
 
@@ -1663,12 +1835,43 @@ class Panel_Target_Curv (Panel_Airfoil_Abstract):
                 text.append(f"- {curv.name}: Curvature at TE is quite high.")     
 
         if len(text) < 2:
-            t = f"The target airfoil has been repaneled to {self.target_airfoil.nPanels} panels <br>"
+            t = f"Target repaneled to {self.target_airfoil.nPanels} panels"
             if "_norm" in self.target_airfoil.name:
                 t += "and normalized"
-            t += " for good match results."
+            t += " for matching."
             text.insert(0, t)
 
         text = '<br>'.join(text[:3])
         return text 
 
+
+class Panel_Fit_CST_Small (Panel_Fit_CST):
+    """ CST fit airfoil  """
+
+    _small = True
+    _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_MINI
+
+    def _init_layout (self):
+
+        l = QGridLayout()
+
+        r,c = 0, 0 
+        _tip = "Number of weights, the matching curve will have.\n"+ \
+               "A higher number may allow a better fit, but could cause undesired bumps. "
+        FieldI (l,r,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "Weights Upper",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+        FieldI (l,r+1,c, width=40, step=1, lim =lambda: self.upper.NCP_BOUNDS,
+                lab = "Weights Lower",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+        Button (l,r,c+3, rowSpan=2, text="Tune Fit", width=70, button_style = button_style.PRIMARY,
+                        set=self.open_cst_fit_dialog)
+
+        r += 2
+        l.setRowStretch (r,2)
+
+        l.setColumnMinimumWidth (0,80)
+        l.setColumnMinimumWidth (2,10)
+        return l

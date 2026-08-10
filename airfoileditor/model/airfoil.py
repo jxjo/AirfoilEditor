@@ -28,6 +28,7 @@ from .geometry_hicks_henne  import Geometry_HicksHenne
 from .geometry_curve        import Geometry_Curve
 from .geometry_bezier       import Geometry_Bezier
 from .geometry_bspline      import Geometry_BSpline, Side_Airfoil_BSpline
+from .geometry_cst          import Geometry_CST, Side_Airfoil_CST
 
 from .xo2_driver            import Worker
 
@@ -76,8 +77,9 @@ class Airfoil:
 
     isBezierBased       = False
     isBSplineBased      = False
+    isCSTBased          = False
     isHicksHenneBased   = False
-    isDatBased          = not isBezierBased and not isHicksHenneBased and not isBSplineBased
+    isDatBased          = not isBezierBased and not isBSplineBased and not isCSTBased and not isHicksHenneBased
 
     Extension           = '.dat'
     NAME_SUFFIX         = ""                        # will be added to name and filename if not already there
@@ -197,6 +199,9 @@ class Airfoil:
         
         elif ext == Airfoil_BSpline.Extension: 
             return Airfoil_BSpline (pathFileName=pathFileName, workingDir=workingDir)
+
+        elif ext == Airfoil_CST.Extension:
+            return Airfoil_CST (pathFileName=pathFileName, workingDir=workingDir)
         
         else:
             raise ValueError (f"Unknown file extension '{ext}' for new airfoil")
@@ -358,32 +363,23 @@ class Airfoil:
     def info_short_as_html (self, thickness_color = None, camber_color = None) -> str:
         """ comprehensive info about self as formatted html string"""
 
+        def row (label: str, value: str, label_at: str = None, value_at: str = None) -> str:
+            return (f"<tr>"
+                    f"<td style='padding-right: 5px'>{label}</td>"
+                    f"<td style='padding-right:10px; color: {thickness_color if label == 'Thickness' else camber_color if label == 'Camber' else ''}'>{value}</td>"
+                    f"<td style='padding-right: 5px'>{label_at if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{value_at if value_at is not None else ''}</td>"
+                    f"</tr>")
+
         info = "<p style='white-space:pre'>"                                # no word wrap 
 
-        thickness_color = thickness_color if thickness_color else ''
-        camber_color    = camber_color    if camber_color    else ''
-
         if self.isLoaded and self.geo and self.geo.max_thick:          # could be strak airfoil
-            info += f"<table>" + \
-                    f"<tr>" + \
-                        f"<td>Thickness  </td>" + \
-                        f"<td style='color: {thickness_color}'>{self.geo.max_thick:.2%}  </td>" + \
-                        f"<td>at  </td>" + \
-                        f"<td>{self.geo.max_thick_x:.2%}  </td>" + \
-                    f"</tr>" + \
-                    f"<tr>" + \
-                        f"<td>Camber  </td>" + \
-                        f"<td style='color: {camber_color}'>{self.geo.max_camb:.2%}  </td>" + \
-                        f"<td>at  </td>" + \
-                        f"<td>{self.geo.max_camb_x:.2%}  </td>" + \
-                    f"</tr>" + \
-                    f"<tr>" + \
-                        f"<td>Curvature LE  </td>" + \
-                        f"<td>{self.geo.curvature.at_le:.0f}  </td>" + \
-                        f"<td>TE    </td>" + \
-                        f"<td>{self.geo.curvature.max_te:.0f}  </td>" + \
-                    f"</tr>" + \
-                f"</table>"
+            rows = [
+                row ("Thickness",    f"{self.geo.max_thick:.2%}",        "at", f"{self.geo.max_thick_x:.2%}"),
+                row ("Camber",       f"{self.geo.max_camb:.2%}",         "at", f"{self.geo.max_camb_x:.2%}"),
+                row ("Curvature LE", f"{self.geo.curvature.at_le:.0f}",  "TE", f"{self.geo.curvature.max_te:.0f}"),
+            ]
+            info += f"<table>{''.join(rows)}</table>"
         else:
             info += f"No geometry info available"
 
@@ -399,11 +395,11 @@ class Airfoil:
 
         if self.isLoaded:
             used_as = f" being {self.usedAs}" if self.usedAs != usedAs.NORMAL else ""
-            info += f"{self.fileName}{used_as}" 
+            info += f"<b>{self.fileName}</b>{used_as}<br>" 
             if self.geo.isCurve:
                 geo : Geometry_Curve = self.geo
-                info += f"<br><br>{geo.description_long}"          
-            info += f"<br><br>in {self.pathName_abs}    " 
+                info += f"{geo.description_long}<br>"          
+            info += f"in {self.pathName_abs}    " 
 
         info += self.info_short_as_html()
 
@@ -1029,7 +1025,7 @@ class Airfoil:
 class Airfoil_Curve (Airfoil):
     """ 
 
-    Base class for Airfoils based on Bezier or B-Spline curves for upper and lower side 
+    Base class for Airfoils based on Bezier, B-Spline or CST curves for upper and lower side 
 
     """
 
@@ -1079,37 +1075,12 @@ class Airfoil_Curve (Airfoil):
 
 
     @classmethod
-    def on_airfoil (cls, anAirfoil : Airfoil, ncp=None) -> 'Airfoil_Curve':
+    def on_airfoil (cls, anAirfoil : Airfoil) -> 'Airfoil_Curve':
         """
         Alternate constructor for new Airfoil based on another airfoil 
-
-        The new Bezier airfoil will just have a rough estimation for the Bezier curves,
-        which have to be optimized with 'match bezier'
         """
 
-        # sanity - only normalized airfoils should be converted to Bezier 
-        if not anAirfoil.isNormalized:
-            raise ValueError (f"Airfoil '{anAirfoil}' should be normalized before conversion to Bezier")
-
-        # class of new side 
-        side_class = cls._geometry_class.side_class
-
-        # create upper, lower bezier curves based on airfoil coordinates
-        le_curvature = round(anAirfoil.geo.curvature.at_le, 0)
-        upper = side_class.on_side (anAirfoil.geo.upper, le_curvature=le_curvature, linetype=Line.Type.UPPER)
-        lower = side_class.on_side (anAirfoil.geo.lower, le_curvature=le_curvature, linetype=Line.Type.LOWER)
-
-        # new name and filename
-        airfoil_new =  cls (name=anAirfoil.name + cls.NAME_SUFFIX)
-        airfoil_new.geo.set_upper (upper)
-        airfoil_new.geo.set_lower (lower)
-
-        # new pathFileName
-        fileName_stem = anAirfoil.fileName_stem
-        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + cls.NAME_SUFFIX + cls.Extension)
-        airfoil_new.set_pathFileName (pathFileName, noCheck=True)
-        airfoil_new.set_workingDir   (anAirfoil.workingDir)
-        return airfoil_new 
+        raise NotImplementedError ("on_airfoil method must be implemented in child class")
 
 
     @property
@@ -1257,10 +1228,8 @@ class Airfoil_Curve (Airfoil):
                        cp_lower = self.geo.lower.controlPoints)
 
         # copy target_definition - as it is not part of geometry but important for design airfoils
-        if self.geo.upper.target_deviation is not None:
-            airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
-        if self.geo.lower.target_deviation is not None:
-            airfoil.geo.lower.set_target_deviation_from (self.geo.lower.target_deviation)
+        airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
+        airfoil.geo.lower.set_target_deviation_from (self.geo.lower.target_deviation)
 
         return airfoil 
 
@@ -1295,6 +1264,41 @@ class Airfoil_Bezier (Airfoil_Curve):
 
     _geometry_class     = Geometry_Bezier
         
+
+    @override
+    @classmethod
+    def on_airfoil (cls, anAirfoil : Airfoil) -> 'Airfoil_Bezier':
+        """
+        Alternate constructor for new Airfoil based on another airfoil 
+
+        The new Bezier airfoil will just have a rough estimation for the Bezier curves,
+        which have to be optimized with 'match bezier'
+        """
+
+        # sanity - only normalized airfoils should be converted to Bezier 
+        if not anAirfoil.isNormalized:
+            raise ValueError (f"Airfoil '{anAirfoil}' should be normalized before conversion to Bezier")
+
+        # class of new side 
+        side_class = cls._geometry_class.side_class
+
+        # create upper, lower bezier curves based on airfoil coordinates
+        le_curvature = round(anAirfoil.geo.curvature.at_le, 0)
+        upper = side_class.on_side (anAirfoil.geo.upper, le_curvature=le_curvature, linetype=Line.Type.UPPER)
+        lower = side_class.on_side (anAirfoil.geo.lower, le_curvature=le_curvature, linetype=Line.Type.LOWER)
+
+        # new name and filename
+        airfoil_new =  cls (name=anAirfoil.name + cls.NAME_SUFFIX)
+        airfoil_new.geo.set_upper (upper)
+        airfoil_new.geo.set_lower (lower)
+
+        # new pathFileName
+        fileName_stem = anAirfoil.fileName_stem
+        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + cls.NAME_SUFFIX + cls.Extension)
+        airfoil_new.set_pathFileName (pathFileName, noCheck=True)
+        airfoil_new.set_workingDir   (anAirfoil.workingDir)
+        return airfoil_new 
+
 
     def _load (self, fromPath=None):
         """
@@ -1403,6 +1407,41 @@ class Airfoil_BSpline (Airfoil_Curve):
         
 
     @override
+    @classmethod
+    def on_airfoil (cls, anAirfoil : Airfoil) -> 'Airfoil_BSpline':
+        """
+        Alternate constructor for new Airfoil based on another airfoil 
+
+        The new B-Spline airfoil will just have a rough estimation for the B-Spline curves,
+        which have to be optimized with 'match bspline'
+        """
+
+        # sanity - only normalized airfoils should be converted to B-Spline 
+        if not anAirfoil.isNormalized:
+            raise ValueError (f"Airfoil '{anAirfoil}' should be normalized before conversion to B-Spline")
+
+        # class of new side 
+        side_class = cls._geometry_class.side_class
+
+        # create upper, lower B-Spline curves based on airfoil coordinates
+        le_curvature = round(anAirfoil.geo.curvature.at_le, 0)
+        upper = side_class.on_side (anAirfoil.geo.upper, le_curvature=le_curvature, linetype=Line.Type.UPPER)
+        lower = side_class.on_side (anAirfoil.geo.lower, le_curvature=le_curvature, linetype=Line.Type.LOWER)
+
+        # new name and filename
+        airfoil_new =  cls (name=anAirfoil.name + cls.NAME_SUFFIX)
+        airfoil_new.geo.set_upper (upper)
+        airfoil_new.geo.set_lower (lower)
+
+        # new pathFileName
+        fileName_stem = anAirfoil.fileName_stem
+        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + cls.NAME_SUFFIX + cls.Extension)
+        airfoil_new.set_pathFileName (pathFileName, noCheck=True)
+        airfoil_new.set_workingDir   (anAirfoil.workingDir)
+        return airfoil_new 
+
+
+    @override
     @property
     def geo (self) -> Geometry_BSpline:
         """ the geometry strategy of self"""
@@ -1457,6 +1496,156 @@ class Airfoil_BSpline (Airfoil_Curve):
         with open(self.pathFileName_abs_shape, 'w+') as file:
             json.dump (d, file, indent=4)
             file.close()
+
+
+#------------------------------------------------------
+
+class Airfoil_CST (Airfoil_Curve):
+    """
+
+    Airfoil based on CST/Kulfan weights for upper and lower side.
+
+    """
+
+    isCSTBased          = True
+
+    Extension           = ".cst"
+    NAME_SUFFIX         = "_cst"
+
+    _geometry_class     = Geometry_CST
+
+    def __init__(self,
+                    name=None,
+                    pathFileName=None,
+                    workingDir=None,
+                    weights_upper=None,
+                    weights_lower=None,
+                    le_weight: float = 0.0,
+                    te_thickness: float = 0.0):
+        
+        super().__init__(name=name, pathFileName=None, workingDir=workingDir)
+
+        self._pathFileName = pathFileName
+
+        if weights_upper is not None and weights_lower is not None:
+            self._geo = Geometry_CST(weights_upper, weights_lower,
+                                    le_weight=le_weight, 
+                                    te_thickness=te_thickness,
+                                    onChange=self._handle_geo_changed)
+
+        if (pathFileName is not None) and (weights_upper is None or weights_lower is None):
+            pathFileName = os.path.normpath(pathFileName)
+            if os.path.isabs(pathFileName):
+                checkPath = pathFileName
+            else:
+                checkPath = self.pathFileName_abs
+            if not os.path.isfile(checkPath):
+                raise ValueError(f"Airfoil '{checkPath}' does not exist.")
+
+
+    @classmethod
+    def on_airfoil (cls, anAirfoil : Airfoil) -> 'Airfoil_CST':
+        """
+        Alternate constructor for new CST Airfoil based on another airfoil.
+
+        The CST weights are fitted (fast linear least squares, see Geometry_CST.geometry_as_CST)
+        directly to anAirfoil's upper/lower coordinates - no further 'match' optimization needed.
+        """
+
+        # sanity - only normalized airfoils should be converted to CST
+        if not anAirfoil.isNormalized:
+            raise ValueError (f"Airfoil '{anAirfoil}' should be normalized before conversion to CST")
+
+        weights_upper, weights_lower, le_weight, te_thickness = Geometry_CST.geometry_as_CST (anAirfoil.geo)
+
+        airfoil_new = cls (name=anAirfoil.name + cls.NAME_SUFFIX,
+                           weights_upper=weights_upper,
+                           weights_lower=weights_lower,
+                           le_weight=le_weight,
+                           te_thickness=te_thickness)
+
+        # Set target deviation
+        airfoil_new.geo.upper.set_target_deviation_from(anAirfoil.geo.upper)
+        airfoil_new.geo.lower.set_target_deviation_from(anAirfoil.geo.lower)
+
+
+        # new pathFileName
+        fileName_stem = anAirfoil.fileName_stem
+        pathFileName  = os.path.join (anAirfoil.pathName, fileName_stem + cls.NAME_SUFFIX + cls.Extension)
+        airfoil_new.set_pathFileName (pathFileName, noCheck=True)
+        airfoil_new.set_workingDir   (anAirfoil.workingDir)
+        return airfoil_new
+
+
+    @override
+    @property
+    def geo (self) -> Geometry_CST:
+        """ the geometry strategy of self"""
+        return super().geo
+    
+
+    def _load(self, fromPath=None):
+        """Loads CST definition from file."""
+
+        fromPath = fromPath if fromPath else self.pathFileName_abs
+
+        with open(fromPath, 'r') as file:
+            d = json.load(file)
+
+        weights_upper = fromDict(d, "weights_upper", None)
+        weights_lower = fromDict(d, "weights_lower", None)
+        if weights_upper is None or weights_lower is None:
+            raise ValueError(f"Invalid CST file '{fromPath}': missing weights_upper/weights_lower")
+
+        le_weight    = fromDict(d, "leading_edge_weight", 0.0)
+        te_thickness = fromDict(d, "te_thickness", fromDict(d, "trailing_edge_thickness", 0.0))
+
+        self._geo = Geometry_CST(weights_upper, weights_lower,
+                                 le_weight=le_weight, 
+                                 te_thickness=te_thickness,
+                                 onChange=self._handle_geo_changed)
+
+        self._name = fromDict(d, "name", 'CST_Airfoil')
+        self._isModified = False
+
+        logger.debug(f"CST definition for {self.fileName} loaded")
+
+
+    def _write_shape(self):
+        """Write CST data to .cst file."""
+
+        d = {"name": self.name}
+        d.update(self.geo.as_dict())
+
+        with open(self.pathFileName_abs_shape, 'w+') as file:
+            json.dump(d, file, indent=4)
+
+
+    @override
+    def asCopy(self, pathFileName=None, name=None, nameExt=None, **kwargs) -> 'Airfoil_CST':
+
+        if pathFileName is None and name is None:
+            pathFileName = self.pathFileName
+
+        workingDir = None if os.path.isabs(pathFileName) else self.workingDir
+
+        if name is None:
+            name = self.name + nameExt if nameExt else self.name
+
+        airfoil = self.__class__(
+            name=name,
+            pathFileName=pathFileName,
+            workingDir=workingDir,
+            weights_upper=self.geo.upper.cst.weights,
+            weights_lower=self.geo.lower.cst.weights,
+            le_weight=self.geo.le_weight,
+            te_thickness=self.geo.te_gap)
+
+        # copy target_definition - as it is not part of geometry but important for design airfoils
+        airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
+        airfoil.geo.lower.set_target_deviation_from (self.geo.lower.target_deviation)
+
+        return airfoil
 
 
 #------------------------------------------------------
@@ -1785,7 +1974,7 @@ class Flap_Setter (Flap_Definition):
 
         super().__init__()
         
-        if airfoil_base.isBezierBased or airfoil_base.isHicksHenneBased:
+        if airfoil_base.isBezierBased or airfoil_base.isBSplineBased or airfoil_base.isCSTBased or airfoil_base.isHicksHenneBased:
             raise ValueError ("Only .dat files can be flapped")
         
         if airfoil_base.isFlapped:

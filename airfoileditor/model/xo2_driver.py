@@ -11,6 +11,7 @@ the path to program location location must be set
 
 
 import os
+import re
 from tempfile               import NamedTemporaryFile
 from glob                   import glob
 from pathlib                import Path
@@ -31,6 +32,9 @@ import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
+from dataclasses import replace as dataclass_replace
+from .polar_dto import Polar_Bubble_Range, Polar_Data_Row, Polar_Data_Set, Polar_File_Meta
+
 
 SW_NORMAL = 1 
 SW_MINIMIZE = 6 
@@ -40,6 +44,178 @@ EXE_DIR_UNIX   = 'assets/linux'
 
 TMP_INPUT_NAME = 'tmp~'                             # temporary input file (~1 will be appended)
 TMP_INPUT_EXT  = '.inp'
+
+
+class Xfoil_Polar_Parser:
+    """Parse XFOIL polar text files into backend-agnostic DTOs."""
+
+    BEGIN_DATA_TAG = "-------"
+    AIRFOIL_NAME_TAG = "Calculated polar for:"
+
+    @staticmethod
+    def parse_file(path_file_name: str) -> Polar_Data_Set:
+        """Parse an XFOIL polar file and return a neutral DTO payload."""
+
+        meta = Polar_File_Meta(source="xfoil", xf_source_path=path_file_name)
+        rows: list[Polar_Data_Row] = []
+        parse_data_rows = False
+
+        with open(path_file_name, "r") as polar_file:
+            for line in polar_file:
+                if Xfoil_Polar_Parser.AIRFOIL_NAME_TAG in line:
+                    airfoil_name = line.split(Xfoil_Polar_Parser.AIRFOIL_NAME_TAG, 1)[1].strip()
+                    meta = dataclass_replace (meta, airfoil_name=airfoil_name)
+                    continue
+
+                if "Re =" in line or "Ncrit =" in line or "Mach =" in line:
+                    re_val, ma_val, ncrit_val = Xfoil_Polar_Parser._extract_header_values(line)
+                    meta = dataclass_replace (meta,
+                        re    = re_val    if re_val    is not None else meta.re,
+                        ma    = ma_val    if ma_val    is not None else meta.ma,
+                        ncrit = ncrit_val if ncrit_val is not None else meta.ncrit,
+                    )
+
+                if "xtrf" in line.lower():
+                    # "xtrf =   1.000 (top)        1.000 (bottom)"
+                    m = re.search (r"xtrf\s*=\s*([\d.]+)\s*\(top\)\s*([\d.]+)\s*\(bottom\)", line, re.IGNORECASE)
+                    if m:
+                        top_val = float (m.group(1))
+                        bot_val = float (m.group(2))
+                        # 1.0 means unforced — store as None to match Polar_Definition convention
+                        meta = dataclass_replace (meta,
+                            xtript = None if top_val >= 1.0 else round (top_val, 2),
+                            xtripb = None if bot_val >= 1.0 else round (bot_val, 2),
+                        )
+
+                if "Reynolds number" in line or "lift coefficient" in line.lower():
+                    # xfoil header: " 1 1 Reynolds number fixed ..." → T1
+                    #               " 2 1 ...lift coefficient..."    → T2
+                    words = line.strip().split()
+                    if words and words[0] in ('1', '2'):
+                        meta = dataclass_replace (meta, polar_type=f"T{words[0]}")
+
+                if Xfoil_Polar_Parser.BEGIN_DATA_TAG in line:
+                    parse_data_rows = True
+                    continue
+
+                if not parse_data_rows:
+                    continue
+
+                line = line.strip()
+                if not line:
+                    continue
+
+                data_points = line.split()
+
+                # Data rows always start with alpha and contain at least 7 numeric values.
+                if len(data_points) < 7:
+                    continue
+
+                try:
+                    alpha = float(data_points[0])
+                    cl = float(data_points[1])
+                    cd = float(data_points[2])
+                    cdp = float(data_points[3])
+                    cm = float(data_points[4])
+                    xtrt = float(data_points[5])
+                    xtrb = float(data_points[6])
+                except ValueError:
+                    continue
+
+                cp_min = None
+                bubble_top = None
+                bubble_bot = None
+
+                # Extended worker format with cp_min but no bubble fields.
+                if len(data_points) >= 8 and len(data_points) != 11:
+                    cp_min = float(data_points[7])
+
+                # Legacy bubble format (no cp_min): alpha..xtrb + 4 bubble values.
+                if len(data_points) == 11:
+                    bubble_top = Xfoil_Polar_Parser._parse_bubble(data_points[7], data_points[8])
+                    bubble_bot = Xfoil_Polar_Parser._parse_bubble(data_points[9], data_points[10])
+
+                # Extended bubble format with cp_min + 4 bubble values.
+                elif len(data_points) >= 12:
+                    bubble_top = Xfoil_Polar_Parser._parse_bubble(data_points[8], data_points[9])
+                    bubble_bot = Xfoil_Polar_Parser._parse_bubble(data_points[10], data_points[11])
+
+                rows.append(
+                    Polar_Data_Row(
+                        alpha=alpha,
+                        cl=cl,
+                        cd=cd,
+                        cdp=cdp,
+                        cm=cm,
+                        xtrt=xtrt,
+                        xtrb=xtrb,
+                        xf_cp_min=cp_min,
+                        xf_bubble_top=bubble_top,
+                        xf_bubble_bot=bubble_bot,
+                    )
+                )
+
+        if not rows:
+            raise RuntimeError(f"Could not read polar file '{path_file_name}'")
+
+        return Polar_Data_Set(meta=meta, rows=rows)
+
+    @staticmethod
+    def _extract_header_values(line: str) -> tuple[float | None, float | None, float | None]:
+        """Extract Re, Mach and Ncrit from one header line when present."""
+
+        re_value = Xfoil_Polar_Parser._parse_re_from_line(line)
+        ma_value = Xfoil_Polar_Parser._parse_simple_float_after_key(line, "Mach")
+        ncrit_value = Xfoil_Polar_Parser._parse_simple_float_after_key(line, "Ncrit")
+        return re_value, ma_value, ncrit_value
+
+    @staticmethod
+    def _parse_re_from_line(line: str) -> float | None:
+        """Parse Reynolds number from common XFOIL-style formats."""
+
+        idx = line.find("Re")
+        if idx < 0:
+            return None
+
+        re_section = line[idx:]
+        if "=" in re_section:
+            re_section = re_section.split("=", 1)[1]
+
+        re_section = re_section.split("Ncrit", 1)[0]
+        re_section = re_section.split("Mach", 1)[0].strip()
+
+        match = re.search(r"([+-]?\d*\.?\d+)\s*[eE]\s*([+-]?\d+)", re_section)
+        if match:
+            factor = float(match.group(1))
+            exponent = float(match.group(2))
+            return factor * (10 ** exponent)
+
+        match = re.search(r"([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)", re_section)
+        if match:
+            return float(match.group(1))
+
+        return None
+
+    @staticmethod
+    def _parse_simple_float_after_key(line: str, key: str) -> float | None:
+        """Parse float value for patterns like 'key = 0.0' if present."""
+
+        match = re.search(rf"{re.escape(key)}\s*=\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)", line)
+        if match:
+            return float(match.group(1))
+        return None
+
+    @staticmethod
+    def _parse_bubble(x_start_raw: str, x_end_raw: str) -> Polar_Bubble_Range | None:
+        """Parse bubble range from two columns and normalize invalid entries to None."""
+
+        x_start = float(x_start_raw)
+        x_end = float(x_end_raw)
+        if x_start > 0.0 and x_end > 0.0:
+            return Polar_Bubble_Range(x_start=x_start, x_end=x_end)
+        return None
+
+
 
 #------- Helper function -----------------------------------------#
 
@@ -661,7 +837,7 @@ class Worker (X_Program):
     NAME        = 'Worker'
     NAME_EXE    = 'worker'                             # stem of of exe file 
 
-
+    
     # -- static methods --------------------------------------------
 
     @classmethod
@@ -808,6 +984,22 @@ class Worker (X_Program):
                     return os.path.join (polarDir, fileName)        # return pathFileName
 
         logger.debug (f"<class Worker> No polar file in {polarDir}")
+        return None
+
+
+    @staticmethod
+    def load_polar_data_set (airfoil_pathFileName: str,
+                             meta: 'Polar_File_Meta'
+                             ) -> 'Polar_Data_Set | None':
+        """Find, guard and parse a polar file — returns DTO or None if not available."""
+
+        path = Worker.get_existingPolarFile (airfoil_pathFileName,
+                                             meta.polar_type, meta.re, meta.ma, meta.ncrit,
+                                             meta.xtript, meta.xtripb,
+                                             meta.flap_angle, meta.x_flap,
+                                             meta.y_flap, meta.y_flap_spec)
+        if path and not file_in_use (path):
+            return Xfoil_Polar_Parser.parse_file (path)
         return None
 
 

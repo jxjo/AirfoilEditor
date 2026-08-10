@@ -97,3 +97,36 @@ class Test_Bezier:
         x_after, y_after = self.bez.eval(u)
         np.testing.assert_allclose(x_after, x_before, atol=1e-10)
         np.testing.assert_allclose(y_after, y_before, atol=1e-10)
+
+
+    def test_eval_matches_bernstein_identity(self):
+        """Bezier eval/derivatives match Bernstein identities exactly for shared helper path."""
+        u = np.linspace(0.0, 1.0, 31)
+
+        wx = np.asarray(self.bez.cpoints_x, dtype=float)
+        wy = np.asarray(self.bez.cpoints_y, dtype=float)
+        n = len(wx) - 1
+
+        x0, y0 = self.bez.eval(u, der=0)
+        np.testing.assert_allclose(x0, bernstein_eval(wx, u), atol=1e-12)
+        np.testing.assert_allclose(y0, bernstein_eval(wy, u), atol=1e-12)
+
+        x1, y1 = self.bez.eval(u, der=1)
+        np.testing.assert_allclose(x1, n * bernstein_eval(np.diff(wx), u), atol=1e-12)
+        np.testing.assert_allclose(y1, n * bernstein_eval(np.diff(wy), u), atol=1e-12)
+
+        x2, y2 = self.bez.eval(u, der=2)
+        np.testing.assert_allclose(x2, n * (n - 1) * bernstein_eval(np.diff(wx, n=2), u), atol=1e-12)
+        np.testing.assert_allclose(y2, n * (n - 1) * bernstein_eval(np.diff(wy, n=2), u), atol=1e-12)
+
+
+    def test_basis_function_scalar_matches_array(self):
+        """Bezier._basisFunction returns consistent values for scalar and array u."""
+        n = self.bez.degree
+        u_scalar = 0.37
+        u_array = np.array([u_scalar])
+
+        for i in range(n + 1):
+            b_scalar = Bezier._basisFunction(n, i, u_scalar)
+            b_array = Bezier._basisFunction(n, i, u_array)
+            np.testing.assert_allclose(b_scalar, b_array[0], atol=1e-14)

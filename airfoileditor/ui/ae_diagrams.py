@@ -22,9 +22,9 @@ from ..model.polar_set      import *
 from ..model.case           import Case_Abstract, Case_Optimize
 from ..model.xo2_driver     import Worker, Xoptfoil2
 from ..model.xo2_results    import OpPoint_Result, GeoTarget_Result
+from ..model.nf_driver      import Neuralfoil_Evaluator
 
 from .ae_artists            import *
-from .ae_artists            import BSpline_Artist, Deviation_Line_Artist
 from .ae_widgets            import Airfoil_Select_Open_Widget
 from .xo2_artists           import *
 from .util_dialogs          import Polar_Definition_Dialog, Airfoil_Scale_Dialog
@@ -422,7 +422,8 @@ class Panel_Polar_Defs (Edit_Panel):
         diag = Polar_Definition_Dialog (self, polar_def, is_new=is_new,
                                         parentPos=(1.1, 0.5), dialogPos=(0,0.5), fixed_chord=self.chord)
         
-        diag.sig_final_changed.connect (self._on_polar_def_changed)
+        diag.sig_changed.connect (self._on_polar_def_changed)           # live update with NeuralFoil polars
+        diag.sig_final_changed.connect (self._on_polar_def_changed)     # final update when dialog is closed
         diag.show()
 
 
@@ -442,8 +443,8 @@ class Panel_Polar_Defs (Edit_Panel):
 
         # increase re number for the new polar definition
         if self.polar_defs:
-            new_polar_def  = deepcopy (self.polar_defs[-1])
-            new_polar_def.set_is_mandatory (False)                  # parent could have been mandatory
+            new_polar_def  = self.polar_defs[-1].as_copy()
+            new_polar_def.set_is_mandatory (False)      # parent could have been mandatory
             new_polar_def.set_re (new_polar_def.re + 100000)
             new_polar_def.set_active(True)
         else: 
@@ -451,8 +452,9 @@ class Panel_Polar_Defs (Edit_Panel):
 
         self.polar_defs.append (new_polar_def)
 
-        # open edit dialog for new def 
+        self.refresh()                                  # immediately refresh to show new polar def in list
 
+        # open edit dialog for new def 
         self.edit_polar_def (polar_def=new_polar_def, is_new=True)
 
 
@@ -606,6 +608,7 @@ class Item_Airfoil (Diagram_Item):
 
         self._bezier_artist         : Bezier_Artist = None 
         self._bspline_artist        : BSpline_Artist = None                
+        self._cst_artist            : CST_Artist = None
         self._flap_artist           : Flap_Artist = None
         self._line_artist           : Airfoil_Line_Artist = None
         self._airfoil_artist        : Airfoil_Artist = None
@@ -655,28 +658,9 @@ class Item_Airfoil (Diagram_Item):
         return Case_Abstract.get_iDesign (self.design_airfoil)
             
 
-    def _is_one_airfoil_curve (self) -> bool: 
-        """ is one of airfoils Bezier or B-spline based? """
-        for a in self.airfoils:
-            if a.isBezierBased or a.isBSplineBased: return True
-        return False 
-
-
-    def _is_one_airfoil_hicks_henne (self) -> bool: 
-        """ is one of airfoils Hicks Henne based? """
-
-        for a in self.airfoils:
-            if a.isHicksHenneBased: return True
-        return False 
-
-
     def _is_design_and_curve (self) -> bool: 
-        """ is one airfoil used as design and is Bezier or B-spline based?"""
-
-        for a in self.airfoils:
-            if a.usedAsDesign and (a.isBezierBased or a.isBSplineBased):
-                return True 
-        return False
+        """ is one airfoil used as design and is Bezier, B-spline or CST based?"""
+        return any (a.usedAsDesign and a.geo.isCurve for a in self.airfoils)
 
 
     def _on_paneling_changed (self, is_paneling : bool):
@@ -697,6 +681,7 @@ class Item_Airfoil (Diagram_Item):
 
         self._bezier_artist.refresh_from_side (side_type)
         self._bspline_artist.refresh_from_side (side_type)
+        self._cst_artist.refresh_from_side (side_type)
 
         
     def _on_new_design (self):
@@ -809,6 +794,7 @@ class Item_Airfoil (Diagram_Item):
         self._show_control_points = aBool
         self._bezier_artist.set_show (aBool)
         self._bspline_artist.set_show (aBool)
+        self._cst_artist.set_show (aBool)
 
     @override
     def resizeEvent(self, ev):
@@ -932,6 +918,11 @@ class Item_Airfoil (Diagram_Item):
         self._bspline_artist = a
         self._add_artist (a)
 
+        a = CST_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
+        a.sig_cst_changed.connect (self.app_model.notify_airfoil_changed)
+        self._cst_artist = a
+        self._add_artist (a)
+
         a = Hicks_Henne_Artist (self, lambda: self.airfoils, show_legend=True, show=False)
         self._hicks_henne_artist = a
         self._add_artist (a)
@@ -1026,13 +1017,13 @@ class Item_Airfoil (Diagram_Item):
             CheckBox (l,r,c, text="Curve control points", colSpan=2,
                     get=lambda: self.show_control_points,
                     set=self.set_show_control_points,
-                    hide=lambda : not self._is_one_airfoil_curve(),
-                    toolTip="Show control points of Bezier or B-spline curves")
+                    hide=lambda : not any (a.geo.isCurve for a in self.airfoils),
+                    toolTip="Show control points of Bezier, B-Spline or CST curves")
             r += 1
             CheckBox (l,r,c, text="Hicks Henne functions", colSpan=2,
                     get=lambda: self._hicks_henne_artist.show,
                     set=self._hicks_henne_artist.set_show,
-                    hide=lambda : not self._is_one_airfoil_hicks_henne(),
+                    hide=lambda : not any (a.isHicksHenneBased for a in self.airfoils),
                     toolTip="Show Hicks Henne functions which build the airfoil")
             r += 1
             CheckBox (l,r,c, text="Stretch y axis", 
@@ -1417,7 +1408,7 @@ class Item_Polars (Diagram_Item):
         # axes x, y variables
         xyVars = d.get('xyVars', None)                          
         if xyVars is not None:
-            self.set_xyVars (xyVars)
+            self.set_xyVars (xyVars, silent=True)
 
 
     @property 
@@ -1599,12 +1590,12 @@ class Item_Polars (Diagram_Item):
                 self._switch_btn.hide()
 
 
-    def _refresh_artist_xy (self): 
+    def _refresh_artist_xy (self, silent=False): 
         """ refresh polar artist with new diagram variables"""
 
         artist : Polar_Artist
         for artist in self._artists:
-            artist.set_xyVars (self._xyVars)
+            artist.set_xyVars (self._xyVars, silent=silent)
 
         self.plot_title()
 
@@ -1647,7 +1638,7 @@ class Item_Polars (Diagram_Item):
         self.setup_viewRange ()
 
 
-    def set_xyVars (self, xyVars : list[str]):
+    def set_xyVars (self, xyVars : list[str], silent=False):
         """ set xyVars from a list of var strings or enum var"""
 
         xVar = xyVars[0]
@@ -1663,7 +1654,8 @@ class Item_Polars (Diagram_Item):
             yVar = yVar 
         self._xyVars = (xVar, yVar)
 
-        self._refresh_artist_xy ()
+        self._refresh_artist_xy (silent=silent)
+
         self.setup_viewRange ()
 
 
@@ -1787,7 +1779,7 @@ class Diagram_Airfoil_Polar (Diagram):
         super().__init__(*args, **kwargs)
 
         # load initial settings
-        self.set_settings (self.app_model.settings)
+        self.set_settings (self.app_model.settings, refresh=False)  # load settings from app_model - no refresh to avoid double refresh 
 
         self._viewPanel.setMinimumWidth(250)
         self._viewPanel.setMaximumWidth(250)
@@ -2128,7 +2120,7 @@ class Diagram_Airfoil_Polar (Diagram):
             l = QGridLayout()
             r,c = 0, 0
 
-            if Worker.ready:
+            if Worker.ready or Neuralfoil_Evaluator.ready:
 
                 Label (l,r,c, colSpan=2, get="Polar definitions") 
                 r += 1
@@ -2176,7 +2168,11 @@ class Diagram_Airfoil_Polar (Diagram):
                 r += 1
                 Label (l,r,c, colSpan=2, get=f"{Worker.NAME} not ready", style=style.ERROR) 
                 r += 1
-                Label (l,r,c, colSpan=2, get=f"{Worker.ready_msg}", style=style.COMMENT, height=(None,100), wordWrap=True) 
+                Label (l,r,c, colSpan=2, get=f"{Worker.ready_msg}", style=style.COMMENT, height=(None,50), wordWrap=True) 
+                r += 1
+                Label (l,r,c, colSpan=2, get=f"{Neuralfoil_Evaluator.NAME} not ready", style=style.ERROR) 
+                r += 1
+                Label (l,r,c, colSpan=2, get=f"{Neuralfoil_Evaluator.ready_msg}", style=style.COMMENT, height=(None,50), wordWrap=True) 
                 r += 1
                 SpaceR (l,r, height=5) 
                 l.setColumnStretch (1,1)
@@ -2186,9 +2182,11 @@ class Diagram_Airfoil_Polar (Diagram):
                                             on_switched = lambda aBool: self.set_show_polars(aBool))
             
             # patch Worker version into head of panel 
-            if Worker.ready:
+            if Worker.ready or Neuralfoil_Evaluator.ready:
                 l_head = self._panel_polar._head.layout()
-                Label  (l_head, get=f"{Worker.NAME} {Worker.version}", style=style.COMMENT, fontSize=size.SMALL,
+                text  = f"{Worker.NAME} {Worker.version} " if Worker.ready else ""
+                text += f"<br>{Neuralfoil_Evaluator.NAME}" if Neuralfoil_Evaluator.ready else ""
+                Label  (l_head, get=text, style=style.COMMENT, fontSize=size.SMALL,
                         align=Qt.AlignmentFlag.AlignBottom)
 
         return self._panel_polar 

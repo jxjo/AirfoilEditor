@@ -50,7 +50,7 @@ from .ui.ae_widgets          import create_airfoil_from_path
 from .ui.ae_diagrams         import Diagram_Airfoil_Polar
 
 from .app_model              import App_Model, Mode_Id
-from .app_modes              import Mode_As_BSpline, Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_As_Bezier
+from .app_modes              import Mode_As_BSpline, Modes_Manager, Mode_View, Mode_Modify, Mode_Optimize, Mode_As_Bezier, Mode_As_CST
 
 import logging
 logger = logging.getLogger(__name__)
@@ -143,6 +143,7 @@ class Main (QMainWindow):
         modes_manager.add_mode (Mode_Optimize   (app_model))
         modes_manager.add_mode (Mode_As_Bezier  (app_model))
         modes_manager.add_mode (Mode_As_BSpline (app_model))
+        modes_manager.add_mode (Mode_As_CST     (app_model))
 
         modes_manager.set_mode (mode_to_start, initial)                     # set initial object in app_model
         modes_manager.sig_close_requested.connect (self.close)              # app close requested from mode view
@@ -247,6 +248,8 @@ class Main (QMainWindow):
 
         airfoil = self._app_model.airfoil
         if airfoil and not airfoil.isExample: 
+            if airfoil.usedAsDesign:                    # user closed during design case
+                airfoil = self._app_model.case.airfoil_seed
             s.set ('last_opened', airfoil.pathFileName_abs)
         else:
             s.set ('last_opened', None)

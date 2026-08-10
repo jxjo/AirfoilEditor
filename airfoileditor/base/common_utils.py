@@ -99,22 +99,35 @@ def fromDict(aDict : dict, key, default='no default'):
         elif isinstance (default, int):
             preferred_type = int
 
+    def _copy_default(val):
+        if isinstance(val, list):
+            return val.copy()
+        if isinstance(val, dict):
+            return val.copy()
+        if isinstance(val, set):
+            return val.copy()
+        return val
+
     if aDict and key in aDict:
         value = aDict[key]
-        if preferred_type == float:
-            value = float(value)
-        elif preferred_type == int:
-            value = int(value)
-        elif preferred_type == bool:
-            value = bool(value)
+        if value is None and default != 'no default':
+            value = _copy_default(default)
     else:
         if default == 'no default':
             value = None
             logger.error ('Mandatory parameter \'%s\' not specified'  % key)
         else:
-            value = default 
+            value = _copy_default(default)
             if value:
                 logger.debug ('Parameter \'%s\' not specified, using default-value \'%s\'' % (key, str(value)))
+
+    if preferred_type == float:
+        value = float(value)
+    elif preferred_type == int:
+        value = int(value)
+    elif preferred_type == bool:
+        value = bool(value)
+
     return value
 
 

@@ -218,14 +218,52 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         else:
             return None
 
+
+    @property
+    def driver (self) -> str:
+        """ current polar driver"""
+        if self.polar_def.is_xfoil:
+            return Polar_Definition.POLAR_XFOIL
+        elif self.polar_def.is_neuralfoil:
+            return Polar_Definition.POLAR_NEURALFOIL
+        else:
+            return None
+
+    def set_driver (self, aDriver : str):
+        """ set polar driver"""
+        if aDriver == Polar_Definition.POLAR_XFOIL:
+            self.polar_def.set_is_xfoil (True)
+        elif aDriver == Polar_Definition.POLAR_NEURALFOIL:
+            self.polar_def.set_is_neuralfoil (True)
+    
+
     def _init_layout(self) -> QLayout:
 
         l = QGridLayout()
         r,c = 0,0 
+
+        Label  (l,r,c, get="Polar Driver")
+        ComboBox (l,r,c+1,  width=90, options=Polar_Definition.drivers(),
+                        obj=self, prop=Polar_Definition_Dialog.driver,
+                        disable=len(Polar_Definition.drivers()) == 1,
+                        toolTip="Select the polar driver (XFOIL or NeuralFoil) for this polar.")
+        Label  (l,r,c+4, get="Model ", 
+                        hide=lambda: not self.polar_def.is_neuralfoil)
+        ComboBox (l,r,c+5,  width=80, colSpan=2,  
+                        options=Neuralfoil_Evaluator.available_model_sizes(),
+                        obj=self.polar_def, prop=Polar_Definition.nf_model_size,
+                        hide=lambda:not self.polar_def.is_neuralfoil,
+                        toolTip="Select NeuralFoil model size for this polar.")
+        r += 1
+        SpaceR (l, r, height=10, stretch=0)
+        r += 1
+
         Label  (l,r,c, get="Polar type")
+        _tip = lambda: "Polar type is always T1 for NeuralFoil polars" if self.polar_def.is_neuralfoil else "Polar type for XFOIL polars"
         ComboBox (l,r,c+1,  width=70, options=polarType.values(),
                         obj=self.polar_def, prop=Polar_Definition.type,
-                        disable=self._polar_type_fixed)
+                        disable=lambda: self._polar_type_fixed or self.polar_def.is_neuralfoil,
+                        toolTip=_tip)
         Label  (l,r,c+2, get="Fix", style=style.COMMENT,
                 hide=lambda: not self._polar_type_fixed)
         r += 1
@@ -239,8 +277,11 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         c += 1
         SpaceC  (l,c, width=10)
         c += 1
+        _tip = lambda: "Mach number is always 0.0 for NeuralFoil polars" if self.polar_def.is_neuralfoil else "Mach number for XFOIL polars"
         FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=2,
-                        obj=self.polar_def, prop=Polar_Definition.ma)
+                        obj=self.polar_def, prop=Polar_Definition.ma,
+                        disable=lambda: self.polar_def.is_neuralfoil,
+                        toolTip=_tip)   # neuralfoil: ma is always 0.0
         l.setColumnMinimumWidth (c,45)
         c += 2
         SpaceC  (l,c, width=10)
@@ -280,6 +321,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             r += 1 
             CheckBox (l,r,c, text="Set flap for this polar ...", colSpan=7,
                             obj=self.polar_def, prop=Polar_Definition.is_flapped,
+                            disable=lambda: self.polar_def.is_neuralfoil,
                             toolTip="This polar will be calculated with a flap definition.\n" + 
                                      "The flap definition is stored in the polar definition.")
             r += 1
@@ -301,21 +343,36 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             #                 toolTip="If checked, the range of polar values is optimized by Worker\n" + 
             #                         "to cover the range from cl_min to cl_max")
             r += 1
+            _tip = "<br>The smaller the value, the smoother the polar, the more time is needed."
+            _tip_a = "Step size for polar values of alpha." + _tip
+            _tip_c = "Step size for polar values of cl."    + _tip
             FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=70, step=0.1, lim=(0.1, 1.0), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                            hide = lambda: self.polar_def.specVar != var.ALPHA)
+                            hide = lambda: self.polar_def.specVar != var.ALPHA,
+                            toolTip=_tip_a)
             FieldF (l,r,c, lab=f"Step {var.CL}", width=70, step=0.01, lim=(0.01, 0.1), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
-                            hide = lambda: self.polar_def.specVar != var.CL)
-            Label  (l,r,c+2, style=style.COMMENT, colSpan=6, 
-                            get="the smaller the value, the more time is needed")
+                            hide = lambda: self.polar_def.specVar != var.CL,
+                            toolTip=_tip_c)
             r += 1
             SpaceR (l, r, height=10, stretch=1)
         else:
             r += 1
             SpaceR (l, r, height=1, stretch=1)
-
         return l
+
+
+    @override
+    @property
+    def is_live_update(self):
+        """ live update is only active for NeuralFoil polars """
+
+        if self.polar_def.is_xfoil:
+            return False
+        elif not Polar_Definition.POLAR_NEURALFOIL in Polar_Definition.drivers():
+            return False
+        else:
+            return super().is_live_update
 
 
     def calc_re (self):

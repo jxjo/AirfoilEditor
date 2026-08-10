@@ -619,10 +619,11 @@ class Xo2_OpPoint_Defs_Artist (Artist):
 
     @property
     def xyVars(self): return self._xyVars
-    def set_xyVars (self, xyVars: Tuple[var, var]): 
+    def set_xyVars (self, xyVars: Tuple[var, var], silent=False): 
         """ set new x, y variables for polar """
         self._xyVars = xyVars 
-        self.refresh()
+        if not silent:
+            self.refresh()
 
 
     @property
@@ -817,10 +818,11 @@ class Xo2_OpPoint_Artist (Artist):
 
     @property
     def xyVars(self): return self._xyVars
-    def set_xyVars (self, xyVars: Tuple[var, var]): 
+    def set_xyVars (self, xyVars: Tuple[var, var],silent=False): 
         """ set new x, y variables for polar """
         self._xyVars = xyVars 
-        self.refresh()
+        if not silent:
+            self.refresh()
 
 
     def _plot (self): 

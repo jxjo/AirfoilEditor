@@ -1717,7 +1717,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             if (cl_min_cd - cl_min_cl) > 0.35:
                 cl_between   = round ((cl_min_cl + cl_min_cd) / 2, 2) 
                 idx   = np.abs(polar.cl - cl_between).argmin()
-                new_point    = polar.polar_points [idx]
+                new_point    = polar.point_at (idx)
                 if (cl_min_cd - new_point.cl) > 0.2:                            # ensure min distance 
                     self.create_from_polar_point (new_point, optVar=var.CD, factor = target_low_cd)
 
@@ -1725,7 +1725,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
         if len(self) < nOp and polar.max_cl:
             cl_near_max = polar.max_cl.cl * 0.95
             idx   = np.abs(polar.cl - cl_near_max).argmin()
-            new_point = polar.polar_points [idx]
+            new_point = polar.point_at (idx)
             self.create_from_polar_point (new_point, optVar=var.GLIDE)
 
         # target point between min cd und max glide 
@@ -1735,7 +1735,7 @@ class OpPoint_Definitions (list [OpPoint_Definition]):
             if (cl_max_glide - cl_min_cd) > 0.35:
                 cl_between   = round ((cl_max_glide + cl_min_cd) / 2, 2) 
                 idx   = np.abs(polar.cl - cl_between).argmin()
-                new_point = polar.polar_points [idx]
+                new_point = polar.point_at (idx)
                 self.create_from_polar_point (new_point, optVar=var.CD)
 
 

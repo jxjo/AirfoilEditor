@@ -1531,6 +1531,11 @@ class Dialog_Modeless (Dialog_Modal):
     - no footer button box by default
     - closes when its parent widget gets hidden or closed
     - optional auto-close when user clicks outside this modeless dialog
+
+    Args:
+        lock_widget_while_open: Optional QWidget to visually lock while this dialog is open.
+        close_on_click_outside: Whether to close the dialog when clicking outside of it.
+        is_live_update: Whether the dialog is live updating parent (show in title).
     """
 
     sig_changed = pyqtSignal(object)                # signal any change in this dialog
@@ -1539,6 +1544,7 @@ class Dialog_Modeless (Dialog_Modal):
     def __init__ (self, *args,
                   lock_widget_while_open : QWidget | None = None,
                   close_on_click_outside : bool = True,
+                  is_live_update : bool = True,
                   **kwargs):
 
         self._lock_widget = lock_widget_while_open
@@ -1550,6 +1556,7 @@ class Dialog_Modeless (Dialog_Modal):
         self._live_connections : list[tuple[object, callable]] = []
 
         icon = Icon(Icon.EDIT) if close_on_click_outside else Icon(Icon.EDIT_LIVE)
+        self._is_live_update = is_live_update
 
         super().__init__ (*args,
                             flags=Qt.WindowType.Window,
@@ -1628,7 +1635,24 @@ class Dialog_Modeless (Dialog_Modal):
 
         super()._on_widget_changed (widget)
 
-        self.sig_changed.emit (self.dataObject)
+        # window title changes to indicate live edit mode
+        self.setWindowTitle (self._titletext())
+
+        # inform parent live about changes if desired (e.g. for live update of diagrams)
+        if self.is_live_update:
+            self.sig_changed.emit (self.dataObject)
+
+
+    @property
+    def is_live_update (self) -> bool:
+        """ whether this dialog is live updating parent (show in title) """
+        return self._is_live_update
+
+
+    @override
+    def _titletext(self) -> str | None:
+        """ optional dynamic window title - override in subclass to provide custom title """
+        return self.name if not self.is_live_update else f"{self.name}          ● LIVE"
 
 
     def set_close_on_click_outside (self, enabled : bool = True):

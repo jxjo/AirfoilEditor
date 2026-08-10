@@ -16,7 +16,6 @@ The App Model is needed as the 'real' model is QObject agnostic and stateless.
 """
 
 import os
-import stat
 from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
@@ -30,13 +29,15 @@ from .base.app_utils         import Settings
 from .model.airfoil          import Airfoil, usedAs
 from .model.airfoil_examples import Example
 from .model.geometry         import Line
-from .model.geometry_curve   import Geometry_Curve, Side_Airfoil_Curve
+from .model.geometry_curve   import Geometry_Curve, Side_Airfoil_Curve, LE_Mode
 from .model.geometry_spline  import Panelling_Spline
 from .model.geometry_bezier  import Panelling_Bezier
 from .model.geometry_bspline import Panelling_BSpline
+from .model.geometry_cst     import Geometry_CST
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.xo2_input        import OpPoint_Definition, Input_File
+from .model.nf_driver        import Neuralfoil_Evaluator
 from .model.case             import Case_Direct_Design, Case_Optimize, Case_Abstract, Case_Match_Target
 
 from .match_runner           import Matcher, Match_Result
@@ -55,6 +56,7 @@ class Mode_Id(Enum):
     OPTIMIZE   = auto()
     AS_BEZIER  = auto()
     AS_BSPLINE = auto()
+    AS_CST     = auto()
 
 
 # -----------------------------------------------------------------------------
@@ -112,8 +114,8 @@ class App_Model (QObject):
 
     """
 
-    WORKER_MIN_VERSION          = '1.0.11'
-    XOPTFOIL2_MIN_VERSION       = '1.0.11'
+    WORKER_MIN_VERSION          = '2.0.0'
+    XOPTFOIL2_MIN_VERSION       = '2.0.0'
 
     # --- signals
 
@@ -185,7 +187,11 @@ class App_Model (QObject):
         Worker    (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.WORKER_MIN_VERSION)
         Xoptfoil2 (workingDir=self._workingDir_default).isReady (assets_dir, min_version=self.XOPTFOIL2_MIN_VERSION)
 
-        # initialize watchdog thread for polars and xo2 state changes (optional)
+        # is NeuralFoil evaluator avaialble
+        if not Neuralfoil_Evaluator.ready:
+            logger.error (f"{Neuralfoil_Evaluator.NAME} not available: {Neuralfoil_Evaluator.ready_msg}")
+
+        # initialize watchdog thread for xfoil polars and xo2 state changes (optional)
         if start_watchdog:
             self._init_watchdog()
 
@@ -359,6 +365,8 @@ class App_Model (QObject):
             ok = True
         elif mode_id == Mode_Id.AS_BSPLINE  and isinstance (case, Case_Match_Target):
             ok = True
+        elif mode_id == Mode_Id.AS_CST      and isinstance (case, Case_Match_Target):
+            ok = True
         elif mode_id == Mode_Id.VIEW and case is None:
             ok = True
 
@@ -401,6 +409,12 @@ class App_Model (QObject):
     def is_mode_as_bspline (self) -> bool:
         """ is current mode as bspline """
         return self._mode_id == Mode_Id.AS_BSPLINE
+
+
+    @property
+    def is_mode_as_cst (self) -> bool:
+        """ is current mode as cst """
+        return self._mode_id == Mode_Id.AS_CST
 
 
     @property
@@ -549,36 +563,61 @@ class App_Model (QObject):
         self.sig_airfoil_geo_paneling.emit (is_paneling)
 
 
-    def notify_match_target_changed (self, side : Side_Airfoil_Curve = None, new_ncp: int = None):
-        """ notify self one of the match targets changed """  
+    def notify_match_target_changed (self, refit_for : Side_Airfoil_Curve | Geometry_CST= None, moving=False):
+        """ 
+        notify self one of the match targets changed 
+        - refit either to a single side (Bezier, BSpline) or to both sides (CST)
+        - moving: True if the target is still moving (no final fit yet, no new design airfoil created yet)
+        """  
 
         case : Case_Match_Target = self.case
-        if isinstance (case, Case_Match_Target):
+        if not isinstance (case, Case_Match_Target):
+            raise ValueError (f"{self} notify_fit_target_changed: case is not Case_Match_Target - cannot fit")
 
-            # reset match result of case to ensure new match run
-            case.set_match_result (None)
+        new_design = False 
 
-            if side and new_ncp:
+        # reset match result of case to ensure new match run
+        case.set_match_result (None)
 
-                # get target side and le curvature for new ncp initial fit 
-                if side.isUpper:
-                    target_side  = case.targets_upper.side
-                    le_curvature = case.targets_upper.le_curvature  
-                else:
-                    target_side  = case.targets_lower.side
-                    le_curvature = case.targets_lower.le_curvature
+        # Bezier and Bspline fit for a single side
+        if (self.airfoil.isBezierBased or self.airfoil.isBSplineBased) and isinstance (refit_for, Side_Airfoil_Curve):
 
-                # create new design with new ncp of the side upper or lower
-                geo: Geometry_Curve = self.airfoil.geo
-                geo.set_ncp_of (side, new_ncp, target_side, le_curvature)   
-
-                self.notify_airfoil_changed()         # notify change of airfoil - new design
-                
+            # get target side and le curvature for new ncp initial fit 
+            if refit_for.isUpper:
+                target_side  = case.targets_upper.side
+                le_curvature = case.targets_upper.le_curvature
+                ncp          = case.targets_upper.ncp
             else:
+                target_side  = case.targets_lower.side
+                le_curvature = case.targets_lower.le_curvature
+                ncp          = case.targets_lower.ncp
 
-                # just trigger refresh to show new results 
-                self.sig_new_airfoil.emit()    
+            # create new design with new ncp of the side upper or lower
+            geo: Geometry_Curve = self.airfoil.geo
+            geo.set_curve_parms_and_fit (refit_for, ncp, target_side, le_curvature)
 
+            new_design = not moving
+
+        # cst fit for both sides with explicit le curvature and smoothness
+        elif self.airfoil.isCSTBased and isinstance (refit_for, Geometry_CST):
+
+            smooth_lambda = case.targets_upper.fit_smooth_lambda
+            le_mode       = case.targets_upper.le_mode
+            le_curvature  = case.targets_upper.le_curvature if le_mode == LE_Mode.FIXED else None
+
+            # fit airfoil geometry to the targets with explicit LE mode/value and smoothness
+            geo: Geometry_CST = self.airfoil.geo
+            geo.set_curve_parms_and_fit (case.targets_upper.side, case.targets_lower.side,
+                            ncp = case.targets_upper.ncp,
+                            le_mode = le_mode, le_curvature = le_curvature,
+                            smooth_lambda = smooth_lambda)
+
+            new_design = not moving
+
+        if new_design:
+            self.notify_airfoil_changed()         # notify change of airfoil - new design
+        else:
+            self.sig_new_airfoil.emit()           # notify change of airfoil - no new design yet
 
     @property
     def airfoil_2 (self) -> Airfoil:

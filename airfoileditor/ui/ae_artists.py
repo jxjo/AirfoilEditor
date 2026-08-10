@@ -10,17 +10,21 @@ import html
 
 from ..base.math_util           import derivative1
 from ..base.artist              import *
-from ..base.spline              import Bezier, HicksHenne, BSpline
+from ..base.spline              import Bezier, HicksHenne, BSpline, CST
 
-from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline, usedAs, Geometry, Flap_Setter
-from ..model.geometry   import Line, Panelling
+from ..model.airfoil            import (Airfoil, Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST, 
+                                        usedAs, Geometry, Flap_Setter)
+from ..model.geometry           import Line, Panelling
+from ..model.geometry_curve     import Geometry_Curve
 from ..model.geometry_bezier    import Geometry_Bezier,  Side_Airfoil_Bezier
 from ..model.geometry_bspline   import Geometry_BSpline, Side_Airfoil_BSpline
 from ..model.geometry_hicks_henne import Side_Airfoil_HicksHenne
+from ..model.geometry_cst       import Geometry_CST, Side_Airfoil_CST
 from ..model.polar_set          import * 
 
-from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath
-from PyQt6.QtCore               import pyqtSignal, QObject
+from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath, QCursor
+from PyQt6.QtCore               import pyqtSignal, QObject, QTimer
+from PyQt6.QtWidgets            import QToolTip
 
 
 import logging
@@ -478,7 +482,7 @@ class Movable_Side_BSpline (Movable_Curve):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
     an airfoil Side_BSpline. 
-    The BSpline curve which can be changed by the controllpoints
+    The BSpline curve which can be changed by the control points
     
     Points are implemented with Moveable_Points
     A Moveable_Point can also be fixed ( movable=False).
@@ -590,6 +594,282 @@ class Movable_Side_BSpline (Movable_Curve):
         self._airfoil.geo.finished_change_of (self._side)      
 
         super()._finished_point(aPoint)
+
+
+
+class Movable_CST_LE_Weight (Movable_Point):
+    """ 
+    Represents the LE weight of a CST curve.
+    """
+    name =  "LEW"
+
+    def __init__ (self, 
+                  geo : Geometry_CST, 
+                  upper_plot_item : pg.PlotDataItem, 
+                  lower_plot_item : pg.PlotDataItem,
+                  show_label_static_with_value = False, 
+                  movable = False, 
+                  color : QColor|str = 'r',
+                  **kwargs):
+
+        if not geo.isCST:
+            raise ValueError ("Movable_CST_LE_Weight can only be used with Geometry_CST")
+
+        self._show_label_static_with_value = show_label_static_with_value
+        self._geo = geo
+        self._upper_plot_item = upper_plot_item
+        self._lower_plot_item = lower_plot_item
+
+        xy = self._le_point_xy()
+
+        super().__init__(xy, movable=movable, color=color, symbol='d', **kwargs)
+
+        # create a helper line from LE to the LE point - to show the LE weight
+        # parented to self so it is moved/deleted together with the point. As a child
+        # item its coordinates are relative to self's own position (xy), so the LE
+        # end (absolute 0,0) has to be given as -xy, and the point end as (0,0).
+        if movable:
+            penColor = COLOR_EDITABLE
+        else:
+            penColor = QColor (color).darker (150)
+        pen = pg.mkPen (penColor, width=1, style=Qt.PenStyle.DotLine)
+
+        self._helper_line = pg.PlotDataItem(pen=pen)
+        self._helper_line.setParentItem(self)
+        self._update_helper_line (xy)
+
+    def _le_point_xy (self): 
+        return -0.1, self._geo.le_weight
+
+
+    def _update_helper_line (self, xy):
+        """ update helper line data from LE (0,0) to the (parent-relative) point xy """
+        self._helper_line.setData ([-xy[0], 0], [-xy[1], 0])
+
+
+    def _moving (self, _):
+        """ slot - when point is moved"""
+
+        # update highpoint coordinates
+        self._geo.set_le_weight(self.y, moving=True)
+
+        # update self xy if we run against limits 
+        xy = self._le_point_xy()
+        self.setPos(xy)
+        self._update_helper_line (xy)
+
+        # update line plot item 
+        self._upper_plot_item.setData (self._geo.upper.x, self._geo.upper.y)
+        self._lower_plot_item.setData (self._geo.lower.x, self._geo.lower.y)    
+
+
+    def _finished (self, _):
+        """ slot - point moving is finished"""
+
+        # final highpoint coordinates
+        new_weight = self.y
+        self._geo.set_le_weight(new_weight, moving=False)
+        self._changed()
+
+
+    @override
+    def label_static (self, *_):
+        """label static"""
+        if self._show_label_static_with_value:
+            return f"{self.name}  {self.y:.3f}"
+        else: 
+            return super().label_static() 
+
+
+    @override
+    def label_hover (self, *_):
+        """label when hovered"""
+        return f"LE weight  {self.y:.3f}"
+
+
+    @override
+    def label_moving (self, *_):
+        """label when moving"""
+        return f"LE weight  {self.y:.3f} "
+
+
+
+
+class Movable_CST_TE_Thickness (Movable_Point):
+    """ 
+    Represents the TE thickness of a CST curve.
+    """
+    name =  "TE"
+
+    def __init__ (self, 
+                  geo : Geometry_CST, 
+                  upper_plot_item : pg.PlotDataItem, 
+                  lower_plot_item : pg.PlotDataItem,
+                  show_label_static_with_value = False, 
+                  movable = False, 
+                  color : QColor|str = 'r',
+                  **kwargs):
+
+        if not geo.isCST:
+            raise ValueError ("Can only be used with Geometry_CST")
+
+        self._show_label_static_with_value = show_label_static_with_value
+        self._geo = geo
+        self._upper_plot_item = upper_plot_item
+        self._lower_plot_item = lower_plot_item
+
+        xy = self._te_point_xy()
+
+        super().__init__(xy, movable=movable, color=color, symbol='d', **kwargs)
+
+
+    def _te_point_xy (self): 
+        return 1.0, self._geo.te_gap / 2
+
+
+    def _moving (self, _):
+        """ slot - when point is moved"""
+
+        # update highpoint coordinates
+        self._geo.set_te_gap(self.y * 2, moving=True)
+
+        # update self xy if we run against limits 
+        xy = self._te_point_xy()
+        self.setPos(xy)
+
+        # update line plot item 
+        self._upper_plot_item.setData (self._geo.upper.x, self._geo.upper.y)
+        self._lower_plot_item.setData (self._geo.lower.x, self._geo.lower.y)    
+
+
+    def _finished (self, _):
+        """ slot - point moving is finished"""
+
+        # final highpoint coordinates
+        new_te_gap = self.y * 2
+        self._geo.set_te_gap(new_te_gap, moving=False)
+        self._changed()
+
+
+    @override
+    def label_static (self, *_):
+        """label static"""
+        if self._show_label_static_with_value:
+            return f"{self.name}  {self.y*2:.3f}"
+        else: 
+            return super().label_static() 
+
+
+    @override
+    def label_hover (self, *_):
+        """label when hovered"""
+        return f"TE thickness  {self.y*2:.3f}"
+
+
+    @override
+    def label_moving (self, *_):
+        """label when moving"""
+        return f"TE thickness  {self.y*2:.3f} "
+
+
+
+
+class Movable_Side_CST (Movable_Curve):
+    """
+    pg.PlotCurveItem/UIGraphicsItem which represents 
+    an airfoil Side_CST. 
+    The CST curve which can be changed by the control points
+    
+    Points are implemented with Moveable_Points
+    A Moveable_Point can also be fixed ( movable=False).
+    See pg.TargetItem for all arguments 
+
+    Callback 'on_changed' will return the (new) list of 'points'
+
+    """
+    def __init__ (self, 
+                  airfoil : Airfoil_CST,
+                  side : Side_Airfoil_CST,
+                  **kwargs):
+
+        self._airfoil = airfoil
+        self._side = side 
+
+        jpoints      = side.controlPoints_as_jpoints
+        label_anchor = (0,1) if side.isUpper else (0,0)
+
+        super().__init__(jpoints, label_anchor=label_anchor, symbol="d", symbol_size=9, **kwargs)
+
+        # make self (polyline) clickable to add control points 
+        if self.movable and self._curve_item is not None:
+            self.setClickable (True)     
+            self.sigClicked.connect (self._on_self_clicked)
+
+
+    @override
+    @property
+    def curve (self) -> CST:
+        """ the CST  self is working with """
+        # here - take BSpline of the 'side' 
+        return self._side.curve
+    @property
+    def u (self) -> list:
+        """ the CST parameter  """
+        # here - take from the 'side' property which delegates to panelling
+        return self._side.u
+
+
+    def refresh (self):
+        """ refresh control points from side control points """
+
+        # # when matching, thread could have changed ncp - race condition ...
+        # if len (self._movable_points) != len(self._side.controlPoints):
+        #     return
+
+        # # update all my movable points at once 
+        # movable_point : Movable_Curve_Point
+        # for i, point_xy in enumerate(self._side.controlPoints): 
+        #     movable_point = self._movable_points[i]
+        #     movable_point.setPos_silent (point_xy)              # silent - no change signal 
+
+        # update polyline         
+        self.setData(*self.points_xy())                         
+
+        # update curve item 
+        self._update_curve_item()
+
+
+    @override
+    def _delete_point (self, aPoint : Movable_Point):
+        """ slot - point is should be deleted """
+
+        ncp = self.curve.ncp 
+        if ncp <= 4: return
+
+        super()._delete_point (aPoint)    
+        _, py = self.jpoints_xy()
+
+        self.curve.set_weights (py)
+
+        super()._finished_point()
+
+
+    def _on_self_clicked (self, item, event : MouseClickEvent):
+        """ slot - self (polyline) is clicked - check if ctrl_click to add point """
+        if item == self and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+
+            self.curve.elevate_weights()
+
+            self._finished_point()
+
+
+    @override
+    def _finished_point (self, aPoint = None):
+        """ slot - point move is finished """
+
+        self._airfoil.geo.finished_change_of (self._side)      
+        super()._finished_point(aPoint)
+
 
 
 # -------- concrete sub classes ------------------------
@@ -727,16 +1007,16 @@ class Airfoil_Artist (Artist):
 
                     # if there is only one airfoil, fill the airfoil contour with a soft color tone  
                     brush = pg.mkBrush (color.darker (600))
-                    self._plot_dataItem  (x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
-                                          symbolBrush=sBrush, fillLevel=0.0, fillBrush=brush, antialias = antialias,
-                                          zValue=zValue)
                     
                     # plot note if reflexed or rearloaded
                     self._plot_reflexed_rearloaded (airfoil, color)
 
                 else: 
-                    self._plot_dataItem  (x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
-                                          symbolBrush=sBrush, antialias = antialias, zValue=zValue)
+                    brush = None
+
+                self._plot_and_connect (airfoil, x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
+                                        symbolBrush=sBrush, fillLevel=0.0, fillBrush=brush, antialias = antialias,
+                                        zValue=zValue)
 
                 # optional plot of real LE defined by spline 
 
@@ -755,6 +1035,20 @@ class Airfoil_Artist (Artist):
                 # optional plot of LE angle lines
                 if self.show_points and airfoil.usedAsDesign:
                     self._plot_le_angle_lines (airfoil, color)
+
+        # show help message 
+        self.set_help_message ("Click on an airfoil to show its key values")
+
+
+
+    def _plot_and_connect (self, airfoil: Airfoil, *args, **kwargs) -> pg.PlotDataItem:
+        """ plot a data item and immediately wire it to the polar click tooltip """
+        item = self._plot_dataItem (*args, **kwargs)
+        item.curve.setClickable (True)          # setClickable is on the underlying PlotCurveItem
+        item.sigClicked.connect (lambda _it, _ev, a=airfoil:
+            QTimer.singleShot (0, lambda: QToolTip.showText (
+                QCursor.pos(), a.info_as_html, msecShowTime=6000)))
+        return item
 
 
     def _plot_reflexed_rearloaded (self, airfoil : Airfoil, color : QColor): 
@@ -1152,6 +1446,81 @@ class BSpline_Artist (Artist):
                             antialias=True, zValue=zValue, connect='pairs')
 
 
+class CST_Artist (Artist):
+    """Plot and edit airfoils CST control points """
+
+    sig_cst_changed     = pyqtSignal()           # CST curve changed
+
+    @property
+    def airfoils (self) -> list [Airfoil]: return self.data_list
+
+
+    def refresh_from_side (self, aLinetype : Line.Type):
+        """ fast refesh of bspline control points for one line type"""
+
+        p : Movable_Side_CST
+        for p in self._plots: 
+            if isinstance (p, Movable_Side_CST) and p._side.type == aLinetype:
+                if len (p._movable_points) != len(p._side.controlPoints):
+                    # when matching, thread could have changed ncp - complete refresh
+                    self.refresh()     
+                    return
+                else:
+                    # just update control point items
+                    p.refresh()
+
+
+    def _plot (self): 
+    
+        # is there on airfoil with editable bspline curve?
+        one_airfoil_movable = any(airfoil.isCSTBased and airfoil.isEdited for airfoil in self.airfoils)
+
+        for airfoil in self.airfoils:
+            if airfoil.isCSTBased and airfoil.isLoaded:
+
+                color = _color_airfoil (self.airfoils, airfoil)
+                movable = airfoil.isEdited and self.show_mouse_helper
+
+                # Show labels only for the movable airfoil when there's one editable, otherwise show all
+                show_label = movable or not one_airfoil_movable
+
+                pl = Movable_Side_CST (airfoil, airfoil.geo.lower, color=color, movable=movable,
+                                        show_static=movable,      # make helper curve visible to ctrl-click
+                                        show_label=show_label,
+                                        on_changed=self.sig_cst_changed.emit)
+                self._add(pl)
+                pu = Movable_Side_CST (airfoil, airfoil.geo.upper, color=color, movable=movable,
+                                        show_static=movable,      # make helper curve visible to ctrl-click
+                                        show_label=show_label,
+                                        on_changed=self.sig_cst_changed.emit)
+                self._add(pu)
+
+                # plot leading edge weight point
+
+                p = Movable_CST_LE_Weight (airfoil.geo, 
+                                           upper_plot_item=pu._curve_item,
+                                           lower_plot_item=pl._curve_item,
+                                           color=color, movable=movable,
+                                           show_label_static=show_label,
+                                           on_changed=self.sig_cst_changed.emit)
+                self._add(p)
+
+                # plot te thickness point
+                p = Movable_CST_TE_Thickness (airfoil.geo,
+                                               upper_plot_item=pu._curve_item,
+                                               lower_plot_item=pl._curve_item,
+                                               color=color, movable=movable,
+                                               show_label_static=show_label,
+                                               on_changed=self.sig_cst_changed.emit)
+                self._add(p)
+
+        # show mouse helper message
+        if one_airfoil_movable:
+            msg = "CST: shift-click on weight point to remove,  ctrl-click on weights line to add a weight"
+            self.set_help_message (msg)
+
+
+
 
 class Deviation_Line_Artist (Artist):
     """Plot deviation of curves to its target_line """
@@ -1164,9 +1533,9 @@ class Deviation_Line_Artist (Artist):
     
         # get geo of design airfoil - if it is Bezier or BSpline based
 
-        geo : Geometry_BSpline | Geometry_Bezier = None
+        geo : Geometry_Curve = None
         for airfoil in self.airfoils:
-            if airfoil.usedAsDesign and (airfoil.isBSplineBased or airfoil.isBezierBased):
+            if airfoil.usedAsDesign and airfoil.geo.isCurve:
                 geo = airfoil.geo 
 
         if geo is None: return 
@@ -1432,8 +1801,7 @@ class Curvature_Comb_Artist (Artist):
 
             x, y, xe, ye, vals = airfoil.geo.curvature.as_curvature_comb ()
 
-            pen = pg.mkPen(color.darker(140), width=1, style=Qt.PenStyle.DotLine)
-            # pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+            pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DotLine)
 
             label   = f"Curvature Comb"
             zValue = 3 if airfoil.usedAsDesign else 1
@@ -1441,7 +1809,7 @@ class Curvature_Comb_Artist (Artist):
             self._plot_dataItem (xe, ye, name=label, pen=pen, zValue=zValue)
 
             # plot comb lines - interleave base and end points for connect='pairs'
-            pen = pg.mkPen(color.darker(300), width=1, style=Qt.PenStyle.SolidLine)
+            pen = pg.mkPen(color.darker(150), width=1, style=Qt.PenStyle.SolidLine)
             
             # Create arrays: [x[0], xe[0], x[1], xe[1], ...]
             x_pairs = np.empty(len(x) * 2)
@@ -1642,10 +2010,11 @@ class Polar_Artist (Artist):
 
     @property
     def xyVars(self): return self._xyVars
-    def set_xyVars (self, xyVars: Tuple[var, var]): 
+    def set_xyVars (self, xyVars: Tuple[var, var], silent=False): 
         """ set new x, y variables for polar """
         self._xyVars = xyVars 
-        self.refresh()
+        if not silent:
+            self.refresh()
 
 
     @property
@@ -1664,6 +2033,8 @@ class Polar_Artist (Artist):
 
         # load or generate polars which are not loaded up to now
 
+        is_design_mode = False
+
         for airfoil in self.airfoils: 
             polarSet = airfoil.polarSet
             if polarSet:
@@ -1675,11 +2046,14 @@ class Polar_Artist (Artist):
                     polarSet.load_or_generate_polars (VLM=False)
             else:
                 logger.debug (f"{airfoil} has no polarSet to plot")
+            if airfoil.usedAsDesign:
+                is_design_mode = True
 
         # plot polars of airfoils
 
         nPolar_plotted    = 0 
         nPolar_generating = 0                     # is there a polar in calculation 
+        also_xfoil        = False                  # is there a xfoil polar not only neuralfoil polar
         error_msg         = []  
 
         for airfoil in self.airfoils:
@@ -1710,6 +2084,9 @@ class Polar_Artist (Artist):
                         # plot bubble info if available
                         if self.show_bubbles:
                             self._plot_bubble_info (polar, color)
+
+                        if polar.is_xfoil:
+                            also_xfoil = True
                             
 
         logger.debug (f"{self} {nPolar_plotted} polars plotted, {nPolar_generating} generating ")
@@ -1729,6 +2106,25 @@ class Polar_Artist (Artist):
                 text = f"Generating {nPolar_generating} polars"
             self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
 
+        # show help message 
+
+        if is_design_mode:
+            if also_xfoil and nPolar_generating == 0:
+                self.set_help_message ("Show only Neuralfoil polars for full live update of design changes")
+            else:
+                self.set_help_message ("")
+        else:
+            self.set_help_message ("Click on a polar to show its key values")
+
+
+    def _plot_and_connect (self, polar: 'Polar', *args, **kwargs) -> pg.PlotDataItem:
+        """ plot a data item and immediately wire it to the polar click tooltip """
+        item = self._plot_dataItem (*args, **kwargs)
+        item.curve.setClickable (True)          # setClickable is on the underlying PlotCurveItem
+        item.sigClicked.connect (lambda _it, _ev, p=polar:
+            QTimer.singleShot (0, lambda: QToolTip.showText (
+                QCursor.pos(), p.info_as_html, msecShowTime=6000)))
+        return item
 
 
     def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color : QColor): 
@@ -1809,19 +2205,19 @@ class Polar_Artist (Artist):
                     upper_idx = min(upper_idx, lower_idx)
                     x_natural = x[upper_idx:lower_idx+1]
                     y_natural = y[upper_idx:lower_idx+1]
-                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                    self._plot_and_connect (polar, x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
 
                     x_forced_upper = x[:upper_idx+1]
                     y_forced_upper = y[:upper_idx+1]
-                    self._plot_dataItem  (x_forced_upper, y_forced_upper, name='Forced transition region', pen = pen2,  
+                    self._plot_and_connect (polar, x_forced_upper, y_forced_upper, name='Forced transition region', pen = pen2,  
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                    antialias = antialias, zValue=zValue)                    
-                    
+                                    antialias = antialias, zValue=zValue)
+
                     x_forced_lower = x[lower_idx:]
                     y_forced_lower = y[lower_idx:]
-                    self._plot_dataItem  (x_forced_lower, y_forced_lower, name='Forced transition region', pen = pen2, 
+                    self._plot_and_connect (polar, x_forced_lower, y_forced_lower, name='Forced transition region', pen = pen2, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
                     
@@ -1829,33 +2225,33 @@ class Polar_Artist (Artist):
                     # Only lower transition: natural [0:idx+1], forced [idx:]
                     x_natural = x[:lower_idx+1]
                     y_natural = y[:lower_idx+1]
-                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                    self._plot_and_connect (polar, x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
                     
                     x_forced = x[lower_idx:]
                     y_forced = y[lower_idx:]
-                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
+                    self._plot_and_connect (polar, x_forced, y_forced, name='Forced transition region', pen = pen2, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
                 else:
                     # Only upper transition: forced [0:idx+1], natural [idx:]
                     x_natural = x[upper_idx:]
                     y_natural = y[upper_idx:]
-                    self._plot_dataItem  (x_natural, y_natural, name=label, pen = pen, 
+                    self._plot_and_connect (polar, x_natural, y_natural, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
 
                     x_forced = x[:upper_idx+1]
                     y_forced = y[:upper_idx+1]
-                    self._plot_dataItem  (x_forced, y_forced, name='Forced transition region', pen = pen2, 
+                    self._plot_and_connect (polar, x_forced, y_forced, name='Forced transition region', pen = pen2, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
-                                    antialias = antialias, zValue=zValue)                    
+                                    antialias = antialias, zValue=zValue)
                 plotted = True
         
         # Default plot for all other cases
         if not plotted:
-            self._plot_dataItem  (x, y, name=label, pen = pen, 
+            self._plot_and_connect (polar, x, y, name=label, pen = pen, 
                                     symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,
                                     antialias = antialias, zValue=zValue)
 
@@ -1889,9 +2285,8 @@ class Polar_Artist (Artist):
 
         if polar.has_bubble_top:
             name     = 'bubble upper side'
-            for i, polar_point in enumerate(polar.polar_points):
-                bubble = polar_point.bubble_top
-                turbulent_separated = polar_point.is_bubble_top_turbulent_separated
+            for i, bubble in enumerate (polar.bubble_top):
+                turbulent_separated = polar.is_bubble_top_turbulent_separated_at (i)
                 n = name_red  if turbulent_separated else name
                 if bubble:
                     if is_xtr_plot:
@@ -1905,9 +2300,8 @@ class Polar_Artist (Artist):
         if polar.has_bubble_bot:
             # plot bubble on lower side
             name = 'bubble lower side'
-            for i, polar_point in enumerate(polar.polar_points):
-                bubble = polar_point.bubble_bot
-                turbulent_separated = polar_point.is_bubble_bot_turbulent_separated
+            for i, bubble in enumerate (polar.bubble_bot):
+                turbulent_separated = polar.is_bubble_bot_turbulent_separated_at (i)
                 n = name_red  if turbulent_separated else name
                 if bubble:
                     if is_xtr_plot:

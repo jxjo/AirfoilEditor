@@ -11,15 +11,17 @@ from datetime               import datetime
 from pathlib                import Path
 from typing                 import override, Type
 
-from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, GEO_SPLINE, usedAs
+from .airfoil               import Airfoil, Airfoil_BSpline, Airfoil_Bezier, Airfoil_CST, GEO_SPLINE, usedAs
 from .geometry              import Line
 from .geometry_spline       import Geometry_Splined
-from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
+from .geometry_curve        import Geometry_Curve, LE_Mode
+from .geometry_cst          import Geometry_CST
 
 from .xo2_driver            import Worker
 from .xo2_input             import Input_File
 from .xo2_controller        import Xo2_Controller
 from .xo2_results           import Xo2_Results
+from ..base.pso             import Pso_Options
 
 import logging
 import time
@@ -89,7 +91,8 @@ class Case_Abstract:
         self._workingDir       = None 
         self._airfoil_designs  = [] 
 
-        self._remove_designs_on_close = False 
+        self._remove_designs_on_close = False
+        self._designs_added_in_session = False 
 
     def __repr__(self) -> str:
         """ nice print string"""
@@ -152,6 +155,11 @@ class Case_Abstract:
     
     def set_remove_designs_on_close (self, remove : bool):
         self._remove_designs_on_close = bool (remove)
+
+    @property
+    def designs_added_in_session (self) -> bool:
+        """ True if user added designs in this session """
+        return self._designs_added_in_session
 
 
     def initial_airfoil_design (self) -> Airfoil:
@@ -268,6 +276,10 @@ class Case_Direct_Design (Case_Abstract):
         airfoil_copy.save   (onlyShapeFile=True)            # save to file - in case of Bezier only .bez
 
         self.airfoil_designs.append (airfoil_copy)
+
+        # mark that user added designs (beyond the default first design)
+        if iDesign > 0:
+            self._designs_added_in_session = True
 
         # prepare the current  airfoil 
 
@@ -393,7 +405,13 @@ class Case_Direct_Design (Case_Abstract):
 
         airfoil_files = [os.path.normpath(os.path.join(design_dir, f)) \
                             for f in airfoil_files if os.path.isfile(os.path.join(design_dir_abs, f))]
-        airfoil_files = sorted(airfoil_files, key=lambda s: s.lower().replace('_', ' '))
+
+        def _design_number (path: str) -> int:
+            stem = os.path.splitext(os.path.basename(path))[0]     # e.g. "Design__34"
+            last = stem.split('_')[-1]                              # e.g. "34"
+            return int(last) if last.isdigit() else 0
+
+        airfoil_files = sorted(airfoil_files, key=_design_number)
 
         # create Airfoils from file 
 
@@ -429,15 +447,15 @@ class Case_Direct_Design (Case_Abstract):
 # -------------------------------------------------------------------
 
 
-
 class Match_Targets:
     """ 
     Helper Container for target values for matching 
     - curvature at LE, max curvature at TE, max number of reversals in curvature, etc. 
     """
 
-    def __init__ (self, side : Line, curvature : Line,  
-                  ncp = 5, ncp_auto = True, min_rms = True, le_curvature = None, le_monoton = True):
+    def __init__ (self, side : Line, curvature : Line,
+                  ncp = 5, ncp_auto = True, le_curvature = None, le_monoton = True,
+                  le_mode: LE_Mode | None = None):
 
         self._side              = side                              # target upper or lower Line 
         self._curvature         = curvature                         # target curvature Line
@@ -445,8 +463,11 @@ class Match_Targets:
         self._ncp               = ncp                               # number of control points for matching curve
         self._ncp_auto          = ncp_auto                          # automatically ncp for best fit
 
-        self._min_rms           = min_rms                           # minimze deviation
         self._le_curvature      = le_curvature                      # target curvature at leading edge 
+        if le_mode is None:
+            self._le_mode = LE_Mode.FREE if le_curvature is None else LE_Mode.FIXED
+        else:
+            self._le_mode = LE_Mode(le_mode)
         self._le_monoton        = le_monoton                        # LE curvature is montonically descending 
                                                                     # or just the curvature at LE 
         self._max_nreversals    = np.clip(curvature.nreversals(), 0, 1)     # maximum allowed reversals in curvature
@@ -457,8 +478,15 @@ class Match_Targets:
 
         self._bump_control      = True                              # avoid bumps in curvature
 
+        self._use_pso           = False                             # runtime switch: "nelder_mead" or "pso"
+        self._pso_options       = Pso_Options()
+
+        self._fit_smooth_lambda = Geometry_CST.SMOOTH_LAMBDA_DEFAULT
+
+
     @classmethod
-    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int) -> 'Match_Targets':
+    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int,
+                      le_mode: LE_Mode  = LE_Mode.FIXED) -> 'Match_Targets':
         """ create Match_Targets from an Airfoil and side name 'upper' or 'lower' """
 
         if not isinstance (airfoil, Airfoil):
@@ -476,11 +504,13 @@ class Match_Targets:
 
         # propose a good le_curvature if max of airfoil is not at LE
 
-        le_curvature   = round (airfoil.geo.curvature.at_le, 0)
-        le_monoton     = airfoil.geo.curvature.max_is_at_le
+        le_curvature = round (airfoil.geo.curvature.at_le, 0)
+        le_monoton   = airfoil.geo.curvature.max_is_at_le
 
-        instance =  cls (side, curv, ncp=ncp, 
-                         le_curvature=le_curvature, le_monoton=le_monoton)
+        instance = cls (side, curv, ncp=ncp,
+                        le_curvature=le_curvature, 
+                        le_monoton=le_monoton,
+                        le_mode=le_mode)
 
         return instance
 
@@ -497,15 +527,15 @@ class Match_Targets:
     @property
     def ncp_auto (self) -> bool:
         return self._ncp_auto
+    
+    @property
+    def le_curvature (self) -> float | None:
+        return self._le_curvature
 
     @property
-    def min_rms (self) -> bool:
-        return self._min_rms
-    
-    @property
-    def le_curvature (self) -> float:
-        return self._le_curvature
-    
+    def le_mode (self) -> LE_Mode:
+        return self._le_mode
+
     @property
     def le_monoton (self) -> bool:
         return self._le_monoton
@@ -525,6 +555,23 @@ class Match_Targets:
     @property
     def bump_control (self) -> bool:
         return self._bump_control
+
+    @property
+    def use_pso(self) -> bool:
+        return self._use_pso
+
+    @property
+    def pso_seed(self) -> int:
+        return self._pso_options.seed if self._pso_options.seed is not None else -1
+
+    @property
+    def pso_options(self) -> Pso_Options:
+        return self._pso_options
+
+    @property
+    def fit_smooth_lambda(self) -> float:
+        """Technical regularization lambda used by CST fit."""
+        return self._fit_smooth_lambda
         
     # --- setters ---
 
@@ -534,9 +581,15 @@ class Match_Targets:
 
     def set_ncp_auto (self, auto : bool): self._ncp_auto = auto
 
+    def set_le_mode (self, mode: LE_Mode):
+        try:
+            self._le_mode = LE_Mode(mode)
+        except ValueError as ex:
+            raise ValueError ("le_mode must be 'free', 'c2' or 'fixed'") from ex
+
     def set_le_curvature (self, val : float): 
-        self._le_curvature     = abs(val)
-        self._le_monton   = False
+        self._le_curvature = abs(float(val))
+        self._le_monoton = False
 
     def set_le_monoton (self, monoton: bool):
         self._le_monoton = monoton
@@ -550,6 +603,15 @@ class Match_Targets:
         self._max_te_curvature, self._max_te_is_proposed = self._get_max_te_curvature(self._curvature.y, val)
 
     def set_bump_control (self, val : bool ): self._bump_control = val
+
+    def set_use_pso(self, val: bool):
+        self._use_pso = val
+
+    def set_pso_seed(self, seed: int):
+        self._pso_options.set_seed(int(seed))
+
+    def set_fit_smooth_lambda(self, value: float):
+        self._fit_smooth_lambda = np.clip(float(value), 0.0, Geometry_CST.SMOOTH_LAMBDA_MAX)
 
 
     def _get_max_te_curvature (self, curvature: np.ndarray, nreversals: int) -> tuple [float, bool]:
@@ -570,14 +632,14 @@ class Match_Targets:
 
 class Case_Match_Target (Case_Direct_Design):
     """
-    A Direct Design Case: New Bezier of B-Spline airfoil based on a .dat airfoil
+    A Direct Design Case: New Bezier, B-Spline or CST airfoil based on a .dat airfoil
     """
 
-    def __init__(self, airfoil: Airfoil, new_airfoil_cls : Type [Airfoil_Bezier | Airfoil_BSpline]):
-        """ new_airfoil_cls should be either Airfoil_Bezier or Airfoil_BSpline"""
+    def __init__(self, airfoil: Airfoil, new_airfoil_cls : Type [Airfoil_Bezier | Airfoil_BSpline | Airfoil_CST]):
+        """ new_airfoil_cls should be Airfoil_Bezier, Airfoil_BSpline or Airfoil_CST"""
 
-        if not new_airfoil_cls in [Airfoil_Bezier, Airfoil_BSpline]:
-            raise ValueError (f"new_airfoil_cls should be either Airfoil_Bezier or Airfoil_BSpline")
+        if not new_airfoil_cls in [Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST]:
+            raise ValueError (f"new_airfoil_cls should be Airfoil_Bezier, Airfoil_BSpline or Airfoil_CST")
         
         # remove existing design dir - start with new designs - do it before super init, because it reads existing designs
 
@@ -612,14 +674,15 @@ class Case_Match_Target (Case_Direct_Design):
 
         # -- setup match targets 
 
+        self._match_result_upper = None                             # last Match_Result from real optimizer run
+        self._match_result_lower = None
+
+        le_mode = airfoil_initial.geo.LE_MODE_DEFAULT               # le curvature is contrain or not (CST free)
         ncp = airfoil_initial.geo.upper.ncp
-        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp)
+        self._targets_upper = Match_Targets.from_airfoil (airfoil_target, Line.Type.UPPER, ncp, le_mode=le_mode)
 
         ncp = airfoil_initial.geo.lower.ncp
-        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp)
-
-        self._match_result_upper = None     # last Match_Result from real optimizer run
-        self._match_result_lower = None
+        self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp, le_mode=le_mode)
 
 
     @property

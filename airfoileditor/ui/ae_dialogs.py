@@ -19,8 +19,11 @@ from ..base.panels              import Dialog_Modal, Dialog_Modeless, MessageBox
 from ..model.airfoil            import Airfoil, Flap_Setter
 from ..model.airfoil_exports    import Export_Airfoil_Dxf
 from ..model.geometry           import Geometry
+from ..model.geometry_curve     import LE_Mode
 from ..model.geometry_spline    import Geometry_Splined, Panelling_Spline
-from ..model.case               import Match_Targets
+from ..model.geometry_cst       import Geometry_CST, Side_Airfoil_CST
+from ..model.case               import Match_Targets, Case_Match_Target
+from ..base.pso                 import Pso_Options
 from ..match_runner             import Match_Result, Matcher
 
 from .ae_widgets                import Airfoil_Select_Open_Widget
@@ -598,10 +601,12 @@ class TE_Gap_Dialog (Dialog_Modeless):
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
         FieldF  (l,r,c, lab="Blend from TE", width=75, step=1, lim=(10, 100), dec=1, unit="%",
-                        obj=self, prop=TE_Gap_Dialog.xBlend)
+                        obj=self, prop=TE_Gap_Dialog.xBlend,
+                        disable=lambda: self.airfoil.geo.isCST) # CST airfoils have fixed 100% blending distance
         Slider  (l,r,c+3, colSpan=2, width=100,  
                         lim=(0.1, 1.0), dec=2,  
-                        obj=self, prop=TE_Gap_Dialog.xBlend)
+                        obj=self, prop=TE_Gap_Dialog.xBlend,
+                        disable=lambda: self.airfoil.geo.isCST) # CST airfoils have fixed 100% blending distance
         r += 1
         SpaceR  (l, r, stretch=1, height=10) 
         r += 1
@@ -631,6 +636,104 @@ class TE_Gap_Dialog (Dialog_Modeless):
         self.app_model.notify_airfoil_geo_te_gap (None)  
 
         return super().done(result)
+
+
+
+class Match_Pso_Options_Dialog (Dialog_Modal):
+    """Modal dialog to tune PSO options used by Match mode."""
+
+    name = "PSO Options (Dev)"
+
+    @property
+    def pso_options (self) -> Pso_Options:
+        return self.dataObject
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r, c = 0, 0
+
+        Label  (l,r,c, colSpan=5, style=style.COMMENT,
+                get="Tune PSO parameters for development runs in Match mode")
+
+        r += 1
+        SpaceR (l, r, height=5)
+
+        r += 1
+        FieldI (l,r,c,   lab="Pop size", width=70, lim=(1, 400),
+            get=lambda: self.pso_options.pop_size,
+            set=lambda v: self.pso_options.set_pop_size(int(v)),
+            toolTip="Particles in swarm.")
+
+        r += 1
+        ComboBox (l,r,c, lab="Bounds", width=70,
+            get=lambda: self.pso_options.bound_mode,
+            set=lambda v: self.pso_options.set_bound_mode(v),
+                options=["reflect", "clip"],
+                toolTip="Boundary handling mode for design variables.")
+
+        FieldI (l,r,c+3, lab="Seed", width=70, lim=(-1, 999999),
+            get=lambda: self.pso_options.seed_ui,
+            set=lambda v: self.pso_options.set_seed_ui(int(v)),
+                toolTip="Random seed for deterministic runs. -1 means random seed.")
+        r += 1
+        SpaceR (l, r, height=10)
+
+        r += 1
+        FieldF (l,r,c, lab="Init perturb", width=70, dec=2, lim=(0.0, 1.0), step=0.01,
+            get=lambda: self.pso_options.initial_perturb,
+            set=lambda v: self.pso_options.set_initial_perturb(float(v)),
+                toolTip="Fraction of bound span for initial particle spread and speed limit.")
+        r += 1
+        FieldF (l,r,c,   lab="Inertia high", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.w_high,
+            set=lambda v: self.pso_options.set_w_high(float(v)),
+                toolTip="Initial inertia weight at early iterations.")
+        FieldF (l,r,c+3, lab="Inertia low", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.w_low,
+            set=lambda v: self.pso_options.set_w_low(float(v)),
+                toolTip="Final inertia weight after convergence schedule.")
+        FieldF (l,r,c+6,   lab="Convrate", width=70, dec=2, lim=(0.0, 1.0), step=0.01,
+            get=lambda: self.pso_options.convrate,
+            set=lambda v: self.pso_options.set_convrate(float(v)),
+                toolTip="Convergence rate for inertia reduction.")
+
+        r += 1
+        FieldF (l,r,c, lab="Cognitive", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.cognitive,
+            set=lambda v: self.pso_options.set_cognitive(float(v)),
+                toolTip="Attraction to each particle's personal best.")
+        FieldF (l,r,c+3,   lab="Social", width=70, dec=1, lim=(0.0, 4.0), step=0.1,
+            get=lambda: self.pso_options.social,
+            set=lambda v: self.pso_options.set_social(float(v)),
+                toolTip="Attraction to the swarm global best.")
+
+        r += 1
+        SpaceR (l, r, height=10)
+
+        r += 1
+        FieldI (l,r,c,   lab="Min iter", width=70, lim=(0, 10000),
+            get=lambda: self.pso_options.min_iter,
+            set=lambda v: self.pso_options.set_min_iter(int(v)),
+                toolTip="Minimum generations before stop criteria may terminate.")
+        FieldI (l,r,c+3, lab="Max iter", width=70, lim=(1, 10000),
+            get=lambda: self.pso_options.max_iter,
+            set=lambda v: self.pso_options.set_max_iter(int(v)),
+            toolTip="Maximum PSO generations.")
+        FieldF (l,r,c+6,   lab="Best radius", width=70, dec=5, lim=(0.0, 1.0), step=1e-4,
+            get=lambda: self.pso_options.min_radius_best_ui,
+            set=lambda v: self.pso_options.set_min_radius_best_ui(float(v)),
+                toolTip="Stop threshold for swarm radius around best. 0 disables this criterion.")
+
+        l.setColumnMinimumWidth (0, 80)
+        l.setColumnMinimumWidth (2, 20)
+        l.setColumnMinimumWidth (3, 70)
+        l.setColumnMinimumWidth (5, 20)
+        l.setColumnMinimumWidth (6, 70)
+        SpaceC (l, 8, width=10)
+
+        return l
 
 
 
@@ -893,3 +996,174 @@ class LE_Radius_Dialog (Dialog_Modeless):
         self.app_model.notify_airfoil_geo_le_radius (None)  
 
         return super().done(result)
+
+
+
+
+class CST_Fit_Dialog (Dialog_Modeless):
+    """ CST fit airfoil - fine tuning of parameters"""
+
+    _width  = 320
+
+    name = "CST Fit"
+
+
+    def __init__ (self, parent : QWidget, app_model : App_Model, **kwargs): 
+
+        self._app_model = app_model
+
+        super().__init__ (parent, **kwargs)
+
+
+    @property
+    def app_model (self) -> App_Model:
+        return self._app_model
+    
+    @property
+    def case (self) -> Case_Match_Target:
+        return self.app_model.case
+
+    @property
+    def geo (self) -> Geometry_CST:
+        return super().geo
+    
+    @property
+    def upper (self) -> Side_Airfoil_CST:
+        return self.geo.upper
+
+    @property
+    def lower (self) -> Side_Airfoil_CST:
+        return self.geo.lower
+    
+    @property
+    def target_airfoil (self) -> Airfoil:
+        return self.app_model.airfoil_target
+    
+    @property
+    def targets_upper (self) -> Match_Targets:
+        return self.case.targets_upper
+    
+    @property
+    def targets_lower (self) -> Match_Targets:
+        return self.case.targets_lower
+
+    @property
+    def target_curv_le (self) -> float:
+        return self.target_airfoil.geo.curvature.at_le
+
+    @property
+    def ncp (self) -> int:
+        """ returns ncp of upper side (both sides have same ncp)"""
+        return self.targets_upper.ncp
+
+    def set_ncp (self, ncp: int):
+        """ set ncp of a side and update targets with new ncp"""                
+
+        self.targets_upper.set_ncp (ncp)
+
+    @property
+    def smooth (self) -> bool:
+        return self.smoothness > 0.0
+
+    def set_smooth (self, enabled: bool):
+        if enabled:
+            self.set_smoothness (0.5)
+        else:
+            self.set_smoothness (0.0)
+
+
+    @property
+    def smoothness (self) -> float:
+        return Geometry_CST.lambda_to_smoothness(self.targets_upper.fit_smooth_lambda)
+
+    def set_smoothness (self, smoothness: float):
+
+        smooth_lambda = Geometry_CST.smoothness_to_lambda(smoothness)
+        self.targets_upper.set_fit_smooth_lambda (smooth_lambda)
+        self.targets_lower.set_fit_smooth_lambda (smooth_lambda)
+
+
+    @property
+    def le_curv (self) -> float:
+        upper_curv = self.targets_upper.le_curvature
+        return upper_curv if upper_curv is not None else self.target_curv_le
+
+    @property
+    def use_le_curvature (self) -> bool:
+        return self.targets_upper.le_mode == LE_Mode.FIXED
+
+    @property
+    def c2_continuity (self) -> bool:
+        return self.targets_upper.le_mode == LE_Mode.C2
+
+
+    def _set_le_mode (self, mode: LE_Mode):
+        self.targets_upper.set_le_mode (mode)
+        self.targets_lower.set_le_mode (mode)
+
+
+    def set_le_curv (self, le_curv: float):
+        self.targets_upper.set_le_curvature (le_curv)
+        self.targets_lower.set_le_curvature (le_curv)
+        self._set_le_mode (LE_Mode.FIXED)
+
+
+    def set_use_le_curvature (self, enabled: bool):
+        mode = LE_Mode.FIXED if enabled else LE_Mode.FREE
+        self._set_le_mode (mode)
+
+
+    def set_c2_continuity (self, enabled: bool):
+        mode = LE_Mode.C2 if enabled else LE_Mode.FREE
+        self._set_le_mode (mode)
+
+
+    def _init_layout(self) -> QLayout:
+
+        l = QGridLayout()
+        r,c = 0, 0 
+        _tip = "Number of weights, the matching curve will have.\n"+ \
+               "A higher number may allow a better fit, but could cause undesired bumps. "
+        FieldI (l,r,c, width=40, step=1, lim = Geometry_CST.NCP_BOUNDS,
+                lab = "# Weights",
+                get=lambda: self.ncp, set=self.set_ncp,
+                toolTip=_tip)
+
+        r += 1
+        CheckBox (l,r,c, text="Smooth weights by factor", colSpan=3,
+                get=lambda: self.smooth, set=self.set_smooth,
+                toolTip="Enable smoothness of CST weights to reduce curvature bumps.")
+        _tip = "Smoothness of CST weights during fit (log scale internally, 1e-6..1e-4)."
+        FieldF (l,r,c+3, width=50, step=0.05, dec=2, lim=(0.0, 1.0),
+                get=lambda: self.smoothness, set=self.set_smoothness,
+                disable=lambda: not self.smooth,
+                toolTip=_tip)
+        r += 1
+        SpaceR (l, r, stretch=0, height=20)
+        r += 1
+        CheckBox (l,r,c, text="LE curvature fixed to", colSpan=3,
+            get=lambda: self.use_le_curvature, set=self.set_use_le_curvature,
+            toolTip="Fixed LE curvature of")
+
+        _tip = "Fixed curvature value at leading edge used when LE curvature is enabled."
+        FieldF (l,r,c+3, width=50, step=1, dec=0, lim=(50, 800),
+            get=lambda: self.le_curv, set=self.set_le_curv,
+            disable=lambda: not self.use_le_curvature,
+            toolTip=_tip)
+
+        r += 1
+        _tip = "Use coupled C2-like leading-edge continuity."
+        CheckBox (l,r,c, text="LE curvature upper/lower coupled", colSpan=5,
+            get=lambda: self.c2_continuity, set=self.set_c2_continuity,
+            disable=lambda: self.use_le_curvature,
+            toolTip=_tip)
+
+        r += 1
+        l.setRowStretch (r,2)
+        l.setColumnStretch (2,1)
+        l.setColumnStretch (4,3)
+        l.setColumnMinimumWidth (0,80)
+        return l
+
+
+
