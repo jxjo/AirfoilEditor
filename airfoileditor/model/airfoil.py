@@ -363,32 +363,23 @@ class Airfoil:
     def info_short_as_html (self, thickness_color = None, camber_color = None) -> str:
         """ comprehensive info about self as formatted html string"""
 
+        def row (label: str, value: str, label_at: str = None, value_at: str = None) -> str:
+            return (f"<tr>"
+                    f"<td style='padding-right: 5px'>{label}</td>"
+                    f"<td style='padding-right:10px; color: {thickness_color if label == 'Thickness' else camber_color if label == 'Camber' else ''}'>{value}</td>"
+                    f"<td style='padding-right: 5px'>{label_at if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{value_at if value_at is not None else ''}</td>"
+                    f"</tr>")
+
         info = "<p style='white-space:pre'>"                                # no word wrap 
 
-        thickness_color = thickness_color if thickness_color else ''
-        camber_color    = camber_color    if camber_color    else ''
-
         if self.isLoaded and self.geo and self.geo.max_thick:          # could be strak airfoil
-            info += f"<table>" + \
-                    f"<tr>" + \
-                        f"<td>Thickness  </td>" + \
-                        f"<td style='color: {thickness_color}'>{self.geo.max_thick:.2%}  </td>" + \
-                        f"<td>at  </td>" + \
-                        f"<td>{self.geo.max_thick_x:.2%}  </td>" + \
-                    f"</tr>" + \
-                    f"<tr>" + \
-                        f"<td>Camber  </td>" + \
-                        f"<td style='color: {camber_color}'>{self.geo.max_camb:.2%}  </td>" + \
-                        f"<td>at  </td>" + \
-                        f"<td>{self.geo.max_camb_x:.2%}  </td>" + \
-                    f"</tr>" + \
-                    f"<tr>" + \
-                        f"<td>Curvature LE  </td>" + \
-                        f"<td>{self.geo.curvature.at_le:.0f}  </td>" + \
-                        f"<td>TE    </td>" + \
-                        f"<td>{self.geo.curvature.max_te:.0f}  </td>" + \
-                    f"</tr>" + \
-                f"</table>"
+            rows = [
+                row ("Thickness",    f"{self.geo.max_thick:.2%}",        "at", f"{self.geo.max_thick_x:.2%}"),
+                row ("Camber",       f"{self.geo.max_camb:.2%}",         "at", f"{self.geo.max_camb_x:.2%}"),
+                row ("Curvature LE", f"{self.geo.curvature.at_le:.0f}",  "TE", f"{self.geo.curvature.max_te:.0f}"),
+            ]
+            info += f"<table>{''.join(rows)}</table>"
         else:
             info += f"No geometry info available"
 
@@ -404,11 +395,11 @@ class Airfoil:
 
         if self.isLoaded:
             used_as = f" being {self.usedAs}" if self.usedAs != usedAs.NORMAL else ""
-            info += f"{self.fileName}{used_as}" 
+            info += f"<b>{self.fileName}</b>{used_as}<br>" 
             if self.geo.isCurve:
                 geo : Geometry_Curve = self.geo
-                info += f"<br><br>{geo.description_long}"          
-            info += f"<br><br>in {self.pathName_abs}    " 
+                info += f"{geo.description_long}<br>"          
+            info += f"in {self.pathName_abs}    " 
 
         info += self.info_short_as_html()
 

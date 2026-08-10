@@ -91,7 +91,8 @@ class Case_Abstract:
         self._workingDir       = None 
         self._airfoil_designs  = [] 
 
-        self._remove_designs_on_close = False 
+        self._remove_designs_on_close = False
+        self._designs_added_in_session = False 
 
     def __repr__(self) -> str:
         """ nice print string"""
@@ -154,6 +155,11 @@ class Case_Abstract:
     
     def set_remove_designs_on_close (self, remove : bool):
         self._remove_designs_on_close = bool (remove)
+
+    @property
+    def designs_added_in_session (self) -> bool:
+        """ True if user added designs in this session """
+        return self._designs_added_in_session
 
 
     def initial_airfoil_design (self) -> Airfoil:
@@ -270,6 +276,10 @@ class Case_Direct_Design (Case_Abstract):
         airfoil_copy.save   (onlyShapeFile=True)            # save to file - in case of Bezier only .bez
 
         self.airfoil_designs.append (airfoil_copy)
+
+        # mark that user added designs (beyond the default first design)
+        if iDesign > 0:
+            self._designs_added_in_session = True
 
         # prepare the current  airfoil 
 
@@ -395,7 +405,13 @@ class Case_Direct_Design (Case_Abstract):
 
         airfoil_files = [os.path.normpath(os.path.join(design_dir, f)) \
                             for f in airfoil_files if os.path.isfile(os.path.join(design_dir_abs, f))]
-        airfoil_files = sorted(airfoil_files, key=lambda s: s.lower().replace('_', ' '))
+
+        def _design_number (path: str) -> int:
+            stem = os.path.splitext(os.path.basename(path))[0]     # e.g. "Design__34"
+            last = stem.split('_')[-1]                              # e.g. "34"
+            return int(last) if last.isdigit() else 0
+
+        airfoil_files = sorted(airfoil_files, key=_design_number)
 
         # create Airfoils from file 
 
@@ -464,7 +480,7 @@ class Match_Targets:
 
         self._use_pso           = False                             # runtime switch: "nelder_mead" or "pso"
         self._pso_options       = Pso_Options()
-        
+
         self._fit_smooth_lambda = Geometry_CST.SMOOTH_LAMBDA_DEFAULT
 
 

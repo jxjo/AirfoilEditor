@@ -149,12 +149,30 @@ class Mode_Abstract (QObject):
 
     def on_leave(self):
         """ Actions to perform when exiting the mode. Override in subclasses if needed. """
+        
+        # if in a case mode, finalize the airfoil before leaving
+        if self._app_model.case is not None:
+            if self._app_model.case.airfoil_final:
+                next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
+            else:
+                next_airfoil = self._app_model.case.airfoil_seed
+            
+            # restore airfoil display properties
+            next_airfoil.set_usedAs (usedAs.NORMAL)                     # normal AE color 
+            next_airfoil.set_property ("show", True)                    # make visible again
+
+            self._app_model.case.close()                                # shut down case
+            self._app_model.set_case (None)
+            self._app_model.set_airfoil (next_airfoil, silent=True)     # continue with final or seed airfoil
+
         logger.debug(f"Exiting {self.__class__.__name__}")
 
 
     def prepare_check_enter(self, on_arg=None) -> object:
         """ Check if the mode can be entered. Prepare and Return initial object. """
-        # to be overridden in subclasses if needed.
+        # Default: return current airfoil if available
+        if self._app_model.airfoil:
+            return self._app_model.airfoil
         return on_arg
     
     @property
@@ -187,12 +205,44 @@ class Mode_Abstract (QObject):
 
     def cancel (self):
         """ User action: Cancel current mode and request exit. """
+
+        # if in a case mode, reset final airfoil
+        if self._app_model.case is not None:
+            self._app_model.case.set_airfoil_final (None)
+
+            # if user added designs during this session, ask if they should be removed
+            if self._app_model.case.designs_added_in_session:
+                text = "Designs were created during this session.\n\n" + \
+                       "Do you want to remove all temporary designs?"
+                button = MessageBox.confirm (self.stacked_panel, "Cancel Mode", text)
+                if button == QMessageBox.StandardButton.Ok:
+                    self._app_model.case.set_remove_designs_on_close (True)
  
         QTimer.singleShot (0, self.sig_leave_requested.emit)    # leave after current events processed
 
 
     def finish (self):
         """ User action: Finish current mode and request exit. """
+
+        case : Case_Direct_Design|Case_Match_Target = self._app_model.case
+
+        # if in a case mode, finalize the airfoil
+        if isinstance (case, (Case_Direct_Design, Case_Match_Target)):
+
+            # create new, final airfoil based on actual design
+            new_airfoil = case.get_final_from_design (self._app_model.airfoil)
+
+            # dialog to edit name, choose path, ..
+            dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
+            ok = dlg.exec()
+            if not ok: return                                       # save was cancelled - stay in mode 
+
+            # set final airfoil in case - rest will be done in on_leave
+            self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
+            self._app_model.case.set_airfoil_final (new_airfoil)
+
+            self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
+            logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
 
         QTimer.singleShot (0, self.sig_leave_requested.emit)    # leave after current events processed
 
@@ -470,55 +520,6 @@ class Mode_Modify (Mode_Abstract):
         super().on_enter()
 
 
-    def on_leave(self):
-        """ Actions to perform when exiting the mode.  """
-
-        super().on_leave()
-
-        if self._app_model.case.airfoil_final:
-            next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
-        else:
-            next_airfoil = self._app_model.case.airfoil_seed
-        next_airfoil.set_usedAs (usedAs.NORMAL)                     # normal AE color 
-
-        self._app_model.case.close()                                # shut down case
-        self._app_model.set_case (None)
-        self._app_model.set_airfoil (next_airfoil, silent=True)     # we'll continue with set airfoil to final or seed
-
-
-    def cancel(self):
-        """ User action: Cancel current mode and request exit. """
-
-        self._app_model.case.set_airfoil_final (None)                 # just sanity
-
-        # rest will be done in on_leave
-        super().cancel()
-
-
-    def finish(self):
-        """ User action: Finish current mode and request exit. """
-
-        # create new, final airfoil based on actual design and path from airfoil org 
-
-        case : Case_Direct_Design = self._app_model.case
-        new_airfoil = case.get_final_from_design (self._app_model.airfoil)
-
-        # dialog to edit name, choose path, ..
-
-        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
-        ok = dlg.exec()
-        if not ok: return                                       # save was cancelled - return to modify mode 
-
-        # set final airfoil in case - rest will be done in on_leave
-        self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
-        self._app_model.case.set_airfoil_final (new_airfoil)
-
-        self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
-        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
-
-        super().finish()
-    
-
     @property
     def panel (self) -> Data_Panel:
         """ lower UI main panel - modify mode """
@@ -576,13 +577,6 @@ class Mode_As_Bezier (Mode_Abstract):
 
     mode_id = Mode_Id.AS_BEZIER                       # the id of the mode
 
-            
-    def prepare_check_enter(self, on_arg = None) -> Airfoil | None:
-        """ Check if the mode can be entered. Override in subclasses if needed. """
-
-        return self._app_model.airfoil
-
-
     def on_enter(self, airfoil: Airfoil):
 
         # ensure example airfoil is saved to file to ease consistent further handling in widgets
@@ -600,57 +594,6 @@ class Mode_As_Bezier (Mode_Abstract):
 
         super().on_enter()
 
-
-    def on_leave(self):
-        """ Actions to perform when exiting the mode. Override in subclasses if needed. """
-
-        if self._app_model.case.airfoil_final:
-            next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
-        else:
-            next_airfoil = self._app_model.case.airfoil_seed
-
-        # ensure this will be shown (again) 
-        next_airfoil.set_property ("show", True)                      
-
-        self._app_model.case.close()                                 # shut down case
-        self._app_model.set_case (None)
-        self._app_model.set_airfoil (next_airfoil, silent=True)      # we'll continue with set airfoil to final or seed
-
-        super().on_leave()
-
-
-    def cancel(self):
-        """ User action: Cancel current mode and request exit. """
-
-        self._app_model.case.set_airfoil_final (None)                 # just sanity
-
-        # rest will be done in on_leave
-        super().cancel()
-
-
-    def finish(self):
-        """ User action: Finish current mode and request exit. """
-
-        # create new, final airfoil based on actual design and path from airfoil org 
-
-        case : Case_Match_Target = self._app_model.case
-        new_airfoil = case.get_final_from_design (self._app_model.airfoil)
-
-        # dialog to edit name, choose path, ..
-
-        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
-        ok = dlg.exec()
-        if not ok: return                                       # save was cancelled - return to modify mode 
-
-        # set final airfoil in case - rest will be done in on_leave
-        self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
-        self._app_model.case.set_airfoil_final (new_airfoil)
-
-        self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
-        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
-
-        super().finish()
-    
 
     @property
     def panel (self) -> Data_Panel:
@@ -706,13 +649,6 @@ class Mode_As_BSpline (Mode_Abstract):
 
     mode_id = Mode_Id.AS_BSPLINE                       # the id of the mode
 
-            
-    def prepare_check_enter(self, on_arg = None) -> Airfoil | None:
-        """ Check if the mode can be entered. Override in subclasses if needed. """
-
-        return self._app_model.airfoil
-
-
     def on_enter(self, airfoil: Airfoil):
 
         # ensure example airfoil is saved to file to ease consistent further handling in widgets
@@ -730,57 +666,6 @@ class Mode_As_BSpline (Mode_Abstract):
 
         super().on_enter()
 
-
-    def on_leave(self):
-        """ Actions to perform when exiting the mode. Override in subclasses if needed. """
-
-        if self._app_model.case.airfoil_final:
-            next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
-        else:
-            next_airfoil = self._app_model.case.airfoil_seed
-
-        # ensure this will be shown (again) 
-        next_airfoil.set_property ("show", True)                      
-
-        self._app_model.case.close()                                 # shut down case
-        self._app_model.set_case (None)
-        self._app_model.set_airfoil (next_airfoil, silent=True)      # we'll continue with set airfoil to final or seed
-
-        super().on_leave()
-
-
-    def cancel(self):
-        """ User action: Cancel current mode and request exit. """
-
-        self._app_model.case.set_airfoil_final (None)                 # just sanity
-
-        # rest will be done in on_leave
-        super().cancel()
-
-
-    def finish(self):
-        """ User action: Finish current mode and request exit. """
-
-        # create new, final airfoil based on actual design and path from airfoil org 
-
-        case : Case_Match_Target = self._app_model.case
-        new_airfoil = case.get_final_from_design (self._app_model.airfoil)
-
-        # dialog to edit name, choose path, ..
-
-        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
-        ok = dlg.exec()
-        if not ok: return                                       # save was cancelled - return to modify mode 
-
-        # set final airfoil in case - rest will be done in on_leave
-        self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
-        self._app_model.case.set_airfoil_final (new_airfoil)
-
-        self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
-        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
-
-        super().finish()
-    
 
     @property
     def panel (self) -> Data_Panel:
@@ -840,13 +725,6 @@ class Mode_As_CST (Mode_Abstract):
 
     mode_id = Mode_Id.AS_CST                       # the id of the mode
 
-            
-    def prepare_check_enter(self, on_arg = None) -> Airfoil | None:
-        """ Check if the mode can be entered. Override in subclasses if needed. """
-
-        return self._app_model.airfoil
-
-
     def on_enter(self, airfoil: Airfoil):
 
         # ensure example airfoil is saved to file to ease consistent further handling in widgets
@@ -864,57 +742,6 @@ class Mode_As_CST (Mode_Abstract):
 
         super().on_enter()
 
-
-    def on_leave(self):
-        """ Actions to perform when exiting the mode. Override in subclasses if needed. """
-
-        if self._app_model.case.airfoil_final:
-            next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
-        else:
-            next_airfoil = self._app_model.case.airfoil_seed
-
-        # ensure this will be shown (again) 
-        next_airfoil.set_property ("show", True)                      
-
-        self._app_model.case.close()                                 # shut down case
-        self._app_model.set_case (None)
-        self._app_model.set_airfoil (next_airfoil, silent=True)      # we'll continue with set airfoil to final or seed
-
-        super().on_leave()
-
-
-    def cancel(self):
-        """ User action: Cancel current mode and request exit. """
-
-        self._app_model.case.set_airfoil_final (None)                 # just sanity
-
-        # rest will be done in on_leave
-        super().cancel()
-
-
-    def finish(self):
-        """ User action: Finish current mode and request exit. """
-
-        # create new, final airfoil based on actual design and path from airfoil org 
-
-        case : Case_Match_Target = self._app_model.case
-        new_airfoil = case.get_final_from_design (self._app_model.airfoil)
-
-        # dialog to edit name, choose path, ..
-
-        dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
-        ok = dlg.exec()
-        if not ok: return                                       # save was cancelled - return to modify mode 
-
-        # set final airfoil in case - rest will be done in on_leave
-        self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
-        self._app_model.case.set_airfoil_final (new_airfoil)
-
-        self._toast_message (f"New airfoil {new_airfoil.fileName} saved", toast_style=style.GOOD)
-        logger.info (f"New airfoil {new_airfoil.fileName} created from {self._app_model.airfoil.fileName}")
-
-        super().finish()
-    
 
     @property
     def panel (self) -> Data_Panel:
@@ -1006,25 +833,6 @@ class Mode_Optimize (Mode_Abstract):
 
         super().on_enter()
 
-
-    def on_leave(self):
-        """ Actions to perform when exiting the mode """
-
-        super().on_leave()
-
-        # set next airfoil to final or seed
-        if self._app_model.case:
-            if self._app_model.case.airfoil_final:
-                next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
-            else:
-                next_airfoil = self._app_model.case.airfoil_seed
-            next_airfoil.set_usedAs (usedAs.NORMAL)                     # normal AE color 
-
-            self._app_model.case.close()                                # shut down case
-            self._app_model.set_airfoil (next_airfoil, silent=True)     # we'll continue with set airfoil to final or seed
-    
-        self._app_model.set_case (None)
-    
 
     def prepare_check_enter(self, on_arg=None) -> str:
         """ Check / prepare if the mode can be entered. Get/Create input file for xo2 """

@@ -60,7 +60,9 @@ class Neuralfoil_Evaluator:
     ALPHA_AUTO_MIN     = -20.0                          # lower bound for auto_range evaluation
     ALPHA_AUTO_MAX     =  20.0                          # upper bound for auto_range evaluation
     AUTO_RANGE_DEG     =  1.0                           # degrees kept/cut around stall
+
     MODEL_SIZE_DEFAULT = "xlarge"
+    MIN_CONFIDENCE     = 0.5                            # minimum NeuralFoil confidence for a valid polar point
 
     @staticmethod
     def is_available () -> bool:
@@ -80,13 +82,15 @@ class Neuralfoil_Evaluator:
     def get_polar_data_set (cls,
                             airfoil_as_cst: Airfoil_As_CST,
                             meta: Polar_File_Meta,
-                            model_size: str = MODEL_SIZE_DEFAULT) -> Polar_Data_Set:
+                            model_size: str = MODEL_SIZE_DEFAULT,
+                            min_confidence: float = MIN_CONFIDENCE) -> Polar_Data_Set:
         """Evaluate a polar for an airfoil defined by its Kulfan (CST) parameters.
 
         Args:
             airfoil_as_cst: CST-Kulfan definition of the airfoil — Airfoil_As_CST instance
             meta:        polar parameters — re, ncrit, val_range, xtript/b, etc.
             model_size:  NeuralFoil model size ("xxsmall".."xxxlarge", default "large")
+            min_confidence: minimum NeuralFoil confidence for a valid polar point (default 0.9)
 
         Returns:
             Polar_Data_Set with source="neuralfoil" and nf_confidence per row.
@@ -135,6 +139,11 @@ class Neuralfoil_Evaluator:
             nf_model_size = model_size,
         )
 
+        # mask out points with low NeuralFoil confidence
+        if min_confidence is not None:
+            alpha_arr, predict = Neuralfoil_Evaluator._apply_confidence_mask (alpha_arr, predict, min_confidence)
+
+        # apply auto_range mask to trim the polar to the interesting region between stalls
         if meta.auto_range:
             alpha_arr, predict = Neuralfoil_Evaluator._apply_auto_range_mask (alpha_arr, predict)
 
@@ -169,7 +178,7 @@ class Neuralfoil_Evaluator:
         cl = np.asarray (predict.get ("CL", []), dtype=float)
         n  = len (alpha_arr)
 
-        if len (cl) != n:
+        if len (cl) != n or n == 0:
             return alpha_arr, predict
 
         # points per degree from the (uniform) alpha spacing
@@ -181,15 +190,16 @@ class Neuralfoil_Evaluator:
 
         # upper part: going up from alpha=0 — find first stall (where cl stops increasing)
         cl_up     = cl[i0:]                                     # cl values from alpha=0 upward
-        falling   = np.where (np.diff (cl_up) < 0)[0]          # first point where cl starts decreasing
+        falling   = np.where (np.diff (cl_up) < 0)[0]           # first point where cl starts decreasing
         i_peak_up = i0 + int (falling[0]) if falling.size > 0 else i0 + int (np.argmax (cl_up))
         i_hi      = min (n - 1, i_peak_up + n_per_deg)
 
         # lower part: going down from alpha=0 — find first local cl_min, stop 1° before it
         cl_down   = cl[i0::-1]                                  # cl values from alpha=0 downward
-        rising    = np.where (np.diff (cl_down) > 0)[0]        # first point where cl starts recovering
+        rising    = np.where (np.diff (cl_down) > 0)[0]         # first point where cl starts recovering
         i_peak_dn = i0 - int (rising[0]) if rising.size > 0 else i0 - int (np.argmin (cl_down))
-        i_lo      = min (i0, i_peak_dn + n_per_deg)            # stop 1° before lower stall
+        i_lo      = min (i0, i_peak_dn - n_per_deg)             # stop 1° after lower stall
+        i_lo      = max (0, i_lo)                               # clamp to start of array
 
         sl = slice (i_lo, i_hi + 1)
         predict_masked = {
@@ -200,8 +210,33 @@ class Neuralfoil_Evaluator:
 
 
     @staticmethod
+    def _apply_confidence_mask (alpha_arr: np.ndarray, predict: dict, min_confidence: float) -> tuple[np.ndarray, dict]:
+        """
+        Mask out points with NeuralFoil confidence below min_confidence.
+
+        Returns:
+            alpha_arr_masked, predict_masked
+        """
+        conf = np.asarray (predict.get ("analysis_confidence", []), dtype=float)
+        n    = len (alpha_arr)
+
+        if len (conf) != n:
+            return alpha_arr, predict
+
+        mask = conf >= min_confidence
+        predict_masked = {
+            k: (v[mask] if isinstance (v, np.ndarray) and v.shape[0] == n else v)
+            for k, v in predict.items()
+        }
+        return alpha_arr[mask], predict_masked
+
+
+    @staticmethod
     def _build_rows (predict: dict, alpha_arr: np.ndarray) -> list[Polar_Data_Row]:
         """ Convert NeuralFoil prediction dict to a list of Polar_Data_Row """
+
+        if len (alpha_arr) == 0:
+            return []
 
         def _col (key: str) -> np.ndarray:
             val = predict.get (key)

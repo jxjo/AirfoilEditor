@@ -65,8 +65,8 @@ class StrEnum_Extended (StrEnum):
 class var (StrEnum_Extended):
 
     @classmethod
-    def list_small (cls):
-        """ returns a small list of main polar variables"""
+    def list_small (cls) -> list['var']:
+        """ returns a small list of main polar variables vars"""
         l = list (cls) [:]
         l.remove(var.CDF)
         l.remove(var.XTR)
@@ -77,8 +77,8 @@ class var (StrEnum_Extended):
 
     @override
     @classmethod
-    def values (cls):
-        """ returns a list of all enum values"""
+    def values (cls) -> list[str]:
+        """ returns a list of all enum values as strings"""
 
         # exclude cdf (friction drag) from list of values
         val_list = super().values()
@@ -104,8 +104,9 @@ class var (StrEnum_Extended):
     XTRT    = "xtrt"               
     XTRB    = "xtrb"    
     XTR     = "xtr"                                     # mean value of xtrt and xtrb (used by xo2)       
-    BUBBLE_TOP = "bubble_top"                           # bubble chord range on top side
-    BUBBLE_BOT = "bubble_bot"                           # bubble chord range on bottom side
+    BUBBLE_TOP      = "bubble_top"                      # bubble chord range on top side
+    BUBBLE_BOT      = "bubble_bot"                      # bubble chord range on bottom side
+    NF_CONFIDENCE   = "nf_confidence"                   # NeuralFoil prediction confidence [0..1]
 
 
 class polarType (StrEnum_Extended):
@@ -978,12 +979,12 @@ class Polar_Set:
             if not polar.isLoaded:
 
                 if polar.is_xfoil:
-                    polar.load_xfoil_polar ()
+                    polar.load_polar ()
                     if not polar.isLoaded: 
                         polars_not_loaded.append(polar)                         # lazy load failed - has to be generated
 
                 elif polar.is_neuralfoil:
-                    polar.load_neuralfoil_polar ()
+                    polar.load_polar ()
 
         # polars missing - if not already done, create polar_task for Worker to generate polar 
 
@@ -1046,15 +1047,14 @@ class Polar_Point:
         self.bubble_top : tuple = None                  # bubble top side (x_start, x_end)
         self.bubble_bot : tuple = None                  # bubble bot side (x_start, x_end)
 
+        self.nf_confidence : float = None               # NeuralFoil confidence value for this point
+
         if values is not None and index is not None:
             self._set_from_values_cache (values, index)
 
 
     def _set_from_values_cache (self, values: dict[var, np.ndarray], index: int):
         """Load one operating point from cached polar value arrays."""
-
-        bubble_top = values.get (var.BUBBLE_TOP)
-        bubble_bot = values.get (var.BUBBLE_BOT)
 
         self.alpha = values[var.ALPHA][index]
         self.cl = values[var.CL][index]
@@ -1064,8 +1064,9 @@ class Polar_Point:
         self.cp_min = values[var.CP_MIN][index]
         self.xtrt = values[var.XTRT][index]
         self.xtrb = values[var.XTRB][index]
-        self.bubble_top = bubble_top[index] if bubble_top is not None else None
-        self.bubble_bot = bubble_bot[index] if bubble_bot is not None else None
+        self.bubble_top = values[var.BUBBLE_TOP][index]
+        self.bubble_bot = values[var.BUBBLE_BOT][index]
+        self.nf_confidence = values[var.NF_CONFIDENCE][index] 
 
     @property
     def cdf (self) -> float: 
@@ -1126,6 +1127,8 @@ class Polar_Point:
             val = self.sink
         elif op_var == var.XTR:
             val = self.xtr
+        elif op_var == var.NF_CONFIDENCE:
+            val = self.nf_confidence
         else:
             raise ValueError (f"Op point variable '{op_var}' not known")
         return val 
@@ -1384,6 +1387,9 @@ class Polar (Polar_Definition):
     def bubble_bot (self) -> np.ndarray:
         return self._ofVar (var.BUBBLE_BOT)
 
+    @property
+    def nf_confidence (self) -> np.ndarray: return self._ofVar (var.NF_CONFIDENCE)
+
 
     @property
     def xtript_end_idx (self) -> int | None:
@@ -1631,13 +1637,40 @@ class Polar (Polar_Definition):
         )
 
 
+    @property
+    def info_as_html (self) -> str:
+        """ polar key values as HTML table for the click-info tooltip """
+
+        def row (label: str, value: str, label_at : str=None, value_at: str=None) -> str:
+            return (f"<tr>"
+                    f"<td style='padding-right: 5px'>{label}</td>"
+                    f"<td style='padding-right:10px'>{value}</td>"
+                    f"<td style='padding-right: 5px'>{'at'     if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{label_at if label_at is not None else ''}</td>"
+                    f"<td style='padding-right: 5px'>{value_at if value_at is not None else ''}</td>"
+                    f"</tr>")
+
+        rows = [
+            row ("cl_max",     f"{self.max_cl.cl:.2f}",       "alpha", f"{self.max_cl.alpha:.2f}°"),
+            row ("cd_min",     f"{self.min_cd.cd:.5f}",       "cl",    f"{self.min_cd.cl:.2f}"),
+            row ("cl/cd max",  f"{self.max_glide.glide:.1f}", "cl",    f"{self.max_glide.cl:.2f}" ),
+            row ("cm_0",       f"{self.cm_0:.3f}"),
+            row ("alpha_0",    f"{self.alpha0:.2f}°"),
+        ]
+
+        html  = f"<b>{self.polar_set.airfoil.fileName}</b><br>"""
+        html += f"{self.name}<br>"""
+        html += f"<table>{''.join(rows)}</table>"
+        return html
+
+
 
     #--------------------------------------------------------
    
 
-    def load_xfoil_polar (self):
+    def load_polar (self):
         """ 
-        Loads self from Xfoil polar file.
+        Loads self from Xfoil polar file or evaluates via NeuralFoil.
 
         If loading could be done or error occurred, isLoaded will be True 
         """
@@ -1645,10 +1678,14 @@ class Polar (Polar_Definition):
         if self.isLoaded: return 
 
         try: 
-            path = self.polar_set.airfoil_pathFileName_abs
-
-            data_set = Worker.load_polar_data_set (path, self.as_meta())
-
+            if self.is_xfoil:
+                path = self.polar_set.airfoil_pathFileName_abs
+                data_set = Worker.load_polar_data_set (path, self.as_meta())
+            else:
+                cst = self.polar_set.airfoil_as_CST
+                data_set = Neuralfoil_Evaluator.get_polar_data_set (cst,
+                                                                    self.as_meta(),
+                                                                    model_size=self.nf_model_size)
             if data_set:
                 self._import_from_data_set (data_set)
                 logger.debug (f'{self} loaded for {self.polar_set.airfoil}') 
@@ -1656,31 +1693,7 @@ class Polar (Polar_Definition):
         except (RuntimeError) as exc:  
 
             self.set_error_reason (str(exc))                # polar will be 'loaded' with error
-
-
-    def load_neuralfoil_polar (self):
-        """ 
-        Gets and Loads self from NeuralFoil polar file.
-
-        If loading could be done or error occurred, isLoaded will be True 
-        """
-
-        if self.isLoaded: return 
-
-        try: 
-            airfoil_as_CST = self.polar_set.airfoil_as_CST
-
-            data_set = Neuralfoil_Evaluator.get_polar_data_set (airfoil_as_CST, 
-                                                                self.as_meta(),
-                                                                model_size=self.nf_model_size)          
-
-            if data_set:
-                self._import_from_data_set (data_set)
-                logger.debug (f'{self} loaded for {self.polar_set.airfoil}') 
-
-        except (RuntimeError) as exc:  
-
-            self.set_error_reason (str(exc))                # polar will be 'loaded' with error
+            logger.error (f'{self} load failed: {exc}')
 
 
 
@@ -1708,6 +1721,7 @@ class Polar (Polar_Definition):
         self._values[var.XTRB] = np.empty (n_points)
         self._values[var.BUBBLE_TOP] = np.empty (n_points, dtype=object)
         self._values[var.BUBBLE_BOT] = np.empty (n_points, dtype=object)
+        self._values[var.NF_CONFIDENCE] = np.empty (n_points)
 
         for i, row in enumerate (data_set.rows):
             self._values[var.ALPHA][i] = row.alpha
@@ -1720,6 +1734,7 @@ class Polar (Polar_Definition):
             self._values[var.XTRB][i] = row.xtrb
             self._values[var.BUBBLE_TOP][i] = (row.xf_bubble_top.x_start, row.xf_bubble_top.x_end) if row.xf_bubble_top else None
             self._values[var.BUBBLE_BOT][i] = (row.xf_bubble_bot.x_start, row.xf_bubble_bot.x_end) if row.xf_bubble_bot else None
+            self._values[var.NF_CONFIDENCE][i] = row.nf_confidence if row.nf_confidence is not None else np.nan
 
         cl = self._values[var.CL]
         cd = self._values[var.CD]
@@ -2057,7 +2072,7 @@ class Polar_Task:
                     polar.set_error_reason (self._myWorker.finished_errortext)
                 else: 
                     # load - if error occurs, error_reason will be set 
-                    polar.load_xfoil_polar ()
+                    polar.load_polar ()
 
                 if polar.isLoaded: 
                     nLoaded += 1           

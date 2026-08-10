@@ -1007,16 +1007,16 @@ class Airfoil_Artist (Artist):
 
                     # if there is only one airfoil, fill the airfoil contour with a soft color tone  
                     brush = pg.mkBrush (color.darker (600))
-                    self._plot_dataItem  (x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
-                                          symbolBrush=sBrush, fillLevel=0.0, fillBrush=brush, antialias = antialias,
-                                          zValue=zValue)
                     
                     # plot note if reflexed or rearloaded
                     self._plot_reflexed_rearloaded (airfoil, color)
 
                 else: 
-                    self._plot_dataItem  (x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
-                                          symbolBrush=sBrush, antialias = antialias, zValue=zValue)
+                    brush = None
+
+                self._plot_and_connect (airfoil, x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
+                                        symbolBrush=sBrush, fillLevel=0.0, fillBrush=brush, antialias = antialias,
+                                        zValue=zValue)
 
                 # optional plot of real LE defined by spline 
 
@@ -1035,6 +1035,20 @@ class Airfoil_Artist (Artist):
                 # optional plot of LE angle lines
                 if self.show_points and airfoil.usedAsDesign:
                     self._plot_le_angle_lines (airfoil, color)
+
+        # show help message 
+        self.set_help_message ("Click on an airfoil to show its key values")
+
+
+
+    def _plot_and_connect (self, airfoil: Airfoil, *args, **kwargs) -> pg.PlotDataItem:
+        """ plot a data item and immediately wire it to the polar click tooltip """
+        item = self._plot_dataItem (*args, **kwargs)
+        item.curve.setClickable (True)          # setClickable is on the underlying PlotCurveItem
+        item.sigClicked.connect (lambda _it, _ev, a=airfoil:
+            QTimer.singleShot (0, lambda: QToolTip.showText (
+                QCursor.pos(), a.info_as_html, msecShowTime=6000)))
+        return item
 
 
     def _plot_reflexed_rearloaded (self, airfoil : Airfoil, color : QColor): 
@@ -1996,10 +2010,11 @@ class Polar_Artist (Artist):
 
     @property
     def xyVars(self): return self._xyVars
-    def set_xyVars (self, xyVars: Tuple[var, var]): 
+    def set_xyVars (self, xyVars: Tuple[var, var], silent=False): 
         """ set new x, y variables for polar """
         self._xyVars = xyVars 
-        self.refresh()
+        if not silent:
+            self.refresh()
 
 
     @property
@@ -2018,6 +2033,8 @@ class Polar_Artist (Artist):
 
         # load or generate polars which are not loaded up to now
 
+        is_design_mode = False
+
         for airfoil in self.airfoils: 
             polarSet = airfoil.polarSet
             if polarSet:
@@ -2029,11 +2046,14 @@ class Polar_Artist (Artist):
                     polarSet.load_or_generate_polars (VLM=False)
             else:
                 logger.debug (f"{airfoil} has no polarSet to plot")
+            if airfoil.usedAsDesign:
+                is_design_mode = True
 
         # plot polars of airfoils
 
         nPolar_plotted    = 0 
         nPolar_generating = 0                     # is there a polar in calculation 
+        also_xfoil        = False                  # is there a xfoil polar not only neuralfoil polar
         error_msg         = []  
 
         for airfoil in self.airfoils:
@@ -2064,6 +2084,9 @@ class Polar_Artist (Artist):
                         # plot bubble info if available
                         if self.show_bubbles:
                             self._plot_bubble_info (polar, color)
+
+                        if polar.is_xfoil:
+                            also_xfoil = True
                             
 
         logger.debug (f"{self} {nPolar_plotted} polars plotted, {nPolar_generating} generating ")
@@ -2083,6 +2106,16 @@ class Polar_Artist (Artist):
                 text = f"Generating {nPolar_generating} polars"
             self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
 
+        # show help message 
+
+        if is_design_mode:
+            if also_xfoil and nPolar_generating == 0:
+                self.set_help_message ("Show only Neuralfoil polars for full live update of design changes")
+            else:
+                self.set_help_message ("")
+        else:
+            self.set_help_message ("Click on a polar to show its key values")
+
 
     def _plot_and_connect (self, polar: 'Polar', *args, **kwargs) -> pg.PlotDataItem:
         """ plot a data item and immediately wire it to the polar click tooltip """
@@ -2090,39 +2123,8 @@ class Polar_Artist (Artist):
         item.curve.setClickable (True)          # setClickable is on the underlying PlotCurveItem
         item.sigClicked.connect (lambda _it, _ev, p=polar:
             QTimer.singleShot (0, lambda: QToolTip.showText (
-                QCursor.pos(), Polar_Artist._polar_info_html (p), msecShowTime=6000)))
+                QCursor.pos(), p.info_as_html, msecShowTime=6000)))
         return item
-
-
-    @staticmethod
-    def _polar_info_html (polar: 'Polar') -> str:
-        """ polar key values as HTML table for the click-info tooltip """
-        cl_max = polar.max_cl
-        cd_min = polar.min_cd
-        cm_0   = polar.cm_0
-        glide  = polar.max_glide
-
-        def row (label: str, value: str, label_at : str=None, value_at: str=None) -> str:
-            return (f"<tr>"
-                    f"<td style='padding-right: 5px'>{label}</td>"
-                    f"<td style='padding-right:10px'>{value}</td>"
-                    f"<td style='padding-right: 5px'>{'at'     if label_at is not None else ''}</td>"
-                    f"<td style='padding-right: 5px'>{label_at if label_at is not None else ''}</td>"
-                    f"<td style='padding-right: 5px'>{value_at if value_at is not None else ''}</td>"
-                    f"</tr>")
-
-        rows = [
-            row ("cl_max",     f"{cl_max.cl:.3f}",      "alpha", f"{cl_max.alpha:.2f}°"),
-            row ("cd_min",     f"{cd_min.cd:.5f}",      "cl",    f"{cd_min.cl:.3f}"),
-            row ("cl/cd max",  f"{glide.glide:.1f}",    "cl",    f"{glide.cl:.3f}" ),
-            row ("cm_0",       f"{cm_0:.3f}"),
-            row ("alpha_0",    f"{polar.alpha0:.2f}°"),
-        ]
-
-        html  = f"<b>{polar.polar_set.airfoil.fileName}</b><br>"""
-        html += f"{polar.name}<br>"""
-        html += f"<table>{''.join(rows)}</table>"
-        return html
 
 
     def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color : QColor): 

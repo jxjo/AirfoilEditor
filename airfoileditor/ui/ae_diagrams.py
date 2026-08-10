@@ -1408,7 +1408,7 @@ class Item_Polars (Diagram_Item):
         # axes x, y variables
         xyVars = d.get('xyVars', None)                          
         if xyVars is not None:
-            self.set_xyVars (xyVars)
+            self.set_xyVars (xyVars, silent=True)
 
 
     @property 
@@ -1590,12 +1590,12 @@ class Item_Polars (Diagram_Item):
                 self._switch_btn.hide()
 
 
-    def _refresh_artist_xy (self): 
+    def _refresh_artist_xy (self, silent=False): 
         """ refresh polar artist with new diagram variables"""
 
         artist : Polar_Artist
         for artist in self._artists:
-            artist.set_xyVars (self._xyVars)
+            artist.set_xyVars (self._xyVars, silent=silent)
 
         self.plot_title()
 
@@ -1638,7 +1638,7 @@ class Item_Polars (Diagram_Item):
         self.setup_viewRange ()
 
 
-    def set_xyVars (self, xyVars : list[str]):
+    def set_xyVars (self, xyVars : list[str], silent=False):
         """ set xyVars from a list of var strings or enum var"""
 
         xVar = xyVars[0]
@@ -1654,7 +1654,8 @@ class Item_Polars (Diagram_Item):
             yVar = yVar 
         self._xyVars = (xVar, yVar)
 
-        self._refresh_artist_xy ()
+        self._refresh_artist_xy (silent=silent)
+
         self.setup_viewRange ()
 
 
@@ -1778,7 +1779,7 @@ class Diagram_Airfoil_Polar (Diagram):
         super().__init__(*args, **kwargs)
 
         # load initial settings
-        self.set_settings (self.app_model.settings)
+        self.set_settings (self.app_model.settings, refresh=False)  # load settings from app_model - no refresh to avoid double refresh 
 
         self._viewPanel.setMinimumWidth(250)
         self._viewPanel.setMaximumWidth(250)
