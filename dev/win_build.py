@@ -167,6 +167,8 @@ def build_exe(repo_root: Path, *, test_mode: str = "none") -> None:
             f"./assets/windows/xoptfoil2.exe;{package_name}/assets/windows",
             "--add-data",
             f"./examples_optimize;{package_name}/examples_optimize",
+            "--add-data",
+            f"./airfoileditor/model/neuralfoil_core/neuralfoil/nn_weights_and_biases;{package_name}/model/neuralfoil_core/neuralfoil/nn_weights_and_biases",
             "--exclude-module",
             "matplotlib",
             "--exclude-module",
