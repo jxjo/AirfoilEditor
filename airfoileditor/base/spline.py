@@ -9,7 +9,7 @@
 import bisect
 import math
 import numpy as np
-import numpy.typing as npt
+from numpy.typing import ArrayLike, NDArray
 from timeit                 import default_timer as timer
 
 from .math_util             import findMin, newton, binary_search, interpolate_non_monotonic
@@ -20,6 +20,31 @@ logger = logging.getLogger(__name__)
 
 
 #------------ Helper -----------------------------------
+
+
+def bernstein_basis(degree: int, x: ArrayLike) -> NDArray[np.float64]:
+    """Return all Bernstein basis values for degree ``degree`` at ``x``."""
+
+    x = np.asarray(x, dtype=float)
+    if x.ndim == 0:
+        x = x.reshape(1)
+
+    basis = np.zeros((degree + 1, len(x)), dtype=float)
+    one_minus_x = 1.0 - x
+
+    for i in range(degree + 1):
+        basis[i, :] = math.comb(degree, i) * (x ** i) * (one_minus_x ** (degree - i))
+
+    return basis
+
+
+def bernstein_eval(coeffs: ArrayLike, x: ArrayLike) -> NDArray[np.float64]:
+    """Evaluate a Bernstein polynomial at ``x``."""
+
+    coeffs = np.asarray(coeffs, dtype=float)
+    degree = len(coeffs) - 1
+    basis = bernstein_basis(degree, x)
+    return np.sum(basis * coeffs[:, None], axis=0)
 
 
 def rref(B, tol=1e-8):
@@ -95,348 +120,6 @@ def print_array_compact (aArr,header=None):
     for i, val in enumerate (aArr):
         #print ("%8.4f" % val, end=" ")
         print ("%8.5f" % val, end=",")
-    print()
-
-
-def bernstein_product(a: npt.ArrayLike, b: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Multiply two Bernstein polynomials and return Bernstein coefficients."""
-
-    a = np.asarray(a, dtype=float)
-    b = np.asarray(b, dtype=float)
-    n = len(a) - 1
-    m = len(b) - 1
-    c = np.zeros(n + m + 1)
-
-    for i, ai in enumerate(a):
-        for j, bj in enumerate(b):
-            k = i + j
-            c[k] += ai * bj * math.comb(n, i) * math.comb(m, j) / math.comb(n + m, k)
-
-    return c
-
-
-def bernstein_elevate(a: npt.ArrayLike, degree: int) -> npt.NDArray[np.float64]:
-    """Elevate Bernstein coefficients to a higher degree."""
-
-    a = np.asarray(a, dtype=float)
-    n = len(a) - 1
-
-    if degree < n:
-        raise ValueError("target degree must be greater than or equal to source degree")
-    if degree == n:
-        return np.copy(a)
-
-    b = np.zeros(degree + 1)
-    degree_delta = degree - n
-
-    for j in range(degree + 1):
-        i_min = max(0, j - degree_delta)
-        i_max = min(n, j)
-        for i in range(i_min, i_max + 1):
-            b[j] += a[i] * math.comb(n, i) * math.comb(degree_delta, j - i) / math.comb(degree, j)
-
-    return b
-
-
-def bernstein_basis(degree: int, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Return Bernstein basis values B_i^degree(x) for all i.
-
-    Returns an array of shape (degree + 1, len(x)).
-    """
-
-    x = np.asarray(x, dtype=float)
-    if x.ndim == 0:
-        x = x.reshape(1)
-
-    b = np.zeros((degree + 1, len(x)), dtype=float)
-    one_minus_x = 1.0 - x
-
-    for i in range(degree + 1):
-        b[i, :] = math.comb(degree, i) * (x ** i) * (one_minus_x ** (degree - i))
-
-    return b
-
-
-def bernstein_eval(coeffs: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Evaluate a Bernstein polynomial at x from Bernstein coefficients."""
-
-    coeffs = np.asarray(coeffs, dtype=float)
-    degree = len(coeffs) - 1
-    basis = bernstein_basis(degree, x)
-    return np.sum(basis * coeffs[:, None], axis=0)
-
-
-class CST:
-    """Single CST/Kulfan curve representation.
-
-    The curve is represented as y(x) with x in [0, 1].
-    """
-
-    DEFAULT_N1 = 0.5
-    DEFAULT_N2 = 1.0
-
-    def __init__(
-        self,
-        weights: npt.ArrayLike,
-        le_weight: float = 0.0,
-        te_gap: float = 0.0,
-        n1: float = DEFAULT_N1,
-        n2: float = DEFAULT_N2,
-    ):
-        
-        self._weights = np.asarray(weights, dtype=float)
-        self._le_weight = float(le_weight)
-        self._te_gap = float(te_gap)
-        self._n1 = float(n1)
-        self._n2 = float(n2)
-
-        self._validate()
-
-
-    def _validate(self):
-        if self._weights.ndim != 1 or len(self._weights) < 2:
-            raise ValueError("CST: weights must have at least 2 entries")
-        if self._n1 <= 0.0:
-            raise ValueError("CST: n1 must be > 0")
-        if self._n2 <= 0.0:
-            raise ValueError("CST: n2 must be > 0")
-
-
-    @staticmethod
-    def _as_x_array(x: float | npt.ArrayLike) -> np.ndarray:
-        xa = np.asarray(x, dtype=float)
-        if xa.ndim == 0:
-            xa = xa.reshape(1)
-        return np.clip(xa, 0.0, 1.0)
-
-
-    def _eval_1D(self, x: np.ndarray, der: int = 0) -> np.ndarray:
-        """Evaluate CST y(x) or its derivatives (Bezier-style core helper)."""
-
-        if der < 0 or der > 2:
-            raise ValueError("CST: der must be 0, 1 or 2")
-
-        degree = len(self._weights) - 1
-
-        s = bernstein_eval(self._weights, x)
-        c = (x ** self._n1) * ((1.0 - x) ** self._n2)
-        one_minus_x = 1.0 - x
-        # Kulfan's leading-edge-modification (LEM) term exponent, per the reference
-        # formula (e.g. AeroSandbox's get_kulfan_coordinates): len(weights) + 0.5.
-        p = len(self._weights) + 0.5
-        l = self._le_weight * x * (one_minus_x ** p)
-
-        y = c * s + l + self._te_gap * x
-        if der == 0:
-            return y
-
-        if degree >= 1:
-            dw = np.diff(self._weights)
-            ds = degree * bernstein_eval(dw, x)
-        else:
-            ds = np.zeros_like(x)
-
-        n1, n2 = self._n1, self._n2
-
-        # x^(n1-1), (1-x)^(n2-1), etc. below can genuinely diverge to inf at x=0/x=1
-        # (e.g. the standard n1=0.5 leading-edge shape has an infinite slope at x=0).
-        # That's mathematically correct and handled by callers (e.g. curvature()'s
-        # dedicated LE formula); just silence the resulting numpy warnings here.
-        with np.errstate(divide="ignore", invalid="ignore"):
-
-            # dC/dx = n1 * x^(n1-1) * (1-x)^n2 - n2 * x^n1 * (1-x)^(n2-1)
-            # Evaluated directly (instead of via c * (n1/x - n2/(1-x))) so the correct,
-            # finite value is obtained at x=0/x=1 for n1==1 / n2==1 (the c*q form
-            # degenerates to 0 * inf there and silently collapses to 0).
-            dc = (n1 * (x ** (n1 - 1.0)) * (one_minus_x ** n2)
-                  - n2 * (x ** n1) * (one_minus_x ** (n2 - 1.0)))
-
-            dl = self._le_weight * ((one_minus_x ** p) - p * x * (one_minus_x ** (p - 1.0)))
-
-            dy = dc * s + c * ds + dl + self._te_gap
-            if der == 1:
-                return dy
-
-            if degree >= 2:
-                ddw = self._weights[2:] - 2.0 * self._weights[1:-1] + self._weights[:-2]
-                dds = degree * (degree - 1) * bernstein_eval(ddw, x)
-            else:
-                dds = np.zeros_like(x)
-
-            # d^2C/dx^2 = n1*(n1-1)*x^(n1-2)*(1-x)^n2
-            #           - 2*n1*n2*x^(n1-1)*(1-x)^(n2-1)
-            #           + n2*(n2-1)*x^n1*(1-x)^(n2-2)
-            # The 1st and 3rd terms have a coefficient that is exactly zero when
-            # n1==1 resp. n2==1 - guard them so 0 * inf (at x=0 resp. x=1) does not
-            # turn into nan; the term is analytically 0 there (e.g. n2==1 makes
-            # (1-x)^n2 linear, whose 2nd derivative is identically 0).
-            coeff_a = n1 * (n1 - 1.0)
-            term_a = coeff_a * (x ** (n1 - 2.0)) * (one_minus_x ** n2) if coeff_a != 0.0 else np.zeros_like(x)
-
-            coeff_c = n2 * (n2 - 1.0)
-            term_c = coeff_c * (x ** n1) * (one_minus_x ** (n2 - 2.0)) if coeff_c != 0.0 else np.zeros_like(x)
-
-            term_b = -2.0 * n1 * n2 * (x ** (n1 - 1.0)) * (one_minus_x ** (n2 - 1.0))
-
-            ddc = term_a + term_b + term_c
-
-            ddl = self._le_weight * (-2.0 * p * (one_minus_x ** (p - 1.0)) + p * (p - 1.0) * x * (one_minus_x ** (p - 2.0)))
-
-            # ddc/dc can be +-inf at x=0/x=1 (see comment above) - combining them here
-            # can produce inf + (-inf) = nan, which is the same expected, analytically
-            # cancelling singularity; keep it inside errstate to suppress the warning.
-            ddy = ddc * s + 2.0 * dc * ds + c * dds + ddl
-
-            return ddy
-
-
-    @property
-    def weights(self) -> np.ndarray:
-        return np.copy(self._weights)
-
-    @property
-    def weights_x (self) -> np.ndarray:
-        """ x values for each weight (Bernstein basis) """
-        n = len(self._weights) - 1
-        return np.array([i/n for i in range(n+1)], dtype=float)
-
-
-    @property
-    def ncp(self) -> int:
-        return len(self._weights)
-
-
-    @property
-    def le_weight(self) -> float:
-        return self._le_weight
-
-
-    @property
-    def te_gap(self) -> float:
-        return self._te_gap
-
-
-    @property
-    def n1(self) -> float:
-        return self._n1
-
-
-    @property
-    def n2(self) -> float:
-        return self._n2
-
-
-    def set_weights(self, weights: npt.ArrayLike):
-        self._weights = np.asarray(weights, dtype=float)
-        self._validate()
-
-
-    def set_le_weight(self, le_weight: float):
-        self._le_weight = float(le_weight)
-
-
-    def set_te_gap(self, te_gap: float):
-        self._te_gap = float(te_gap)
-
-
-    def set_cpoints (self, cpx_or_cp : list, cpy :list|None =None):
-        """  
-        Set or replace control points (weights)
-        Compatibility with Bezier.set_cpoints() interface,
-        but only the y values are used for CST weights.
-
-        Args:
-            cpx_or_cp: x coordinates or an iterable of ``(x, y)`` control points.
-            cpy: y coordinates when ``cpx_or_cp`` contains only x values.
-        """
-        
-        if cpy is None:                          # point tuples as argument? 
-            cpx, cpy = zip(*cpx_or_cp)
-        else: 
-            cpx = cpx_or_cp
-
-        n = len(cpx)
-        if n < 4:
-            raise ValueError('CST: Must have at least 4 control points')
-        elif n != len(cpy): 
-            raise ValueError('CST: Length of x,y is different')
-        self._weights = np.asarray(cpy, dtype=float)
-        self._validate()
-
-
-    def eval(self, u: float | npt.ArrayLike, der: int = 0, update_cache: bool = True) -> tuple[np.ndarray, np.ndarray] | tuple[float, float]:
-        """Evaluate x,y or derivatives at parameter u (equal to x for CST)."""
-        x = self._as_x_array(u)
-
-        if der == 0:
-            out_x, out_y = x, self._eval_1D(x, der=0)
-        elif der == 1:
-            out_x, out_y = np.ones_like(x), self._eval_1D(x, der=1)
-        elif der == 2:
-            out_x, out_y = np.zeros_like(x), self._eval_1D(x, der=2)
-        else:
-            raise ValueError("CST.eval: der must be 0, 1 or 2")
-
-        if np.asarray(u).ndim == 0:
-            return float(out_x[0]), float(out_y[0])
-        return out_x, out_y
-
-
-    def eval_y(self, u: float | npt.ArrayLike) -> float | np.ndarray:
-        y = self._eval_1D(self._as_x_array(u), der=0)
-        if np.asarray(u).ndim == 0:
-            return float(y[0])
-        return y
-
-
-    def eval_y_on_x(self, x: float | npt.ArrayLike, fast: bool = False, epsilon: float = 1e-7) -> float | np.ndarray:
-        return self.eval_y(x)
-
-
-    def curvature(self, x: float | npt.ArrayLike) -> float | np.ndarray:
-        xa = self._as_x_array(x)
-        dy = self._eval_1D(xa, der=1)
-        ddy = self._eval_1D(xa, der=2)
-
-        denom = (1.0 + dy * dy) ** 1.5
-        with np.errstate(divide="ignore", invalid="ignore"):
-            kappa = np.where(denom > 1e-14, ddy / denom, 0.0)
-
-        # Special handling at LE for the standard Kulfan exponent n1=0.5.
-        if abs(self._n1 - 0.5) < 1e-12:
-            mask_le = np.isclose(xa, 0.0)
-            if np.any(mask_le):
-                a0 = float(self._weights[0])
-                if abs(a0) > 1e-14:
-                    kappa_le = -2.0 * np.sign(a0) / (a0 * a0)
-                else:
-                    kappa_le = 0.0
-                kappa[mask_le] = kappa_le
-
-        if np.asarray(x).ndim == 0:
-            return float(kappa[0])
-        return kappa
-
-
-    def elevate_weights(self) -> np.ndarray:
-        """
-        Degree elevation of a CST/Bernstein weight vector.
-        Shape remains exactly identical.
-        """
-
-        weights = self.weights
-        n = len(weights) - 1
-
-        elevated     = np.empty(n + 2)
-        elevated[0]  = weights[0]
-        elevated[-1] = weights[-1]
-
-        for i in range(1, n + 1):
-            alpha = i / (n + 1)
-            elevated[i] = alpha * weights[i-1] + (1.0 - alpha) * weights[i]
-
-        self.set_weights(elevated)
-
 
 
 
@@ -2524,6 +2207,3 @@ class BSpline:
                      f"le_exp={le_exponent}, te_exp={te_exponent}, time={timer() - start:.6f}s")
         
         return list(zip(x_cp, y_cp))
-
-
-

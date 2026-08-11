@@ -6,12 +6,11 @@
 """
 
 import numpy as np
-import time
 from typing import override
 
 from ..base.common_utils  import clip
+from ..base.cst           import CST, fit_cst_from_xy
 from ..base.math_util     import JPoint
-from ..base.spline        import CST, bernstein_basis
 
 from .geometry            import Geometry, Line, Panelling
 from .geometry_curve      import Geometry_Curve, Side_Airfoil_Curve, LE_Mode
@@ -360,212 +359,8 @@ class Geometry_CST(Geometry_Curve):
         )
 
 
-    @staticmethod
-    def fit_from_xy (x_upper, y_upper, x_lower, y_lower,
-                     n_weights: int = NCP_DEFAULT,
-                     le_mode: LE_Mode = LE_Mode.C2,
-                     le_curvature: float | None = None,
-                     smooth_lambda: float = 0.0,
-                     n1: float = CST.DEFAULT_N1,
-                     n2: float = CST.DEFAULT_N2) -> tuple[np.ndarray, np.ndarray, float, float]:
-        """
-        Fit CST weights (upper, lower), a shared le_weight and a shared te_thickness
-        to sampled upper/lower airfoil coordinates using linear least squares.
-
-        The CST model y(x) = c(x) * sum_i(weights[i] * B_i(x)) + le_weight * x * (1-x)^p
-        + te_gap * x is linear in weights, le_weight and te_gap - so upper and lower side
-        data are stacked into a single combined linear system and solved with one
-        np.linalg.lstsq call (fast, no iterative optimization).
-
-        Args:
-            x_upper, y_upper: sampled coordinates of the upper side (x in [0,1]).
-            x_lower, y_lower: sampled coordinates of the lower side (x in [0,1]).
-            n_weights: number of CST weights (Bernstein degree + 1) per side.
-            le_mode: Leading-edge coupling mode:
-                - "c2" (default): fit shared free a0 with upper/lower tied to
-                  equal magnitude and opposite sign.
-                - "fixed": pin |a0| from target le_curvature (must be > 0).
-                - "free": fit upper/lower a0 independently (no coupling).
-            le_curvature: target leading-edge curvature magnitude used only when
-                le_mode="fixed".
-            smooth_lambda: optional smoothing weight for second-difference regularization
-                on both upper and lower weight vectors:
-                smooth_lambda * sum((W[i+2] - 2*W[i+1] + W[i])**2).
-                Use 0.0 (default) to disable smoothing.
-            n1, n2: shared CST class-function exponents for both sides.
-
-        Returns:
-            tuple: (weights_upper, weights_lower, le_weight, te_thickness) - can be
-            passed directly as Geometry_CST(weights_upper, weights_lower, le_weight, te_thickness).
-        """
-        if n_weights < 2:
-            raise ValueError ("Geometry_CST.fit_from_xy: n_weights must be >= 2")
-        if le_mode not in (LE_Mode.FREE, LE_Mode.C2, LE_Mode.FIXED):
-            raise ValueError ("Geometry_CST.fit_from_xy: le_mode must be 'free', 'c2' or 'fixed'")
-        if le_mode == LE_Mode.FIXED:
-            if le_curvature is None or le_curvature <= 0.0:
-                raise ValueError ("Geometry_CST.fit_from_xy: le_curvature must be > 0 when le_mode='fixed'")
-        else:
-            # Be tolerant if callers pass a stale LE curvature while mode is not fixed.
-            le_curvature = None
-        if smooth_lambda < 0.0:
-            raise ValueError ("Geometry_CST.fit_from_xy: smooth_lambda must be >= 0")
-
-        x_u = np.clip (np.asarray (x_upper, dtype=float), 0.0, 1.0)
-        y_u = np.asarray (y_upper, dtype=float)
-        x_l = np.clip (np.asarray (x_lower, dtype=float), 0.0, 1.0)
-        y_l = np.asarray (y_lower, dtype=float)
-
-        nu, nl = len (x_u), len (x_l)
-
-        # Bernstein basis (n_weights, n_points) and class-function c(x) = x^n1 * (1-x)^n2
-
-        Bu = bernstein_basis (n_weights - 1, x_u)
-        Bl = bernstein_basis (n_weights - 1, x_l)
-        cu = (x_u ** n1) * ((1.0 - x_u) ** n2)
-        cl = (x_l ** n1) * ((1.0 - x_l) ** n2)
-
-        # leading-edge-modification term x * (1-x)^p, shared exponent p depends on n_weights
-
-        p = n_weights + 0.5
-        le_term_u = x_u * ((1.0 - x_u) ** p)
-        le_term_l = x_l * ((1.0 - x_l) ** p)
-
-        # trailing edge gap term: +0.5*te_thickness*x (upper), -0.5*te_thickness*x (lower)
-
-        te_term_u = 0.5 * x_u
-        te_term_l = -0.5 * x_l
-
-        rhs = np.concatenate ((y_u, y_l))
-
-        independent_a0 = (le_mode == LE_Mode.FREE)
-        free_a0        = (le_mode == LE_Mode.C2)
-
-        columns = []
-
-        if independent_a0:
-            # weights_upper[0] and weights_lower[0] fully independent - no coupling at all,
-            # handled below like any other free per-side weight (loop starts at index 0)
-            pass
-        elif free_a0:
-            # a0 shared free unknown: +a0 on upper, -a0 on lower
-            col_a0 = np.concatenate ((cu * Bu[0, :], -cl * Bl[0, :]))
-            columns.append (col_a0)
-        else:
-            # a0 fixed from target le_curvature magnitude - move its contribution to rhs
-            a0_fixed = np.sqrt (2.0 / le_curvature)
-            fixed_contrib = np.concatenate ((a0_fixed * cu * Bu[0, :], -a0_fixed * cl * Bl[0, :]))
-            rhs = rhs - fixed_contrib
-
-        # free weights_upper - all weights if independent_a0, else only [1:] (a0 handled above)
-        upper_start = 0 if independent_a0 else 1
-        for i in range (upper_start, n_weights):
-            columns.append (np.concatenate ((cu * Bu[i, :], np.zeros (nl))))
-
-        # free weights_lower - all weights if independent_a0, else only [1:] (a0 handled above)
-        lower_start = 0 if independent_a0 else 1
-        for i in range (lower_start, n_weights):
-            columns.append (np.concatenate ((np.zeros (nu), cl * Bl[i, :])))
-
-        # shared le_weight and te_thickness - affect both sides
-        columns.append (np.concatenate ((le_term_u, le_term_l)))
-        columns.append (np.concatenate ((te_term_u, te_term_l)))
-
-        def _regularized_lstsq (A_local: np.ndarray, rhs_local: np.ndarray) -> np.ndarray:
-            """Solve least squares with optional second-difference regularization."""
-            if smooth_lambda <= 0.0 or n_weights < 3:
-                return np.linalg.lstsq (A_local, rhs_local, rcond=None)[0]
-
-            n_cols = A_local.shape[1]
-            reg_rows = []
-            reg_rhs = []
-
-            # build rows for Wi+2 - 2Wi+1 + Wi for upper and lower sides
-            for side in (Line.Type.UPPER, Line.Type.LOWER):
-                for i in range (n_weights - 2):
-                    row = np.zeros (n_cols)
-                    const = 0.0
-
-                    for k, coeff in ((i, 1.0), (i + 1, -2.0), (i + 2, 1.0)):
-                        if side == Line.Type.UPPER:
-                            if independent_a0:
-                                row[k] += coeff
-                            elif free_a0:
-                                if k == 0:
-                                    row[0] += coeff
-                                else:
-                                    row[k] += coeff
-                            else:
-                                if k == 0:
-                                    const += coeff * a0_fixed
-                                else:
-                                    row[k - 1] += coeff
-                        else:
-                            if independent_a0:
-                                row[n_weights + k] += coeff
-                            elif free_a0:
-                                if k == 0:
-                                    row[0] += -coeff            # lower W0 = -a0
-                                else:
-                                    row[n_weights + k - 1] += coeff
-                            else:
-                                if k == 0:
-                                    const += coeff * (-a0_fixed)  # lower W0 = -a0_fixed
-                                else:
-                                    row[n_weights + k - 2] += coeff
-
-                    reg_rows.append (np.sqrt (smooth_lambda) * row)
-                    reg_rhs.append (np.sqrt (smooth_lambda) * (-const))
-
-            if reg_rows:
-                A_aug = np.vstack ((A_local, np.vstack (reg_rows)))
-                rhs_aug = np.concatenate ((rhs_local, np.asarray (reg_rhs)))
-                return np.linalg.lstsq (A_aug, rhs_aug, rcond=None)[0]
-
-            return np.linalg.lstsq (A_local, rhs_local, rcond=None)[0]
-
-        t0 = time.perf_counter()
-        A = np.column_stack (columns)
-        X = _regularized_lstsq (A, rhs)
-
-        # a negative te_thickness would mean upper and lower side cross near the TE
-        # (bowtie) - te_thickness must be >= 0, so if the unconstrained fit is
-        # negative, refit with te_thickness fixed to 0 (drop its column)
-
-        if X[-1] < 0.0:
-            X = _regularized_lstsq (A[:, :-1], rhs)
-            X = np.append (X, 0.0)
-
-        # print (f"fit_from_xy: {time.perf_counter() - t0:.6f} s")
-
-        idx = 0
-
-        weights_upper = np.empty (n_weights)
-        weights_lower = np.empty (n_weights)
-
-        if independent_a0:
-            weights_upper[:] = X[idx: idx + n_weights]; idx += n_weights
-            weights_lower[:] = X[idx: idx + n_weights]; idx += n_weights
-        else:
-            if free_a0:
-                a0 = X[idx]; idx += 1
-            else:
-                a0 = a0_fixed
-
-            weights_upper[0]  = a0
-            weights_upper[1:] = X[idx: idx + n_weights - 1]; idx += n_weights - 1
-
-            weights_lower[0]  = -a0
-            weights_lower[1:] = X[idx: idx + n_weights - 1]; idx += n_weights - 1
-
-        le_weight    = float (X[idx]); idx += 1
-        te_thickness = float (X[idx])
-
-        return weights_upper, weights_lower, le_weight, te_thickness
-
-
     @classmethod
-    def geometry_as_CST (cls, geometry: Geometry, n_weights: int | None = None,
+    def geometry_as_CST (cls, geo: Geometry, n_weights: int | None = None,
                          smooth_lambda: float = SMOOTH_LAMBDA_DEFAULT
                          ) -> tuple[np.ndarray, np.ndarray, float, float]:
         """
@@ -594,10 +389,21 @@ class Geometry_CST(Geometry_Curve):
         if n_weights is None:
             n_weights = cls.NCP_DEFAULT
 
-        return cls.fit_from_xy (
-            geometry.upper.x, geometry.upper.y, geometry.lower.x, geometry.lower.y,
+        # ensure geometry is normalized
+
+        if not geo._isNormalized():
+            geo_norm = Geometry (geo.x, geo.y)          # temporary normalized copy of geometry
+            geo_norm._push_xy()                         # speed hack
+            geo_norm._normalize() 
+            geo_norm._set_xy (geo_norm._x, geo_norm._y)
+        else:
+            geo_norm = geo
+
+
+        return fit_cst_from_xy (
+            geo_norm.upper.x, geo_norm.upper.y, geo_norm.lower.x, geo_norm.lower.y,
             n_weights    = n_weights,
-            le_mode = LE_Mode.FREE,
+            le_mode = 'free',               # fully independent a0 for upper and lower
             smooth_lambda = smooth_lambda)
 
 
@@ -616,11 +422,18 @@ class Geometry_CST(Geometry_Curve):
             ncp = self.upper.ncp
         ncp = np.clip (ncp, self.NCP_BOUNDS[0], self.NCP_BOUNDS[1])  # limit number of control points to reasonable range
 
-        weights_upper, weights_lower, le_weight, te_thickness = self.fit_from_xy (
+        if le_mode == LE_Mode.FIXED:
+            le_mode_str = "fixed"
+        elif le_mode == LE_Mode.C2:
+            le_mode_str = "c2"
+        else:
+            le_mode_str = "free"
+
+        weights_upper, weights_lower, le_weight, te_thickness = fit_cst_from_xy (
                                                 target_side_upper.x, target_side_upper.y,
                                                 target_side_lower.x, target_side_lower.y,
                                                 n_weights=ncp,
-                                                le_mode=le_mode,
+                                                le_mode=le_mode_str,
                                                 le_curvature=le_curvature,
                                                 smooth_lambda=smooth_lambda)
 

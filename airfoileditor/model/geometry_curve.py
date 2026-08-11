@@ -16,7 +16,8 @@ from timeit                 import default_timer as timer
 
 from ..base.math_util       import * 
 from ..base.common_utils    import clip
-from ..base.spline          import Bezier, BSpline, CST
+from ..base.cst             import CST
+from ..base.spline          import Bezier, BSpline
 
 from .geometry      import (Geometry, Line, Panelling, Curvature_Abstract)
 

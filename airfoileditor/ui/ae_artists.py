@@ -10,7 +10,8 @@ import html
 
 from ..base.math_util           import derivative1
 from ..base.artist              import *
-from ..base.spline              import Bezier, HicksHenne, BSpline, CST
+from ..base.cst                 import CST
+from ..base.spline              import Bezier, HicksHenne, BSpline
 
 from ..model.airfoil            import (Airfoil, Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST, 
                                         usedAs, Geometry, Flap_Setter)

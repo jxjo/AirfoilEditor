@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from airfoileditor.base.spline import CST
+from airfoileditor.base.cst import CST, fit_cst_from_xy
 from airfoileditor.model.airfoil import Airfoil, Airfoil_CST, GEO_BASIC
 from airfoileditor.model.airfoil_examples import Root_Example
 from airfoileditor.model.geometry_cst import Geometry_CST
@@ -79,8 +79,8 @@ def test_cst_eval_scalar_matches_array():
 
 def test_airfoil_cst_default_geometry():
     airfoil = Airfoil_CST(
-        weights_upper=Geometry_CST.DEFAULT_WEIGHTS_UPPER,
-        weights_lower=Geometry_CST.DEFAULT_WEIGHTS_LOWER)
+        weights_upper=Geometry_CST.WEIGHTS_UPPER_SAMPLE,
+        weights_lower=Geometry_CST.WEIGHTS_LOWER_SAMPLE)
     geo: Geometry_CST = airfoil.geo
 
     assert airfoil.nPoints == 161
@@ -174,24 +174,35 @@ def test_fit_from_xy_with_fixed_le_curvature():
     assert np.isclose(fit_te_thickness, te_thickness, atol=1e-8)
 
 
+def test_cst_fit_from_xy_checks_endpoint_conditions():
+    x = np.linspace(0.0, 1.0, 20)
+    y = np.zeros_like(x)
+
+    with pytest.raises(ValueError, match="y_upper[0]"):
+        fit_cst_from_xy(x, y + 0.01, x, y)
+
+    with pytest.raises(ValueError, match="y_upper[-1] + y_lower[0]"):
+        fit_cst_from_xy(x, y, x, y + 0.01)
+
+
 def test_fit_from_xy_invalid_arguments_raise():
     x = np.linspace(0.0, 1.0, 20)
     y = np.zeros_like(x)
 
     with pytest.raises(ValueError):
-        Geometry_CST.fit_from_xy(x, y, x, y, n_weights=1)
+        fit_cst_from_xy(x, y, x, y, n_weights=1)
 
     with pytest.raises(ValueError):
-        Geometry_CST.fit_from_xy(x, y, x, y, le_mode=LE_Mode.FIXED, le_curvature=0.0)
+        fit_cst_from_xy(x, y, x, y, le_mode="fixed", le_curvature=0.0)
 
     with pytest.raises(ValueError):
-        Geometry_CST.fit_from_xy(x, y, x, y, le_mode="invalid")
+        fit_cst_from_xy(x, y, x, y, le_mode="invalid")
 
     # tolerated: le_curvature is ignored unless mode is FIXED
-    Geometry_CST.fit_from_xy(x, y, x, y, le_mode=LE_Mode.C2, le_curvature=100.0)
+    fit_cst_from_xy(x, y, x, y, le_mode="c2", le_curvature=100.0)
 
     with pytest.raises(ValueError):
-        Geometry_CST.fit_from_xy(x, y, x, y, smooth_lambda=-1.0)
+        fit_cst_from_xy(x, y, x, y, smooth_lambda=-1.0)
 
 
 def test_smoothness_lambda_mapping_endpoints_and_midpoint():

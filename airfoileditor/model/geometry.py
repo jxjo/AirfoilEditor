@@ -1831,15 +1831,15 @@ class Geometry ():
 
         # Rotate the airfoil so chord is on x-axis 
 
-        angle = np.arctan2 ((yn[0] + yn[-1])/ 2.0, (xn[0] + xn[-1])/ 2.0) 
-        cosa  = np.cos (-angle) 
-        sina  = np.sin (-angle) 
+        def rotate_xy(x_values, y_values, rotation_angle):
+            cosa = np.cos(-rotation_angle)
+            sina = np.sin(-rotation_angle)
+            x_rot = x_values * cosa - y_values * sina
+            y_rot = x_values * sina + y_values * cosa
+            return x_rot, y_rot
 
-        for i in range (len(xn)):
-            xni = xn[i]
-            yni = yn[i]
-            xn[i] = xni * cosa - yni * sina
-            yn[i] = xni * sina + yni * cosa
+        angle = np.arctan2 ((yn[0] + yn[-1])/ 2.0, (xn[0] + xn[-1])/ 2.0) 
+        xn, yn = rotate_xy (xn, yn, angle)
 
         # sanity - with higher angles (flapped) there could be a new LE 
 
@@ -1853,14 +1853,7 @@ class Geometry ():
             yn = yn - yLe
 
             angle = np.arctan2 ((yn[0] + yn[-1])/ 2.0, (xn[0] + xn[-1])/ 2.0) 
-            cosa  = np.cos (-angle) 
-            sina  = np.sin (-angle) 
-
-            for i in range (len(xn)):
-                xni = xn[i]
-                yni = yn[i]
-                xn[i] = xni * cosa - yni * sina
-                yn[i] = xni * sina + yni * cosa
+            xn, yn = rotate_xy (xn, yn, angle)
 
         # Scale airfoil so that it has a length of 1 
         #  - there are mal formed airfoils with different TE on upper and lower
@@ -1874,13 +1867,11 @@ class Geometry ():
             scale_upper = 1.0 / xn[0]
             scale_lower = 1.0 / xn[-1]
 
-            for i in range (len(xn)):
-                if i <= ile:
-                    xn[i] = xn[i] * scale_upper
-                    yn[i] = yn[i] * scale_upper
-                else: 
-                    xn[i] = xn[i] * scale_lower
-                    yn[i] = yn[i] * scale_lower
+            mask = np.arange(len(xn)) <= ile
+            xn[mask] = xn[mask] * scale_upper
+            yn[mask] = yn[mask] * scale_upper
+            xn[~mask] = xn[~mask] * scale_lower
+            yn[~mask] = yn[~mask] * scale_lower
 
         # due to numerical issues ensure 0 is 0.0 ..
         xn[ile] = 0.0 
