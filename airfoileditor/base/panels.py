@@ -606,14 +606,13 @@ class Edit_Panel (Panel_Abstract):
         switch_on = self._switched_on () if callable(self._switched_on) else self._switched_on
         self.set_switched_on (switch_on, silent=True)
 
-        # initial enabled/disabled state
-        if self._isDisabled: 
-            self.refresh_widgets (self._isDisabled) 
+        # initial enabled/disabled state - delayed to ensure all widgets are created and added to layout
+        if self._isDisabled:
+            QTimer.singleShot(0, lambda: self.refresh_widgets(self._isDisabled))
 
         # initial visibility 
         if not self.shouldBe_visible:         
             self.setVisible (False)             # setVisible(True) results in a dummy window on startup 
-
 
     def title_text (self) -> str: 
         """ returns text of title - default self.name"""
