@@ -1321,11 +1321,11 @@ class Item_Polars (Diagram_Item):
 
 
     def _on_design_temp_changed (self, show : bool = True):
-        """ slot - flap set changed - refresh polars"""
+        """ slot - Design temp changed - refresh fast nf polars"""
 
         a : Polar_Artist
         for a in self._get_artist (Polar_Artist):
-            a.set_show_design_temp (show)
+            a.refresh ()
 
 
     @property

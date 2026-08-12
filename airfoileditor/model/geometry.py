@@ -54,11 +54,11 @@
                     
                     """
 
-import numpy as np
 from timeit                 import default_timer as timer
 from enum                   import Enum
 from typing                 import override
 from math                   import isclose
+import numpy as np
 
 from ..base.common_utils    import clip, StrEnum_Extended
 from ..base.math_util       import * 
@@ -842,16 +842,26 @@ class Line:
         return self.y[-1]
 
 
-    def set_te_gap (self, dgap : float, xBlend : float = None):
-        """apply a trailing-edge gap delta to this side
+    def set_te_gap (self, te_gap : float, xBlend : float = None):
+        """
+        Apply a trailing-edge gap to this side. Sign of the gap is applied based on the side type (upper/lower). 
+        The gap is blended over a specified range from the trailing edge.
 
         Args:
-            dgap:   delta gap in y-coordinates to be distributed to this side
+            te_gap: ! half of the airfoil trailing-edge gap !
             xBlend: blending range from trailing edge, 0.0..1.0
         """
+        # sign sanity
+        if self.type == Line.Type.UPPER:
+            dgap = -(abs(self.te_gap) - abs(te_gap))
+        elif self.type == Line.Type.LOWER:
+            dgap = abs(self.te_gap) - abs(te_gap)
 
         if xBlend is None:
             xBlend = Geometry.TE_GAP_XBLEND
+
+        if dgap == 0.0:
+            return  # no change needed
 
         y_new = np.zeros (len(self.x))
         for i in range(len(self.x)):
@@ -864,13 +874,8 @@ class Line:
                 arg = min ((1.0 - self.x[i]) * (1.0 / xBlend - 1.0), 15.0)
                 tfac = np.exp(-arg)
 
-            if self.type == Line.Type.UPPER:
-                y_new[i] = self.y[i] + 0.5 * dgap * self.x[i] * tfac
-            elif self.type == Line.Type.LOWER:
-                y_new[i] = self.y[i] - 0.5 * dgap * self.x[i] * tfac
-            else:
-                y_new[i] = self.y[i]
-
+            y_new[i] = self.y[i] + dgap * self.x[i] * tfac
+ 
         self.set_y (y_new)
 
     # ------------------ private ---------------------------
@@ -1476,6 +1481,19 @@ class Geometry ():
                 Line.Type.CAMBER     : self.camber}
 
 
+    def is_equal (self, other : 'Geometry') -> bool:
+        """ Check if two Geometry objects are equal based on their x and y. """
+        if not isinstance(other, Geometry):
+            return False
+        return (np.array_equal(self.x, other.x) and
+                np.array_equal(self.y, other.y))
+
+    def is_equal_xy (self, x : np.ndarray, y : np.ndarray) -> bool:
+        """ Check if the Geometry object's x and y are equal to the provided arrays. """
+        return (np.array_equal(self.x, x) and
+                np.array_equal(self.y, y))
+
+
     def get_geo_parm(self, parm: geo_parm, x: float | None = None) -> float | tuple:
         """
         Unified accessor for geometry parameters.
@@ -1551,9 +1569,7 @@ class Geometry ():
             new_gap = clip (new_gap, 0.0, 0.1)
             xBlend  = clip (xBlend, 0.1, 1.0)
 
-            cur_gap = self.te_gap     # calc from self.y!
-            dgap   = new_gap - cur_gap
-            if dgap == 0.0:
+            if new_gap == self.te_gap:
                 return
 
             # create new side objects from x,y to allow repeated setting of te gap
@@ -1562,8 +1578,8 @@ class Geometry ():
             self._lower = self.side_class (self.x[self.iLe:], self.y[self.iLe:],
                                      linetype=Line.Type.LOWER)
 
-            self._upper.set_te_gap (dgap, xBlend)
-            self._lower.set_te_gap (dgap, xBlend)
+            self._upper.set_te_gap (new_gap / 2.0, xBlend)
+            self._lower.set_te_gap (new_gap / 2.0, xBlend)
 
             if not moving:
                 self._rebuild_from_upper_lower ()

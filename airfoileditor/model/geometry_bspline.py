@@ -443,13 +443,24 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         """ returns signed y value of the last B-Spline control point which is half the te gap"""
         return self.curve.cpoints_y[-1]
 
-    def set_te_gap(self, dgap: float, xBlend: float = None):
-        """Apply a trailing-edge gap delta to this B-Spline side.
+    def set_te_gap(self, te_gap: float, xBlend: float = None):
+        """
+        Apply a trailing-edge gap to this side. Sign of the gap is applied based on the side type (upper/lower). 
+        The gap is blended over a specified range from the trailing edge.
 
         Args:
-            dgap:   delta gap in y-coordinates to be distributed to this side
+            te_gap: ! half of the airfoil trailing-edge gap !
             xBlend: blending range from trailing edge, 0.0..1.0
         """
+
+        # sign sanity
+        if self.type == Line.Type.UPPER:
+            dgap = -(abs(self.te_gap) - abs(te_gap))
+        elif self.type == Line.Type.LOWER:
+            dgap = abs(self.te_gap) - abs(te_gap)
+
+        if dgap == 0.0:
+            return  # No change needed
 
         if xBlend is None:
             xBlend = Geometry.TE_GAP_XBLEND
@@ -461,13 +472,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         y = np.array([p[1] for p in control_points], copy=True)
 
         if xBlend == 0.0:
-            for i in range(ncp):
-                if x[i] == 1.0:
-                    if self.type == Line.Type.UPPER:
-                        y[i] += 0.5 * dgap
-                    elif self.type == Line.Type.LOWER:
-                        y[i] -= 0.5 * dgap
-
+            y[-1] = y[-1] + dgap
             self.controlPoints = list(zip(x, y))
             return
 
@@ -486,12 +491,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
                 # Smoothstep-5 ramp for C2-continuous TE blending.
                 tfac = ub**3 * (ub * (ub * 6.0 - 15.0) + 10.0)
 
-            dy = 0.5 * dgap * tfac
-
-            if self.type == Line.Type.UPPER:
-                y[i] += dy
-            elif self.type == Line.Type.LOWER:
-                y[i] -= dy
+            y[i] += dgap * tfac
 
         self.set_controlPoints(list(zip(x, y)))    
 

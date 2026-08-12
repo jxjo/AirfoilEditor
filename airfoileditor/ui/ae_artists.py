@@ -905,15 +905,7 @@ class Airfoil_Artist (Artist):
         """ user switch to show point (marker )
         """
         self._show_points = aBool is True 
-
-        p : pg.PlotDataItem
-        for p in self._plots:
-            if isinstance (p, pg.PlotDataItem):
-                if self.show_points:
-                    p.setSymbol('o')
-                else: 
-                    p.setSymbol(None)
-        self.plot()             # do refresh will show leading edge of spline 
+        self.refresh()
 
 
     @property
@@ -936,14 +928,12 @@ class Airfoil_Artist (Artist):
 
     @property
     def airfoils (self) -> list [Airfoil]: 
-        airfoils : list [Airfoil] = list(self.data_list)   
 
-        # add temporary design airfoil if requested, e.g. for live design update 
-        if True: #self.show_design_temp:
-            for airfoil in airfoils:
-                if airfoil.design_temp:
-                    airfoils.append(airfoil.design_temp)
-                    break
+        airfoils : list [Airfoil] = list(self.data_list)   
+        for airfoil in airfoils:
+            if airfoil.design_temp:
+                airfoils.append(airfoil.design_temp)
+                break
 
         return airfoils
 
@@ -954,7 +944,8 @@ class Airfoil_Artist (Artist):
 
         # are there many airfoils - one of them is DESIGN? 
 
-        there_is_design = any(a.usedAsDesign for a in self.airfoils) 
+        there_is_design     = any(a.usedAsDesign for a in self.airfoils) 
+        there_is_design_tmp = any(a.usedAs == usedAs.DESIGN_TEMP for a in self.airfoils)
 
 
         for iair, airfoil in enumerate (self.airfoils):
@@ -990,6 +981,7 @@ class Airfoil_Artist (Artist):
                         zValue = 3
                     elif airfoil.usedAs == usedAs.DESIGN_TEMP:
                         style = Qt.PenStyle.DashLine
+                        zValue = 4
                     elif airfoil.usedAs != usedAs.NORMAL:
                         color = QColor (color).darker (110)
                 elif airfoil.usedAs == usedAs.NORMAL:
@@ -1003,11 +995,16 @@ class Airfoil_Artist (Artist):
 
                 # optional symbol for points
 
-                if airfoil.usedAsDesign:
-                    sPen, sBrush, sSize = pg.mkPen(color, width=1.5), 'black', 9
+                sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
+
+                if self.show_points:
+                    s = 'o'
+                    if airfoil.usedAsDesign and there_is_design_tmp:
+                        s = None                                        # only symbols for temp design airfoil
+                    elif airfoil.usedAs == usedAs.DESIGN_TEMP:
+                        sPen, sBrush, sSize = pg.mkPen(color, width=1.5), 'black', 9
                 else:
-                    sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
-                s = 'o' if self.show_points else None 
+                    s = None
 
                 # apply optional scale value for reference airfoils 
 
@@ -1999,7 +1996,6 @@ class Polar_Artist (Artist):
         self._show_points = False                       # show point marker 
         self._show_bubbles = False                      # show bubble info
         self._show_VLM_also = False                     # show VLM polars also
-        self._show_design_temp = False               # show DESIGN_TEMP polars also
         self._xyVars = xyVars                           # definition of x,y axis
 
 
@@ -2023,12 +2019,6 @@ class Polar_Artist (Artist):
         self._show_VLM_also = aBool 
         self.refresh()
 
-    @property
-    def show_design_temp (self): return self._show_design_temp
-    def set_show_design_temp (self, aBool): 
-        self._show_design_temp = aBool 
-        self.refresh()
-
 
     @property
     def xyVars(self): return self._xyVars
@@ -2044,13 +2034,11 @@ class Polar_Artist (Artist):
 
         airfoils : list [Airfoil] = list(self.data_list)   
 
-        # add temporary design airfoil if requested, e.g. for live design update 
-        if self.show_design_temp:
-            for airfoil in airfoils:
-                if airfoil.design_temp:
-                    airfoils.append(airfoil.design_temp)
-                    break
-
+        # add temporary design airfoil if exists, e.g. for live design update 
+        for airfoil in airfoils:
+            if airfoil.design_temp:
+                airfoils.append(airfoil.design_temp)
+                break
         return airfoils
 
 

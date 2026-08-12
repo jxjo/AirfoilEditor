@@ -449,7 +449,16 @@ class Geometry_Curve (Geometry):
     def _isNormalized (self):
         """ true if LE is at 0,0 and TE is symmetrical at x=1"""
         # Curve is always normalized
-        return True
+        if (self.upper.curve.cpoints_x[0] == 0.0 and
+            self.upper.curve.cpoints_y[0] == 0.0 and
+            self.lower.curve.cpoints_x[0] == 0.0 and
+            self.lower.curve.cpoints_y[0] == 0.0 and
+            self.upper.curve.cpoints_x[-1] == 1.0 and
+            self.lower.curve.cpoints_x[-1] == 1.0 and
+            self.upper.curve.cpoints_y[-1] == -self.lower.curve.cpoints_y[-1]):
+            return True
+        else:
+            raise ValueError(f"{self} curves are not normalized This may not happen")
 
     @override
     @property
@@ -539,7 +548,7 @@ class Geometry_Curve (Geometry):
 
         # ensure TE is symmetrical when upper side TE point changed
         if side.isUpper:
-            self.lower.set_te_gap (- side.te_gap)
+            self.lower.set_te_gap (side.te_gap)
 
         mod = self.MOD_CURVE + " " + side.name
         self._changed (mod, mod_info)
@@ -613,6 +622,9 @@ class Geometry_Curve (Geometry):
         new_gap = clip (new_gap, 0.0, 0.1)
         xBlend  = clip (xBlend, 0.1, 1.0)
 
+        if self.te_gap == new_gap:
+            return
+
         if moving:
             # Initialize move baseline once and re-use it for all move updates.
             if self._te_gap_move_upper_cp is None:
@@ -624,17 +636,13 @@ class Geometry_Curve (Geometry):
             self.upper.set_controlPoints(self._te_gap_move_upper_cp)
             self.lower.set_controlPoints(self._te_gap_move_lower_cp)
 
-        cur_gap = self.te_gap
-        dgap    = new_gap - cur_gap
-        if dgap != 0.0:
-            self.upper.set_te_gap (dgap, xBlend)
-            self.lower.set_te_gap (dgap, xBlend)
+        self.upper.set_te_gap (new_gap * 0.5, xBlend)
+        self.lower.set_te_gap (new_gap * 0.5, xBlend)
 
         if not moving:
             # End move session and drop baseline after the final apply.
             self._reset () 
-            if dgap != 0.0:
-                self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))   # finalize (parent) airfoil 
+            self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))   # finalize (parent) airfoil 
 
 
 

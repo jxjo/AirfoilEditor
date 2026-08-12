@@ -124,8 +124,20 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
 
 
     def set_te_gap(self, te_gap: float):
-        """ set trailing edge gap and recalculate deviation """
-        self.cst.set_te_gap (te_gap)
+        """ 
+        set trailing edge gap to this side. Sign of the gap is applied based on the side type (upper/lower). 
+        and recalculate deviation
+
+        Args:
+            te_gap: ! half of the airfoil trailing-edge gap !
+        """                     
+        # sign sanity
+        if self.type == Line.Type.UPPER:
+            signed_gap = abs(te_gap) 
+        elif self.type == Line.Type.LOWER:
+            signed_gap = -abs(te_gap)
+
+        self.cst.set_te_gap (signed_gap)
         self.reset_target_deviation ()
 
 
@@ -211,6 +223,11 @@ class Geometry_CST(Geometry_Curve):
             return False
         return True
 
+    @override
+    def _isNormalized (self):
+        """ true if LE is at 0,0 and TE is symmetrical at x=1"""
+        # CST is always normalized
+        return True
 
     @override
     @property
@@ -299,7 +316,7 @@ class Geometry_CST(Geometry_Curve):
             return
 
         self.upper.set_te_gap(0.5 * new_gap)
-        self.lower.set_te_gap(-0.5 * new_gap)
+        self.lower.set_te_gap(0.5 * new_gap)
 
         if not moving:
             self._reset()
