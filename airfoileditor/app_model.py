@@ -264,6 +264,17 @@ class App_Model (QObject):
             self.sig_polar_set_changed.emit()
 
 
+    def _add_polar_set_to_design_temp (self):
+        """ add neuralfoil polar set to the temp design airfoil if it exists """
+
+        design_temp = self.airfoil.design_temp
+        if design_temp:
+            # create temp polar_set with just neuralfoil polars
+            polar_defs = [p for p in self.polar_definitions if p.is_neuralfoil]
+            # assign this temp polar_set to this temp airfoil
+            design_temp.set_polarSet (Polar_Set (design_temp, polar_def=polar_defs, only_active=True))
+
+
     def _on_xo2_new_design (self):
         """ slot to handle new design during Xoptfoil2 run signaled by watchdog """
 
@@ -540,6 +551,9 @@ class App_Model (QObject):
 
     def notify_airfoil_geo_changed (self):
         """ notify self that current airfoil geometry has changed rapidly """
+
+        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil 
+
         self.sig_airfoil_geo_changed.emit()
 
 
@@ -555,6 +569,9 @@ class App_Model (QObject):
 
     def notify_airfoil_flap_set (self, is_set: bool):
         """ notify self that current airfoil flap setting has changed rapidly """  
+
+        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil
+
         self.sig_airfoil_flap_set.emit (is_set)
 
 

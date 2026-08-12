@@ -1313,9 +1313,19 @@ class Item_Polars (Diagram_Item):
 
         self.app_model.sig_new_polars.connect               (self.refresh)
         self.app_model.sig_polar_set_changed.connect        (self.refresh)
+        self.app_model.sig_airfoil_geo_changed.connect      (self._on_design_temp_changed)  # fast nf polar ...
+        self.app_model.sig_airfoil_flap_set.connect         (self._on_design_temp_changed)  # fast nf polar ...
         self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh)
 
         self.app_model.sig_xo2_new_design.connect           (self.refresh)
+
+
+    def _on_design_temp_changed (self, show : bool = True):
+        """ slot - flap set changed - refresh polars"""
+
+        a : Polar_Artist
+        for a in self._get_artist (Polar_Artist):
+            a.set_show_design_temp (show)
 
 
     @property

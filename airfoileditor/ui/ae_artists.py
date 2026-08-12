@@ -84,8 +84,8 @@ def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
         color = 'springgreen'  
     elif airfoil_type == usedAs.SEED:
         color = 'dodgerblue'
-    elif airfoil_type == usedAs.SEED_DESIGN:
-        color = 'cornflowerblue'
+    elif airfoil_type == usedAs.DESIGN_TEMP:
+        color = 'deeppink'
     elif airfoil_type == usedAs.REF: 
         i, n = airfoil.usedAs_i_Ref (airfoils)  
         color = color_in_series ('lightskyblue', i, n, delta_hue=0.4)                      
@@ -108,7 +108,7 @@ def _label_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> str:
     if airfoil.usedAs == usedAs.REF:
         i, n = airfoil.usedAs_i_Ref (airfoils)  
         use = f"Ref {i+1}: "
-    elif airfoil.usedAs in [usedAs.DESIGN, usedAs.NORMAL] or airfoil.usedAs is None: # no prefix 
+    elif airfoil.usedAs in [usedAs.DESIGN, usedAs.NORMAL, usedAs.DESIGN_TEMP] or airfoil.usedAs is None: # no prefix 
         use = ""
     else: 
         use = f"{airfoil.usedAs}: " 
@@ -935,7 +935,17 @@ class Airfoil_Artist (Artist):
 
 
     @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
+    def airfoils (self) -> list [Airfoil]: 
+        airfoils : list [Airfoil] = list(self.data_list)   
+
+        # add temporary design airfoil if requested, e.g. for live design update 
+        if True: #self.show_design_temp:
+            for airfoil in airfoils:
+                if airfoil.design_temp:
+                    airfoils.append(airfoil.design_temp)
+                    break
+
+        return airfoils
 
 
     def _plot (self): 
@@ -963,10 +973,11 @@ class Airfoil_Artist (Artist):
                 if color is None: color = color_palette [iair]
 
                 # default 
-                width = 1
+                width   = 1
+                style   = Qt.PenStyle.SolidLine
+                zValue  = 1
+                scale   = 1.0 
                 antialias = False
-                zValue = 1
-                scale = 1.0 
 
                 if airfoil.usedAs == usedAs.FINAL:
                     width = 2
@@ -977,15 +988,18 @@ class Airfoil_Artist (Artist):
                         width = 2
                         antialias = True
                         zValue = 3
+                    elif airfoil.usedAs == usedAs.DESIGN_TEMP:
+                        style = Qt.PenStyle.DashLine
                     elif airfoil.usedAs != usedAs.NORMAL:
                         color = QColor (color).darker (110)
                 elif airfoil.usedAs == usedAs.NORMAL:
                     width = 2
                     antialias = True
 
-                pen = pg.mkPen(color, width=width)
+                pen = pg.mkPen(color, width=width, style=style)
 
-                x,y = airfoil.geo.x, airfoil.geo.y 
+                # x,y = airfoil.geo.x, airfoil.geo.y 
+                x,y = airfoil.x, airfoil.y
 
                 # optional symbol for points
 
@@ -1985,6 +1999,7 @@ class Polar_Artist (Artist):
         self._show_points = False                       # show point marker 
         self._show_bubbles = False                      # show bubble info
         self._show_VLM_also = False                     # show VLM polars also
+        self._show_design_temp = False               # show DESIGN_TEMP polars also
         self._xyVars = xyVars                           # definition of x,y axis
 
 
@@ -2008,6 +2023,12 @@ class Polar_Artist (Artist):
         self._show_VLM_also = aBool 
         self.refresh()
 
+    @property
+    def show_design_temp (self): return self._show_design_temp
+    def set_show_design_temp (self, aBool): 
+        self._show_design_temp = aBool 
+        self.refresh()
+
 
     @property
     def xyVars(self): return self._xyVars
@@ -2019,7 +2040,18 @@ class Polar_Artist (Artist):
 
 
     @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
+    def airfoils (self) -> list [Airfoil]: 
+
+        airfoils : list [Airfoil] = list(self.data_list)   
+
+        # add temporary design airfoil if requested, e.g. for live design update 
+        if self.show_design_temp:
+            for airfoil in airfoils:
+                if airfoil.design_temp:
+                    airfoils.append(airfoil.design_temp)
+                    break
+
+        return airfoils
 
 
     def _plot (self): 
@@ -2143,18 +2175,19 @@ class Polar_Artist (Artist):
         # set linewidth 
 
         antialias = True
+        style = Qt.PenStyle.SolidLine
 
         if self._show_points:
             linewidth=0.5
         elif airfoil.usedAs == usedAs.FINAL:  
             linewidth=1.5
-            antialias = True
         elif airfoil.usedAs == usedAs.DESIGN:  
             linewidth=1.5
-            antialias = True
+        elif airfoil.usedAs == usedAs.DESIGN_TEMP:  
+            linewidth=1.0
+            style = Qt.PenStyle.DashLine
         elif airfoil.usedAs == usedAs.NORMAL and not there_is_design:  
             linewidth=1.5
-            antialias = True
         else:
             linewidth=1.0
 
@@ -2171,7 +2204,7 @@ class Polar_Artist (Artist):
 
         # finally plot 
 
-        pen = pg.mkPen(color, width=linewidth)
+        pen = pg.mkPen(color, width=linewidth, style=style)
         sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
         s = 'o' if self.show_points else None 
 

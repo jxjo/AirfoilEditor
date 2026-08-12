@@ -1285,6 +1285,16 @@ class Geometry ():
 
         return round (angle,1) 
 
+    @property
+    def flapped_chord_angle (self) -> float:
+        """ returns angle of chord when self is flapped"""
+
+        if not self.isProbablyFlapped: 
+            return 0.0 
+        else:
+            angle = math.atan2 ((self.y[0] + self.y[-1])/ 2.0, (self.x[0] + self.x[-1])/ 2.0)
+            return round (math.degrees(angle), 4)
+
 
     @property
     def le (self) -> tuple: 

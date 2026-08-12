@@ -45,9 +45,9 @@ class usedAs (StrEnum):
     """ airfoil types for some usage semantics in application """
     NORMAL      = ""
     SEED        = "Seed"
-    SEED_DESIGN = "Seed of design"
     REF         = "Reference" 
     DESIGN      = "Design"
+    DESIGN_TEMP = "Design tmp"
     TARGET      = "Target"
     SECOND      = "Airfoil 2"
     FINAL       = "Final"
@@ -127,6 +127,7 @@ class Airfoil:
         self._usedAs         = usedAs.NORMAL                # usage type of airfoil used by app <- AIRFOIL_TYPES
         self._propertyDict   = {}                           # multi purpose extra properties for an Airfoil
         self._file_datetime  = None                         # modification datetime of file 
+        self._design_temp    = None                         # temp design airfoil based on self - during user design
 
         self._flap_setter    = None                         # proxy controller to flap self using Worker
 
@@ -578,6 +579,23 @@ class Airfoil:
         """ set free style property of self"""
         return toDict (self._propertyDict, name, aVal )
 
+
+    @property
+    def design_temp (self) -> 'Airfoil':
+        """ returns the temp Design airfoil based on self - will be used for flap design"""
+
+        if self.usedAsDesign:
+            if self._flap_setter and self.flap_setter.airfoil_flapped:
+                self._design_temp = self.flap_setter.airfoil_flapped
+            elif (self._design_temp is None 
+                  or not np.array_equal(self.geo.x, self._design_temp.geo.x)
+                  or not np.array_equal(self.geo.y, self._design_temp.geo.y)):
+                self._design_temp = Airfoil (x=self.geo.x, y=self.geo.y, name=self.name+"_temp")
+                self._design_temp.set_usedAs (usedAs.DESIGN_TEMP)
+        else:
+            self._design_temp = None
+        return self._design_temp
+
     #-----------------------------------------------------------
 
     @property
@@ -764,9 +782,6 @@ class Airfoil:
             raise ValueError ("Invalid .dat file")
         
         x, y = self._ensure_counter_clockwise (np.asarray (x), np.asarray (y))
-
-        # test orientation 
-        # x2, y2 = self._ensure_counter_clockwise (np.flip(np.copy (x)), np.flip(np.copy (y)))
 
         return name, x, y
 
@@ -1003,19 +1018,21 @@ class Airfoil:
 
         if flap_def is not None:                                 # set new flap definition
             self.flap_setter.set_flap_definition (flap_def)
-        elif self._flap_setter is None: 
+        if self._flap_setter is None: 
             return 
 
+        setter = self.flap_setter
         # run worker - read flapped airfoil 
-        self.flap_setter.set_flap ()
+        setter.set_flap ()
 
-        if self.flap_setter.airfoil_flapped:
+        if setter.airfoil_flapped:
 
             # flapping was successful - update geometry - will update self
-            x,y        = self.flap_setter.airfoil_flapped.x, self.flap_setter.airfoil_flapped.y
-            flap_angle = self.flap_setter.flap_angle
-            x_flap     = self.flap_setter.x_flap
-
+            x,y        = setter.airfoil_flapped.x, setter.airfoil_flapped.y
+            flap_angle = setter.flap_angle
+            x_flap     = setter.x_flap
+            setter.airfoil_flapped_reset()                                 # reset flapped airfoil - no longer needed
+            
             self.geo.set_flapped_data (x,y, flap_angle, x_flap)
 
 
@@ -1996,6 +2013,10 @@ class Flap_Setter (Flap_Definition):
         """ airfoil org being flapped - None if not """
         return self._airfoil_flapped
 
+    def airfoil_flapped_reset (self):
+        """ reset flapped airfoil to None """
+        self._airfoil_flapped = None
+
 
     def set_flap_definition (self, flap_def : 'Flap_Definition'):
         """ set new flap definition from another flap_def """
@@ -2053,6 +2074,7 @@ class Flap_Setter (Flap_Definition):
             # load new airfoil 
             self._airfoil_flapped = Airfoil (pathFileName=flapped_fileName, workingDir=self._worker_workingDir)
             self._airfoil_flapped.load()
+            self._airfoil_flapped.set_usedAs (usedAs.DESIGN_TEMP)
 
             # ... and delete immediatly its file to have a clean directory  
             try: 

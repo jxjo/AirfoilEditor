@@ -362,7 +362,7 @@ class Geometry_CST(Geometry_Curve):
     @classmethod
     def geometry_as_CST (cls, geo: Geometry, n_weights: int | None = None,
                          smooth_lambda: float = SMOOTH_LAMBDA_DEFAULT
-                         ) -> tuple[np.ndarray, np.ndarray, float, float]:
+                         ) -> tuple[np.ndarray, np.ndarray, float, float, float]:
         """
         Fit CST parameters (fast linear least squares, see fit_from_xy) approximating
         an existing geometry's upper/lower x,y coordinates.
@@ -383,8 +383,7 @@ class Geometry_CST(Geometry_Curve):
             smooth_lambda: optional smoothing weight passed to fit_from_xy.
 
         Returns:
-            tuple: (weights_upper, weights_lower, le_weight, te_thickness) - can be
-            passed directly as Geometry_CST(weights_upper, weights_lower, le_weight, te_thickness).
+            tuple: (weights_upper, weights_lower, le_weight, te_thickness, derotation_angle) 
         """
         if n_weights is None:
             n_weights = cls.NCP_DEFAULT
@@ -392,19 +391,25 @@ class Geometry_CST(Geometry_Curve):
         # ensure geometry is normalized
 
         if not geo._isNormalized():
+
+            derotation_angle = -geo.flapped_chord_angle
+            if abs(derotation_angle) > 0.0:
+                logger.info(f"Geometry_CST: geometry is flapped, derotating by {derotation_angle:.2f}° to normalize")
+
             geo_norm = Geometry (geo.x, geo.y)          # temporary normalized copy of geometry
             geo_norm._push_xy()                         # speed hack
             geo_norm._normalize() 
             geo_norm._set_xy (geo_norm._x, geo_norm._y)
         else:
             geo_norm = geo
+            derotation_angle = 0.0
 
 
-        return fit_cst_from_xy (
+        return (*fit_cst_from_xy (
             geo_norm.upper.x, geo_norm.upper.y, geo_norm.lower.x, geo_norm.lower.y,
             n_weights    = n_weights,
             le_mode = 'free',               # fully independent a0 for upper and lower
-            smooth_lambda = smooth_lambda)
+            smooth_lambda = smooth_lambda), derotation_angle)
 
 
     @override

@@ -39,6 +39,7 @@ class Airfoil_As_CST:
     lower_weights: np.ndarray
     leading_edge_weight: float
     TE_thickness: float
+    derotation_angle: float = 0.0  # angle airfoil was derotated to normalize in case of flapped airfoil 
 
 
 
@@ -143,10 +144,15 @@ class Neuralfoil_Evaluator:
         if min_confidence is not None:
             alpha_arr, predict = Neuralfoil_Evaluator._apply_confidence_mask (alpha_arr, predict, min_confidence)
 
+        # apply derotation angle to the meta if the airfoil was derotated to normalize (flapped airfoil)
+        if airfoil_as_cst.derotation_angle != 0.0:
+            alpha_arr = alpha_arr - airfoil_as_cst.derotation_angle
+
         # apply auto_range mask to trim the polar to the interesting region between stalls
         if meta.auto_range:
             alpha_arr, predict = Neuralfoil_Evaluator._apply_auto_range_mask (alpha_arr, predict)
 
+        # build DTO rows from NeuralFoil prediction dict
         result =  Polar_Data_Set (
             meta = result_meta,
             rows = Neuralfoil_Evaluator._build_rows (predict, alpha_arr),

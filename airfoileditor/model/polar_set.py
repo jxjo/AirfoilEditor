@@ -820,13 +820,17 @@ class Polar_Set:
 
         if self._airfoil_as_CST is None and self._airfoil is not None:
 
-            w_upper, w_lower, le_weight, te_thickness = Geometry_CST.geometry_as_CST (self._airfoil.geo, n_weights=8)
+            w_upper, w_lower, le_weight, te_thickness, derotation_angle = Geometry_CST.geometry_as_CST (
+                self._airfoil.geo, n_weights=8)
 
             self._airfoil_as_CST = Airfoil_As_CST(
                 upper_weights       = w_upper,
                 lower_weights       = w_lower,
                 leading_edge_weight = le_weight,
-                TE_thickness        = te_thickness)
+                TE_thickness        = te_thickness,
+                derotation_angle    = derotation_angle)
+
+            logger.debug (f'Airfoil {self.airfoil} converted to CST. Derotation angle: {derotation_angle:.2f}°')
             
         return self._airfoil_as_CST
 
@@ -975,20 +979,17 @@ class Polar_Set:
         if VLM:
             polars.extend (self.polars_VLM)
 
-        # load already existing polar files 
+        # load already existing polar file (xfoil) or generate and load polar (Neuralfoil)
 
         polars_not_loaded = []
 
         for polar in polars: 
             if not polar.isLoaded:
 
-                if polar.is_xfoil:
-                    polar.load_polar ()
-                    if not polar.isLoaded: 
-                        polars_not_loaded.append(polar)                         # lazy load failed - has to be generated
+                polar.load_polar ()
 
-                elif polar.is_neuralfoil:
-                    polar.load_polar ()
+                if polar.is_xfoil and not polar.isLoaded:
+                    polars_not_loaded.append(polar)                         # lazy load failed - has to be generated
 
         # polars missing - if not already done, create polar_task for Worker to generate polar 
 
@@ -1020,6 +1021,18 @@ class Polar_Set:
         return 
 
 
+    def reset_neuralfoil_polars (self):
+        """ 
+        Reset all NeuralFoil polars of self to be re-generated 
+        (e.g. after flap setting)
+        """
+        polar: Polar
+        for polar in self.polars:
+            if polar.is_neuralfoil and polar.isLoaded:
+                polar.unload ()
+
+        # reset CST representation of airfoil for NeuralFoil
+        self._airfoil_as_CST = None
 
 #------------------------------------------------------------------------------
 
@@ -1699,6 +1712,11 @@ class Polar (Polar_Definition):
             self.set_error_reason (str(exc))                # polar will be 'loaded' with error
             logger.error (f'{self} load failed: {exc}')
 
+
+    def unload (self):
+        """ unloads self - clears cached polar values """
+        self._values.clear ()
+        self._error_reason = None
 
 
     def _import_from_data_set (self, data_set: Polar_Data_Set):
