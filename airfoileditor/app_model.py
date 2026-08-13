@@ -559,11 +559,17 @@ class App_Model (QObject):
 
     def notify_airfoil_geo_te_gap (self, xBlend: float ):
         """ notify self that current airfoil geometry TE gap has changed rapidly """  
+
+        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil
+
         self.sig_airfoil_geo_te_gap.emit (xBlend)
 
 
     def notify_airfoil_geo_le_radius (self, xBlend: float ):
         """ notify self that current airfoil geometry LE radius has changed rapidly """  
+
+        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil
+
         self.sig_airfoil_geo_le_radius.emit (xBlend)
 
 

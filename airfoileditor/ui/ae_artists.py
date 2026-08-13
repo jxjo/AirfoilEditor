@@ -1181,8 +1181,8 @@ class TE_Gap_Artist (Artist):
     @property
     def design_airfoil (self) -> Airfoil:
         for airfoil in self.airfoils:
-            if airfoil.usedAsDesign:
-                return airfoil 
+            if airfoil.design_temp:
+                return airfoil.design_temp
 
     @property
     def xBlend (self): return self._xBlend
@@ -1244,9 +1244,9 @@ class LE_Radius_Artist (Artist):
     @property
     def design_airfoil (self) -> Airfoil:
         for airfoil in self.airfoils:
-            if airfoil.usedAsDesign:
-                return airfoil 
-
+            if airfoil.design_temp:
+                return airfoil.design_temp
+    
     @property
     def xBlend (self): return self._xBlend
 
