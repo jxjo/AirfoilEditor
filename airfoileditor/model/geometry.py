@@ -770,18 +770,8 @@ class Line:
     def yFn (self,x):
         """ returns interpolated y values based on a x-value  """
 
-        # find the index in self.x which is right before x
-        jl = bisection (self.x, x)
-        
-        # now interpolate the y-value on lower side 
-        if jl < (len(self.x) - 1):
-            x1 = self.x[jl]
-            x2 = self.x[jl+1]
-            y1 = self.y[jl]
-            y2 = self.y[jl+1]
-            y = interpolate (x1, x2, y1, y2, x)
-        else: 
-            y = self.y[-1]
+        y = np.interp(x, self.x, self.y)
+
         return y
 
 
@@ -1581,11 +1571,13 @@ class Geometry ():
             self._upper.set_te_gap (new_gap / 2.0, xBlend)
             self._lower.set_te_gap (new_gap / 2.0, xBlend)
 
+            self._rebuild_from_upper_lower ()
+
             if not moving:
-                self._rebuild_from_upper_lower ()
                 self._reset () 
                 self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))   # finalize (parent) airfoil 
                 self._set_xy (self._x, self._y)
+
         except GeometryException:
             self._clear_xy()
 
@@ -1664,10 +1656,9 @@ class Geometry ():
         self._lower  = self.side_class (self.thickness.x, self.camber.y - new_thickness / 2.0 ,
                                  linetype=Line.Type.LOWER)
         
-        # create new curvature to recalc curvature at LE
+        self._rebuild_from_upper_lower ()
 
-        x = np.concatenate ((np.flip(self.upper.x), self.lower.x[1:]))
-        y = np.concatenate ((np.flip(self.upper.y), self.lower.y[1:]))
+        # create new curvature to recalc curvature at LE
 
         self._curvature = None
 

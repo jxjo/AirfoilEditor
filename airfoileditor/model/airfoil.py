@@ -2085,6 +2085,112 @@ class Flap_Setter (Flap_Definition):
                 logger.error (f"{self._airfoil_flapped.pathFileName_abs} couldn't be removed")
 
 
+class Flap_Setter_new (Flap_Definition):
+    """ 
+
+    Setting flap at upper and lower surface  
+
+    With set_flap a flapped version of the original upper and lower is returned
+
+    """
+
+    def __init__(self, upper: Line, lower: Line):
+        """
+        constructor for new Flapper to handle flapping of an airfoil
+
+        Args:
+            airfoil_base:   an unflapped airfoil to flap 
+        """
+
+        super().__init__()
+        self._upper = upper
+        self._lower = lower
+
+
+    @staticmethod
+    def smooth_convex_corner(x_seg, y_seg, corner_idx):
+        """
+        Locally rounds only the convex side over a small index window
+        (2 points before, 5 points after hinge line).
+        """
+        x_smooth = np.copy(x_seg)
+        y_smooth = np.copy(y_seg)
+        
+        start_idx = max(0, corner_idx - 2)
+        end_idx = min(len(x_seg), corner_idx + 6)
+        
+        for i in range(start_idx, end_idx):
+            if i == corner_idx:
+                y_smooth[i] = 0.4 * y_seg[i] + 0.3 * y_seg[i-1] + 0.3 * y_seg[i+1]
+                x_smooth[i] = 0.4 * x_seg[i] + 0.3 * x_seg[i-1] + 0.3 * x_seg[i+1]
+            elif i > corner_idx:
+                weight = 0.5 * (1.0 - (i - corner_idx) / 5.0)
+                y_smooth[i] = (1 - weight) * y_seg[i] + weight * y_seg[i-1]
+                x_smooth[i] = (1 - weight) * x_seg[i] + weight * x_seg[i-1]
+                
+        return x_smooth, y_smooth
+
+
+    def _set_flap (self):
+        """
+        XFOIL-exact routine: Inserts structural nodes at the hinge line intersection 
+        on both surfaces to prevent geometry crossover, then applies asymmetric blending.
+        """
+        # 1. SPLIT INTO UPPER AND LOWER SURFACES
+        x_upper, y_upper = self._upper.x, self._upper.y
+        x_lower, y_lower = self._lower.x, self._lower.y
+        
+            
+        # 2. CALCULATE INTERPOLATED HINGE THICKNESS VALUES
+        y_h_upper = np.interp(self.x_flap, x_upper, y_upper)
+        y_h_lower = np.interp(self.x_flap, x_lower, y_lower)
+        
+        # Establish the precise user-defined pivot point
+        local_thickness = y_h_upper - y_h_lower
+        y_hinge = y_h_lower + (self.y_flap * local_thickness)
+        
+        # 3. CRITICAL STEP: INSERT NODE AT HINGE LINE ON BOTH SURFACES
+        # This prevents the concave side from slicing into the airfoil interior
+        idx_u = np.searchsorted(x_upper, self.x_flap)
+        x_upper = np.insert(x_upper, idx_u, self.x_flap)
+        y_upper = np.insert(y_upper, idx_u, y_h_upper)
+        
+        idx_l = np.searchsorted(x_lower, self.x_flap)
+        x_lower = np.insert(x_lower, idx_l, self.x_flap)
+        y_lower = np.insert(y_lower, idx_l, y_h_lower)
+        
+        # 4. APPLY GEOMETRIC ROTATION (Only to points downstream of the inserted hinge)
+        beta_rad = np.radians(-self.flap_angle)
+        cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
+        
+        def rotate_surface_segment(x_s, y_s, hinge_idx):
+            x_rot, y_rot = np.copy(x_s), np.copy(y_s)
+            # Only rotate points from the hinge index to the trailing edge
+            dx = x_s[hinge_idx:] - self.x_flap
+            dy = y_s[hinge_idx:] - y_hinge
+            x_rot[hinge_idx:] = self.x_flap + dx * cos_b - dy * sin_b
+            y_rot[hinge_idx:] = y_hinge + dx * sin_b + dy * cos_b
+            return x_rot, y_rot
+
+        # Note: On upper surface, index `idx_u` is our new corner. 
+        # On lower surface, index `idx_l` is our new corner.
+        x_up_rot, y_up_rot = rotate_surface_segment(x_upper, y_upper, idx_u)
+        x_lo_rot, y_lo_rot = rotate_surface_segment(x_lower, y_lower, idx_l)
+        
+        # 5. ASYMMETRIC BLENDING (Smooth convex side, keep concave side sharp)
+        if self.flap_angle > 0:  # Flap DOWNWARD -> Upper surface is convex
+            x_up_rot, y_up_rot = self.smooth_convex_corner(x_up_rot, y_up_rot, idx_u)
+            # Lower surface corner at idx_l remains perfectly sharp!
+            
+        elif self.flap_angle < 0:  # Flap UPWARD -> Lower surface is convex
+            x_lo_rot, y_lo_rot = self.smooth_convex_corner(x_lo_rot, y_lo_rot, idx_l)
+            # Upper surface corner at idx_u remains perfectly sharp!
+
+        upper_new = Line(x_up_rot, y_up_rot, linetype=Line.Type.UPPER)
+        lower_new = Line(x_lo_rot, y_lo_rot, linetype=Line.Type.LOWER) 
+
+        return upper_new, lower_new
+
 
 
 # ------------ test functions - to activate  -----------------------------------
