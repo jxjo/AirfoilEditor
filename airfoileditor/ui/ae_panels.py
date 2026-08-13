@@ -761,7 +761,8 @@ class Panel_Flap (Panel_Airfoil_Abstract):
         if self.is_mode_modify:
 
             flap_setter         = self.airfoil.flap_setter
-            airfoil_flapped = flap_setter.airfoil_flapped if flap_setter else None
+            #todo
+            airfoil_flapped = None # flap_setter.airfoil_flapped if flap_setter else None
 
             if airfoil_flapped:
                 FieldF (l,r,c, lab="Hinge x", width=60, get=lambda: flap_setter.x_flap, dec=1, unit="%")

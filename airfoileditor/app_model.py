@@ -576,6 +576,8 @@ class App_Model (QObject):
     def notify_airfoil_flap_set (self, is_set: bool):
         """ notify self that current airfoil flap setting has changed rapidly """  
 
+        self.airfoil.geo.set_flap (moving=True)
+
         self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil
 
         self.sig_airfoil_flap_set.emit (is_set)

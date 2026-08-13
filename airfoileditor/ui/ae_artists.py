@@ -1133,36 +1133,31 @@ class Flap_Artist (Artist):
     
         if self.flap_setter is None: return 
 
-        flapped_airfoil = self.flap_setter.airfoil_flapped
+        geo_flapped = self.design_airfoil.geo
         color = _color_airfoil ([], self.design_airfoil)
 
-        if flapped_airfoil is not None:
+        # plot flapped airfoil 
 
-            # plot flapped airfoil 
+        pen   = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
+        label = f"{self.design_airfoil.name_to_show} flapped"
 
-            pen   = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
-            label = f"{self.design_airfoil.name_to_show} flapped"
+        self._plot_dataItem  (geo_flapped.x, geo_flapped.y, name=label, pen = pen, 
+                                zValue=5)
 
-            self._plot_dataItem  (flapped_airfoil.x, flapped_airfoil.y, name=label, pen = pen, 
-                                  zValue=5)
-
-            # plot flap angle 
-
-            x = (1.0 + flapped_airfoil.x[0]) / 2
-            y = flapped_airfoil.y[0] / 2
-
-            self._plot_point ((x,y), size=0,text=f"{self.flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
+        # plot flap angle 
+        x,y,_,_ = geo_flapped.te
+        self._plot_point ((x,y), size=0,text=f"{self.flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
 
         # plot hinge point at the initial, unflapped airfoil
 
-        x = self.flap_setter.x_flap
-        airfoil_base = self.flap_setter.airfoil_base
+        hinge_point = self.flap_setter.hinge_point
 
-        y_base = airfoil_base.geo.lower.yFn(x)
-        thick  = airfoil_base.geo.thickness.yFn(x)
-        y = y_base + self.flap_setter.y_flap * thick 
+        if self.flap_setter.y_flap_spec == 'y/t':
+            text = f"Hinge ({hinge_point[0]:.1%}, {self.flap_setter.y_flap:.1%})"
+        else:
+            text = f"Hinge ({hinge_point[0]:.1%}, {hinge_point[1]:.3f})"
 
-        self._plot_point ((x,y), color=color, size=10,text=f"Hinge {self.flap_setter.x_flap:.1%}" )
+        self._plot_point (hinge_point, color=color, size=10,text=text )
 
 
 

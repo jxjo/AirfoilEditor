@@ -16,9 +16,9 @@ from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPush
 from ..base.widgets             import * 
 from ..base.panels              import Dialog_Modal, Dialog_Modeless, MessageBox
 
-from ..model.airfoil            import Airfoil, Flap_Setter
+from ..model.airfoil            import Airfoil
 from ..model.airfoil_exports    import Export_Airfoil_Dxf
-from ..model.geometry           import Geometry
+from ..model.geometry           import Geometry, Flap_Setter
 from ..model.geometry_curve     import LE_Mode
 from ..model.geometry_spline    import Geometry_Splined, Panelling_Spline
 from ..model.geometry_cst       import Geometry_CST, Side_Airfoil_CST
@@ -519,7 +519,6 @@ class Flap_Airfoil_Dialog (Dialog_Modeless):
         super()._on_widget_changed (widget)
 
         self.refresh()
-        self.flap_setter.set_flap()
 
         self.app_model.notify_airfoil_flap_set (True)
 
