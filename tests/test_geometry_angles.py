@@ -42,3 +42,13 @@ class Test_Line_Angle_In_Range:
         angle = line.angle_in_range(x_range = (0.0, 0.0))
 
         assert angle == 0.0
+
+    def test_yFn_splined_matches_exact_curved_value(self):
+        x = np.array([0.0, 0.2, 0.5, 0.8, 1.0])
+        y = np.array([0.0, 0.04, 0.25, 0.64, 1.0])
+        line = Line(x, y)
+
+        y_at = line.yFn(0.5, splined=True)
+
+        assert np.isclose(y_at, 0.25, atol=1e-6)
+        assert np.isclose(Line.yFn_splined(0.5, x, y), 0.25, atol=1e-6)

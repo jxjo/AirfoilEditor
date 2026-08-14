@@ -57,16 +57,93 @@
 from timeit                 import default_timer as timer
 from enum                   import Enum
 from typing                 import override
-from math                   import isclose
+
+import math
 import numpy as np
 
 from ..base.common_utils    import clip, StrEnum_Extended, fromDict, toDict
-from ..base.math_util       import * 
+from ..base.math_util       import JPoint, findMax, findMin, panel_angles
 from ..base.spline          import Spline1D, Spline2D
 
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
+
+
+def process_concave_surface(side_x, side_y, x_hinge, y_hinge, beta_degrees):
+    """
+    Creates a perfectly sharp corner on the concave inside surface by intersecting 
+    the unrotated main surface line with the rotated flap surface line.
+    Tailored strictly for arrays sorted in ASCENDING order (LE -> TE).
+    """
+    beta_rad = np.radians(-beta_degrees)
+    cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
+    
+    # 1. Capture the original height at the structural hinge plane
+    y_h_orig = np.interp(x_hinge, side_x, side_y)
+    
+    # 2. Slice the input coordinates cleanly into Main Element vs Flap Element
+    mask_main = side_x <= x_hinge
+    mask_flap = side_x > x_hinge
+    
+    x_main = side_x[mask_main]
+    y_main = side_y[mask_main]
+    
+    x_flap = side_x[mask_flap]
+    y_flap = side_y[mask_flap]
+    
+    # 3. Rotate the existing flap points
+    x_flap_rot = np.copy(x_flap)
+    y_flap_rot = np.copy(y_flap)
+    
+    if len(x_flap) > 0:
+        dx_f = x_flap - x_hinge
+        dy_f = y_flap - y_hinge
+        x_flap_rot = x_hinge + dx_f * np.cos(beta_rad) - dy_f * np.sin(beta_rad)
+        y_flap_rot = y_hinge + dx_f * np.sin(beta_rad) + dy_f * np.cos(beta_rad)
+
+    # 4. LINE-LINE INTERSECTION TO FIND THE TRUE CORNER
+    # Line 1 (Main body trailing line segment): defined by its last two points
+    p1_x, p1_y = x_main[-1], y_main[-1]
+    p2_x, p2_y = x_hinge, y_h_orig
+    
+    # Line 2 (Flap leading line segment): defined by the rotated hinge-point and first flap point
+    # We rotate the original hinge surface point to see where its guide vector points
+    dy_orig = y_h_orig - y_hinge
+    r_concave = np.abs(dy_orig)
+    theta_orig = np.arctan2(dy_orig, 0.0)
+    theta_new = theta_orig + beta_rad
+    
+    p3_x = x_hinge + r_concave * np.cos(theta_new)
+    p3_y = y_hinge + r_concave * np.sin(theta_new)
+    p4_x, p4_y = x_flap_rot[0], y_flap_rot[0] if len(x_flap_rot) > 0 else (p3_x + 0.1, p3_y)
+
+    # Determinant formulation for 2D Line Intersection
+    def line_intersection(p1, p2, p3, p4):
+        xdiff = (p1[0] - p2[0], p3[0] - p4[0])
+        ydiff = (p1[1] - p2[1], p3[1] - p4[1])
+
+        def det(a, b):
+            return a[0] * b[1] - a[1] * b[0]
+
+        div = det(xdiff, ydiff)
+        if div == 0:
+            # Fallback if lines are perfectly parallel (unlikely during flap deflection)
+            return p2[0], p2[1]
+
+        d = (det(p1, p2), det(p3, p4))
+        x = det(d, xdiff) / div
+        y = det(d, ydiff) / div
+        return x, y
+
+    x_cross, y_cross = line_intersection((p1_x, p1_y), (p2_x, p2_y), (p3_x, p3_y), (p4_x, p4_y))
+
+    # 5. Recombine sequentially matching the ASCENDING flow (LE -> TE)
+    # The main element terminates cleanly at x_cross, and the flap picks up exactly at x_cross.
+    side_x_new = np.concatenate([x_main, [x_cross], x_flap_rot])
+    side_y_new = np.concatenate([y_main, [y_cross], y_flap_rot])
+    
+    return side_x_new, side_y_new
 
 
 class GeometryException(Exception):
@@ -206,27 +283,99 @@ class Flap_Setter (Flap_Definition):
 
 
     @staticmethod
-    def smooth_convex_corner(x_seg, y_seg, corner_idx):
+    def _process_convex_side (side_x, side_y, x_hinge, y_hinge, beta_degrees):
         """
-        Locally rounds only the convex side over a small index window
-        (2 points before, 5 points after hinge line).
+        Rotates the convex side and locally rounds the corner edge (XFOIL logic).
         """
-        x_smooth = np.copy(x_seg)
-        y_smooth = np.copy(y_seg)
+        beta_rad = np.radians(-beta_degrees)
+        cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
         
-        start_idx = max(0, corner_idx - 2)
-        end_idx = min(len(x_seg), corner_idx + 6)
+        # 1. Interpolate and insert a precise point exactly at the hinge station
+        side_x, side_y = Line.insert_point_at_x(side_x, side_y, x_hinge)
+        idx_corner = np.searchsorted(side_x, x_hinge)
+          
+        # 2. Rigid body rotation for all downstream flap points
+        x_rot = np.copy(side_x)
+        y_rot = np.copy(side_y)
+        
+        dx = side_x[idx_corner:] - x_hinge
+        dy = side_y[idx_corner:] - y_hinge
+        
+        x_rot[idx_corner:] = x_hinge + dx * cos_b - dy * sin_b
+        y_rot[idx_corner:] = y_hinge + dx * sin_b + dy * cos_b
+        
+        # 3. Local blending smoothing matrix (2 points before, 5 points after)
+        side_x_new = np.copy(x_rot)
+        side_y_new = np.copy(y_rot)
+        
+        start_idx = max(0, idx_corner - 2)
+        end_idx = min(len(x_rot), idx_corner + 6)
         
         for i in range(start_idx, end_idx):
-            if i == corner_idx:
-                y_smooth[i] = 0.4 * y_seg[i] + 0.3 * y_seg[i-1] + 0.3 * y_seg[i+1]
-                x_smooth[i] = 0.4 * x_seg[i] + 0.3 * x_seg[i-1] + 0.3 * x_seg[i+1]
-            elif i > corner_idx:
-                weight = 0.5 * (1.0 - (i - corner_idx) / 5.0)
-                y_smooth[i] = (1 - weight) * y_seg[i] + weight * y_seg[i-1]
-                x_smooth[i] = (1 - weight) * x_seg[i] + weight * x_seg[i-1]
+            if i == idx_corner:
+                # Blend the corner apex point heavily with its immediate neighbors
+                side_x_new[i] = 0.4 * x_rot[i] + 0.3 * x_rot[i-1] + 0.3 * x_rot[i+1]
+                side_y_new[i] = 0.4 * y_rot[i] + 0.3 * y_rot[i-1] + 0.3 * y_rot[i+1]
+            elif i > idx_corner:
+                # Progressively decay the smoothing blend down the flap paneling line
+                weight = 0.5 * (1.0 - (i - idx_corner) / 5.0)
+                side_x_new[i] = (1 - weight) * x_rot[i] + weight * x_rot[i-1]
+                side_y_new[i] = (1 - weight) * y_rot[i] + weight * y_rot[i-1]
                 
-        return x_smooth, y_smooth
+        return side_x_new, side_y_new
+
+
+    @staticmethod
+    def _process_concave_side (side_x, side_y, x_hinge, y_hinge, beta_degrees):
+        """
+        Creates a perfectly sharp corner on the concave inside surface via rigid arc-sweeping.
+        """
+        beta_rad = np.radians(-beta_degrees)
+        
+        # 1. Capture the original height at the structural hinge plane
+        y_h_org = Line.yFn_splined(x_hinge, side_x, side_y)  # Use splined interpolation for accuracy
+        
+        # 2. Compute rigid radius swing from the specified vertical pivot point
+        dy_orig = y_h_org - y_hinge
+        r_concave = np.abs(dy_orig)
+        theta_org = np.arctan2(dy_orig, 0.0)  # Delta x is zero at the alignment plane
+        
+        # 3. Calculate where the sharp flap corner node sweeps to post deflection
+        theta_new = theta_org + beta_rad
+        x_corner_flap = x_hinge + r_concave * np.cos(theta_new)
+        y_corner_flap = y_hinge + r_concave * np.sin(theta_new)
+        
+        # 4. Slice the input coordinates cleanly into Main Element vs Flap Element
+        mask_main = side_x <= x_hinge
+        mask_flap = side_x > x_hinge
+        
+        x_main, y_main = side_x[mask_main], side_y[mask_main]
+        x_flap, y_flap = side_x[mask_flap], side_y[mask_flap]
+        
+        # Main element tracks sharply right up to the unrotated anchor coordinates
+        x_main = np.append(x_main, x_hinge)
+        y_main = np.append(y_main, y_h_org)
+        
+        # Flap element undergoes standard rotation matrix mapping
+        x_flap_rot = np.copy(x_flap)
+        y_flap_rot = np.copy(y_flap)
+        
+        if len(x_flap) > 0:
+            dx_f = x_flap - x_hinge
+            dy_f = y_flap - y_hinge
+            x_flap_rot = x_hinge + dx_f * np.cos(beta_rad) - dy_f * np.sin(beta_rad)
+            y_flap_rot = y_hinge + dx_f * np.sin(beta_rad) + dy_f * np.cos(beta_rad)
+            
+        # Prepend the dynamically generated swept corner node onto the flap segment
+        x_flap_rot = np.insert(x_flap_rot, 0, x_corner_flap)
+        y_flap_rot = np.insert(y_flap_rot, 0, y_corner_flap)
+        
+        # Merge arrays back into a single surface component string
+        # Flow: Main Body -> Fixed Hinge Anchor Node -> Dynamic Forward-Swept Corner -> Rotated Flap
+        side_x_new = np.concatenate([x_main, [x_hinge], [x_corner_flap], x_flap_rot])
+        side_y_new = np.concatenate([y_main, [y_h_org], [y_corner_flap], y_flap_rot])
+        
+        return side_x_new, side_y_new
 
 
     @property
@@ -250,69 +399,38 @@ class Flap_Setter (Flap_Definition):
 
     def set_flap (self, flap_angle=None):
         """
-        XFOIL-exact routine: Inserts structural nodes at the hinge line intersection 
-        on both surfaces to prevent geometry crossover, then applies asymmetric blending.
+        Main flap routine. Do flapping for the concave/convex surfaces.
         """
 
         # don't do anything for flap angle = 0 
-
         if flap_angle is not None: 
             self.set_flap_angle (flap_angle)
         if self.flap_angle == 0.0: 
             return self._upper, self._lower
 
-
-        # 1. SPLIT INTO UPPER AND LOWER SURFACES
         upper_x, upper_y = self._upper.x, self._upper.y
         lower_x, lower_y = self._lower.x, self._lower.y
-        
-                    # 2. CALCULATE INTERPOLATED HINGE THICKNESS VALUES
-        y_h_upper = np.interp(self.x_flap, upper_x, upper_y)
-        y_h_lower = np.interp(self.x_flap, lower_x, lower_y)
-        
-        # Establish the precise user-defined pivot point
-        y_hinge = self.hinge_point[1]  # y-coordinate of the hinge point based on y_flap_spec
-        
-        # 3. CRITICAL STEP: INSERT NODE AT HINGE LINE ON BOTH SURFACES
-        # This prevents the concave side from slicing into the airfoil interior
-        idx_u = np.searchsorted(upper_x, self.x_flap)
-        upper_x = np.insert(upper_x, idx_u, self.x_flap)
-        upper_y = np.insert(upper_y, idx_u, y_h_upper)
-        
-        idx_l = np.searchsorted(lower_x, self.x_flap)
-        lower_x = np.insert(lower_x, idx_l, self.x_flap)
-        lower_y = np.insert(lower_y, idx_l, y_h_lower)
-        
-        # 4. APPLY GEOMETRIC ROTATION (Only to points downstream of the inserted hinge)
-        beta_rad = np.radians(-self.flap_angle)
-        cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
-        
-        def rotate_surface_segment(x_s, y_s, hinge_idx):
-            x_rot, y_rot = np.copy(x_s), np.copy(y_s)
-            # Only rotate points from the hinge index to the trailing edge
-            dx = x_s[hinge_idx:] - self.x_flap
-            dy = y_s[hinge_idx:] - y_hinge
-            x_rot[hinge_idx:] = self.x_flap + dx * cos_b - dy * sin_b
-            y_rot[hinge_idx:] = y_hinge + dx * sin_b + dy * cos_b
-            return x_rot, y_rot
 
-        # Note: On upper surface, index `idx_u` is our new corner. 
-        # On lower surface, index `idx_l` is our new corner.
-        x_up_rot, y_up_rot = rotate_surface_segment(upper_x, upper_y, idx_u)
-        x_lo_rot, y_lo_rot = rotate_surface_segment(lower_x, lower_y, idx_l)
+        # Determine local thickness and vertical hinge pivot coordinate
+        x_hinge = self.x_flap
+
+        y_h_upper = Line.yFn_splined(x_hinge, upper_x, upper_y)
+        y_h_lower = Line.yFn_splined(x_hinge, lower_x, lower_y)
+        y_hinge = y_h_lower + (self.y_flap * (y_h_upper - y_h_lower))
         
-        # 5. ASYMMETRIC BLENDING (Smooth convex side, keep concave side sharp)
-        if self.flap_angle > 0:  # Flap DOWNWARD -> Upper surface is convex
-            x_up_rot, y_up_rot = self.smooth_convex_corner(x_up_rot, y_up_rot, idx_u)
-            # Lower surface corner at idx_l remains perfectly sharp!
-            
-        elif self.flap_angle < 0:  # Flap UPWARD -> Lower surface is convex
-            x_lo_rot, y_lo_rot = self.smooth_convex_corner(x_lo_rot, y_lo_rot, idx_l)
-            # Upper surface corner at idx_u remains perfectly sharp!
+        # Evaluate routing distribution based on deflection angle
+        if self.flap_angle >= 0:
+            # DOWNWARD Deflection: Upper surface is convex, Lower surface is concave
+            upper_x_new, upper_y_new = self._process_convex_side  (upper_x, upper_y, x_hinge, y_hinge, self.flap_angle)
+            lower_x_new, lower_y_new = self._process_concave_side (lower_x, lower_y, x_hinge, y_hinge, self.flap_angle)
+        else:
+            # UPWARD Deflection: Upper surface is concave, Lower surface is convex
+            upper_x_new, upper_y_new = self._process_concave_side (upper_x, upper_y, x_hinge, y_hinge, self.flap_angle)
+            lower_x_new, lower_y_new = self._process_convex_side  (lower_x, lower_y, x_hinge, y_hinge, self.flap_angle)
 
-        upper_new = Line(x_up_rot, y_up_rot, linetype=Line.Type.UPPER)
-        lower_new = Line(x_lo_rot, y_lo_rot, linetype=Line.Type.LOWER) 
-
+        upper_new = Line(upper_x_new, upper_y_new, linetype=Line.Type.UPPER)
+        lower_new = Line(lower_x_new, lower_y_new, linetype=Line.Type.LOWER)
+    
         return upper_new, lower_new
 
 
@@ -590,7 +708,7 @@ class Curvature_Abstract:
     @property 
     def max_is_at_le (self) -> bool: 
         """ True if max value of curvature is at LE"""
-        return self.iLe is not None and isclose (abs(self.values[self.iLe]), self.max, abs_tol=1e-6)
+        return self.iLe is not None and math.isclose (abs(self.values[self.iLe]), self.max, abs_tol=1e-6)
 
 
     @property
@@ -687,7 +805,7 @@ class Curvature_Abstract:
                 lower_x_max = needle[0]
                 lower_y_max = y
 
-        if isclose (upper_x_max, lower_x_max, abs_tol=0.015):
+        if math.isclose (upper_x_max, lower_x_max, abs_tol=0.015):
             # print ("upper ", upper_x_max, upper_y_max)
             # print ("lower ", lower_x_max, lower_y_max)
             return upper_x_max, lower_x_max
@@ -991,12 +1109,52 @@ class Line:
 
 
 
-    def yFn (self,x):
-        """ returns interpolated y values based on a x-value  """
+    @staticmethod
+    def yFn_splined(x: float, x_data: np.ndarray, y_data: np.ndarray) -> float:
+        """Return a local spline-interpolated y value for a single x.
 
-        y = np.interp(x, self.x, self.y)
+        A small cubic spline is built from neighboring points around x, which
+        provides a more accurate value than plain linear interpolation near curved
+        segments while keeping the operation local and fast.
+        """
+        x_arr = np.asarray(x_data, dtype=float)
+        y_arr = np.asarray(y_data, dtype=float)
 
-        return y
+        if x_arr.size < 2:
+            return float(y_arr[0])
+
+        x_val = float(x)
+        if x_val <= x_arr[0]:
+            return float(y_arr[0])
+        if x_val >= x_arr[-1]:
+            return float(y_arr[-1])
+
+        i = np.searchsorted(x_arr, x_val)
+        lo = max(0, i - 2)
+        hi = min(len(x_arr) - 1, i + 2)
+        if hi - lo < 2:
+            lo = max(0, min(lo, len(x_arr) - 2))
+            hi = min(len(x_arr) - 1, lo + 2)
+
+        xx = x_arr[lo:hi + 1]
+        yy = y_arr[lo:hi + 1]
+        if xx.size < 2:
+            return float(yy[0])
+
+        spline = Spline1D(xx, yy, boundary='natural')
+        return float(spline.eval(x_val))
+
+
+    def yFn (self, x, splined: bool = False):
+        """Return interpolated y values based on x.
+
+        With splined=True, use a local spline around x for higher accuracy on curved
+        segments. The default keeps the original linear interpolation behavior.
+        """
+        if splined and np.isscalar(x):
+            return self.yFn_splined(x, self.x, self.y)
+        else: 
+            return np.interp(x, self.x, self.y)
 
 
     def angle_in_range (self, x_range = (0.9, 1.0)) -> float:
@@ -1091,6 +1249,30 @@ class Line:
             y_new[i] = self.y[i] + dgap * self.x[i] * tfac
  
         self.set_y (y_new)
+
+
+    @staticmethod
+    def insert_point_at_x(side_x : np.ndarray, side_y: np.ndarray, x_new: float, y_new: float = None):
+        """
+        Inserts a new point at the specified x-coordinate. If y_new is not provided, it will be interpolated.
+
+        Args:
+            side_x: The x-coordinates of the existing points.
+            side_y: The y-coordinates of the existing points.
+            x_new: The x-coordinate where the new point should be inserted.
+            y_new: The y-coordinate of the new point. If None, it will be interpolated.
+        """
+        if y_new is None:
+            y_new = Line.yFn_splined(x_new, side_x, side_y)
+
+        # Find the index where to insert the new point
+        idx = np.searchsorted(side_x, x_new)
+
+        # Insert the new point into x and y arrays
+        side_x = np.insert(side_x, idx, x_new)
+        side_y = np.insert(side_y, idx, y_new)
+
+        return side_x, side_y
 
     # ------------------ private ---------------------------
 
