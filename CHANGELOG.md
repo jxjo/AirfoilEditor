@@ -8,6 +8,7 @@ Work in progress:
 
 - New: CST-Kulfan-based airfoil support
 - New: [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation
+- Set Flap: Is done now by AE replacing XFOIL routine - no Worker needed anymore for this
 - More to come...
 
 
