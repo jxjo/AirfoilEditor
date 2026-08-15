@@ -62,88 +62,13 @@ import math
 import numpy as np
 
 from ..base.common_utils    import clip, StrEnum_Extended, fromDict, toDict
-from ..base.math_util       import JPoint, findMax, findMin, panel_angles
+from ..base.math_util       import JPoint, findMax, findMin, newton, panel_angles
 from ..base.spline          import Spline1D, Spline2D
 
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
-
-def process_concave_surface(side_x, side_y, x_hinge, y_hinge, beta_degrees):
-    """
-    Creates a perfectly sharp corner on the concave inside surface by intersecting 
-    the unrotated main surface line with the rotated flap surface line.
-    Tailored strictly for arrays sorted in ASCENDING order (LE -> TE).
-    """
-    beta_rad = np.radians(-beta_degrees)
-    cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
-    
-    # 1. Capture the original height at the structural hinge plane
-    y_h_orig = np.interp(x_hinge, side_x, side_y)
-    
-    # 2. Slice the input coordinates cleanly into Main Element vs Flap Element
-    mask_main = side_x <= x_hinge
-    mask_flap = side_x > x_hinge
-    
-    x_main = side_x[mask_main]
-    y_main = side_y[mask_main]
-    
-    x_flap = side_x[mask_flap]
-    y_flap = side_y[mask_flap]
-    
-    # 3. Rotate the existing flap points
-    x_flap_rot = np.copy(x_flap)
-    y_flap_rot = np.copy(y_flap)
-    
-    if len(x_flap) > 0:
-        dx_f = x_flap - x_hinge
-        dy_f = y_flap - y_hinge
-        x_flap_rot = x_hinge + dx_f * np.cos(beta_rad) - dy_f * np.sin(beta_rad)
-        y_flap_rot = y_hinge + dx_f * np.sin(beta_rad) + dy_f * np.cos(beta_rad)
-
-    # 4. LINE-LINE INTERSECTION TO FIND THE TRUE CORNER
-    # Line 1 (Main body trailing line segment): defined by its last two points
-    p1_x, p1_y = x_main[-1], y_main[-1]
-    p2_x, p2_y = x_hinge, y_h_orig
-    
-    # Line 2 (Flap leading line segment): defined by the rotated hinge-point and first flap point
-    # We rotate the original hinge surface point to see where its guide vector points
-    dy_orig = y_h_orig - y_hinge
-    r_concave = np.abs(dy_orig)
-    theta_orig = np.arctan2(dy_orig, 0.0)
-    theta_new = theta_orig + beta_rad
-    
-    p3_x = x_hinge + r_concave * np.cos(theta_new)
-    p3_y = y_hinge + r_concave * np.sin(theta_new)
-    p4_x, p4_y = x_flap_rot[0], y_flap_rot[0] if len(x_flap_rot) > 0 else (p3_x + 0.1, p3_y)
-
-    # Determinant formulation for 2D Line Intersection
-    def line_intersection(p1, p2, p3, p4):
-        xdiff = (p1[0] - p2[0], p3[0] - p4[0])
-        ydiff = (p1[1] - p2[1], p3[1] - p4[1])
-
-        def det(a, b):
-            return a[0] * b[1] - a[1] * b[0]
-
-        div = det(xdiff, ydiff)
-        if div == 0:
-            # Fallback if lines are perfectly parallel (unlikely during flap deflection)
-            return p2[0], p2[1]
-
-        d = (det(p1, p2), det(p3, p4))
-        x = det(d, xdiff) / div
-        y = det(d, ydiff) / div
-        return x, y
-
-    x_cross, y_cross = line_intersection((p1_x, p1_y), (p2_x, p2_y), (p3_x, p3_y), (p4_x, p4_y))
-
-    # 5. Recombine sequentially matching the ASCENDING flow (LE -> TE)
-    # The main element terminates cleanly at x_cross, and the flap picks up exactly at x_cross.
-    side_x_new = np.concatenate([x_main, [x_cross], x_flap_rot])
-    side_y_new = np.concatenate([y_main, [y_cross], y_flap_rot])
-    
-    return side_x_new, side_y_new
 
 
 class GeometryException(Exception):
@@ -283,108 +208,235 @@ class Flap_Setter (Flap_Definition):
 
 
     @staticmethod
+    def _find_hinge_footpoint(side_x, side_y, x_hinge, y_hinge):
+        """Return the local hinge footpoint on a side spline.
+
+        This is the generic Newton-based solver that will later be reused for the
+        convex-side flap continuation. The concave-side corner is handled by
+        _find_concave_corner and kept separate to preserve the natural hinge corner.
+        """
+        side_x = np.asarray(side_x, dtype=float)
+        side_y = np.asarray(side_y, dtype=float)
+
+        if side_x.size < 2:
+            return float(x_hinge), float(y_hinge)
+
+        idx = np.searchsorted(side_x, x_hinge)
+        i0 = max(0, idx - 5)
+        i1 = min(len(side_x), idx + 5)
+        local_x = side_x[i0:i1].copy()
+        local_y = side_y[i0:i1].copy()
+
+        if local_x.size < 2:
+            return float(x_hinge), float(y_hinge)
+
+        local_spline = Spline1D(local_x, local_y, boundary='natural')
+
+        def f_distance(x):
+            y     = local_spline.eval(float(x))
+            dy_dx = local_spline.eval(float(x), der=1)
+            return 2.0 * (float(x) - x_hinge) + 2.0 * (y - y_hinge) * dy_dx
+
+        def df_distance(x):
+            y       = local_spline.eval(float(x))
+            dy_dx   = local_spline.eval(float(x), der=1)
+            ddy_dx2 = local_spline.eval(float(x), der=2)
+            return 2.0 + 2.0 * (dy_dx * dy_dx + (y - y_hinge) * ddy_dx2)
+
+        x_guess = float(np.clip(x_hinge, local_x[0], local_x[-1]))
+        x_low = float(local_x[0])
+        x_high = float(local_x[-1])
+
+        try:
+            x0, _ = newton(
+                f_distance,
+                df_distance,
+                x_guess,
+                epsilon=1e-10,
+                max_iter=25,
+                bounds=(x_low, x_high),
+            )
+        except ValueError:
+            i_min = int(np.argmin((local_x - x_hinge) ** 2 + (local_y - y_hinge) ** 2))
+            x0 = float(local_x[i_min])
+
+        y0 = float(local_spline.eval(x0))
+        return float(x0), float(y0)
+
+
+
+
+    @staticmethod
     def _process_convex_side (side_x, side_y, x_hinge, y_hinge, beta_degrees):
         """
         Rotates the convex side and locally rounds the corner edge (XFOIL logic).
         """
         beta_rad = np.radians(-beta_degrees)
         cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
-        
-        # 1. Interpolate and insert a precise point exactly at the hinge station
-        side_x, side_y = Line.insert_point_at_x(side_x, side_y, x_hinge)
-        idx_corner = np.searchsorted(side_x, x_hinge)
-          
-        # 2. Rigid body rotation for all downstream flap points
-        x_rot = np.copy(side_x)
-        y_rot = np.copy(side_y)
-        
-        dx = side_x[idx_corner:] - x_hinge
-        dy = side_y[idx_corner:] - y_hinge
-        
-        x_rot[idx_corner:] = x_hinge + dx * cos_b - dy * sin_b
-        y_rot[idx_corner:] = y_hinge + dx * sin_b + dy * cos_b
-        
-        # 3. Local blending smoothing matrix (2 points before, 5 points after)
-        side_x_new = np.copy(x_rot)
-        side_y_new = np.copy(y_rot)
-        
-        start_idx = max(0, idx_corner - 2)
-        end_idx = min(len(x_rot), idx_corner + 6)
-        
-        for i in range(start_idx, end_idx):
-            if i == idx_corner:
-                # Blend the corner apex point heavily with its immediate neighbors
-                side_x_new[i] = 0.4 * x_rot[i] + 0.3 * x_rot[i-1] + 0.3 * x_rot[i+1]
-                side_y_new[i] = 0.4 * y_rot[i] + 0.3 * y_rot[i-1] + 0.3 * y_rot[i+1]
-            elif i > idx_corner:
-                # Progressively decay the smoothing blend down the flap paneling line
-                weight = 0.5 * (1.0 - (i - idx_corner) / 5.0)
-                side_x_new[i] = (1 - weight) * x_rot[i] + weight * x_rot[i-1]
-                side_y_new[i] = (1 - weight) * y_rot[i] + weight * y_rot[i-1]
-                
+
+        # find foot point P0 of hinge on the convex side
+        x0, y0 = Flap_Setter._find_hinge_footpoint(side_x, side_y, x_hinge, y_hinge)   
+
+        # mask main and flap parts of the convex side
+        main_mask = side_x < x0
+        flap_mask = side_x > x0
+
+        # rotate the flap part of the convex side
+        x_flap = side_x[flap_mask]
+        y_flap = side_y[flap_mask]
+
+        flapped_x = x_hinge + (x_flap - x_hinge) * cos_b - (y_flap - y_hinge) * sin_b
+        flapped_y = y_hinge + (x_flap - x_hinge) * sin_b + (y_flap - y_hinge) * cos_b
+
+        main_x = side_x[main_mask]
+        main_y = side_y[main_mask]
+
+        # now determine the gap (arc length) between the original hinge foot point and the rotated hinge foot point
+        # to decide if we will insert P0 and/or P1 and additional points to round the corner
+        # Rotate only the hinge foot point itself -> P1
+        x1 = x_hinge + (x0 - x_hinge) * cos_b - (y0 - y_hinge) * sin_b
+        y1 = y_hinge + (x0 - x_hinge) * sin_b + (y0 - y_hinge) * cos_b
+
+        # calculate arc length between P0 and P1 (foot point)
+        arc_length = np.hypot(x1 - x0, y1 - y0)
+        # calculate the current arc length of the side near foot point
+        idx0 = np.searchsorted(side_x, x0) - 1
+        idx0 = max(0, idx0)
+        idx1 = min(len(side_x) - 1, idx0 + 2)
+        arc_length_current = np.sum(np.hypot(np.diff(side_x[idx0:idx1+1]), np.diff(side_y[idx0:idx1+1])))
+
+        if arc_length < 0.2 * arc_length_current:
+            # If the arc length is small, we can just use the rotated flap part without adding extra points
+            side_x_new = np.concatenate([main_x, flapped_x])
+            side_y_new = np.concatenate([main_y, flapped_y])
+        elif arc_length < 0.5 * arc_length_current:
+            # If the arc length is moderate, we can add the original hinge foot point P0 to the main part
+            side_x_new = np.concatenate([main_x, [x0], flapped_x])
+            side_y_new = np.concatenate([main_y, [y0], flapped_y])
+        elif arc_length < 1.0 * arc_length_current:
+            # If the arc length is larger, we can add both the original hinge foot point P0 and the rotated hinge foot point P1
+            side_x_new = np.concatenate([main_x, [x0], [x1], flapped_x])
+            side_y_new = np.concatenate([main_y, [y0], [y1], flapped_y])
+
+        else:
+            # we do it later 
+            side_x_new = np.concatenate([main_x, flapped_x])
+            side_y_new = np.concatenate([main_y, flapped_y])
+
+
         return side_x_new, side_y_new
 
 
     @staticmethod
-    def _process_concave_side (side_x, side_y, x_hinge, y_hinge, beta_degrees):
+    def _find_concave_corner (side_x, side_y, x_hinge, y_hinge, beta_degrees):
+        """Return the local hinge corner for the concave side.
+
+        If the hinge point is already part of the original spline, then this is the
+        corner point itself; no artificial split or extra intersection is needed.
         """
-        Creates a perfectly sharp corner on the concave inside surface via rigid arc-sweeping.
-        """
+        side_x = np.asarray(side_x, dtype=float)
+        side_y = np.asarray(side_y, dtype=float)
+
+        if side_x.size < 2:
+            return float(x_hinge), float(y_hinge)
+
+        if np.any(np.isclose(side_x, x_hinge, rtol=0.0, atol=1e-12) &
+                  np.isclose(side_y, y_hinge, rtol=0.0, atol=1e-12)):
+            return float(x_hinge), float(y_hinge)
+
+        idx = np.searchsorted(side_x, x_hinge)
+        i0 = max(0, idx - 5)
+        i1 = min(len(side_x), idx + 5)
+        local_x = side_x[i0:i1].copy()
+        local_y = side_y[i0:i1].copy()
+
+        if local_x.size < 3:
+            return float(x_hinge), float(y_hinge)
+
         beta_rad = np.radians(-beta_degrees)
-        
-        # 1. Capture the original height at the structural hinge plane
-        y_h_org = Line.yFn_splined(x_hinge, side_x, side_y)  # Use splined interpolation for accuracy
-        
-        # 2. Compute rigid radius swing from the specified vertical pivot point
-        dy_orig = y_h_org - y_hinge
-        r_concave = np.abs(dy_orig)
-        theta_org = np.arctan2(dy_orig, 0.0)  # Delta x is zero at the alignment plane
-        
-        # 3. Calculate where the sharp flap corner node sweeps to post deflection
-        theta_new = theta_org + beta_rad
-        x_corner_flap = x_hinge + r_concave * np.cos(theta_new)
-        y_corner_flap = y_hinge + r_concave * np.sin(theta_new)
-        
-        # 4. Slice the input coordinates cleanly into Main Element vs Flap Element
-        mask_main = side_x <= x_hinge
-        mask_flap = side_x > x_hinge
-        
-        x_main, y_main = side_x[mask_main], side_y[mask_main]
-        x_flap, y_flap = side_x[mask_flap], side_y[mask_flap]
-        
-        # Main element tracks sharply right up to the unrotated anchor coordinates
-        x_main = np.append(x_main, x_hinge)
-        y_main = np.append(y_main, y_h_org)
-        
-        # Flap element undergoes standard rotation matrix mapping
-        x_flap_rot = np.copy(x_flap)
-        y_flap_rot = np.copy(y_flap)
-        
-        if len(x_flap) > 0:
-            dx_f = x_flap - x_hinge
-            dy_f = y_flap - y_hinge
-            x_flap_rot = x_hinge + dx_f * np.cos(beta_rad) - dy_f * np.sin(beta_rad)
-            y_flap_rot = y_hinge + dx_f * np.sin(beta_rad) + dy_f * np.cos(beta_rad)
-            
-        # Prepend the dynamically generated swept corner node onto the flap segment
-        x_flap_rot = np.insert(x_flap_rot, 0, x_corner_flap)
-        y_flap_rot = np.insert(y_flap_rot, 0, y_corner_flap)
-        
-        # Merge arrays back into a single surface component string
-        # Flow: Main Body -> Fixed Hinge Anchor Node -> Dynamic Forward-Swept Corner -> Rotated Flap
-        side_x_new = np.concatenate([x_main, [x_hinge], [x_corner_flap], x_flap_rot])
-        side_y_new = np.concatenate([y_main, [y_h_org], [y_corner_flap], y_flap_rot])
-        
-        return side_x_new, side_y_new
+        cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
+
+        dx_f = local_x - x_hinge
+        dy_f = local_y - y_hinge
+        x_rot = x_hinge + dx_f * cos_b - dy_f * sin_b
+        y_rot = y_hinge + dx_f * sin_b + dy_f * cos_b
+
+        local_x = np.asarray(local_x, dtype=float)
+        local_y = np.asarray(local_y, dtype=float)
+        x_rot = np.asarray(x_rot, dtype=float)
+        y_rot = np.asarray(y_rot, dtype=float)
+
+        main_spline = Spline1D(local_x, local_y, boundary='natural')
+        flap_spline = Spline1D(x_rot, y_rot, boundary='natural')
+
+        def f_corner(x):
+            return main_spline.eval(float(x)) - flap_spline.eval(float(x))
+
+        def df_corner(x):
+            return main_spline.eval(float(x), der=1) - flap_spline.eval(float(x), der=1)
+
+        x_low = float(np.min(np.concatenate([local_x, x_rot])))
+        x_high = float(np.max(np.concatenate([local_x, x_rot])))
+        x_guess = x_hinge + max(1e-8, 1e-6 * max(1.0, abs(x_hinge)))
+
+        try:
+            x_corner, _ = newton(f_corner, df_corner, x_guess,
+                                epsilon=1e-10, max_iter=25,
+                                bounds=(x_low, x_high))
+        except ValueError:
+            logger.error(f"Newton's method failed to converge for concave corner. Using fallback search.")
+            xs = np.linspace(x_low, x_high, 2000)
+            fs = f_corner(xs)
+            sign_changes = np.where(fs[:-1] * fs[1:] < 0.0)[0]
+            if sign_changes.size > 0:
+                x_corner = xs[sign_changes[0]]
+            else:
+                x_corner = x_guess
+
+        y_corner = float(main_spline.eval(x_corner))
+        return float(x_corner), float(y_corner)
+
+
+    @staticmethod
+    def _process_concave_side (side_x, side_y, x_hinge, y_hinge, beta_degrees):
+        """Build the concave side with one real corner and the rotated flap tail."""
+        beta_rad = np.radians(-beta_degrees)
+
+        side_x = np.asarray(side_x, dtype=float)
+        side_y = np.asarray(side_y, dtype=float)
+        x_corner, y_corner = Flap_Setter._find_concave_corner(
+            side_x, side_y, x_hinge, y_hinge, beta_degrees
+        )
+
+        main_mask = side_x < x_corner
+        x_main = np.append(side_x[main_mask], x_corner)
+        y_main = np.append(side_y[main_mask], y_corner)
+
+        flap_mask = side_x >= x_corner
+        x_flap = side_x[flap_mask]
+        y_flap = side_y[flap_mask]
+
+        if x_flap.size == 0:
+            return x_main, y_main
+
+        dx_f = x_flap - x_hinge
+        dy_f = y_flap - y_hinge
+        x_flap_rot = x_hinge + dx_f * np.cos(beta_rad) - dy_f * np.sin(beta_rad)
+        y_flap_rot = y_hinge + dx_f * np.sin(beta_rad) + dy_f * np.cos(beta_rad)
+
+        keep_mask = x_flap_rot > x_corner + 1e-12
+        x_flap_rot = x_flap_rot[keep_mask]
+        y_flap_rot = y_flap_rot[keep_mask]
+
+        return np.concatenate([x_main, x_flap_rot]), np.concatenate([y_main, y_flap_rot])
 
 
     @property
     def hinge_point (self) -> tuple[float, float]:
         """ returns the hinge point (x, y) of the flap """
 
-        #todo change to spline interpoaltion
-        y_h_upper = np.interp(self.x_flap, self._upper.x, self._upper.y)
-        y_h_lower = np.interp(self.x_flap, self._lower.x, self._lower.y)
+        y_h_upper = self._upper.yFn(self.x_flap, splined=True)
+        y_h_lower = self._lower.yFn(self.x_flap, splined=True)
 
         if self.y_flap_spec == 'y/t':
             local_thickness = y_h_upper - y_h_lower

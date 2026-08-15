@@ -1113,7 +1113,7 @@ class Airfoil_Artist (Artist):
 
 
 class Flap_Artist (Artist):
-    """Plot the flapped airfoil based on Flapper data  """
+    """Plot Flap data during flap setting  """
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -1123,37 +1123,28 @@ class Flap_Artist (Artist):
         for airfoil in self.airfoils:
             if airfoil.usedAsDesign:
                 return airfoil 
-    
-    @property
-    def flap_setter (self) -> Flap_Setter:
-        return self.design_airfoil.flap_setter if self.design_airfoil else None 
 
 
     def _plot (self): 
     
-        if self.flap_setter is None: return 
+        flap_setter = self.design_airfoil.flap_setter if self.design_airfoil else None
+        if flap_setter is None: return 
 
         geo_flapped = self.design_airfoil.geo
         color = _color_airfoil ([], self.design_airfoil)
 
-        # plot flapped airfoil 
-
-        pen   = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
-        label = f"{self.design_airfoil.name_to_show} flapped"
-
-        self._plot_dataItem  (geo_flapped.x, geo_flapped.y, name=label, pen = pen, 
-                                zValue=5)
+        # plot flapped airfoil is done in Airfoil_Artist
 
         # plot flap angle 
         x,y,_,_ = geo_flapped.te
-        self._plot_point ((x,y), size=0,text=f"{self.flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
+        self._plot_point ((x,y), size=0,text=f"{flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
 
         # plot hinge point at the initial, unflapped airfoil
 
-        hinge_point = self.flap_setter.hinge_point
+        hinge_point = flap_setter.hinge_point
 
-        if self.flap_setter.y_flap_spec == 'y/t':
-            text = f"Hinge ({hinge_point[0]:.1%}, {self.flap_setter.y_flap:.1%})"
+        if flap_setter.y_flap_spec == 'y/t':
+            text = f"Hinge ({hinge_point[0]:.1%}, {flap_setter.y_flap:.1%})"
         else:
             text = f"Hinge ({hinge_point[0]:.1%}, {hinge_point[1]:.3f})"
 

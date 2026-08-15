@@ -15,7 +15,7 @@ import os
 
 from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
-from airfoileditor.model.geometry         import Geometry
+from airfoileditor.model.geometry         import Geometry, Flap_Setter
 from airfoileditor.model.geometry_spline  import Geometry_Splined, Curvature_of_Spline
 from airfoileditor.model.geometry_bezier  import Geometry_Bezier
 from airfoileditor.model.geometry_curve   import Curvature_of_Curve
@@ -191,6 +191,59 @@ class Test_Airfoil:
         assert airfoil.geo.max_thick == 7.3015 / 100
 
 
+
+    def test_flap_concave_corner_uses_spline_intersection(self):
+        side_x = np.array([0.60, 0.65, 0.70, 0.72, 0.75, 0.80, 0.85])
+        side_y = np.array([0.02, 0.035, 0.05, 0.067, 0.082, 0.11, 0.16])
+
+        x_hinge = 0.70
+        y_hinge = 0.05
+        beta = 15.0
+
+        x_corner, y_corner = Flap_Setter._find_concave_corner(
+            side_x, side_y, x_hinge, y_hinge, beta
+        )
+
+        assert np.isfinite(x_corner)
+        assert np.isfinite(y_corner)
+        assert np.isclose(x_corner, x_hinge)
+        assert np.isclose(y_corner, y_hinge)
+
+    def test_flap_concave_corner_requires_matching_xy_hinge(self):
+        side_x = np.array([0.60, 0.65, 0.70, 0.72, 0.75, 0.80, 0.85])
+        side_y = np.array([0.02, 0.035, 0.04, 0.067, 0.082, 0.11, 0.16])
+
+        x_hinge = 0.70
+        y_hinge = 0.05
+        beta = 15.0
+
+        x_corner, y_corner = Flap_Setter._find_concave_corner(
+            side_x, side_y, x_hinge, y_hinge, beta
+        )
+
+        assert not np.isclose(x_corner, x_hinge) or not np.isclose(y_corner, y_hinge)
+        assert np.isfinite(x_corner)
+        assert np.isfinite(y_corner)
+
+    def test_flap_concave_side_stays_monotone_after_corner(self):
+        side_x = np.array([0.35, 0.42, 0.49, 0.56, 0.63, 0.70, 0.77, 0.84, 0.90])
+        side_y = np.array([0.015, 0.022, 0.032, 0.045, 0.061, 0.088, 0.114, 0.146, 0.18])
+
+        x_hinge = 0.55
+        y_hinge = 0.10714285714285715
+        beta = 4.0
+
+        x_corner, y_corner = Flap_Setter._find_concave_corner(
+            side_x, side_y, x_hinge, y_hinge, beta
+        )
+        x_new, y_new = Flap_Setter._process_concave_side(
+            side_x, side_y, x_hinge, y_hinge, beta
+        )
+
+        assert np.isfinite(x_corner)
+        assert np.isfinite(y_corner)
+        assert np.all(np.diff(x_new) >= -1e-12)
+        assert not np.any(np.isclose(x_new[:-1], x_new[1:]))
 
     def test_airfoil_file_functions (self, temp_dir):
 

@@ -625,7 +625,7 @@ class Item_Airfoil (Diagram_Item):
         self.app_model.sig_airfoil_geo_te_gap.connect       (self._te_artist.set_xBlend)
         self.app_model.sig_airfoil_geo_le_radius.connect    (self._le_artist.set_xBlend)
         self.app_model.sig_airfoil_geo_paneling.connect     (self._on_paneling_changed)
-        self.app_model.sig_airfoil_flap_set.connect         (self._flap_artist.set_show)
+        self.app_model.sig_airfoil_flap_set.connect         (self._on_flap_changed)
         self.app_model.sig_airfoil_geo_curve.connect        (self._on_curve_changed)
 
         self.app_model.sig_xo2_new_design.connect           (self._on_new_design)
@@ -661,6 +661,13 @@ class Item_Airfoil (Diagram_Item):
     def _is_design_and_curve (self) -> bool: 
         """ is one airfoil used as design and is Bezier, B-spline or CST based?"""
         return any (a.usedAsDesign and a.geo.isCurve for a in self.airfoils)
+
+    def _on_flap_changed (self, is_flap : bool):
+        """ slot to handle flap of airfoil changed signal """
+
+        self._flap_artist.set_show (is_flap)
+        if is_flap:
+            self.refresh_artists()        # refresh to show flap line
 
 
     def _on_paneling_changed (self, is_paneling : bool):
