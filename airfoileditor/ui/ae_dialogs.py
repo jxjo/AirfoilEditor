@@ -485,7 +485,7 @@ class Flap_Airfoil_Dialog (Dialog_Modeless):
         r,c = 0,0 
         SpaceR (l, r, stretch=0, height=5) 
         r += 1
-        FieldF  (l,r,c, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
+        FieldF  (l,r,c, lab="Hinge x", width=60, step=0.1, lim=(1, 98), dec=1, unit="%",
                         obj=self.flap_setter, prop=Flap_Setter.x_flap)
         Slider  (l,r,c+3, colSpan=2, width=120,  
                         lim=(0.0, 1), dec=2,  

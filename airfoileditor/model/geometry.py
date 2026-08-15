@@ -174,31 +174,26 @@ class Flap_Definition:
 
 
 class Flap_Setter (Flap_Definition):
-    """ 
+    """Build a flapped airfoil without mutating the original outline.
 
-    Setting flap at upper and lower surface  
-
-    With set_flap a flapped version of the original upper and lower is returned
-
+    The class copies the source upper/lower lines once and then derives a new
+    flapped geometry from that local copy. Convex and concave sides are handled
+    separately, and each operation stays local to the hinge region instead of
+    re-parameterizing the whole airfoil.
     """
 
     def __init__(self, upper: 'Line', lower: 'Line'):
-        """
-        constructor for new Flapper to handle flapping of an airfoil
-
-        Args:
-            airfoil_base:   an unflapped airfoil to flap 
-        """
+        """Keep a clean copy of the original upper and lower side."""
 
         super().__init__()
 
-        # make a copy to have the original upper and lower surface available for flapping
-        self._upper = Line (upper.x, upper.y, linetype=Line.Type.UPPER)
-        self._lower = Line (lower.x, lower.y, linetype=Line.Type.LOWER)
+        # Preserve the original geometry; all flap changes are built on the copies.
+        self._upper = Line (upper.x.copy(), upper.y.copy(), linetype=Line.Type.UPPER)
+        self._lower = Line (lower.x.copy(), lower.y.copy(), linetype=Line.Type.LOWER)
 
 
     def set_flap_definition (self, flap_def : 'Flap_Definition'):
-        """ set new flap definition from another flap_def """
+        """Set this setter from an existing flap definition object."""
 
         if isinstance(flap_def, Flap_Definition):
             self.set_x_flap (flap_def.x_flap)
@@ -209,11 +204,10 @@ class Flap_Setter (Flap_Definition):
 
     @staticmethod
     def _find_hinge_footpoint(side_x, side_y, x_hinge, y_hinge):
-        """Return the local hinge footpoint on a side spline.
+        """Find the local hinge footpoint on the side spline.
 
-        This is the generic Newton-based solver that will later be reused for the
-        convex-side flap continuation. The concave-side corner is handled by
-        _find_concave_corner and kept separate to preserve the natural hinge corner.
+        Used for the convex side: the flap tail is rotated around the hinge, and
+        the footpoint marks where the fixed section meets the rotated section.
         """
         side_x = np.asarray(side_x, dtype=float)
         side_y = np.asarray(side_y, dtype=float)
@@ -264,24 +258,58 @@ class Flap_Setter (Flap_Definition):
         return float(x0), float(y0)
 
 
+    @staticmethod
+    def _get_additional_points_for_gap (side_x, side_y, x_hinge, y_hinge, x0, y0, beta_rad) -> tuple[list[float], list[float]]:
+        """Add a short arc to smooth the convex hinge transition."""
+
+        add_x, add_y = [], []
+
+        cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
+
+        # Rotate the hinge footpoint according to the flap deflection to obtain the
+        # endpoint of the local arc in flap coordinates.
+        x1 = x_hinge + (x0 - x_hinge) * cos_b - (y0 - y_hinge) * sin_b
+        y1 = y_hinge + (x0 - x_hinge) * sin_b + (y0 - y_hinge) * cos_b
+
+        # The arc length of the flap transition is compared with the current local
+        # side spacing, so we only append extra points when the geometry gap is
+        # large enough to justify a smoothing arc.
+        arc_length = np.hypot(x1 - x0, y1 - y0)
+
+        idx0 = np.searchsorted(side_x, x0) - 1
+        idx0 = max(0, idx0)
+        idx1 = min(len(side_x) - 1, idx0 + 2)
+        arc_length_current = np.sum(np.hypot(np.diff(side_x[idx0:idx1+1]), np.diff(side_y[idx0:idx1+1])))
+
+        if arc_length > 0.1 * arc_length_current:
+            # The smooth arc is placed around the hinge and only spans the short
+            # transition between the original curve and the rotated flap tail.
+            radius = np.hypot(x0 - x_hinge, y0 - y_hinge)
+            theta_start = np.arctan2(y0 - y_hinge, x0 - x_hinge)
+            theta_end   = theta_start + beta_rad
+
+            npoints = int(arc_length * 4 / arc_length_current) + 1
+            theta_vals = np.linspace(theta_start, theta_end, npoints+2)[1:-1]
+
+            add_x = x_hinge + radius * np.cos(theta_vals)
+            add_y = y_hinge + radius * np.sin(theta_vals)
+
+        return add_x, add_y
 
 
     @staticmethod
     def _process_convex_side (side_x, side_y, x_hinge, y_hinge, beta_degrees):
-        """
-        Rotates the convex side and locally rounds the corner edge (XFOIL logic).
-        """
+        """Rotate the convex flap tail and bridge the hinge with a short arc."""
         beta_rad = np.radians(-beta_degrees)
         cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
 
-        # find foot point P0 of hinge on the convex side
-        x0, y0 = Flap_Setter._find_hinge_footpoint(side_x, side_y, x_hinge, y_hinge)   
+        # The hinge footpoint defines where the original surface meets the rotated
+        # flap tail. Everything left of this point is kept fixed.
+        x0, y0 = Flap_Setter._find_hinge_footpoint(side_x, side_y, x_hinge, y_hinge)
 
-        # mask main and flap parts of the convex side
         main_mask = side_x < x0
         flap_mask = side_x > x0
 
-        # rotate the flap part of the convex side
         x_flap = side_x[flap_mask]
         y_flap = side_y[flap_mask]
 
@@ -291,49 +319,19 @@ class Flap_Setter (Flap_Definition):
         main_x = side_x[main_mask]
         main_y = side_y[main_mask]
 
-        # now determine the gap (arc length) between the original hinge foot point and the rotated hinge foot point
-        # to decide if we will insert P0 and/or P1 and additional points to round the corner
-        # Rotate only the hinge foot point itself -> P1
-        x1 = x_hinge + (x0 - x_hinge) * cos_b - (y0 - y_hinge) * sin_b
-        y1 = y_hinge + (x0 - x_hinge) * sin_b + (y0 - y_hinge) * cos_b
+        add_x, add_y = Flap_Setter._get_additional_points_for_gap(
+            side_x, side_y, x_hinge, y_hinge, x0, y0, beta_rad
+        )
 
-        # calculate arc length between P0 and P1 (foot point)
-        arc_length = np.hypot(x1 - x0, y1 - y0)
-        # calculate the current arc length of the side near foot point
-        idx0 = np.searchsorted(side_x, x0) - 1
-        idx0 = max(0, idx0)
-        idx1 = min(len(side_x) - 1, idx0 + 2)
-        arc_length_current = np.sum(np.hypot(np.diff(side_x[idx0:idx1+1]), np.diff(side_y[idx0:idx1+1])))
-
-        if arc_length < 0.2 * arc_length_current:
-            # If the arc length is small, we can just use the rotated flap part without adding extra points
-            side_x_new = np.concatenate([main_x, flapped_x])
-            side_y_new = np.concatenate([main_y, flapped_y])
-        elif arc_length < 0.5 * arc_length_current:
-            # If the arc length is moderate, we can add the original hinge foot point P0 to the main part
-            side_x_new = np.concatenate([main_x, [x0], flapped_x])
-            side_y_new = np.concatenate([main_y, [y0], flapped_y])
-        elif arc_length < 1.0 * arc_length_current:
-            # If the arc length is larger, we can add both the original hinge foot point P0 and the rotated hinge foot point P1
-            side_x_new = np.concatenate([main_x, [x0], [x1], flapped_x])
-            side_y_new = np.concatenate([main_y, [y0], [y1], flapped_y])
-
-        else:
-            # we do it later 
-            side_x_new = np.concatenate([main_x, flapped_x])
-            side_y_new = np.concatenate([main_y, flapped_y])
-
+        side_x_new = np.concatenate([main_x, add_x, flapped_x])
+        side_y_new = np.concatenate([main_y, add_y, flapped_y])
 
         return side_x_new, side_y_new
 
 
     @staticmethod
     def _find_concave_corner (side_x, side_y, x_hinge, y_hinge, beta_degrees):
-        """Return the local hinge corner for the concave side.
-
-        If the hinge point is already part of the original spline, then this is the
-        corner point itself; no artificial split or extra intersection is needed.
-        """
+        """Find the real concave hinge corner in the local spline neighborhood."""
         side_x = np.asarray(side_x, dtype=float)
         side_y = np.asarray(side_y, dtype=float)
 
@@ -385,28 +383,93 @@ class Flap_Setter (Flap_Definition):
                                 bounds=(x_low, x_high))
         except ValueError:
             logger.error(f"Newton's method failed to converge for concave corner. Using fallback search.")
-            xs = np.linspace(x_low, x_high, 2000)
-            fs = f_corner(xs)
-            sign_changes = np.where(fs[:-1] * fs[1:] < 0.0)[0]
-            if sign_changes.size > 0:
-                x_corner = xs[sign_changes[0]]
-            else:
-                x_corner = x_guess
+            x_corner = x_guess
 
         y_corner = float(main_spline.eval(x_corner))
         return float(x_corner), float(y_corner)
 
 
     @staticmethod
+    def _repanel_near_corner(side_x : np.ndarray, side_y: np.ndarray, x_corner: float, y_corner: float):
+        """Keep the real corner and only move the tiny adjacent neighbor if needed."""
+
+        if side_x.size < 3:
+            return side_x, side_y
+
+        idx = np.searchsorted(side_x, x_corner)
+        idx = max(1, min(idx, len(side_x) - 2))
+
+        i0 = max(0, idx - 5)
+        i1 = min(len(side_x), idx + 5)
+        local_x = side_x[i0:i1]
+        local_y = side_y[i0:i1]
+
+        if local_x.size < 3:
+            return side_x, side_y
+
+        local_spline = Spline1D(local_x, local_y, boundary='natural')
+
+        # A local panel width is compared against a trigger fraction of the normal
+        # spacing. This prevents one tiny panel from forming exactly at the corner
+        # while leaving the rest of the side untouched.
+        local_dx = np.diff(local_x)
+        positive_dx = local_dx[local_dx > 0]
+        local_spacing = np.median(positive_dx) if positive_dx.size else 1e-6
+        trigger = 0.30 * local_spacing
+
+        left_ok  = idx - 1 < i0 or np.hypot(side_x[idx - 1] - x_corner, side_y[idx - 1] - y_corner) >= trigger
+        right_ok = idx >= i1    or np.hypot(side_x[idx] - x_corner, side_y[idx] - y_corner) >= trigger
+
+        if left_ok and right_ok:
+            return side_x, side_y
+
+        if not left_ok and right_ok:
+            i_neighbor = idx - 1
+            direction = -1.0
+        elif left_ok and not right_ok:
+            i_neighbor = idx
+            direction = 1.0
+        elif not left_ok and not right_ok:
+            i_neighbor = idx if side_x[idx] >= side_x[idx - 1] else idx - 1
+            direction = 1.0 if i_neighbor == idx else -1.0
+        else:
+            return side_x, side_y
+
+        move = trigger
+
+        if direction < 0.0:
+            x_target = side_x[i_neighbor] - move
+            if i_neighbor > 0:
+                x_target = max(x_target, side_x[i_neighbor - 1] + 1e-12)
+        else:
+            x_target = side_x[i_neighbor] + move
+            if i_neighbor < len(side_x) - 1:
+                x_target = min(x_target, side_x[i_neighbor + 1] - 1e-12)
+
+        x_target = float(np.clip(x_target, local_x[0], local_x[-1]))
+        y_target = float(local_spline.eval(x_target))
+
+        new_side_x = side_x.copy()
+        new_side_y = side_y.copy()
+        new_side_x[i_neighbor] = x_target
+        new_side_y[i_neighbor] = y_target
+
+        return new_side_x, new_side_y
+
+
+    @staticmethod
     def _process_concave_side (side_x, side_y, x_hinge, y_hinge, beta_degrees):
-        """Build the concave side with one real corner and the rotated flap tail."""
+        """Build the concave side with a real corner and a rotated flap tail."""
         beta_rad = np.radians(-beta_degrees)
 
         side_x = np.asarray(side_x, dtype=float)
         side_y = np.asarray(side_y, dtype=float)
         x_corner, y_corner = Flap_Setter._find_concave_corner(
-            side_x, side_y, x_hinge, y_hinge, beta_degrees
-        )
+            side_x, side_y, x_hinge, y_hinge, beta_degrees)
+
+        # The repanel step is applied before the split so the real corner remains
+        # the actual kink location while preserving a healthy local panel size.
+        side_x, side_y = Flap_Setter._repanel_near_corner(side_x, side_y, x_corner, y_corner)
 
         main_mask = side_x < x_corner
         x_main = np.append(side_x[main_mask], x_corner)
@@ -858,8 +921,6 @@ class Curvature_Abstract:
                 lower_y_max = y
 
         if math.isclose (upper_x_max, lower_x_max, abs_tol=0.015):
-            # print ("upper ", upper_x_max, upper_y_max)
-            # print ("lower ", lower_x_max, lower_y_max)
             return upper_x_max, lower_x_max
         else:
             return None
@@ -1365,8 +1426,6 @@ class Line:
                     xmax = findMin (self._yFn_max, self.x[imax], bounds=(xstart, xend))
                 ymax = self._yFn_max (xmax)
 
-                # print (f"delta x  {xmax - self.x[imax]:.5f}" )
-                # print (f"delta y  {ymax - max_y:.5f}" )
             else:
                 xmax = self.x[imax]
                 ymax = self.y[imax]
@@ -1417,7 +1476,6 @@ class Line:
         newX = np.zeros(len(self.x))
         for i, xi in enumerate (self.x):
             newX[i] = mapSpl.eval(xi)    
-            # print (i, "%.8f" %(self.x[i] - newX[i]), newX[i])
         newX[0]  = self.x[0]                # ensure LE and TE not to change due to numeric issues
         newX[-1] = self.x[-1]
 
@@ -2164,6 +2222,7 @@ class Geometry ():
 
             if not moving:
                 try: 
+                    self._reset ()
                     flap_angle = self.flap_setter.flap_angle
                     x_flap     = self.flap_setter.x_flap
                     self._changed (Geometry.MOD_FLAP, f"{flap_angle:.1f}@{x_flap*100:.1f}")   # finalize (parent) airfoil 

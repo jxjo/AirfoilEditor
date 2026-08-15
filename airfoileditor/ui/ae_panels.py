@@ -760,22 +760,18 @@ class Panel_Flap (Panel_Airfoil_Abstract):
 
         if self.is_mode_modify:
 
-            flap_setter         = self.airfoil.flap_setter
-            #todo
-            airfoil_flapped = None # flap_setter.airfoil_flapped if flap_setter else None
+            flap_setter     = self.airfoil.flap_setter
+            airfoil_flapped = flap_setter.flap_angle != 0.0 if flap_setter else None
 
             if airfoil_flapped:
                 FieldF (l,r,c, lab="Hinge x", width=60, get=lambda: flap_setter.x_flap, dec=1, unit="%")
                 r += 1
                 FieldF (l,r,c, lab="Flap Angle", width=60, dec=1, unit='°', get=lambda: flap_setter.flap_angle)
                 r +=1
-                Field (l,r,c, lab="Based on", colSpan=2,
-                       get=flap_setter.airfoil_base.fileName)
-                r += 1
                 SpaceR (l,r, stretch=2)
                 r += 1
                 lab =Label  (l,r,c, width=None, height=(40,None), colSpan=3, style=style.COMMENT, wordWrap=True,
-                        get="As the base airfoil is available, another flap setting can be applied.")
+                        get="As the original geometry is available, another flap setting can be applied.")
                 lab.setAlignment (ALIGN_BOTTOM)
                 l.setRowStretch (r,1)
                 l.setColumnMinimumWidth (0,80)
@@ -865,8 +861,8 @@ class Panel_Flap_Small (Panel_Flap):
 
         if self.is_mode_modify:
 
-            flap_setter         = self.airfoil.flap_setter
-            airfoil_flapped = flap_setter.airfoil_flapped if flap_setter else None
+            flap_setter     = self.airfoil.flap_setter
+            airfoil_flapped = flap_setter.flap_angle != 0.0 if flap_setter else None
 
             if airfoil_flapped:
                 FieldF (l,r,c, lab="Flap Angle", width=60, dec=1, unit='°', get=lambda: flap_setter.flap_angle)

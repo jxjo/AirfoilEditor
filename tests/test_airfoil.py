@@ -158,10 +158,6 @@ class Test_Airfoil:
         assert airfoil.normalize(), "should be True because normalizaton needed"
         assert airfoil.isNormalized
 
-        #todo implement repanel 
-        # geo.set_nPanelsNew (250) 
-        # assert geo.nPanels == 250
-
         # thickness, camber 
 
         geo.set_max_thick (10.0 / 100)

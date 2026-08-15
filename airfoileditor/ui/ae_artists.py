@@ -1137,7 +1137,7 @@ class Flap_Artist (Artist):
 
         # plot flap angle 
         x,y,_,_ = geo_flapped.te
-        self._plot_point ((x,y), size=0,text=f"{flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5))
+        self._plot_point ((x,y), size=0,text=f"{flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5), zValue=10)
 
         # plot hinge point at the initial, unflapped airfoil
 
