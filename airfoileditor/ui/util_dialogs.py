@@ -321,7 +321,6 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             r += 1 
             CheckBox (l,r,c, text="Set flap for this polar ...", colSpan=7,
                             obj=self.polar_def, prop=Polar_Definition.is_flapped,
-                            disable=lambda: self.polar_def.is_neuralfoil,
                             toolTip="This polar will be calculated with a flap definition.\n" + 
                                      "The flap definition is stored in the polar definition.")
             r += 1

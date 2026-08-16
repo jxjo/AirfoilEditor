@@ -36,11 +36,11 @@ from enum                   import StrEnum
 
 import numpy as np
 
-from ..base.common_utils      import * 
-from ..base.math_util         import * 
-from ..base.spline            import Spline1D, Spline2D
+from ..base.common_utils    import * 
+from ..base.math_util       import * 
 
 from .airfoil               import Airfoil, Flap_Definition
+from .geometry              import Geometry
 from .geometry_cst          import Geometry_CST
 from .polar_dto             import Polar_Data_Set, Polar_File_Meta
 from .xo2_driver            import Worker
@@ -48,7 +48,7 @@ from .nf_driver             import Neuralfoil_Evaluator, Airfoil_As_CST
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 #-------------------------------------------------------------------------------
@@ -686,10 +686,7 @@ class Polar_Definition:
         return self._flap_def 
     
     def set_flap_def (self, aDef : Flap_Definition | None):
-        if self.is_xfoil:
-            self._flap_def = aDef
-        else:
-            self._flap_def = None                       # NeuralFoil does not support flaps
+        self._flap_def = aDef
 
 
     @property
@@ -705,7 +702,7 @@ class Polar_Definition:
             self.set_type     (polarType.T1)            # T1 only (fixed Re sweep)
             self.set_specVar  (var.ALPHA)               # alpha sweep only
             self.set_ma       (0.0)                     # incompressible only
-            self.set_flap_def (None)                    # no flap support
+
 
     @property
     def is_neuralfoil (self) -> bool:   
@@ -771,7 +768,6 @@ class Polar_Set:
         """
 
         self._airfoil           = myAirfoil
-        self._airfoil_as_CST    = None                  # CST repersentation of airfoil for NeuralFoil (lazy loaded)
         self._polars            = []                    # list of Polars of self is holding
 
         re_scale = re_scale if re_scale is not None else 1.0 
@@ -814,26 +810,7 @@ class Polar_Set:
                 self.airfoil.save()
             logger.debug (f'Airfoil {self.airfoil_pathFileName_abs} saved for polar generation') 
 
-    @property
-    def airfoil_as_CST (self) -> Airfoil_As_CST | None:
-        """ returns a CST representation of the airfoil for NeuralFoil """
-
-        if self._airfoil_as_CST is None and self._airfoil is not None:
-
-            w_upper, w_lower, le_weight, te_thickness, derotation_angle = Geometry_CST.geometry_as_CST (
-                self._airfoil.geo, n_weights=8)
-
-            self._airfoil_as_CST = Airfoil_As_CST(
-                upper_weights       = w_upper,
-                lower_weights       = w_lower,
-                leading_edge_weight = le_weight,
-                TE_thickness        = te_thickness,
-                derotation_angle    = derotation_angle)
-
-            logger.debug (f'Airfoil {self.airfoil} converted to CST. Derotation angle: {derotation_angle:.2f}°')
-            
-        return self._airfoil_as_CST
-
+ 
     @property
     def polars (self) -> list ['Polar']: 
         return self._polars
@@ -1019,20 +996,6 @@ class Polar_Set:
                 task.run ()
 
         return 
-
-
-    def reset_neuralfoil_polars (self):
-        """ 
-        Reset all NeuralFoil polars of self to be re-generated 
-        (e.g. after flap setting)
-        """
-        polar: Polar
-        for polar in self.polars:
-            if polar.is_neuralfoil and polar.isLoaded:
-                polar.unload ()
-
-        # reset CST representation of airfoil for NeuralFoil
-        self._airfoil_as_CST = None
 
 #------------------------------------------------------------------------------
 
@@ -1264,10 +1227,12 @@ class Polar (Polar_Definition):
 
         """
         super().__init__()
-        self._polar_set = mypolarSet
-        self._re_scale  = re_scale
 
-        self._error_reason = None                           # if error occurred during polar generation 
+        self._polar_set = mypolarSet
+
+        self._airfoil_as_CST    = None                      # CST repersentation of airfoil for NeuralFoil (lazy loaded)
+        self._re_scale          = re_scale  
+        self._error_reason      = None                      # if error occurred during polar generation 
 
         self._values : dict[var, np.ndarray] = {}           # cached polar values: var → array
 
@@ -1310,10 +1275,37 @@ class Polar (Polar_Definition):
         """ detaches self from its polar set"""
         self._polar_set = None
 
+
     @property
     def re_scale (self) -> float:
         """ scale value for reynolds number """
         return self._re_scale
+
+
+    @property
+    def airfoil_as_CST (self) -> Airfoil_As_CST | None:
+        """ returns a CST representation of the airfoil for NeuralFoil """
+
+        if self._airfoil_as_CST is None and self.polar_set.airfoil is not None:
+
+            geo = self.polar_set.airfoil.geo
+
+            # flap if needed - for NeuralFoil we need the airfoil with flap deflection applied
+            if self.flap_def:
+                geo = Geometry (geo.x, geo.y)
+                geo.set_flap (flap_def= self.flap_def, moving=True)
+
+                logger.debug (f'Airfoil {self.polar_set.airfoil} with flap {self.flap_def.flap_angle:.1f}° applied for CST conversion')
+
+            u, l, le, te, derot = Geometry_CST.geometry_as_CST (geo, n_weights=8)
+
+            self._airfoil_as_CST = Airfoil_As_CST (upper_weights = u, lower_weights = l,
+                                                   le_weight = le, te_thickness = te,
+                                                   derotation_angle = derot)
+
+            logger.debug (f'Airfoil {self.polar_set.airfoil} converted to CST. Derotation angle: {derot:.2f}°')
+            
+        return self._airfoil_as_CST
 
 
     def point_at (self, index: int) -> Polar_Point | None:
@@ -1699,7 +1691,7 @@ class Polar (Polar_Definition):
                 path = self.polar_set.airfoil_pathFileName_abs
                 data_set = Worker.load_polar_data_set (path, self.as_meta())
             else:
-                cst = self.polar_set.airfoil_as_CST
+                cst = self.airfoil_as_CST
                 data_set = Neuralfoil_Evaluator.get_polar_data_set (cst,
                                                                     self.as_meta(),
                                                                     model_size=self.nf_model_size)
@@ -2102,255 +2094,3 @@ class Polar_Task:
         return nLoaded
 
 
-
-# ------------------------------------------
-
-
-
-class Polar_Splined (Polar_Definition):
-    """ 
-    A single polar of an airfoil splined on basis of control points 
-
-    Airfoil 
-        --> Polar_Set 
-            --> Polar   
-    """
-
-    def __init__(self, mypolarSet: Polar_Set, polar_def : Polar_Definition = None):
-        """
-        Main constructor for new polar which belongs to a polar set 
-
-        Args:
-            mypolarSet: the polar set object it belongs to 
-            polar_def: optional the polar_definition to initialize self deinitions
-        """
-        super().__init__()
-
-        self._polar_set = mypolarSet
-
-        self._polar_points = []                     # the single oppoints of self
-        self._alpha = []
-        self._cl = []
-        self._cd = []
-        self._cm = [] 
-        self._cd = [] 
-        self._xtrt = []
-        self._xtrb = []
-        self._glide = []
-        self._sink = []
-
-        if polar_def: 
-            self.set_type       (polar_def.type)
-            self.set_re         (polar_def.re)
-            self.set_ma         (polar_def.ma)
-            self.set_ncrit      (polar_def.ncrit)
-            self.set_autoRange  (polar_def.autoRange)
-            self.set_specVar    (polar_def.specVar)
-            self.set_valRange   (polar_def.valRange)
-
-        self._spline : Spline2D     = None   # 2 D cubic spline representation of self
-
-        self._x                     = None   # spline knots - x coordinates  
-        self._xVar                  = None   # xVar like CL 
-        self._y                     = None   # spline knots - y coordinates  
-        self._yVar                  = None   # yVar like CD 
-
-    #--------------------------------------------------------
-
-    @property
-    def polar_set (self) -> Polar_Set: 
-        return self._polar_set
-    def polar_set_detach (self):
-        """ detaches self from its polar set"""
-        self._polar_set = None
-
-    def set_knots (self, xVar, xValues, yVar, yValues):
-        """ set spline knots """
-        self._x     = xValues  
-        self._xVar  = xVar  
-        self._y     = yValues   
-        self._yVar  = yVar  
-
-    def set_knots_from_opPoints_def (self, xyVar:tuple, opPoints_def: list):
-        """ set spline knots """
-
-        if len(opPoints_def) < 3: return            # minimum for spline 
-
-        specVar = opPoints_def[0].specVar
-
-        if specVar == xyVar [0]:
-            self._xVar  = xyVar [0] 
-            self._yVar  = xyVar [1] 
-        else: 
-            self._xVar  = xyVar [1] 
-            self._yVar  = xyVar [0] 
-        self._x  = []  
-        self._y  = []
-
-        logger.debug (f"spline x: {self._xVar}   y: {self._yVar}")
-
-        for op in opPoints_def:  
-            x,y = op.xyValues_for_xyVars ((self._xVar, self._yVar)) 
-            if (x is not None) and (y is not None): 
-                self._x.append (x)
-                self._y.append (y)
-
-        self.set_re (op.re)
-        self.set_type (op.re_type)
-        self.set_ncrit (op.ncrit)
-        self.set_ma (op.ma)
-
-
-    @property 
-    def spline (self) -> Spline1D:
-        """ spline representation of self """
-
-        if self._spline is None: 
-            if len (self._x) > 3: 
-                boundary = 'notaknot'
-            else: 
-                boundary = "natural"
-            self._spline = Spline1D (self._x, self._y, boundary=boundary)
-            logger.debug (f"{self} New {boundary} spline with {len (self._x)} knots")
-        return self._spline
-
-
-    @property
-    def opPoints (self) -> list:
-        """ returns the sorted list of opPoints of self """
-        return self._polar_points
-    
-    
-    @property
-    def isLoaded (self) -> bool: 
-        """ is polar data available"""
-        return self._x and self._y
-    
-
-    @property
-    def alpha (self) -> list:
-        return self._alpha
-    
-    @property
-    def cl (self) -> list:
-        return self._cl
-    
-    @property
-    def cd (self) -> list:
-        return self._cd
-    
-    @property
-    def glide (self) -> list:
-        return self._glide
-    
-    @property
-    def sink (self) -> list:
-        return self._sink
-    
-    @property
-    def cm (self) -> list:
-        return self._cm
-    
-    @property
-    def xtrt (self) -> list:
-        return self._xtrt
-    
-    @property
-    def xtrb (self) -> list:
-        return self._xtrb
-    
-    def ofVars (self, xyVars: Tuple[var, var]):
-        """ returns x,y polar of the tuple xyVars"""
-
-        x, y = [], []
-        
-        if isinstance(xyVars, tuple):
-            x = self._ofVar (xyVars[0])
-            y = self._ofVar (xyVars[1])
-
-            # sink polar - cut values <= 0 
-            if var.SINK in xyVars: 
-                i = 0 
-                if var.SINK == xyVars[0]:
-                    for i, val in enumerate(x):
-                        if val > 0.0: break
-                else: 
-                    for i, val in enumerate(y):
-                        if val > 0.0: break
-                x = x[i:]
-                y = y[i:]
-        return x,y 
-
-
-    def _get_values_forVar (self, var) -> list:
-        """ copy values of var from op points to list"""
-
-        nPoints = len(self.opPoints)
-        if nPoints == 0: return [] 
-
-        values  = [0] * nPoints
-        op : Polar_Point
-        for i, op in enumerate(self.opPoints):
-            values[i] = op.get_value (var)
-        return values 
-
-
-    def get_interpolated_val (self, specVar, specVal, optVar):
-        """ interpolates optvar in polar (specVar, optVar)"""
-
-        if not self.isLoaded: return None
-
-        specVals = self._ofVar (specVar)
-        optVals  = self._ofVar (optVar)
-
-        # find the index in self.x which is right before x
-        jl = bisection (specVals, specVal)
-        
-        # now interpolate the y-value on lower side 
-        if jl < (len(specVals) - 1):
-            x1 = specVals[jl]
-            x2 = specVals[jl+1]
-            y1 = optVals[jl]
-            y2 = optVals[jl+1]
-            y = interpolate (x1, x2, y1, y2, specVal)
-        else: 
-            y = optVals[-1]
-
-        if optVar == var.CD:
-            y = round (y,5)
-        else:
-            y = round(y,2) 
-
-        return y
-
-
-    #--------------------------------------------------------
-
-    
-    def generate (self):
-        """ 
-        create polar from spline 
-        """
-
-        u = self._get_u_distribution (50)
-
-        # x, y = self.spline.eval (u)
-        x = u 
-        y = self.spline.eval (u)
-
-        self._set_var (self._xVar, x)
-        self._set_var (self._yVar, y)
-            
-        return 
-
- 
-
-    def _get_u_distribution (self, nPoints):
-        """ 
-        returns u with nPoints 0..1
-        """
-
-        uStart = self._x[0] # 0.0
-        uEnd   = self._x[-1] # 1.0
-        u = np.linspace(uStart, uEnd , nPoints) 
-        return u 

@@ -799,7 +799,7 @@ class Movable_Side_CST (Movable_Curve):
         jpoints      = side.controlPoints_as_jpoints
         label_anchor = (0,1) if side.isUpper else (0,0)
 
-        super().__init__(jpoints, label_anchor=label_anchor, symbol="d", symbol_size=9, **kwargs)
+        super().__init__(jpoints, label_anchor=label_anchor, symbol="d", **kwargs)
 
         # make self (polyline) clickable to add control points 
         if self.movable and self._curve_item is not None:
@@ -1142,11 +1142,12 @@ class Flap_Artist (Artist):
         # plot hinge point at the initial, unflapped airfoil
 
         hinge_point = flap_setter.hinge_point
-
-        if flap_setter.y_flap_spec == 'y/t':
-            text = f"Hinge ({hinge_point[0]:.1%}, {flap_setter.y_flap:.1%})"
-        else:
-            text = f"Hinge ({hinge_point[0]:.1%}, {hinge_point[1]:.3f})"
+        text = f"Hinge @ {hinge_point[0]:.1%}"
+        if flap_setter.y_flap > 0.0:
+            if flap_setter.y_flap_spec == 'y/t':
+                text += f", {flap_setter.y_flap:.0%}"
+            else:
+                text = f", {hinge_point[1]:.3f}"
 
         self._plot_point (hinge_point, color=color, size=10,text=text )
 
@@ -1937,6 +1938,14 @@ class Airfoil_Line_Artist (Artist, QObject):
                                     movable=airfoil.usedAsDesign, color=color,
                                     on_changed=self.sig_geometry_changed.emit )
             self._add(pl) 
+
+
+        # show mouse helper message
+        if any(airfoil.isEdited for airfoil in self.airfoils):
+            msg = "Move markers to modify geometry"
+            self.set_help_message (msg)
+
+
 
 
 

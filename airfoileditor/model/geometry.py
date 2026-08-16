@@ -390,71 +390,61 @@ class Flap_Setter (Flap_Definition):
 
 
     @staticmethod
-    def _repanel_near_corner(side_x : np.ndarray, side_y: np.ndarray, x_corner: float, y_corner: float):
-        """Keep the real corner and only move the tiny adjacent neighbor if needed."""
+    def _repanel_around_corner(side_x: np.ndarray, side_y: np.ndarray, x_corner: float, y_corner: float):
+        """Repanel the immediate neighbours of a real corner without crossing it.
 
-        if side_x.size < 3:
-            return side_x, side_y
+        One local window centred on the corner yields a single arc-length trigger.
+        Left of the corner: move the preceding point away if it sits too close.
+        Right of the corner: the corner stays fixed; move the following point if needed.
+        """
+        side_x = np.asarray(side_x, dtype=float)
+        side_y = np.asarray(side_y, dtype=float)
 
-        idx = np.searchsorted(side_x, x_corner)
-        idx = max(1, min(idx, len(side_x) - 2))
+        corner_matches = np.flatnonzero(np.isclose(side_x, x_corner, rtol=0.0, atol=1e-12))
+        if corner_matches.size == 0:
+            raise ValueError("Corner point is required for around-corner repaneling.")
 
-        i0 = max(0, idx - 5)
-        i1 = min(len(side_x), idx + 5)
-        local_x = side_x[i0:i1]
-        local_y = side_y[i0:i1]
+        corner_idx = int(corner_matches[0])
 
-        if local_x.size < 3:
-            return side_x, side_y
-
-        local_spline = Spline1D(local_x, local_y, boundary='natural')
-
-        # A local panel width is compared against a trigger fraction of the normal
-        # spacing. This prevents one tiny panel from forming exactly at the corner
-        # while leaving the rest of the side untouched.
-        local_dx = np.diff(local_x)
-        positive_dx = local_dx[local_dx > 0]
-        local_spacing = np.median(positive_dx) if positive_dx.size else 1e-6
+        # One shared window around the corner; spacing derived from full local arc-length.
+        i0 = max(0, corner_idx - 5)
+        i1 = min(len(side_x), corner_idx + 6)
+        win_x = side_x[i0:i1]
+        win_y = side_y[i0:i1]
+        local_arc = np.hypot(np.diff(win_x), np.diff(win_y))
+        positive_arc = local_arc[local_arc > 0]
+        local_spacing = np.median(positive_arc) if positive_arc.size else 1e-6
         trigger = 0.30 * local_spacing
 
-        left_ok  = idx - 1 < i0 or np.hypot(side_x[idx - 1] - x_corner, side_y[idx - 1] - y_corner) >= trigger
-        right_ok = idx >= i1    or np.hypot(side_x[idx] - x_corner, side_y[idx] - y_corner) >= trigger
-
-        if left_ok and right_ok:
-            return side_x, side_y
-
-        if not left_ok and right_ok:
-            i_neighbor = idx - 1
-            direction = -1.0
-        elif left_ok and not right_ok:
-            i_neighbor = idx
-            direction = 1.0
-        elif not left_ok and not right_ok:
-            i_neighbor = idx if side_x[idx] >= side_x[idx - 1] else idx - 1
-            direction = 1.0 if i_neighbor == idx else -1.0
-        else:
-            return side_x, side_y
-
-        move = trigger
-
-        if direction < 0.0:
-            x_target = side_x[i_neighbor] - move
-            if i_neighbor > 0:
+        def _nudge (i_neighbor, direction):
+            """Move i_neighbor by trigger in direction (+1 or -1) along the side spline."""
+            mask = (win_x <= x_corner) if direction < 0 else (win_x >= x_corner)
+            lx, ly = win_x[mask], win_y[mask]
+            if lx.size < 3:
+                return
+            spline = Spline1D(lx, ly, boundary='natural')
+            x_target = side_x[i_neighbor] + direction * trigger
+            if direction < 0 and i_neighbor > 0:
                 x_target = max(x_target, side_x[i_neighbor - 1] + 1e-12)
-        else:
-            x_target = side_x[i_neighbor] + move
-            if i_neighbor < len(side_x) - 1:
+            if direction > 0 and i_neighbor < len(side_x) - 1:
                 x_target = min(x_target, side_x[i_neighbor + 1] - 1e-12)
+            x_target = float(np.clip(x_target, spline.x[0], spline.x[-1]))
+            side_x[i_neighbor] = x_target
+            side_y[i_neighbor] = float(spline.eval(x_target))
 
-        x_target = float(np.clip(x_target, local_x[0], local_x[-1]))
-        y_target = float(local_spline.eval(x_target))
+        # Left side: nudge the point just before the corner when it sits too close.
+        if corner_idx > 0:
+            i_left = corner_idx - 1
+            if i_left >= i0 and np.hypot(side_x[i_left] - x_corner, side_y[i_left] - y_corner) < trigger:
+                _nudge(i_left, direction=-1)
 
-        new_side_x = side_x.copy()
-        new_side_y = side_y.copy()
-        new_side_x[i_neighbor] = x_target
-        new_side_y[i_neighbor] = y_target
+        # Right side: keep the corner fixed; nudge the point just after it when needed.
+        if corner_idx < len(side_x) - 1:
+            i_right = corner_idx + 1
+            if np.hypot(side_x[i_right] - x_corner, side_y[i_right] - y_corner) < trigger:
+                _nudge(i_right, direction=+1)
 
-        return new_side_x, new_side_y
+        return side_x, side_y
 
 
     @staticmethod
@@ -467,10 +457,6 @@ class Flap_Setter (Flap_Definition):
         x_corner, y_corner = Flap_Setter._find_concave_corner(
             side_x, side_y, x_hinge, y_hinge, beta_degrees)
 
-        # The repanel step is applied before the split so the real corner remains
-        # the actual kink location while preserving a healthy local panel size.
-        side_x, side_y = Flap_Setter._repanel_near_corner(side_x, side_y, x_corner, y_corner)
-
         main_mask = side_x < x_corner
         x_main = np.append(side_x[main_mask], x_corner)
         y_main = np.append(side_y[main_mask], y_corner)
@@ -480,7 +466,7 @@ class Flap_Setter (Flap_Definition):
         y_flap = side_y[flap_mask]
 
         if x_flap.size == 0:
-            return x_main, y_main
+            return Flap_Setter._repanel_around_corner(x_main, y_main, x_corner, y_corner)
 
         dx_f = x_flap - x_hinge
         dy_f = y_flap - y_hinge
@@ -491,7 +477,11 @@ class Flap_Setter (Flap_Definition):
         x_flap_rot = x_flap_rot[keep_mask]
         y_flap_rot = y_flap_rot[keep_mask]
 
-        return np.concatenate([x_main, x_flap_rot]), np.concatenate([y_main, y_flap_rot])
+        side_x_new = np.concatenate([x_main, x_flap_rot])
+        side_y_new = np.concatenate([y_main, y_flap_rot])
+
+        # One small repair step around the real corner keeps the spline local and stable.
+        return Flap_Setter._repanel_around_corner(side_x_new, side_y_new, x_corner, y_corner)
 
 
     @property
@@ -512,14 +502,21 @@ class Flap_Setter (Flap_Definition):
         return self.x_flap, y_hinge
 
 
-    def set_flap (self, flap_angle=None):
+    def set_flap (self, flap_angle: float | None = None, flap_def: Flap_Definition | None = None) -> tuple['Line', 'Line']:
         """
         Main flap routine. Do flapping for the concave/convex surfaces.
+
+        Args:
+            flap_angle: Optional float, the flap deflection angle in degrees.
+            flap_def: Optional Flap_Definition object to set angle and the hinge parameters.
         """
 
         # don't do anything for flap angle = 0 
         if flap_angle is not None: 
             self.set_flap_angle (flap_angle)
+        elif isinstance(flap_def, Flap_Definition):
+            self.set_flap_definition (flap_def)
+
         if self.flap_angle == 0.0: 
             return self._upper, self._lower
 
@@ -2206,13 +2203,16 @@ class Geometry ():
         return self._flap_setter 
     
     
-    def set_flap (self, flap_angle=None, moving=False) :
+    def set_flap (self, 
+                  flap_angle: float|None = None, 
+                  flap_def: Flap_Definition | None = None,
+                  moving=False) :
         """ 
-        flap the geometry - an optional flap angle can be submitted
+        flap the geometry - an optional flap angle or flap definition can be submitted
         If successful, new geometry is set  
         """
 
-        upper_new, lower_new = self.flap_setter.set_flap (flap_angle=flap_angle)
+        upper_new, lower_new = self.flap_setter.set_flap (flap_angle=flap_angle, flap_def=flap_def)
 
         if upper_new and lower_new:
             self._upper = upper_new

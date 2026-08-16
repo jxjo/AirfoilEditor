@@ -37,8 +37,8 @@ class Airfoil_As_CST:
 
     upper_weights: np.ndarray
     lower_weights: np.ndarray
-    leading_edge_weight: float
-    TE_thickness: float
+    le_weight: float
+    te_thickness: float
     derotation_angle: float = 0.0  # angle airfoil was derotated to normalize in case of flapped airfoil 
 
 
@@ -104,8 +104,8 @@ class Neuralfoil_Evaluator:
         kulfan_parameters = {
             "upper_weights"      : airfoil_as_cst.upper_weights,
             "lower_weights"      : airfoil_as_cst.lower_weights,
-            "leading_edge_weight": airfoil_as_cst.leading_edge_weight,
-            "TE_thickness"       : airfoil_as_cst.TE_thickness,
+            "leading_edge_weight": airfoil_as_cst.le_weight,
+            "TE_thickness"       : airfoil_as_cst.te_thickness,
         }
 
         alpha_arr = Neuralfoil_Evaluator._alpha_from_meta (meta)

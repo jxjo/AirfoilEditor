@@ -54,23 +54,38 @@ class Test_Line_Angle_In_Range:
         assert np.isclose(y_at, 0.25, atol=1e-6)
         assert np.isclose(Line.yFn_splined(0.5, x, y), 0.25, atol=1e-6)
 
-    def test_repanel_near_corner_moves_neighbor_on_local_spline(self):
-        side_x = np.array([0.00, 0.10, 0.149, 0.1500, 0.1510, 0.20, 0.30], dtype=float)
-        side_y = np.array([0.00, 0.10, 0.149, 0.1500, 0.1510, 0.18, 0.30], dtype=float)
+    def test_repanel_near_corner_is_post_flap_sensitive(self):
         x_corner = 0.1505
         y_corner = 0.1505
+        beta = 4.0
 
-        x_new, y_new = Flap_Setter._repanel_near_corner(side_x.copy(), side_y.copy(), x_corner, y_corner)
+        pre_flap_x = np.array([0.00, 0.10, 0.13, 0.30, 0.50, 0.70, 0.90], dtype=float)
+        pre_flap_y = np.array([0.00, 0.10, 0.13, 0.30, 0.50, 0.70, 0.90], dtype=float)
 
-        idx = np.searchsorted(x_new, x_corner)
-        left_idx = max(0, idx - 1)
-        right_idx = min(len(x_new) - 1, idx)
+        post_flap_x = pre_flap_x.copy()
+        post_flap_y = pre_flap_y.copy()
+        post_flap_x[3] = 0.1540
+        post_flap_y[3] = 0.1540
 
-        assert np.isclose(x_new[left_idx], side_x[left_idx], atol=1e-12)
-        assert x_new[right_idx] != side_x[right_idx]
+        x_corner_found, y_corner_found = Flap_Setter._find_concave_corner(
+            pre_flap_x, pre_flap_y, x_corner, y_corner, beta
+        )
 
-        local_i0 = max(0, right_idx - 2)
-        local_i1 = min(len(x_new), right_idx + 3)
-        spline = Spline1D(x_new[local_i0:local_i1], y_new[local_i0:local_i1], boundary='natural')
+        pre_x_new, pre_y_new = Flap_Setter._process_concave_side(
+            pre_flap_x.copy(), pre_flap_y.copy(), x_corner, y_corner, beta
+        )
+        post_x_new, post_y_new = Flap_Setter._process_concave_side(
+            post_flap_x.copy(), post_flap_y.copy(), x_corner, y_corner, beta
+        )
 
-        assert np.isclose(y_new[right_idx], spline.eval(x_new[right_idx]), atol=1e-8)
+        pre_corner_idx = np.flatnonzero(np.isclose(pre_x_new, x_corner_found, atol=1e-12, rtol=0.0))
+        post_corner_idx = np.flatnonzero(np.isclose(post_x_new, x_corner_found, atol=1e-12, rtol=0.0))
+
+        assert pre_corner_idx.size == 1
+        assert post_corner_idx.size == 1
+        assert np.isclose(pre_y_new[pre_corner_idx[0]], y_corner_found, atol=1e-12)
+        assert np.isclose(post_y_new[post_corner_idx[0]], y_corner_found, atol=1e-12)
+        assert not np.allclose(post_x_new, pre_x_new)
+        assert not np.allclose(post_y_new, pre_y_new)
+        assert post_corner_idx[0] + 1 < len(post_x_new)
+        assert abs(post_x_new[post_corner_idx[0] + 1] - x_corner_found) < abs(pre_x_new[pre_corner_idx[0] + 1] - x_corner_found)

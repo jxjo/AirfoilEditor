@@ -450,6 +450,14 @@ class CST:
         self._te_gap = float(te_gap)
 
 
+    @property
+    def cpoints(self) -> list[tuple[float, float]]:
+        """
+        Return the weights as a list of (x, y) tuples
+        - compatible with the control-point interface of Bezier and B-Spline curves.
+        """
+        return list(zip(self.weights_x, self._weights))
+    
     def set_cpoints(self, cpx_or_cp: list, cpy: list | None = None):
         """Set the weight vector from a control-point style input."""
 
