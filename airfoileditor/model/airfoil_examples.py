@@ -643,16 +643,3 @@ class Tip_Example (Airfoil_Example_Abstract):
         file_lines = output.readlines()
         output.close()
         return file_lines
-
-
-
-# Main program for testing -----------------------------------
-
-if __name__ == "__main__":
-
-    myAirfoil = Root_Example()
-    myTip     = Tip_Example()
-
-    print ("New airfoil created: ", myAirfoil)
-    myAirfoil.plot()
-    myTip.plot()

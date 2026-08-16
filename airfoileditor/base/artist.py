@@ -164,7 +164,7 @@ class Movable_Point (pg.TargetItem):
 
         if movable:
             symbol = self._symbol_movable
-            size = size if size is not None else 9 
+            size = size if size is not None else 10 
 
             color = color if color else COLOR_EDITABLE
             brush_color = QColor(color).darker (150)
@@ -180,7 +180,7 @@ class Movable_Point (pg.TargetItem):
 
         else: 
             symbol = self._symbol_fixed
-            size = size if size is not None else 9 
+            size = size if size is not None else 8 
 
             penColor = QColor (color).darker (120)
 
@@ -484,7 +484,6 @@ class Movable_Curve (pg.PlotCurveItem):
                   movable_point_class = Movable_Curve_Point,        # to choose an individual Movable_Point
                   on_changed = None, 
                   symbol = 's',                                     # symbol of control points
-                  symbol_size = 7,                                  # size of control points
                   **kwargs):
 
         self._callback_changed = on_changed
@@ -524,7 +523,7 @@ class Movable_Curve (pg.PlotCurveItem):
                 name = ""
             
             p = movable_point_class (jpoint, parent=self, name=name, id = i, movable=movable, 
-                                     color=color, symbol=symbol, size=symbol_size, 
+                                     color=color, symbol=symbol, 
                                      show_label_static=show_label, label_anchor=label_anchor,  
                                      **kwargs) 
             

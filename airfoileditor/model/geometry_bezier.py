@@ -231,7 +231,6 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
             
             py[icp] = py[icp] * y_fac
 
-        print (f"Initial Bezier: ncp={ncp}, py[-1]={py[-1]}")
         return list(zip(px, py))
 
 

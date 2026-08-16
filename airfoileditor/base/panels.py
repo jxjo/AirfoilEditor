@@ -1031,6 +1031,18 @@ class MessageBox (QMessageBox):
 
 
     @staticmethod
+    def yes_no (parent: object, title : str, text : str, min_width=None):
+        """ confirmation with Yes and No"""
+
+        msg = MessageBox (parent, title, text, Icon (Icon.INFO), min_width=min_width)
+
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton  (QMessageBox.StandardButton.Yes)
+
+        return msg.exec()
+
+
+    @staticmethod
     def warning (parent: object, title : str, text : str, min_width=None):
         """ warning with Ok and Cancel"""
 

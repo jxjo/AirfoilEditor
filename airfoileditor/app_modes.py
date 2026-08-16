@@ -214,8 +214,8 @@ class Mode_Abstract (QObject):
             if self._app_model.case.designs_added_in_session:
                 text = "Designs were created during this session.\n\n" + \
                        "Do you want to remove all temporary designs?"
-                button = MessageBox.confirm (self.stacked_panel, "Cancel Mode", text)
-                if button == QMessageBox.StandardButton.Ok:
+                button = MessageBox.yes_no (self.stacked_panel, "Cancel Modifications", text)
+                if button == QMessageBox.StandardButton.Yes:
                     self._app_model.case.set_remove_designs_on_close (True)
  
         QTimer.singleShot (0, self.sig_leave_requested.emit)    # leave after current events processed

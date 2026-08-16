@@ -8,7 +8,7 @@ All abstract diagram items to build a complete diagram view
 """
 
 import logging
-
+from time               import monotonic
 from typing             import override, Type
 
 from PyQt6.QtCore       import QMargins, pyqtSignal, QTimer
@@ -469,6 +469,7 @@ class Diagram_Item (pg.PlotItem):
 
     show_buttons = True                                 # show reset buttons
     show_coords  = True                                 # show mouse coordinates
+    help_message_min_show_time = 2.0                    # seconds before repeated signal may hide message
 
     # Signals 
 
@@ -486,7 +487,7 @@ class Diagram_Item (pg.PlotItem):
 
         self._dataObject = dataObject
         self._show   = show 
-        self._parent : Diagram | None = parent         # parent diagram
+        self._parent : Diagram | None = parent          # parent diagram
 
         self._section_panel = None                      # view section to the left 
         self._artists : list [Artist] = []              # list of my artists
@@ -497,8 +498,9 @@ class Diagram_Item (pg.PlotItem):
         self._desired_xLink_name = None                 # name of item to xlink to - if None no xlink
         self._xLink_auto = True                         # if desired xlink name is set - do it automatically
 
-        self._help_messages         = {}                # current help messages which are shown 
-        self._help_messages_shown   = {}                # all help messages shown up to now 
+        self._help_messages         = {}                # current help messages which are shown
+        self._help_messages_since   = {}                # timestamp when help message became visible
+        self._help_messages_shown   = set()             # artists whose help message was shown at least once
         self._help_message_items    = {}
 
         # Replace PlotItem auto icon button with our own Text_Button
@@ -595,56 +597,91 @@ class Diagram_Item (pg.PlotItem):
 
 
     def _on_help_message (self, aArtist :Artist | None, aMessage: str | None):
-        """ slot for help message signal of an artist. show it"""
+        """Handle help-message signal updates and refresh help labels.
 
-        # if aArtist: 
+        Behavior is intentionally strict:
+        - First non-empty message from an artist is shown.
+        - Next non-empty message from the same artist hides the message.
+        - Once an artist has shown a message, later non-empty signals do not re-show
+          it unless history is explicitly reset.
+        """
+
+        # if aArtist:
         #     logger.warning (f"{self} on_help of {aArtist} of item: {aArtist._pi} with message: {aMessage}")
-        # else: 
+        # else:
         #     logger.warning (f"{self} on_help  -> refresh ")
 
-        # remove all existing message item 
+        self._update_help_message_state (aArtist, aMessage)
+        self._render_help_messages ()
+
+
+    def _update_help_message_state (self, aArtist : Artist | None, aMessage: str | None):
+        """Apply one help-message signal to the internal message state."""
+
+        # Could be called without artist -> refresh only.
+        if aArtist is None:
+            return
+
+        if not aMessage:
+            self._help_messages.pop (aArtist, None)
+            self._help_messages_since.pop (aArtist, None)
+            return
+
+        if aArtist in self._help_messages_shown:
+            t0 = self._help_messages_since.get (aArtist, 0.0)
+            if aArtist in self._help_messages and monotonic() - t0 < self.help_message_min_show_time:
+                return
+            self._help_messages.pop (aArtist, None)
+            self._help_messages_since.pop (aArtist, None)
+            return
+
+        self._help_messages[aArtist] = aMessage
+        self._help_messages_since[aArtist] = monotonic()
+        self._help_messages_shown.add (aArtist)
+
+
+    def _clear_help_message_items (self):
+        """Remove all rendered help-message label items from the scene."""
+
         for item in self._help_message_items.values():
             self.scene().removeItem (item)                             # was added directly to the scene via setParentItem
         self._help_message_items = {}
 
-        # add / remove message of artist to my list 
-        if aArtist:                                                    # could be called without artist -> refresh only 
-            if not aMessage:
-                self._help_messages.pop (aArtist, None)                # remove existing message of this artist
-            else:
-                if aArtist in self._help_messages_shown:
-                    self._help_messages.pop (aArtist, None) 
-                else:   
-                    self._help_messages[aArtist] = aMessage            # add this message 
-                    self._help_messages_shown[aArtist] = aMessage      # add to the list already shown           
 
+    def _render_help_messages (self):
+        """Render current active help messages."""
 
-        # plot all current messages 
-        i = 0 
+        self._clear_help_message_items ()
+
+        i = 0
         for artist, message in self._help_messages.items():
-            parentPos = (0.3,0.03)                                      # parent x starts at PlotItem (including axis)       
+            parentPos = (0.3,0.03)                                      # parent x starts at PlotItem (including axis)
             itemPos   = (0.0,0.0)
             y_offset  = i * 20
 
-            p1 = pg.LabelItem(f"- {message}", color=Artist.COLOR_HELP, size=f"{Artist.SIZE_NORMAL}pt")    
+            p1 = pg.LabelItem(f"- {message}", color=Artist.COLOR_HELP, size=f"{Artist.SIZE_NORMAL}pt")
 
-            p1.setParentItem(self)                                      # add to self (Diagram Item) for absolute position 
+            p1.setParentItem(self)                                      # add to self (Diagram Item) for absolute position
             p1.anchor(itemPos=itemPos, parentPos=parentPos, offset=(0,y_offset))
             p1.setZValue(5)
 
             self._help_message_items[artist] = p1
-            i +=1
+            i += 1
 
 
-    def _remove_help_messages (self):
-        """Remove all currently shown and remembered help messages for this diagram item."""
+    def _remove_help_messages (self, reset_history: bool = True):
+        """Remove currently shown help messages.
 
-        for item in self._help_message_items.values():
-            self.scene().removeItem(item)
+        Args:
+            reset_history: If True, also reset the "shown once" history.
+        """
 
-        self._help_message_items = {}
+        self._clear_help_message_items ()
         self._help_messages = {}
-        self._help_messages_shown = {}
+        self._help_messages_since = {}
+
+        if reset_history:
+            self._help_messages_shown = set()
 
 
     def set_desired_xLink_name (self, aName : str | None):
