@@ -63,12 +63,11 @@ logger = logging.getLogger(__name__)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "5.0-dev"                  # hatch "version dynamic" - PEP440 compliant version string
-                                            # for Github use SemVer "4.2.0-beta.3"
+__version__      = "5.0b1"                   # hatch "version dynamic" - PEP440 compliant version string
 
 CHANGE_TEXT      = "- Airfoils based on CST-Kulfan<br>"  + \
                    "- Integration of NeuralFoil<br>" + \
-                   "- Added PSO match airfoil optimizer (experimental)<br>"
+                   "- Integrated flap handling routines"
 
 
 class Main (QMainWindow):

@@ -1,17 +1,15 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 5.0 dev
+### Version 5.0 beta 1
 
-Version 5.0 introduces CST-Kulfan-based airfoil support and integrates [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation.
-
-Current release: Version 4.3.2
+This pre-release adds CST-Kulfan-based airfoil support and integrates [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation.
 
 The **AirfoilEditor** is a fast airfoil viewer, analyzer, and advanced geometry editor with integrated Xoptfoil2-based optimization. The app provides three operating modes:
 
 #### View
 * Browse and view airfoils in subdirectories
 * Analyze curvature of airfoil surface
-* Show polars generated using XFOIL
+* Show polars generated using XFOIL or [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil)
 * Export airfoil to DXF format 
 
 #### Modify
@@ -19,21 +17,22 @@ The **AirfoilEditor** is a fast airfoil viewer, analyzer, and advanced geometry 
 * Adjust thickness, camber, high points, and trailing edge gap
 * Blend two airfoils
 * Set flap
-* Generate airfoil replicas using Bezier or B-Spline curves
+* Generate airfoil replicas using Bezier, B-Spline or CST-Kulfan curves
 
 #### Optimize
 * User Interface of [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
 * Graphical definition of polar based objectives
 * View results while optimizing
 
-The app was initially developed to address artifacts found in other tools like Xflr5 when using xfoil geometry routines. The aim has been an intuitive, user-friendly experience that encourages exploration.
-The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. Linux and MacOS users are required to compile the underlying programs for polar viewing and airfoil optimization - see 'Installation' for details.
+The app was initially developed to address artifacts found in other tools when using XFOIL geometry routines. The aim has been an intuitive, user-friendly experience that encourages exploration.
+
+The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. On Linux and MacOS, View and Modify mode work directly after installation, while XFOIL-based polar generation and optimization require compiled external binaries when those features are used - see 'Installation' for details.
 
 ## Quick Start
 
 * Windows (recommended): download and run the latest installer from the [GitHub releases page](https://github.com/jxjo/AirfoilEditor/releases).
 * Python package: `pip3 install airfoileditor`, then run `airfoileditor`.
-* Linux/macOS note: View and Modify mode work directly after installation; Polars and Optimize mode require compiled `worker` and `xoptfoil2` binaries.
+* Linux/macOS note: View and Modify mode work directly after installation; XFOIL Polars and Optimize mode require compiled `worker` and `xoptfoil2` binaries.
 
 
 ![AE](images/AirfoilEditor_App_dark.png "AirfoilEditor App")
@@ -46,13 +45,15 @@ The **AirfoilEditor** utilizes various strategies to represent the geometry of a
 
 * 'Linear interpolation' – Using the point coordinates from the airfoils '.dat' file, intermediate points are calculated through linear interpolation. Used for quick previews and simple tasks.
 
-* 'Cubic spline interpolation' – A cubic spline is created from the airfoil's point coordinates, enabling precise interpolation of intermediate points.
+* 'Cubic Spline' – A cubic spline is created from the airfoil's point coordinates, enabling precise interpolation of intermediate points.
 
 * 'Bezier curve' – An airfoil is modeled using two Bezier curves, one for the upper surface and one for the lower surface. Nelder-Mead optimization is used to fit these Bezier curves to an existing airfoil profile.
 
 * 'B-Spline curve' – Quite similar to Bezier using two (segmented) B-Splines of degree 4 to represent an airfoil (experimental).
 
-Spline interpolation is applied to determine the position of the actual leading edge, which can vary from the coordinate-based leading edge defined as the point with the smallest x-value. Airfoil normalization iteratively rotates, stretches, and shifts the airfoil so its leading edge based on the spline is at (0,0) and trailing edge at (1,0).
+* 'CST-Kulfan' – A compact airfoil-shape formulation that combines class/shape transformation with Kulfan design variables for smooth, controllable geometry.
+
+The 'Cubic Spline' is applied for coordinate based airfoils to determine the exact position of the actual leading edge, which can vary from the coordinate-based leading edge defined as the point with the smallest x-value. Airfoil normalization rotates, stretches, and shifts the airfoil so its leading edge based on the spline is at (0,0) and trailing edge at (1,0).
 
 For thickness and camber geometry operations, the airfoil is divided into two separate splines representing the thickness and camber distributions. A mapping spline—similar to that in XFOIL—is applied to shift the high point of thickness or camber. The airfoil is then reconstructed from the adjusted thickness and camber splines.
 This method also enables separate adjustment of the upper and lower surfaces' high points.
@@ -69,33 +70,37 @@ Have a look at the [Xoptfoil2 geometry documentation](https://jxjo.github.io/Xop
 
 ![AE](images/curvature.png "curvature")
 
+A 'curvature comb' can also be displayed around the airfoil as an alternative way to visualize the surface curvature.
 
-## Bezier and B-Spline based Airfoils
+## Bezier, B-Spline and CST-Kulfan based Airfoils
 
-Beside `.dat` files, the AirfoilEditor seamlessly handles `.bez` files defining Bezier-based airfoils, and `.bsp` files for B-Spline-based airfoils.
-While traditional airfoils are defined by coordinate points, Bezier and B-Spline airfoils are defined by curves with control points. This approach provides inherently smooth curvature along the airfoil surface.
+Besides `.dat` files, the AirfoilEditor seamlessly handles `.bez` files defining Bezier-based airfoils, `.bsp` files for B-Spline-based airfoils, and `.cst` files for CST-Kulfan-based airfoils.
+While traditional airfoils are defined by coordinate points, curve-based airfoils are defined by control points or compact shape coefficients. This approach provides inherently smooth curvature along the airfoil surface and makes the geometry easier to edit parametrically.
 
-B-Spline-based airfoils were introduced in version 4.3 of the **AirfoilEditor** to gain more flexibility in airfoil optimization due to the local character of B-Spline control points compared to Bezier control points, which act globally by definition. However, achieving acceptable C3/C4 continuity between B-Spline segments is challenging and essential for generating smooth XFOIL polars. Therefore, B-Spline airfoils are currently in an experimental state. 
+Bezier and B-Spline airfoils are especially useful for interactive geometry editing because the control points can be moved directly in the diagram while preserving a smooth shape. B-Spline-based airfoils were introduced in version 4.3 of the **AirfoilEditor** to gain more flexibility in airfoil optimization due to the local character of B-Spline control points compared to Bezier control points, which act globally by definition. However, achieving acceptable C3/C4 continuity between B-Spline segments is challenging and essential for generating smooth XFOIL polars. Therefore, B-Spline airfoils are currently in an experimental state.
 
+CST-Kulfan airfoils use a compact class/shape transformation together with Kulfan design variables to represent the upper and lower surfaces with a small set of parameters. This formulation is well suited for smooth, stable geometry generation and is particularly convenient for rapid design exploration and for NeuralFoil-based evaluation. For CST-based airfoils, there is no dedicated match optimization in the sense of a Nelder-Mead curve fitting routine. Instead, a simple least-squares fit is used to recover the CST parameters from an existing airfoil. For the intended use in the **AirfoilEditor**, this is completely sufficient and keeps the workflow fast and robust.
 
 In 'Modify Mode', control points can be moved directly in the diagram with the mouse to adjust the airfoil geometry. Each modification creates a new 'Design' with newly generated polars.
 
-The match function (experimental for B-Spline) fits the curve to an existing airfoil as accurately as possible using simplex optimization (Nelder-Mead) to:
+The match function (experimental for B-Spline) fits the Bezier- or B-Spline-based curve to an existing airfoil as accurately as possible using simplex optimization (Nelder-Mead) to:
 
 * Minimize the root mean square (rms) deviation between the curve and target airfoil
 * Align the curvature at leading and trailing edges to the target
-* Avoid bumps of the curvature  
+* Avoid bumps of the curvature
 * Ensure equal curvature at the leading edge on both surfaces
+
+For CST-based airfoils, the equivalent step is a lightweight least-squares fit rather than a full match optimization.
 
 ![AE](images/match_bezier.png "match bezier")
 
-
-
 ### Export to DXF 
 
-Bezier- or B-Spline-based airfoils are especially useful for downstream work in 3D CAD, for example when building a wing from multiple airfoil sections.
+Curve-based airfoils are especially useful for downstream work in 3D CAD, for example when building a wing from multiple airfoil sections.
 
-The Export to DXF feature transfers curve-based airfoils as uniform B-splines with no loss of geometric precision. Since CAD systems also store curves internally as uniform B-splines, these exports are ideal for creating high-quality lofted 3D bodies.
+The Export to DXF feature converts all supported airfoil representations to spline-based geometry suitable for CAD workflows. Bezier- and B-Spline-based airfoils are exported as uniform B-splines without loss of geometric precision. Since CAD systems also store curves internally as uniform B-splines, this format is well suited for lofted 3D bodies.
+
+CST-Kulfan-based airfoils are exported in the same way as classic `.dat` profiles: they are converted to a spline representation for CAD import and downstream geometry processing. This keeps the exported geometry consistent across coordinate-based and parameterized airfoils.
 
 Classic `.dat` airfoils are exported as cubic splines, which are widely supported and interpreted correctly by CAD software.
 
@@ -106,21 +111,25 @@ During export, the airfoil can be scaled to the chord length of a wing section a
 
 ## Polars of an Airfoil
 
-To generate the polars of an airfoil, the **AirfoilEditor** uses the Worker tool from the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2). One of its functions is multi-threaded polar set generation using XFOIL.
+The **AirfoilEditor** can generate polars using two methods: XFOIL-based polars through the Worker tool from the [Xoptfoil2 project](https://github.com/jxjo/Xoptfoil2), and [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil)-based polars for fast interactive evaluation.
+
+The Worker-based workflow uses XFOIL to compute the polar data and is the reference method for higher-fidelity results. [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) is a learned aerodynamic model that predicts airfoil polars from the geometry and operating conditions. It is designed for rapid evaluation, which makes it well suited for interactive workflows where a polar should update immediately after geometry edits. For a more detailed description of the underlying concept, please refer to the [NeuralFoil project page](https://github.com/peterdsharpe/NeuralFoil).
+
+Compared with XFOIL-based generation via Worker, NeuralFoil allows near-real-time polar updates and is therefore particularly useful when modifying an airfoil and immediately checking the corresponding polar response. In general, the agreement with XFOIL is very good, especially when larger models such as `xlarge` are used. However, NeuralFoil polars can become slightly optimistic near `cl_max`, which is related to the CST-based geometric transformation used for the airfoil, where the nose radius can occasionally be represented too large.
 
 For polar generation, the Worker's `auto_range` feature optimizes the alpha range to show the complete T1 polar from `cl_min` to `cl_max`. For T2 polars (constant lift), the range starts just above `cl=0.0` up to `cl_max`.
 
 ### Polars on Demand
 
-Within the app, a polar is generated on demand when it needs to be displayed. If required, XFOIL polar generation executes asynchronously as a background task. Each generated polar is stored in an individual file using XFOIL's format for fast reuse. 
+In both workflows, a polar is generated automatically when it is needed for display. For XFOIL-based polars, the computation runs asynchronously in the background and typically takes about 1-5 seconds. For NeuralFoil-based polars, the calculation is performed synchronously and usually takes only around 10 milliseconds.
 
-This method enables the sequential review of airfoils or airfoil designs, displaying the polars without requiring additional user input.
+Each generated XFOIL polar is stored in an individual file using XFOIL's format for fast reuse. This method enables the sequential review of airfoils or airfoil designs, displaying the polars without requiring additional user input.
 
 ### Flapped Polars
 
-A polar can be 'flapped', meaning the airfoil has temporary flaps set before XFOIL computes the polar. This is convenient for comparing different airfoils at a specific flap angle without manually adjusting and recalculating.
+A polar can be 'flapped', meaning the airfoil has temporary flaps set before XFOIL or NeuralFoil computes the polar. This is convenient for comparing different airfoils at a specific flap angle without manually adjusting and recalculating.
 
-Alternatively, a flap can be set in 'Modify Mode' for an individual airfoil and saved as a separate airfoil. This is useful when the flapped airfoil is needed for further processing (for example, in XFLR5). 
+Alternatively, a flap can be set in 'Modify Mode' for an individual airfoil and saved as a separate airfoil. This is useful when the flapped airfoil is needed for further processing. 
 
 ![AE](images/polars.png "Flapped polars")
 
@@ -175,7 +184,7 @@ One of the possible modifications is to set a trailing edge flap: either permane
 
 Note: A flap cannot be set on an already 'flapped' airfoil. The app remembers the initial unflapped design airfoil, enabling multiple sequential flap settings to be applied during a design session.
 
-## Bezier and B-Spline based Airfoils (Modify Mode)
+## Bezier, B-Spline and CST-Kulfan based Airfoils (Modify Mode)
 
 Bezier-based and B-Spline-based airfoils can also be adjusted in 'Modify Mode'. Since their geometry is defined by curves rather than coordinate points, traditional parameters like thickness cannot be changed directly.
 
@@ -183,6 +192,7 @@ For trailing edge gap adjustments on curve-based airfoils, new control point coo
 
 Instead, control points of the curves can be moved directly in the diagram with the mouse. Each modification results in a new 'Design' with newly generated polars, making it easy to observe how adjustments impact aerodynamic performance.
 
+CST-Kulfan airfoils are also based on polynomial shape functions, but unlike Bezier curves they are defined on fixed x-stations. The profile shape is controlled primarily by the CST weights, which govern the vertical distribution of the curve along the chord. In the app, these weights can be edited interactively in a similar way to Bezier control points, but the adjustment is effectively vertical and acts at fixed x-positions. This results in a compact parameterization that still allows smooth and intuitive airfoil shaping.
 
 # 3. Optimization Mode
 
@@ -270,7 +280,9 @@ If you want to try the app and ensure the installation doesn't affect other pack
 
 The app is installed as a Python 'package'. Please ensure to have a Python version >=3.12.
 
-View and Modify mode work after package installation. Polars and Optimize mode additionally require compiled `worker` and `xoptfoil2` binaries.
+For View and Modify mode, no additional compilation is required. NeuralFoil is included as part of the package and can be used for fast polar evaluation without any extra setup.
+
+XFOIL-based polars and the optimization workflow require compiled `worker` and `xoptfoil2` binaries. If these features are not needed, the package can be used without building those external programs.
 
 ```
 pip3 install airfoileditor 
@@ -281,7 +293,7 @@ To upgrade to the latest version, use `pip3 install airfoileditor -U`.
 Run the app by typing `airfoileditor` on the command line.
 
 #### Preparing Xoptfoil2 and Worker
-To use polar generation and airfoil optimization the two programs `worker` and `xoptfoil2` have to be compiled and made available for the AirfoilEditor by copying the two programs into /usr/local/bin. 
+To use XFOIL-based polar generation and airfoil optimization, the two programs `worker` and `xoptfoil2` have to be compiled and made available for the AirfoilEditor by copying them into /usr/local/bin.
 
 Please have a look into [Xoptfoil2 README Installation](https://github.com/jxjo/Xoptfoil2) for further information.
 
