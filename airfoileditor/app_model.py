@@ -190,6 +190,8 @@ class App_Model (QObject):
         # is NeuralFoil evaluator avaialble
         if not Neuralfoil_Evaluator.ready:
             logger.error (f"{Neuralfoil_Evaluator.NAME} not available: {Neuralfoil_Evaluator.ready_msg}")
+        else:
+            logger.info (f"{Neuralfoil_Evaluator.NAME} Ready")
 
         # initialize watchdog thread for xfoil polars and xo2 state changes (optional)
         if start_watchdog:

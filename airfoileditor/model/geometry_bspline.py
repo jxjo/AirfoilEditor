@@ -346,14 +346,14 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
 
 
     @property
-    def controlPoints_as_jpoints (self) -> list[JPoint]: 
+    def cPoints_as_jpoints (self) -> list[JPoint]: 
         """ B-Spline control points as JPoints"""
         jpoints = []
         nPoints = self.ncp
 
         for i in range(nPoints):
 
-            jpoint = JPoint (self.controlPoints[i])              # xy tuple 
+            jpoint = JPoint (self.cPoints[i])              # xy tuple 
 
             if self.isUpper:
                 y_lim = (0,1)
@@ -390,7 +390,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
             target_side.x, target_side.y, ncp, le_curvature)
 
         # update control points of self
-        self.set_controlPoints(cp)
+        self.set_cPoints(cp)
 
 
     def add_controlPoint (self, index, point : JPoint | tuple):
@@ -465,7 +465,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         if xBlend is None:
             xBlend = Geometry.TE_GAP_XBLEND
 
-        control_points = self.controlPoints
+        control_points = self.cPoints
         ncp = len(control_points)
 
         x = np.array([p[0] for p in control_points])
@@ -473,7 +473,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
 
         if xBlend == 0.0:
             y[-1] = y[-1] + dgap
-            self.controlPoints = list(zip(x, y))
+            self.cPoints = list(zip(x, y))
             return
 
         # Convert trailing-edge blend length in x-space to a curve parameter start.
@@ -493,7 +493,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
 
             y[i] += dgap * tfac
 
-        self.set_controlPoints(list(zip(x, y)))    
+        self.set_cPoints(list(zip(x, y)))
 
 
 

@@ -353,10 +353,10 @@ class Test_Airfoil_Bezier:
 
         # During moving, changing only xBlend must still reshape the control points.
         geo.set_te_gap(1.0 / 100, xBlend=0.25, moving=True)
-        upper_cp_blend_025 = np.array(geo.upper.controlPoints)
+        upper_cp_blend_025 = np.array(geo.upper.cPoints)
 
         geo.set_te_gap(1.0 / 100, xBlend=0.85, moving=True)
-        upper_cp_blend_085 = np.array(geo.upper.controlPoints)
+        upper_cp_blend_085 = np.array(geo.upper.cPoints)
 
         assert not np.allclose(upper_cp_blend_025, upper_cp_blend_085)
 

@@ -464,7 +464,7 @@ class Movable_Curve_Point (Movable_Point):
 class Movable_Curve (pg.PlotCurveItem):
     """
     pg.PlotCurveItem/UIGraphicsItem which represents 
-    a Bezier or B-Spline curve which can be changed by the controlpoints
+    a Bezier or B-Spline curve which can be changed by the control points
     
     Points are implemented with Movable_Points
     A Movable_Point can also be fixed ( movable=False).
@@ -489,14 +489,8 @@ class Movable_Curve (pg.PlotCurveItem):
         self._callback_changed = on_changed
         self._id = id 
         self.movable = movable 
-
-        # Control jpoints  
-        self._jpoints : list[JPoint] = jpoints 
-        # ... as movable Curve points 
-        self._movable_points : list[Movable_Curve_Point] = []
  
-
-        # init polyline of control points as PlotCurveItem
+        # init polyline of control points as PlotCurveItem (self)
           
         if movable:
             penColor = COLOR_EDITABLE
@@ -506,7 +500,10 @@ class Movable_Curve (pg.PlotCurveItem):
             clickable = False
         pen = pg.mkPen (penColor, width=1, style=Qt.PenStyle.DotLine)
 
-        super().__init__(*self.jpoints_xy(), pen=pen, clickable=clickable, symbol=None, **kwargs)
+        x = [jp.x for jp in jpoints]
+        y = [jp.y for jp in jpoints]
+
+        super().__init__(x, y, pen=pen, clickable=clickable, symbol=None, **kwargs)
 
         if movable:
             self.setZValue (10)                         # movable dotted line above other objects 
@@ -514,6 +511,8 @@ class Movable_Curve (pg.PlotCurveItem):
             self.setZValue (5)
 
         # init control points as Movable_Points 
+
+        self._movable_points : list[Movable_Curve_Point] = []
 
         for i, jpoint in enumerate (jpoints):
 
@@ -561,7 +560,7 @@ class Movable_Curve (pg.PlotCurveItem):
         # can be overloaded 
         # here - we use a helper bezier to show during move  
         if self._curve is None: 
-            self._curve = Bezier (*self.jpoints_xy())
+            self._curve = Bezier (*self.points_xy())
         return self._curve
 
     @property
@@ -572,23 +571,20 @@ class Movable_Curve (pg.PlotCurveItem):
             self._u = np.linspace (0.0, 1.0, 50)                # only 50 points for speed
         return self._u
 
-  
 
-    def jpoints_xy (self) -> tuple[list]:
-        """returns coordinates of self_jpoints as x, y lists """
-        x, y = [], []
-        for p in self._jpoints:
-            x.append(p.x)
-            y.append(p.y)
-        return x, y
-
-    def points_xy (self) -> tuple[list]:
+    def points_xy (self) -> tuple[list, list]:
         """returns coordinates of self_movable_points as x, y lists """
         x, y = [], []
         for p in self._movable_points:
             x.append(p.x)
             y.append(p.y)
         return x, y
+
+    @property
+    def jpoints (self) -> list[JPoint]:
+        """returns the list of jpoints of self_movable_points """
+
+        return [p._jpoint for p in self._movable_points ]
 
 
     @override
@@ -611,12 +607,11 @@ class Movable_Curve (pg.PlotCurveItem):
 
     def _moving_point (self, aPoint : Movable_Point):
         """ slot - point is moved by mouse """
-        i = aPoint.id
-        self._jpoints[i].set_xy(aPoint.xy)                  # update self point list 
+
         self.setData(*self.points_xy())                     # update self (polyline) 
 
-        if self._curve_item:            
-            self.curve.set_cpoints(*self.points_xy())      # update of curve
+        if self._curve_item: 
+            self._update_curve()                                      # update of curve           
             self._update_curve_item ()
             self._curve_item.show()
 
@@ -638,19 +633,26 @@ class Movable_Curve (pg.PlotCurveItem):
         """ slot - point should be deleted """
 
         # a minimum of 2 control points 
-        if len(self._jpoints) <= 2: return   
+        if len(self._movable_points) <= 2: return
 
         # remove from list
         i = aPoint.id
-        del self._jpoints[i]                                # update self point list 
-        px, py = self.jpoints_xy()
+        del self._movable_points[i]                         # update self point list 
+        px, py = self.points_xy()
         self.setData(px, py)                                # update self (polyline) 
 
-        self._update_curve_item ()                         # refresh curve plot item
+        self._update_curve_item ()                          # refresh curve plot item
 
         self._finished_point (aPoint)
         if aPoint.scene():                                  # sometimes scene get lost ... (?) 
             aPoint.scene().removeItem(aPoint)               # final delete from scene 
+
+
+    def _update_curve (self):
+        """ update curve from movable points"""
+
+        # can be overloaded 
+        self.curve.set_cpoints(*self.points_xy())      
 
 
     def _update_curve_item (self):
@@ -1264,7 +1266,7 @@ class Artist(QObject):
             if any (legend_item [1].text == name for legend_item in self._pi.legend.items):
                 return                                              # already in legend
 
-            if isinstance (plot_item, pg.PlotDataItem) or isinstance (plot_item, pg.ScatterPlotItem)  : 
+            if isinstance (plot_item, (pg.PlotDataItem, pg.ScatterPlotItem, pg.PlotCurveItem)):
  
                 self._pi.legend.addItem (plot_item, name)
                 plot_item.opts['name'] = name

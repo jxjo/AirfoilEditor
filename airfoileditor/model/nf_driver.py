@@ -27,7 +27,7 @@ try:
     _NF_ERROR = ''
 except ImportError:
     _NF_AVAILABLE = False
-    _NF_ERROR = 'NeuralFoil core could not be imported'
+    _NF_ERROR = 'NeuralFoil could not be loaded'
 
 
 

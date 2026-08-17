@@ -1232,8 +1232,8 @@ class Airfoil_Curve (Airfoil):
 
         airfoil =  self.__class__ (name = name, pathFileName = pathFileName,
                        workingDir=workingDir, 
-                       cp_upper = self.geo.upper.controlPoints,
-                       cp_lower = self.geo.lower.controlPoints)
+                       cp_upper = self.geo.upper.cPoints,
+                       cp_lower = self.geo.lower.cPoints)
 
         # copy target_definition - as it is not part of geometry but important for design airfoils
         airfoil.geo.upper.set_target_deviation_from (self.geo.upper.target_deviation)
@@ -1383,12 +1383,12 @@ class Airfoil_Bezier (Airfoil_Curve):
             file.write("%s\n" % self.name)
 
             file.write("Top Start\n" )
-            for p in self.geo.upper.controlPoints:
+            for p in self.geo.upper.cPoints:
                 file.write("%13.10f %13.10f\n" %(p[0], p[1]))
             file.write("Top End\n" )
 
             file.write("Bottom Start\n" )
-            for p in self.geo.lower.controlPoints:
+            for p in self.geo.lower.cPoints:
                 file.write("%13.10f %13.10f\n" %(p[0], p[1]))
             file.write("Bottom End\n" )
 

@@ -623,7 +623,7 @@ class Matcher (QThread):
         if results:
             best_objective = min(results.keys())
             best_cpoints = results[best_objective]
-            self._side.set_controlPoints(best_cpoints)
+            self._side.set_cPoints(best_cpoints)
             if self._targets.ncp_auto:
                 logger.info (f"Selected best result: ncp={len(best_cpoints)}, objective={best_objective:.6f}")
 

@@ -208,14 +208,28 @@ class Side_Airfoil_Curve (Line):
 
 
     @property
-    def controlPoints (self) -> list[tuple]: 
+    def cPoints (self) -> list[tuple]: 
         """ curve control points as xy"""
         return self.curve.cpoints
     
-    def set_controlPoints(self, cpx_or_cp, cpy=None):
+    def set_cPoints(self, cpx_or_cp, cpy=None):
         """ set the curve control points"""
         self.curve.set_cpoints (cpx_or_cp, cpy)
         self.reset_target_deviation ()
+
+
+    @property
+    def cPoints_as_jpoints (self) -> list[JPoint]: 
+        """ control points as JPoints (which include bounds)"""
+
+        raise NotImplementedError("cPoints_as_jpoints must be implemented in subclass")
+
+    def set_cPoints_from_jpoints(self, jpoints: list[JPoint]):
+        """ set the curve control points from JPoints"""
+
+        cPoints = [(jp.x, jp.y) for jp in jpoints]
+
+        self.set_cPoints(cPoints)
 
 
     @property
@@ -628,13 +642,13 @@ class Geometry_Curve (Geometry):
         if moving:
             # Initialize move baseline once and re-use it for all move updates.
             if self._te_gap_move_upper_cp is None:
-                self._te_gap_move_upper_cp = list(self.upper.controlPoints)
-                self._te_gap_move_lower_cp = list(self.lower.controlPoints)
+                self._te_gap_move_upper_cp = list(self.upper.cPoints)
+                self._te_gap_move_lower_cp = list(self.lower.cPoints)
 
         # If a move baseline exists, always restart from it (also on final call).
         if self._te_gap_move_upper_cp is not None:
-            self.upper.set_controlPoints(self._te_gap_move_upper_cp)
-            self.lower.set_controlPoints(self._te_gap_move_lower_cp)
+            self.upper.set_cPoints(self._te_gap_move_upper_cp)
+            self.lower.set_cPoints(self._te_gap_move_lower_cp)
 
         self.upper.set_te_gap (new_gap * 0.5, xBlend)
         self.lower.set_te_gap (new_gap * 0.5, xBlend)

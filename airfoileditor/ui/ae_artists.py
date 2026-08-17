@@ -392,7 +392,7 @@ class Movable_Side_Bezier (Movable_Curve):
 
         self._airfoil = airfoil
         self._side = side 
-        jpoints = side.controlPoints_as_jpoints
+        jpoints = side.cPoints_as_jpoints
 
         if side.isUpper:
             label_anchor = (0,1) 
@@ -415,16 +415,23 @@ class Movable_Side_Bezier (Movable_Curve):
         return self._side.u
 
 
+    @override
+    def _update_curve (self):
+        """ update curve from movable points"""
+        # here - take side to intersect setting if needed
+        self._side.set_cPoints_from_jpoints(self.jpoints)
+
+
     def refresh (self):
         """ refresh control points from side control points """
 
         # when matching, thread could have changed ncp - race condition ...
-        if len (self._movable_points) != len(self._side.controlPoints):
+        if len (self._movable_points) != len(self._side.cPoints):
             return
 
         # update all my movable points at once 
         movable_point : Movable_Curve_Point
-        for i, point_xy in enumerate(self._side.controlPoints): 
+        for i, point_xy in enumerate(self._side.cPoints):
             movable_point = self._movable_points[i]
             movable_point.setPos_silent (point_xy)              # silent - no change signal 
 
@@ -461,8 +468,7 @@ class Movable_Side_Bezier (Movable_Curve):
         if aPoint.id == 1: return
         super()._delete_point (aPoint)    
 
-        px, py = self.jpoints_xy()
-        self._side.set_controlPoints (px, py)   
+        self._side.set_cPoints_from_jpoints (self.jpoints)
 
         # _finished will do the rest - and init complete refresh
         self._finished_point()
@@ -499,7 +505,7 @@ class Movable_Side_BSpline (Movable_Curve):
 
         self._airfoil = airfoil
         self._side = side 
-        jpoints = side.controlPoints_as_jpoints
+        jpoints = side.cPoints_as_jpoints
 
         if side.isUpper:
             label_anchor = (0,1) 
@@ -527,16 +533,23 @@ class Movable_Side_BSpline (Movable_Curve):
         return self._side.u
 
 
+    @override
+    def _update_curve (self):
+        """ update curve from movable points"""
+        # here - take side to intersect setting if needed
+        self._side.set_cPoints_from_jpoints(self.jpoints)
+
+
     def refresh (self):
         """ refresh control points from side control points """
 
         # when matching, thread could have changed ncp - race condition ...
-        if len (self._movable_points) != len(self._side.controlPoints):
+        if len (self._movable_points) != len(self._side.cPoints):
             return
 
         # update all my movable points at once 
         movable_point : Movable_Curve_Point
-        for i, point_xy in enumerate(self._side.controlPoints): 
+        for i, point_xy in enumerate(self._side.cPoints):
             movable_point = self._movable_points[i]
             movable_point.setPos_silent (point_xy)              # silent - no change signal 
 
@@ -640,7 +653,10 @@ class Movable_CST_LE_Weight (Movable_Point):
         self._update_helper_line (xy)
 
     def _le_point_xy (self): 
-        return -0.1, self._geo.le_weight
+
+        # scale down 
+        y = self._geo.le_weight * 0.5
+        return -0.1, y
 
 
     def _update_helper_line (self, xy):
@@ -651,8 +667,9 @@ class Movable_CST_LE_Weight (Movable_Point):
     def _moving (self, _):
         """ slot - when point is moved"""
 
-        # update highpoint coordinates
-        self._geo.set_le_weight(self.y, moving=True)
+        # update highpoint coordinates - scale up 
+        new_weight = self.y * 2
+        self._geo.set_le_weight (new_weight, moving=True)
 
         # update self xy if we run against limits 
         xy = self._le_point_xy()
@@ -668,8 +685,8 @@ class Movable_CST_LE_Weight (Movable_Point):
         """ slot - point moving is finished"""
 
         # final highpoint coordinates
-        new_weight = self.y
-        self._geo.set_le_weight(new_weight, moving=False)
+        new_weight = self.y * 2
+        self._geo.set_le_weight (new_weight, moving=False)
         self._changed()
 
 
@@ -796,7 +813,7 @@ class Movable_Side_CST (Movable_Curve):
         self._airfoil = airfoil
         self._side = side 
 
-        jpoints      = side.controlPoints_as_jpoints
+        jpoints      = side.cPoints_as_jpoints
         label_anchor = (0,1) if side.isUpper else (0,0)
 
         super().__init__(jpoints, label_anchor=label_anchor, symbol="d", **kwargs)
@@ -813,6 +830,7 @@ class Movable_Side_CST (Movable_Curve):
         """ the CST  self is working with """
         # here - take BSpline of the 'side' 
         return self._side.curve
+    
     @property
     def u (self) -> list:
         """ the CST parameter  """
@@ -820,18 +838,15 @@ class Movable_Side_CST (Movable_Curve):
         return self._side.u
 
 
+    @override
+    def _update_curve (self):
+        """ update curve from movable points"""
+        # here - take side to intersect setting if needed
+        self._side.set_cPoints_from_jpoints(self.jpoints)
+
+
     def refresh (self):
         """ refresh control points from side control points """
-
-        # # when matching, thread could have changed ncp - race condition ...
-        # if len (self._movable_points) != len(self._side.controlPoints):
-        #     return
-
-        # # update all my movable points at once 
-        # movable_point : Movable_Curve_Point
-        # for i, point_xy in enumerate(self._side.controlPoints): 
-        #     movable_point = self._movable_points[i]
-        #     movable_point.setPos_silent (point_xy)              # silent - no change signal 
 
         # update polyline         
         self.setData(*self.points_xy())                         
@@ -844,13 +859,11 @@ class Movable_Side_CST (Movable_Curve):
     def _delete_point (self, aPoint : Movable_Point):
         """ slot - point is should be deleted """
 
-        ncp = self.curve.ncp 
-        if ncp <= 4: return
+        if self.curve.ncp  <= 4: return
 
         super()._delete_point (aPoint)    
-        _, py = self.jpoints_xy()
 
-        self.curve.set_weights (py)
+        self._side.set_cPoints_from_jpoints (self.jpoints)
 
         super()._finished_point()
 
@@ -1295,7 +1308,7 @@ class Bezier_Artist (Artist):
         p : Movable_Side_Bezier
         for p in self._plots: 
             if isinstance (p, Movable_Side_Bezier) and p._side.type == aLinetype:
-                if len (p._movable_points) != len(p._side.controlPoints):
+                if len (p._movable_points) != len(p._side.cPoints):
                     # when matching, thread could have changed ncp - complete refresh
                     self.refresh()     
                     return
@@ -1350,7 +1363,7 @@ class BSpline_Artist (Artist):
         p : Movable_Side_BSpline
         for p in self._plots: 
             if isinstance (p, Movable_Side_BSpline) and p._side.type == aLinetype:
-                if len (p._movable_points) != len(p._side.controlPoints):
+                if len (p._movable_points) != len(p._side.cPoints):
                     # when matching, thread could have changed ncp - complete refresh
                     self.refresh()     
                     return
@@ -1460,7 +1473,7 @@ class CST_Artist (Artist):
         p : Movable_Side_CST
         for p in self._plots: 
             if isinstance (p, Movable_Side_CST) and p._side.type == aLinetype:
-                if len (p._movable_points) != len(p._side.controlPoints):
+                if len (p._movable_points) != len(p._side.cPoints):
                     # when matching, thread could have changed ncp - complete refresh
                     self.refresh()     
                     return
@@ -1487,7 +1500,8 @@ class CST_Artist (Artist):
                                         show_static=movable,      # make helper curve visible to ctrl-click
                                         show_label=show_label,
                                         on_changed=self.sig_cst_changed.emit)
-                self._add(pl)
+                self._add(pl, name="CST weights scaled by 0.5")
+
                 pu = Movable_Side_CST (airfoil, airfoil.geo.upper, color=color, movable=movable,
                                         show_static=movable,      # make helper curve visible to ctrl-click
                                         show_label=show_label,

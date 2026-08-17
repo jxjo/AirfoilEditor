@@ -105,11 +105,11 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
 
     @override
     @property
-    def controlPoints (self) -> list[tuple]: 
+    def cPoints (self) -> list[tuple]: 
         """ cst weights (control points) as xy"""
         return self.curve.cpoints
     
-    def set_controlPoints(self, weights : list | np.ndarray):
+    def set_cPoints(self, weights : list | np.ndarray):
         """ set CST weights (control points) - compatibility with other side classes"""
 
         # create dummy cpx array for compatibility with set_cpoints
@@ -142,7 +142,7 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
 
 
     @property
-    def controlPoints_as_jpoints (self) -> list[JPoint]: 
+    def cPoints_as_jpoints (self) -> list[JPoint]: 
         """ CST control points (weights, LE weight, TE gap) as JPoints"""
         jpoints = []
 
@@ -150,13 +150,30 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
         for i in range(self.cst.ncp):
 
             x, y = self.cst.weights_x[i], self.cst.weights[i]
-            jpoint = JPoint(x, y, name=f"W{i}")
 
+            # scale y in JPoint for better visibility in diagram
+            y *= 0.5
+
+            jpoint = JPoint(x, y, name=f"W{i}")
             jpoint.set_x_limits ((x,x))
 
             jpoints.append(jpoint)
 
         return jpoints
+
+    @override
+    def set_cPoints_from_jpoints(self, jpoints: list[JPoint]):
+        """ set CST weights from JPoints (control points)"""
+
+        cPoints = []
+        for jp in jpoints:
+            x, y = jp.x, jp.y 
+
+            # scale y back to original range
+            y *= 2.0
+
+            cPoints.append((x, y))
+        self.curve.set_cpoints(*zip(*cPoints))
 
 
 
@@ -166,7 +183,7 @@ class Geometry_CST(Geometry_Curve):
     isBasic = False
     isCST = True
     isCurve = True
-    description = "based on CST (Kulfan) surfaces"
+    description = "based on CST Kulfan curves"
 
     side_class = Side_Airfoil_CST
     line_class = Line
@@ -459,8 +476,8 @@ class Geometry_CST(Geometry_Curve):
                                                 le_curvature=le_curvature,
                                                 smooth_lambda=smooth_lambda)
 
-        self.upper.set_controlPoints (weights_upper)
-        self.lower.set_controlPoints (weights_lower)
+        self.upper.set_cPoints (weights_upper)
+        self.lower.set_cPoints (weights_lower)
         self.set_le_weight (le_weight, moving=True)             # moving - avoid double changed
         self.set_te_gap (te_thickness, moving=True)
 
