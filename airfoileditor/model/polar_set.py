@@ -1297,7 +1297,7 @@ class Polar (Polar_Definition):
 
                 logger.debug (f'Airfoil {self.polar_set.airfoil} with flap {self.flap_def.flap_angle:.1f}° applied for CST conversion')
 
-            u, l, le, te, derot = Geometry_CST.geometry_as_CST (geo, n_weights=8)
+            u, l, le, te, derot = Geometry_CST.as_CST (geo, n_weights=8)
 
             self._airfoil_as_CST = Airfoil_As_CST (upper_weights = u, lower_weights = l,
                                                    le_weight = le, te_thickness = te,

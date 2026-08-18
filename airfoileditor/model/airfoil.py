@@ -79,7 +79,7 @@ class Airfoil:
     isBSplineBased      = False
     isCSTBased          = False
     isHicksHenneBased   = False
-    isDatBased          = not isBezierBased and not isBSplineBased and not isCSTBased and not isHicksHenneBased
+    isDatBased          = True
 
     Extension           = '.dat'
     NAME_SUFFIX         = ""                        # will be added to name and filename if not already there
@@ -128,8 +128,6 @@ class Airfoil:
         self._propertyDict   = {}                           # multi purpose extra properties for an Airfoil
         self._file_datetime  = None                         # modification datetime of file 
         self._design_temp    = None                         # temp design airfoil based on self - during user design
-
-        self._flap_setter    = None                         # proxy controller to flap self using Worker
 
         # pathFileName must exist if no coordinates were given 
 
@@ -582,18 +580,22 @@ class Airfoil:
 
     @property
     def design_temp (self) -> 'Airfoil':
-        """ returns the temp Design airfoil based on self - will be used for flap design"""
+        """ 
+        returns a temporary Design airfoil based on self geometry which is used
+        in UI to show intermediate modifications of self 
+        """
 
         if self.usedAsDesign:
-            if self._flap_setter and self.flap_setter.airfoil_flapped:                  # special case: flapping
-                self._design_temp = self.flap_setter.airfoil_flapped
-            elif (self._design_temp and self.geo.is_equal_xy(self.x, self.y)):          # remove temp, self is up to date
-                self._design_temp = None
-            elif (self._design_temp and self.geo.is_equal(self._design_temp.geo)):      # keep existing temp
-                  pass
-            elif ( not self.geo.is_equal_xy(self.x, self.y)):                           # create new temp
-                self._design_temp = Airfoil (x=self.geo.x, y=self.geo.y, name=self.name+"_temp")
-                self._design_temp.set_usedAs (usedAs.DESIGN_TEMP)
+            if self.isDatBased:
+                if (self._design_temp and self.geo.is_equal_xy(self.x, self.y)):            # remove temp, self is up to date
+                    self._design_temp = None
+                elif (self._design_temp and self.geo.is_equal(self._design_temp.geo)):      # keep existing temp
+                    pass
+                elif ( not self.geo.is_equal_xy(self.x, self.y)):       # create new temp
+                    self._design_temp = Airfoil (x=self.geo.x, y=self.geo.y, geometry=GEO_BASIC, name=self.name+"_temp")
+                    self._design_temp.set_usedAs (usedAs.DESIGN_TEMP)
+            else:
+                return self
         else:
             self._design_temp = None
         return self._design_temp
@@ -1039,6 +1041,7 @@ class Airfoil_Curve (Airfoil):
 
     isBezierBased       = False
     isBSplineBased      = False
+    isDatBased          = False
 
     Extension           = ""
     NAME_SUFFIX         = "_curve"                      # will be added to name and filename if not already there
@@ -1266,6 +1269,7 @@ class Airfoil_Bezier (Airfoil_Curve):
     """
 
     isBezierBased       = True
+    isDatBased          = False
 
     Extension           = ".bez"
     NAME_SUFFIX         = "_bezier"                     # will be added to name and filename if not already there
@@ -1407,6 +1411,7 @@ class Airfoil_BSpline (Airfoil_Curve):
 
     isBSplineBased      = True
     isBezierBased       = False
+    isDatBased          = False
 
     Extension           = ".bsp"
     NAME_SUFFIX         = "_bspline"                      # will be added to name and filename if not already there
@@ -1516,6 +1521,7 @@ class Airfoil_CST (Airfoil_Curve):
     """
 
     isCSTBased          = True
+    isDatBased          = False
 
     Extension           = ".cst"
     NAME_SUFFIX         = "_cst"
@@ -1556,7 +1562,7 @@ class Airfoil_CST (Airfoil_Curve):
         """
         Alternate constructor for new CST Airfoil based on another airfoil.
 
-        The CST weights are fitted (fast linear least squares, see Geometry_CST.geometry_as_CST)
+        The CST weights are fitted (fast linear least squares, see Geometry_CST.as_CST)
         directly to anAirfoil's upper/lower coordinates - no further 'match' optimization needed.
         """
 
@@ -1564,7 +1570,7 @@ class Airfoil_CST (Airfoil_Curve):
         if not anAirfoil.isNormalized:
             raise ValueError (f"Airfoil '{anAirfoil}' should be normalized before conversion to CST")
 
-        w_upper, w_lower, le_weight, te_thickness,_ = Geometry_CST.geometry_as_CST (anAirfoil.geo)
+        w_upper, w_lower, le_weight, te_thickness,_ = Geometry_CST.as_CST (anAirfoil.geo)
 
         airfoil_new = cls (name=anAirfoil.name + cls.NAME_SUFFIX,
                            weights_upper=w_upper,
@@ -1666,6 +1672,7 @@ class Airfoil_Hicks_Henne(Airfoil):
     """
 
     isHicksHenneBased  = True
+    isDatBased         = False
 
     Extension           = ".hicks"
 

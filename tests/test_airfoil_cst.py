@@ -134,7 +134,7 @@ def test_fit_from_xy_recovers_known_weights_free_le_curvature():
     y_upper = cst_upper.eval_y(x)
     y_lower = cst_lower.eval_y(x)
 
-    fit_upper, fit_lower, fit_le_weight, fit_te_thickness = Geometry_CST.fit_from_xy(
+    fit_upper, fit_lower, fit_le_weight, fit_te_thickness = fit_cst_from_xy(
         x, y_upper, x, y_lower, n_weights=len(weights_upper), le_mode=LE_Mode.C2)
 
     np.testing.assert_allclose(fit_upper, weights_upper, atol=1e-8)
@@ -160,7 +160,7 @@ def test_fit_from_xy_with_fixed_le_curvature():
 
     le_curvature = abs(cst_upper.curvature(0.0))
 
-    fit_upper, fit_lower, fit_le_weight, fit_te_thickness = Geometry_CST.fit_from_xy(
+    fit_upper, fit_lower, fit_le_weight, fit_te_thickness = fit_cst_from_xy(
         x, y_upper, x, y_lower, n_weights=len(weights_upper),
         le_mode=LE_Mode.FIXED, le_curvature=le_curvature)
 
@@ -178,11 +178,13 @@ def test_cst_fit_from_xy_checks_endpoint_conditions():
     x = np.linspace(0.0, 1.0, 20)
     y = np.zeros_like(x)
 
-    with pytest.raises(ValueError, match="y_upper[0]"):
+    with pytest.raises(ValueError, match=r"y_upper\[0\]"):
         fit_cst_from_xy(x, y + 0.01, x, y)
 
-    with pytest.raises(ValueError, match="y_upper[-1] + y_lower[0]"):
-        fit_cst_from_xy(x, y, x, y + 0.01)
+    y_lower_bad_te = y.copy()
+    y_lower_bad_te[-1] = 0.01
+    with pytest.raises(ValueError, match=r"y_upper\[-1\] \+ y_lower\[-1\]"):
+        fit_cst_from_xy(x, y, x, y_lower_bad_te)
 
 
 def test_fit_from_xy_invalid_arguments_raise():
@@ -231,11 +233,11 @@ def test_fit_from_xy_smoothing_reduces_weight_second_difference_energy():
     x_upper, y_upper = seed_airfoil.geo.upper.x, seed_airfoil.geo.upper.y
     x_lower, y_lower = seed_airfoil.geo.lower.x, seed_airfoil.geo.lower.y
 
-    w_u_plain, w_l_plain, _, _ = Geometry_CST.fit_from_xy(
+    w_u_plain, w_l_plain, _, _ = fit_cst_from_xy(
         x_upper, y_upper, x_lower, y_lower,
         n_weights=8, le_mode=LE_Mode.FREE, smooth_lambda=0.0)
 
-    w_u_smooth, w_l_smooth, _, _ = Geometry_CST.fit_from_xy(
+    w_u_smooth, w_l_smooth, _, _ = fit_cst_from_xy(
         x_upper, y_upper, x_lower, y_lower,
         n_weights=8, le_mode=LE_Mode.FREE, smooth_lambda=1e-3)
 
@@ -254,7 +256,7 @@ def test_fit_from_xy_real_airfoil_roundtrip():
     x_upper, y_upper = seed_airfoil.geo.upper.x, seed_airfoil.geo.upper.y
     x_lower, y_lower = seed_airfoil.geo.lower.x, seed_airfoil.geo.lower.y
 
-    weights_upper, weights_lower, le_weight, te_thickness = Geometry_CST.fit_from_xy(
+    weights_upper, weights_lower, le_weight, te_thickness = fit_cst_from_xy(
         x_upper, y_upper, x_lower, y_lower, n_weights=8, le_mode=LE_Mode.C2)
 
     geo = Geometry_CST(weights_upper, weights_lower, le_weight=le_weight, te_thickness=te_thickness)

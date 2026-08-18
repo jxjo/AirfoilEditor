@@ -394,7 +394,7 @@ class Geometry_CST(Geometry_Curve):
 
 
     @classmethod
-    def geometry_as_CST (cls, geo: Geometry, n_weights: int | None = None,
+    def as_CST (cls, geo: Geometry, n_weights: int | None = None,
                          smooth_lambda: float = SMOOTH_LAMBDA_DEFAULT
                          ) -> tuple[np.ndarray, np.ndarray, float, float, float]:
         """
