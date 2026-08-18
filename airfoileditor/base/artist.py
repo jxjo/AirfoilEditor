@@ -482,11 +482,13 @@ class Movable_Curve (pg.PlotCurveItem):
                   show_static = False,                              # plot also when not in move 
                   show_label = True,                                # show label P0, P1, ... for control points
                   movable_point_class = Movable_Curve_Point,        # to choose an individual Movable_Point
-                  on_changed = None, 
+                  on_changed = None,                                # callback when finished moving a point with new list of points
+                  on_move = None,                                   # callback when moving a point
                   symbol = 's',                                     # symbol of control points
                   **kwargs):
 
-        self._callback_changed = on_changed
+        self._callback_changed = on_changed if (callable(on_changed) and movable) else None
+        self._callback_move    = on_move if (callable(on_move) and movable) else None
         self._id = id 
         self.movable = movable 
  
@@ -596,7 +598,7 @@ class Movable_Curve (pg.PlotCurveItem):
 
                 x = round (ev.pos().x(),6)
                 y = round (ev.pos().y(),6)
-                added = self._add_point (x,y)             # try to add point, overriden in subclass
+                added = self._add_point (x,y)               # try to add point, overriden in subclass
 
                 if added: 
                     ev.accept()
@@ -611,9 +613,15 @@ class Movable_Curve (pg.PlotCurveItem):
         self.setData(*self.points_xy())                     # update self (polyline) 
 
         if self._curve_item: 
-            self._update_curve()                                      # update of curve           
+            self._update_curve()                                    
             self._update_curve_item ()
             self._curve_item.show()
+
+        # callback to parent when moving
+        if callable(self._callback_move):
+            # let events finish before calling callback
+            # QTimer.singleShot(0, lambda: self._callback_move()) 
+            self._callback_move() 
 
 
     def _add_point (self, x: float, y: float) -> bool:
@@ -668,9 +676,8 @@ class Movable_Curve (pg.PlotCurveItem):
         """ slot - point move is finished """
         
         if callable(self._callback_changed):
-            timer = QTimer()   
-            # delayed emit 
-            timer.singleShot(10, lambda: self._callback_changed())
+            # let events finish before calling callback 
+            QTimer.singleShot(0, lambda: self._callback_changed())
 
 
 

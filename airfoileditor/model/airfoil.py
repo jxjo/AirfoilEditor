@@ -79,7 +79,6 @@ class Airfoil:
     isBSplineBased      = False
     isCSTBased          = False
     isHicksHenneBased   = False
-    isDatBased          = True
 
     Extension           = '.dat'
     NAME_SUFFIX         = ""                        # will be added to name and filename if not already there
@@ -586,7 +585,7 @@ class Airfoil:
         """
 
         if self.usedAsDesign:
-            if self.isDatBased:
+            if self.geo.isBasic or self.geo.isSplined:
                 if (self._design_temp and self.geo.is_equal_xy(self.x, self.y)):            # remove temp, self is up to date
                     self._design_temp = None
                 elif (self._design_temp and self.geo.is_equal(self._design_temp.geo)):      # keep existing temp
@@ -1039,10 +1038,6 @@ class Airfoil_Curve (Airfoil):
 
     """
 
-    isBezierBased       = False
-    isBSplineBased      = False
-    isDatBased          = False
-
     Extension           = ""
     NAME_SUFFIX         = "_curve"                      # will be added to name and filename if not already there
 
@@ -1147,11 +1142,6 @@ class Airfoil_Curve (Airfoil):
         return self.geo.y                                #take from curve  
 
     # -----------------
-
-    def reset (self): 
-        """ make child curves like thickness or camber invalid """
-        self.geo._reset_lines()
-
 
     def load (self):
         """
@@ -1269,7 +1259,6 @@ class Airfoil_Bezier (Airfoil_Curve):
     """
 
     isBezierBased       = True
-    isDatBased          = False
 
     Extension           = ".bez"
     NAME_SUFFIX         = "_bezier"                     # will be added to name and filename if not already there
@@ -1410,8 +1399,6 @@ class Airfoil_BSpline (Airfoil_Curve):
     """
 
     isBSplineBased      = True
-    isBezierBased       = False
-    isDatBased          = False
 
     Extension           = ".bsp"
     NAME_SUFFIX         = "_bspline"                      # will be added to name and filename if not already there
@@ -1521,7 +1508,6 @@ class Airfoil_CST (Airfoil_Curve):
     """
 
     isCSTBased          = True
-    isDatBased          = False
 
     Extension           = ".cst"
     NAME_SUFFIX         = "_cst"
@@ -1672,7 +1658,6 @@ class Airfoil_Hicks_Henne(Airfoil):
     """
 
     isHicksHenneBased  = True
-    isDatBased         = False
 
     Extension           = ".hicks"
 
@@ -1737,11 +1722,6 @@ class Airfoil_Hicks_Henne(Airfoil):
         return self.geo.y
 
     # -----------------
-
-    def reset (self): 
-        """ make child curves like thickness or camber invalid """
-        self.geo._reset_lines()
-
 
     def load (self):
         """

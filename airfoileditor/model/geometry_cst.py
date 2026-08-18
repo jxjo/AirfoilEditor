@@ -347,7 +347,7 @@ class Geometry_CST(Geometry_Curve):
         else:
             self._panelling.save()
 
-        self._reset_lines()
+        self._reset()
         self._changed(Geometry.MOD_REPANEL)
 
 
@@ -431,13 +431,10 @@ class Geometry_CST(Geometry_Curve):
                 logger.info(f"Geometry_CST: geometry is flapped, derotating by {derotation_angle:.2f}° to normalize")
 
             geo_norm = Geometry (geo.x, geo.y)          # temporary normalized copy of geometry
-            geo_norm._push_xy()                         # speed hack
             geo_norm._normalize() 
-            geo_norm._set_xy (geo_norm._x, geo_norm._y)
         else:
             geo_norm = geo
             derotation_angle = 0.0
-
 
         return (*fit_cst_from_xy (
             geo_norm.upper.x, geo_norm.upper.y, geo_norm.lower.x, geo_norm.lower.y,

@@ -21,7 +21,7 @@ from .geometry      import (Line, Geometry, Curvature_Abstract,
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 # -----------------------------------------------------------------------------
@@ -391,6 +391,9 @@ class Geometry_Splined (Geometry):
     def _normalize (self):
         """Shift, rotate, scale airfoil so LE is at 0,0 and TE is symmetric at 1,y"""
 
+        # ensure spline is build from current x,y coordinates
+        self._reset() 
+
         if self._isNormalized_spline():
             return False
 
@@ -406,7 +409,7 @@ class Geometry_Splined (Geometry):
             n += 1
 
             if n > 1:
-                self._reset_spline ()
+                self._reset ()
                 self._repanel (retain=True)   
 
             super()._normalize()                # normalize based on coordinates
@@ -419,6 +422,8 @@ class Geometry_Splined (Geometry):
             if norm2 <= self.EPSILON_LE_CLOSE:
                 isNormalized = True
 
+        if not self.isNormalized:
+            logger.warning (f"{self} normalize failed - norm2: {norm2:.7f}")
 
         return isNormalized
 
@@ -467,9 +472,7 @@ class Geometry_Splined (Geometry):
             # save the actual panelling options as class variables
             self._panelling.save() 
 
-            self._reset()
             self._changed (Geometry.MOD_REPANEL)
-            self._set_xy (self._x, self._y)
 
         except GeometryException: 
             logger.error ("Error during repanel")
@@ -490,7 +493,7 @@ class Geometry_Splined (Geometry):
         if based_on_org and self._x_org is not None and self._y_org is not None:
             
             self._x, self._y = None, None                       # will use original x,y coordinates to build spline 
-            self._reset_spline()
+            self._reset()
             logger.debug (f"{self} repanel based on org x,y")
 
         # sanity
@@ -507,47 +510,26 @@ class Geometry_Splined (Geometry):
         self._x = np.round (x, 10)
         self._y = np.round (y, 10)
 
-        self._reset_spline()
+        self._reset()
 
         return True
 
 
     # ------------------ private ---------------------------
 
-
-    def _reset_spline (self):
-        """ reinit self spline data if x,y has changed""" 
+    @override
+    def _reset (self):
+        """ reset all the sub objects like Lines or Splines"""
+       
+        self._upper      = None                 # upper side 
+        self._lower      = None                 # lower side 
+        self._thickness  = None                 # thickness distribution
+        self._camber     = None                 # camber line
         self._curvature  = None                 # curvature 
+
+        # reset spline data
         self._spline     = None
         self._uLe        = None                 # u value at LE 
-
-
-    def _rebuild_from_camb_thick(self):
-        """ rebuilds self out of thickness and camber distribution """
-        # overloaded to reset spline
-
-        # keep current panel numbers of self 
-
-        nPan_upper = self.iLe
-        nPan_lower = self.nPanels - nPan_upper
-
-        super()._rebuild_from_camb_thick()
-
-        # dummy to build spline now 
-
-        a = self.spline
-
-        # when panel number changed with rebuild do repanel to get original number again 
-
-        # nPan_upper_new = self.iLe
-        # nPan_lower_new = self.nPanels - nPan_upper_new
-
-        # if (nPan_upper != nPan_upper_new) or (nPan_lower != nPan_lower_new):
-
-        #     self.repanel (nPan_upper=nPan_upper,nPan_lower=nPan_lower)
-
-            # repanel could lead to a slightly different le 
-            # self.normalize()
 
 
     def _le_find (self):

@@ -436,7 +436,7 @@ class Geometry_Curve (Geometry):
         self._te_gap_move_lower_cp = None
 
 
-    def _reset_lines (self):
+    def _reset (self):
         """ reinit the dependand lines of self""" 
 
         # clear transient TE-gap move baseline whenever dependent line state is reset
@@ -497,7 +497,7 @@ class Geometry_Curve (Geometry):
     def set_upper (self, side : Side_Airfoil_Curve):
         """ set new upper side to upper - update geometry"""
         self._upper = side
-        self._reset_lines()
+        self._reset()
 
         mod_info = "initial fit"
         mod = self.MOD_CURVE + " " + side.name
@@ -517,7 +517,7 @@ class Geometry_Curve (Geometry):
     def set_lower (self, side : Side_Airfoil_Curve):
         """ set new lower side to lower - update geometry"""
         self._lower = side
-        self._reset_lines()
+        self._reset()
 
         mod_info = "initial fit"
         mod = self.MOD_CURVE + " " + side.name 
@@ -532,7 +532,7 @@ class Geometry_Curve (Geometry):
                 self._upper = self.side_class (cpx_or_cp, cpy, linetype=line_type)
             elif line_type == Line.Type.LOWER:
                 self._lower = self.side_class (cpx_or_cp, cpy, linetype=line_type)
-            self._reset_lines()
+            self._reset()
 
 
     def set_side (self, aSide : Side_Airfoil_Curve): 
@@ -543,7 +543,7 @@ class Geometry_Curve (Geometry):
         elif aSide.isLower:
             self._lower = aSide
 
-        self._reset_lines()
+        self._reset()
 
 
     def finished_change_of (self, side : Side_Airfoil_Curve, matched = False):
@@ -691,7 +691,7 @@ class Geometry_Curve (Geometry):
             self._panelling.save() 
 
         # reset chached values
-        self._reset_lines()
+        self._reset()
         self._changed (Geometry.MOD_REPANEL)
 
 

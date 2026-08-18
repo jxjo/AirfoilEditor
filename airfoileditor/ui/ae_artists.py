@@ -157,7 +157,6 @@ class Movable_Highpoint (Movable_Point):
 
         self.name = 'max '+ line.name
         self._geo = geo
-        self._line = line
         self._line_type = line.type
         self._line_plot_item = line_plot_item
 
@@ -170,14 +169,14 @@ class Movable_Highpoint (Movable_Point):
 
     def label_static (self, *_):
 
-        if self._line.type == Line.Type.CAMBER and self._geo.isSymmetrical: 
+        if self._line_type == Line.Type.CAMBER and self._geo.isSymmetrical: 
             return  "No camber - symmetrical" 
         else:  
             return super().label_static()
 
     def label_moving (self, *_):
 
-        if self._line.type == Line.Type.CAMBER and self._geo.isSymmetrical: 
+        if self._line_type == Line.Type.CAMBER and self._geo.isSymmetrical: 
             return  "No camber - symmetrical" 
         else:  
             return f"{self.y:.2%} @ {self.x:.2%}"
@@ -187,19 +186,20 @@ class Movable_Highpoint (Movable_Point):
         """ slot - point is moved by mouse """
         # overlaoded to update airfoil geo 
         # update highpoint coordinates
-        self._geo.set_highpoint_of (self._line, (self.x, self.y), finished=False)
+        self._geo.set_highpoint_of (self._line_type, (self.x, self.y), moving=True)
 
         # update self xy if we run against limits 
-        self.setPos(self._line.highpoint.xy)
+        line = self._geo.get_line(self._line_type)
+        self.setPos(line.highpoint.xy)
 
         # update line plot item 
-        self._line_plot_item.setData (self._line.x, self._line.y)
+        self._line_plot_item.setData (line.x, line.y)
 
 
     def _finished (self, _):
         """ slot - point is move finished """
         # overlaoded to update airfoil geo 
-        self._geo.finished_change_of (self._line)
+        self._geo.set_highpoint_of (self._line_type, (self.x, self.y), moving=False)
 
         # update parent plot item 
         self._changed()
@@ -1296,7 +1296,8 @@ class LE_Radius_Artist (Artist):
 class Bezier_Artist (Artist):
     """Plot and edit airfoils Bezier control points """
 
-    sig_bezier_changed     = pyqtSignal()           # bezier curve changed 
+    sig_bezier_changed      = pyqtSignal()           # bezier curve final changed 
+    sig_bezier_moved        = pyqtSignal()           # bezier control point moved
 
 
     @property
@@ -1336,7 +1337,8 @@ class Bezier_Artist (Artist):
                     p = Movable_Side_Bezier (airfoil, side, color=color, 
                                              movable=movable,
                                              show_label=show_label,
-                                             on_changed=self.sig_bezier_changed.emit) 
+                                             on_changed=self.sig_bezier_changed.emit,
+                                             on_move=self.sig_bezier_moved.emit)
                     self._add(p)
 
 

@@ -988,7 +988,6 @@ class Line:
         self._type      = linetype 
         self._name      = name 
         self._highpoint = None                  # the high Point of the line  
-        self._max_spline = None                 # little helper spline to get maximum 
 
 
     @override
@@ -1004,6 +1003,7 @@ class Line:
     def y (self): return self._y
     def set_y (self, anArr): 
         self._y = anArr
+        self._reset()
     
     @property
     def type (self) -> Type:
@@ -1399,47 +1399,40 @@ class Line:
             xmax = 0.5 
             ymax = 0.0 
         else: 
-            if max_y > min_y:                          # upper side 
-                imax = np.argmax(self.y)
-            else:                                      # lower side
-                imax = np.argmin(self.y)
+            x = self.x
+            is_upper_side = max_y >= min_y
+
+            # reverse y for lower side to find maximum
+            y = self.y if is_upper_side else self.y * -1.0
+            imax = np.argmax(y)
 
             # build a little helper spline to find exact maximum
             if imax > 3 and imax < (len(self.x) -3 ): 
 
                 istart = imax - 3
                 iend   = imax + 3
-                try: 
-                    self._max_spline = Spline1D (self.x[istart:iend+1], self.y[istart:iend+1])
-                except: 
-                    pass
+                mask = (x >= x[istart]) & (x <= x[iend])
+                y_local = y[mask]
+                x_local = x[mask]
+
+                local_spline = Spline1D (x_local, y_local)
 
                 # nelder mead search
-                xstart = self.x[istart]
-                xend   = self.x[iend]
-                if max_y > min_y:                   # upper side 
-                    xmax = findMax (self._yFn_max, self.x[imax], bounds=(xstart, xend))
-                else:                               # lower side
-                    xmax = findMin (self._yFn_max, self.x[imax], bounds=(xstart, xend))
-                ymax = self._yFn_max (xmax)
+                bounds = (x_local[0], x_local[-1])
+                xmax = findMax (local_spline.eval, x[imax], bounds=bounds)
+                ymax = local_spline.eval(xmax)
 
             else:
-                xmax = self.x[imax]
-                ymax = self.y[imax]
+                xmax = x[imax]
+                ymax = y[imax]
+
+            # revert back if lower side
+            ymax = ymax if is_upper_side else -ymax
 
             # limit decimals to a reasonable value
             xmax = round(xmax, 7)
             ymax = round(ymax, 7)
         return xmax, ymax
-
-
-    def _yFn_max (self,x):
-        """ spline interpolated y values based on a x-value based on little maximum helper spline
-        """
-
-        if self._max_spline is None: 
-            raise ValueError ("Helper spline for maximum evaluation missing")
-        return self._max_spline.eval (x)
 
 
 
@@ -1486,6 +1479,7 @@ class Line:
         newY[0] = self._y[0]
         newY[-1] = self._y[-1]
         self._y = newY 
+        self._reset()
         return x_new        
 
 
@@ -1509,13 +1503,14 @@ class Line:
         # the approach is quite simple: scale all y values by factor new/old
 
         self._y = self._y * (y_new / self.highpoint.y)
+        self._reset()
 
         return y_new 
            
 
     def _reset (self):
         """ reinit self if x,y has changed""" 
-        self._maximum  = None                 # thickness distribution
+        self._highpoint = None
 
 
 # -----------------------------------------------------------------------------
@@ -1606,24 +1601,39 @@ class Geometry ():
 
     def _changed (self, aMod : str, 
                   val : float|str|None = None,
-                  remove_empty = False):
+                  remove_empty = False,
+                  moving = False):
         """ handle geometry changed 
             - save the modification made aMod with optional val
             - handle callbacks"""
 
-        # store modification made - can be list or single mod 
+        # sanity: rthere must be temp data
+        if self._x is None or self._y is None:
+            logger.warning (f"{self} _changed called but no temp xy data available")
+            return
 
-        if remove_empty and (val is None or not (str(val))):
-            self._modification_dict.pop (aMod, None)            # remove empty item
-        else:                     
-            self._modification_dict[aMod] = val
+        if not moving:
 
-        # info Airfoil via callback  
+            # when final, set temp _x _y to final 
+            self._x_org     = np.asarray (self._x)
+            self._y_org     = np.asarray (self._y)
+            self._clear_xy()
 
-        if callable(self._callback_changed):
-            self._callback_changed ()
+            # store modification made - can be list or single mod 
+            if remove_empty and (val is None or not (str(val))):
+                self._modification_dict.pop (aMod, None)            # remove empty item
+            else:                     
+                self._modification_dict[aMod] = val
+
+            # info Airfoil: x,y changed and available
+            if callable(self._callback_changed):
+                self._callback_changed ()
+            else:
+                logger.debug (f"{self} no change callback to airfoil defined")
+
         else:
-            logger.debug (f"{self} no change callback to airfoil defined")
+            # moving - just reset dependent data - no callback, no final xy, no modification dict
+            self._reset()
 
     @property
     def modification_dict (self) -> list [tuple]:
@@ -1689,23 +1699,6 @@ class Geometry ():
         self._y = None 
         self._reset()
  
-
-    def _set_xy (self, x, y):
-        """ 
-        final set of (valid) xy coordinates 
-        - will remove temporary _x,_y
-        - will remove lines, splines, """
-
-        # ensure copy of x,y and being numpy 
-
-        if x is not None and y is not None: 
-            self._x_org     = np.asarray (x)
-            self._y_org     = np.asarray (y)  
-
-        self._x         = None
-        self._y         = None 
-        self._reset()
-
 
     @property
     def iLe (self) -> int: 
@@ -1984,6 +1977,11 @@ class Geometry ():
                 Line.Type.THICKNESS  : self.thickness,
                 Line.Type.CAMBER     : self.camber}
 
+    def get_line (self, linetype : Line.Type) -> Line:
+        """ returns the line object for the given linetype"""
+        lines = self.lines_dict
+        return lines.get(linetype, None)
+    
 
     def is_equal (self, other : 'Geometry') -> bool:
         """ Check if two Geometry objects are equal based on their x and y. """
@@ -2087,10 +2085,7 @@ class Geometry ():
 
             self._rebuild_from_upper_lower ()
 
-            if not moving:
-                self._reset () 
-                self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))   # finalize (parent) airfoil 
-                self._set_xy (self._x, self._y)
+            self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2), moving=moving)   
 
         except GeometryException:
             self._clear_xy()
@@ -2103,16 +2098,14 @@ class Geometry ():
         
         Arguments: 
             new_radius:  new radius to apply 
-            xblend:      the blending range from leading edge 0.001..1
+            xBlend:      the blending range from leading edge 0.001..1
         """
 
         try: 
             self._set_le_radius (new_radius, xBlend) 
-            if not moving:
-                self._rebuild_from_upper_lower ()
-                self._reset () 
-                self._changed (Geometry.MOD_LE_RADIUS, round(new_radius*100,2))
-                self._set_xy (self._x, self._y)
+
+            self._rebuild_from_upper_lower ()
+            self._changed (Geometry.MOD_LE_RADIUS, round(new_radius*100,2), moving=moving)
  
         except GeometryException:
             self._clear_xy()
@@ -2124,7 +2117,7 @@ class Geometry ():
         
         Arguments: 
             new_curvature:   new curvature to apply 
-            xblend:          the blending range from leading edge 0.001..1
+            xBlend:          the blending range from leading edge 0.001..1
         """
 
         if new_curvature: 
@@ -2140,7 +2133,7 @@ class Geometry ():
         
         Arguments: 
             new_radius:   in y-coordinates - typically 0.01 or so
-            xblend:   the blending range from leading edge 0.001..1 - Default 0.1"""
+            xBlend:   the blending range from leading edge 0.001..1 - Default 0.1"""
 
 
         new_radius = clip (new_radius, 0.001, 0.03)             # limit radius to reasonable values
@@ -2172,27 +2165,6 @@ class Geometry ():
         
         self._rebuild_from_upper_lower ()
 
-        # create new curvature to recalc curvature at LE
-
-        self._curvature = None
-
-
-    def set_flapped_data (self, x : np.ndarray, y : np.ndarray, 
-                          flap_angle : float, x_flap : float):
-        """ set flapped x,y data - update geometry 
-
-        Args: 
-            x,y:  coordinates of flapped airfoil 
-            flap_angle: flap angle of x,y data 
-            x_flap: x position of flap
-        """
-
-        try: 
-            self._set_xy (x, y)
-            self._changed (Geometry.MOD_FLAP, f"{flap_angle:.1f}@{x_flap*100:.1f}")   # finalize (parent) airfoil 
-        except GeometryException:
-            self._clear_xy()
-
 
     @property
     def flap_setter (self) -> Flap_Setter:
@@ -2220,97 +2192,74 @@ class Geometry ():
 
             self._rebuild_from_upper_lower()
 
-            if not moving:
-                try: 
-                    self._reset ()
-                    flap_angle = self.flap_setter.flap_angle
-                    x_flap     = self.flap_setter.x_flap
-                    self._changed (Geometry.MOD_FLAP, f"{flap_angle:.1f}@{x_flap*100:.1f}")   # finalize (parent) airfoil 
-                except GeometryException:
-                    self._clear_xy()
+            mod_str = f"{self.flap_setter.flap_angle:.1f}@{self.flap_setter.x_flap*100:.1f}"
+            self._changed (Geometry.MOD_FLAP, mod_str, moving=moving)
 
  
     def set_max_thick (self, val : float): 
         """ change max thickness"""
-        self.set_highpoint_of (self.thickness,(None, val))
+        self.set_highpoint_of (Line.Type.THICKNESS,(None, val))
         
 
     def set_max_thick_x (self, val : float): 
         """ change max thickness x position"""
-        self.set_highpoint_of (self.thickness,(val,None))
+        self.set_highpoint_of (Line.Type.THICKNESS,(val,None))
 
 
     def set_max_camb (self, val : float): 
         """ change max camber"""
         if not self.isSymmetrical:
-            self.set_highpoint_of (self.camber,(None, val))
+            self.set_highpoint_of (Line.Type.CAMBER,(None, val))
 
 
     def set_max_camb_x (self, val : float): 
         """ change max camber x position"""
         if not self.isSymmetrical:
-            self.set_highpoint_of (self.camber,(val, None))
+            self.set_highpoint_of (Line.Type.CAMBER,(val, None))
            
 
-    def set_highpoint_of (self, aLine: Line, xy : tuple, finished=True): 
-        """ change highpoint of a line - update airfoil """
+    def set_highpoint_of (self, line_type: Line.Type, xy : tuple, moving=False):
+        """ 
+        change highpoint of a line - update airfoil 
+        """
 
         try: 
+
+            aLine = self.lines_dict[line_type]
+
             aLine.set_highpoint (xy)
+            aLine.highpoint.label_percent ()
+
         except GeometryException: 
-            logger.warning (f"{self} set highpoint failed for {aLine}")
+            logger.warning (f"{self} set highpoint failed for {line_type}")
             self._clear_xy ()
+            return 
 
-        if finished: 
-            self.finished_change_of (aLine)
-
-
-    def finished_change_of (self, aLine: Line): 
-        """ change highpoint of a line - update geometry """
-
-        if aLine.type == Line.Type.THICKNESS:
+        if line_type == Line.Type.THICKNESS:
             self._rebuild_from_camb_thick ()
             amod = Geometry.MOD_MAX_THICK
             lab  = aLine.highpoint.label_percent ()
-
-        elif aLine.type == Line.Type.CAMBER:
+        elif line_type == Line.Type.CAMBER:
             self._rebuild_from_camb_thick ()
             amod = Geometry.MOD_MAX_CAMB
             lab  = aLine.highpoint.label_percent ()
-
-        elif aLine.type == Line.Type.UPPER:
+        elif line_type == Line.Type.UPPER:
             self._rebuild_from_upper_lower ()
             amod = Geometry.MOD_MAX_UPPER
             lab  = ' '
-
-        elif aLine.type == Line.Type.LOWER:
+        elif line_type == Line.Type.LOWER:
             self._rebuild_from_upper_lower ()
             amod = Geometry.MOD_MAX_LOWER
             lab  = ' '
-
         else:
-            raise ValueError (f"{aLine.type} not supprted for set_highpoint") 
+            raise ValueError (f"{line_type} not supported for set_highpoint_of")
 
-        self._reset()
+        # rebuild could have moved splined le
         self._normalize()
-        self._changed (amod, lab, remove_empty=True)
-        self._set_xy (self._x, self._y)
 
+        self._changed (amod, lab, remove_empty=True, moving=moving)   
 
-    def _set_max_thick_upper_lower (self, thick_cur : float, thick_new : float):
-        """ 
-        Set max thickness by direct change of y coordinates of upper and lower side  
-            - not via thickness line 
-        """
-
-        # currently le must be at 0,0 - te must be at 1,gap/2 (normalized airfoil) 
-        if not self._isNormalized():
-            raise GeometryException ("Airfoil isn't normalized. Thickness can't be set.")
-
-        # the approach is quite simple: scale all y values by factor new/old
-
-        self.upper.set_y (self.upper.y * thick_new / thick_cur)        
-        self.lower.set_y (self.lower.y * thick_new / thick_cur)        
+        return 
 
 
     def upper_new_x (self, new_x) -> np.ndarray: 
@@ -2359,10 +2308,9 @@ class Geometry ():
             if self._isNormalized_spline(): return False
 
         try: 
-            self._push_xy ()                    # ensure a copy of x,y 
+            self._push_xy ()                            # ensure a copy of x,y 
             self._normalize() 
-            self._changed (Geometry.MOD_NORMALIZE)       # finalize (parent) airfoil 
-            self._set_xy (self._x, self._y)
+            self._changed (Geometry.MOD_NORMALIZE)      # finalize (parent) airfoil 
 
         except GeometryException:
             self._clear_xy()
@@ -2467,10 +2415,11 @@ class Geometry ():
         pass
 
 
+    def blend (self, geo1_in : 'Geometry', geo2_in : 'Geometry', blendBy : float, moving=False):
+        """ blends  self out of two geometries depending on the blendBy factor"""
 
-    def _blend (self, geo1_in : 'Geometry', geo2_in : 'Geometry', blendBy, moving=False):
-        """ blends self out of two geometries depending on the blendBy factor"""
-
+        if not (geo1_in and geo2_in):
+            return
         # ensure geo1 is normalized - to this on a copy 
         
         if not geo1_in._isNormalized():
@@ -2481,10 +2430,10 @@ class Geometry ():
 
         # prepare geo2 Geometry to have linear or splined interpolation for blending
 
-        if moving and geo2_in.__class__ != Geometry:
+        if moving and not geo2_in.isBasic:
             # ensure geo2 is basic Geometry to have linear interpolation for blending
             geo2 = Geometry (np.copy(geo2_in.x), np.copy(geo2_in.y))
-        elif not moving and  geo2_in.__class__ == Geometry:
+        elif not moving and  geo2_in.isBasic:
             # ensure geo2 has no basic Geometry 
             from .geometry_spline import Geometry_Splined
             geo2 = Geometry_Splined (np.copy(geo2_in.x), np.copy(geo2_in.y))  
@@ -2526,18 +2475,7 @@ class Geometry ():
         # rebuild x,y coordinates 
         self._rebuild_from (x_upper, y_upper, x_lower, y_lower)
 
-
-
-    def blend (self, geo1 : 'Geometry', geo2 : 'Geometry', blendBy : float, moving=False):
-        """ blends  self out of two geometries depending on the blendBy factor"""
-
-        if geo1 and geo2: 
-            
-            self._blend (geo1, geo2, blendBy, moving=moving)   
-
-            if not moving:      
-                self._set_xy (self._x, self._y)
-                self._changed (Geometry.MOD_BLEND, f"{blendBy*100:.0f}")
+        self._changed (Geometry.MOD_BLEND, f"{blendBy*100:.0f}", moving=moving)   # finalize (parent) airfoil
 
 
     def assess_quality (self) -> list [str]:
@@ -2547,11 +2485,11 @@ class Geometry ():
         """
         issues = []
 
-        if not self.isNormalized:
-            if self.isSplined and not self.isLe_closeTo_le_real:
-                issues.append("Spline LE not at (0,0)")
-            elif self.le[0] != 0.0 or self.le[1] != 0.0 : 
-                issues.append("LE not at (0,0)")
+        if self.le[0] != 0.0 or self.le[1] != 0.0 : 
+            issues.append("LE not at (0,0)")
+        elif self.isSplined and not self.isLe_closeTo_le_real:
+            issues.append("Spline LE not at (0,0)")
+
         if not self.isFlapped:
             te_not_at_1 = ""
             te_not_sym  = ""
@@ -2566,12 +2504,6 @@ class Geometry ():
                 issues.append (te_not_at_1)
             if te_not_sym:
                 issues.append (te_not_sym)
-
-        # if not self.isNormalized:
-        #     issues.append("Airfoil not normalized")
-
-        if not self.isLe_closeTo_le_real:
-            issues.append("LE does not match real LE")
 
         if abs(self.te_gap) > 0.01:
             issues.append(f"TE gap too large: {self.te_gap:.4f}")
@@ -2705,30 +2637,17 @@ class Geometry ():
 
         self._rebuild_from (x_upper, y_upper, x_lower, y_lower)
 
-        # retain the old panel distribution 
-        # self._repanel (retain=True) does not work 
-
 
     def _reset (self):
-        """ reset all the sub objects like Lines and Splines"""
-        self._reset_lines()
-        self._reset_spline() 
+        """ reset all the sub objects like Lines or Splines"""
 
+        # to be overriden in derived classes if needed
 
-    def _reset_lines (self):
-        """ reinit the dependand lines of self""" 
         self._upper      = None                 # upper side 
         self._lower      = None                 # lower side 
         self._thickness  = None                 # thickness distribution
         self._camber     = None                 # camber line
         self._curvature  = None                 # curvature 
-
-    def _reset_spline (self):
-        """ reinit self spline data if x,y has changed""" 
-        # to be overloaded
-
-
-# ------------ test functions - to activate  -----------------------------------
 
 
 if __name__ == "__main__":

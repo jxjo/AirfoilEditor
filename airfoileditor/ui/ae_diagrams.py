@@ -917,6 +917,7 @@ class Item_Airfoil (Diagram_Item):
 
         a = Bezier_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
         a.sig_bezier_changed.connect (self.app_model.notify_airfoil_changed)
+        a.sig_bezier_moved.connect (self.app_model.notify_airfoil_geo_changed)
         self._bezier_artist = a
         self._add_artist (a)
 
