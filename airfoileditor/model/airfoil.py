@@ -47,7 +47,6 @@ class usedAs (StrEnum):
     SEED        = "Seed"
     REF         = "Reference" 
     DESIGN      = "Design"
-    DESIGN_TEMP = "Design tmp"
     TARGET      = "Target"
     SECOND      = "Airfoil 2"
     FINAL       = "Final"
@@ -126,7 +125,6 @@ class Airfoil:
         self._usedAs         = usedAs.NORMAL                # usage type of airfoil used by app <- AIRFOIL_TYPES
         self._propertyDict   = {}                           # multi purpose extra properties for an Airfoil
         self._file_datetime  = None                         # modification datetime of file 
-        self._design_temp    = None                         # temp design airfoil based on self - during user design
 
         # pathFileName must exist if no coordinates were given 
 
@@ -576,28 +574,6 @@ class Airfoil:
         """ set free style property of self"""
         return toDict (self._propertyDict, name, aVal )
 
-
-    @property
-    def design_temp (self) -> 'Airfoil':
-        """ 
-        returns a temporary Design airfoil based on self geometry which is used
-        in UI to show intermediate modifications of self 
-        """
-
-        if self.usedAsDesign:
-            if self.geo.isBasic or self.geo.isSplined:
-                if (self._design_temp and self.geo.is_equal_xy(self.x, self.y)):            # remove temp, self is up to date
-                    self._design_temp = None
-                elif (self._design_temp and self.geo.is_equal(self._design_temp.geo)):      # keep existing temp
-                    pass
-                elif ( not self.geo.is_equal_xy(self.x, self.y)):       # create new temp
-                    self._design_temp = Airfoil (x=self.geo.x, y=self.geo.y, geometry=GEO_BASIC, name=self.name+"_temp")
-                    self._design_temp.set_usedAs (usedAs.DESIGN_TEMP)
-            else:
-                return self
-        else:
-            self._design_temp = None
-        return self._design_temp
 
     #-----------------------------------------------------------
 

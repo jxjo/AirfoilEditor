@@ -260,7 +260,7 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
         if self._airfoil2_copy is not None: 
             self.airfoil.geo.blend(self.airfoil_seed.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, moving=True)
-            self.app_model.notify_airfoil_geo_changed()
+            self.app_model.notify_geo_changed()
 
 
     @property
@@ -281,7 +281,7 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
         if aAirfoil is not None: 
             self.airfoil.geo.blend(self.airfoil_seed.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, moving=True)
-            self.app_model.notify_airfoil_geo_changed()
+            self.app_model.notify_geo_changed()
 
 
     def _init_layout(self) -> QLayout:
@@ -320,7 +320,7 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
         if self._changes:
             # do final blend with high quality (splined) 
             self.airfoil.geo.blend (self.airfoil_seed.geo, self.airfoil_2.geo, self.blendBy) 
-            self.app_model.notify_airfoil_changed()
+            self.app_model.notify_geo_changed()
 
         self.app_model.set_airfoil_2 (None)
 
@@ -432,7 +432,7 @@ class Repanel_Airfoil_Dialog (Dialog_Modeless):
         if self._changes:
             # finalize modifications
             self.geo.repanel (just_finalize=True)
-            self._app_model.notify_airfoil_changed ()
+            self._app_model.notify_geo_changed ()
 
         self._app_model.notify_airfoil_geo_paneling (False)     # switch off panel mode in diagram
 
@@ -529,7 +529,7 @@ class Flap_Airfoil_Dialog (Dialog_Modeless):
         if self.has_been_flapped:
             # finalize modifications
             self.airfoil.do_flap ()                             # modify airfoil geometry
-            self.app_model.notify_airfoil_changed()
+            self.app_model.notify_geo_changed()
 
         self.app_model.notify_airfoil_flap_set (False)      # switch off flap mode in diagram
 
@@ -548,13 +548,13 @@ class TE_Gap_Dialog (Dialog_Modeless):
 
         self._app_model = app_model
 
-        self._xBlend = app_model.airfoil.geo.TE_GAP_XBLEND           # start with initial value
+        self._xBlend = app_model.airfoil.geo.te_gap_xBlend  
         self._te_gap = app_model.airfoil.geo.te_gap
 
         super().__init__ (parent, **kwargs)
 
         # switch on TE gap mode in diagram
-        self.app_model.notify_airfoil_geo_te_gap (self.xBlend)
+        self.app_model.notify_airfoil_geo_te_gap (moving=True)
 
 
     @property
@@ -566,6 +566,18 @@ class TE_Gap_Dialog (Dialog_Modeless):
         return self.app_model.airfoil
 
 
+    def on_geo_changing (self, source = None):
+        """ 
+        slot for geo changing signal e.g. from diagram 
+        - update fields if source is not self
+        """
+        if source != self:
+            self._xBlend    = self.airfoil.geo.te_gap_xBlend
+            self._te_gap    = self.airfoil.geo.te_gap
+            self._changes   = True
+            self.refresh()
+
+
     @property
     def xBlend (self) -> float:
         """ blending range x/c from TE"""
@@ -575,7 +587,7 @@ class TE_Gap_Dialog (Dialog_Modeless):
 
         self._xBlend = aVal
         self.airfoil.geo.set_te_gap (self.te_gap, xBlend=aVal, moving=True)
-        self.app_model.notify_airfoil_geo_te_gap (self.xBlend)
+        self.app_model.notify_geo_changing (source=self)
         self.refresh()
 
 
@@ -588,7 +600,7 @@ class TE_Gap_Dialog (Dialog_Modeless):
 
         self._te_gap = aVal
         self.airfoil.geo.set_te_gap (aVal, xBlend=self.xBlend, moving=True)
-        self.app_model.notify_airfoil_geo_te_gap (self.xBlend)
+        self.app_model.notify_geo_changing (source=self)
         self._has_been_set = True
         self.refresh()
 
@@ -629,10 +641,10 @@ class TE_Gap_Dialog (Dialog_Modeless):
         if self._changes:
             # finalize modifications
             self.airfoil.geo.set_te_gap (self.te_gap, xBlend=self.xBlend)
-            self.app_model.notify_airfoil_changed ()
+            self.app_model.notify_geo_changed ()
 
         # switch off TE gap mode in diagram
-        self.app_model.notify_airfoil_geo_te_gap (None)  
+        self.app_model.notify_airfoil_geo_te_gap (moving=False)
 
         return super().done(result)
 
@@ -897,13 +909,13 @@ class LE_Radius_Dialog (Dialog_Modeless):
 
         self._app_model = app_model
 
-        self._xBlend    = app_model.airfoil.geo.LE_RADIUS_XBLEND           # start with initial value
+        self._xBlend    = app_model.airfoil.geo.le_radius_xBlend     
         self._le_radius = app_model.airfoil.geo.le_radius
 
         super().__init__ (parent, **kwargs)
 
         # switch on LE radius mode in diagram
-        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
+        self.app_model.notify_airfoil_geo_le_radius (moving=True)
 
 
     @property
@@ -915,6 +927,18 @@ class LE_Radius_Dialog (Dialog_Modeless):
         return self.app_model.airfoil
 
 
+    def on_geo_changing (self, source = None):
+        """ 
+        slot for geo changing signal e.g. from diagram 
+        - update fields if source is not self
+        """
+        if source != self:
+            self._xBlend    = self.airfoil.geo.le_radius_xBlend
+            self._le_radius = self.airfoil.geo.le_radius
+            self._changes   = True
+            self.refresh()
+
+
     @property
     def xBlend (self) -> float:
         """ blending range x/c from LE"""
@@ -924,7 +948,7 @@ class LE_Radius_Dialog (Dialog_Modeless):
 
         self._xBlend = aVal
         self.airfoil.geo.set_le_radius (self.le_radius, xBlend=aVal, moving=True)
-        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
+        self.app_model.notify_geo_changing (source=self)
         self.refresh()
 
 
@@ -937,7 +961,7 @@ class LE_Radius_Dialog (Dialog_Modeless):
 
         self._le_radius = aVal
         self.airfoil.geo.set_le_radius (aVal, xBlend=self.xBlend, moving=True)
-        self.app_model.notify_airfoil_geo_le_radius (self.xBlend)
+        self.app_model.notify_geo_changing (source=self)
         self.refresh()
 
     @property
@@ -989,10 +1013,10 @@ class LE_Radius_Dialog (Dialog_Modeless):
         if self._changes:
             # finalize modifications
             self.airfoil.geo.set_le_radius (self.le_radius, xBlend=self.xBlend)
-            self.app_model.notify_airfoil_changed ()
+            self.app_model.notify_geo_changed ()
 
         # switch off LE radius mode in diagram
-        self.app_model.notify_airfoil_geo_le_radius (None)  
+        self.app_model.notify_airfoil_geo_le_radius (moving=False)
 
         return super().done(result)
 

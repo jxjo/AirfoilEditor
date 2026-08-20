@@ -107,7 +107,7 @@ class Panel_Airfoil_Abstract (Edit_Panel):
     def _on_widget_changed (self, widget):
         """ user changed data in widget"""
         logger.debug (f"{self} {widget} widget changed slot")
-        self.app_model.notify_airfoil_changed ()
+        self.app_model.notify_geo_changed ()
 
 
 # --------------------------------------------------------------------------
@@ -567,6 +567,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         dialog = LE_Radius_Dialog (self, self.app_model, parentPos=(0.5, 0.6), dialogPos=(0,1),
                                    close_on_click_outside=False,
                                    lock_widget_while_open=self.parent_container)
+        dialog.connect_live_signal(self.app_model.sig_geo_changing, dialog.on_geo_changing)
         dialog.show()     
 
 
@@ -576,6 +577,7 @@ class Panel_Geometry (Panel_Airfoil_Abstract):
         dialog = TE_Gap_Dialog (self, self.app_model, parentPos=(0.5, 0.6), dialogPos=(0,1),
                                 close_on_click_outside=False,
                                 lock_widget_while_open=self.parent_container)
+        dialog.connect_live_signal(self.app_model.sig_geo_changing, dialog.on_geo_changing)
         dialog.show()     
 
 
@@ -1000,7 +1002,7 @@ class Panel_LE_TE  (Panel_Airfoil_Abstract):
         """ normalize airfoil to LE at 0,0 and TE at x=1.0"""
 
         self.airfoil.normalize()
-        self.app_model.notify_airfoil_changed()
+        self.app_model.notify_geo_changed()
 
 
 

@@ -20,6 +20,8 @@ from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
 from PyQt6.QtCore            import QCoreApplication, pyqtSignal, QObject, QThread, QTimer
+from PyQt6.QtWidgets         import QWidget
+from pyqtgraph               import PlotItem
 
 from .resources              import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
@@ -131,8 +133,9 @@ class App_Model (QObject):
     sig_new_polars              = pyqtSignal()          # new polars generated (Watchdog)
 
     sig_airfoil_geo_changed     = pyqtSignal()          # airfoil geometry is fast changing / moving 
+    sig_geo_changing            = pyqtSignal(object)    # fast geometry changing including source widget
     sig_airfoil_geo_te_gap      = pyqtSignal(object)    # te gap is fast changing / moving
-    sig_airfoil_geo_le_radius   = pyqtSignal(object)    # le radius is fast changing / moving
+    sig_airfoil_geo_le_radius   = pyqtSignal(bool)      # le radius is fast changing / moving
     sig_airfoil_geo_paneling    = pyqtSignal(bool)      # airfoil panelling is fast changing / moving
     sig_airfoil_flap_set        = pyqtSignal(bool)      # flap setting (Flapper) changed / moving
     sig_airfoil_geo_curve       = pyqtSignal(Line.Type) # new curve (Bezier or B-Spline) during match curve 
@@ -266,17 +269,6 @@ class App_Model (QObject):
             self.sig_polar_set_changed.emit()
 
 
-    def _add_polar_set_to_design_temp (self):
-        """ add neuralfoil polar set to the temp design airfoil if it exists """
-
-        design_temp = self.airfoil.design_temp
-        if design_temp:
-            # create temp polar_set with just neuralfoil polars
-            polar_defs = [p for p in self.polar_definitions if p.is_neuralfoil]
-            # assign this temp polar_set to this temp airfoil
-            design_temp.set_polarSet (Polar_Set (design_temp, polar_def=polar_defs, only_active=True))
-
-
     def _on_xo2_new_design (self):
         """ slot to handle new design during Xoptfoil2 run signaled by watchdog """
 
@@ -343,7 +335,7 @@ class App_Model (QObject):
             case : Case_Match_Target = self.case
             case.set_match_result (result)
 
-            self.notify_airfoil_changed()                                   # notify change of airfoil - new design
+            self.notify_geo_changed()                                   # notify change of airfoil - new design
 
             self._matcher = None
 
@@ -520,17 +512,41 @@ class App_Model (QObject):
             self.sig_new_airfoil.emit()
 
 
-    def notify_airfoil_changed (self):
+    def notify_geo_changing (self, source = None):
+        """ 
+        Notify self that current airfoil geometry is moving rapidly
+
+        Args: 
+            source: optional source of the change - can be a widget, plot item, ... to avoid feedback loops
+        """
+
+        design = self.airfoil_design
+
+        if design:
+
+            # replace polar set of the design airfoil with just neuralfoil polars to avoid xfoil polar generation during moving
+            polar_defs = [p for p in self.polar_definitions if p.is_neuralfoil]
+            if polar_defs:
+                self.airfoil.set_polarSet (Polar_Set (design, polar_def=polar_defs, only_active=True))
+
+            logger.debug (f"{self} geo moving - polar set replaced with neuralfoil polars")
+
+            self.sig_geo_changing.emit(source)        # inform diagram and data panel - geo is moving
+
+
+    def notify_geo_changed (self):
         """ notify self that current airfoil has changed """
 
-        if isinstance (self.case, Case_Direct_Design) and self.airfoil.usedAsDesign:
+        design = self.airfoil_design
+
+        if isinstance (self.case, Case_Direct_Design) and design:
 
             # create copy of airfoil and it add this to the list of designs, current gets new name
             case : Case_Direct_Design = self.case
-            case.add_design(self.airfoil)
+            case.add_design(design)
 
             # reset the polar set of the current airfoil ensure re-generation of polars (new filename)
-            self.airfoil.set_polarSet (Polar_Set (self.airfoil, polar_def=self.polar_definitions, only_active=True))
+            design.set_polarSet (Polar_Set (design, polar_def=self.polar_definitions, only_active=True))
 
             logger.debug (f"{self} airfoil_changed - added new design")
             self.sig_new_airfoil.emit()                             # inform diagram and data panel - new design generated
@@ -554,33 +570,25 @@ class App_Model (QObject):
     def notify_airfoil_geo_changed (self):
         """ notify self that current airfoil geometry has changed rapidly """
 
-        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil 
-
         self.sig_airfoil_geo_changed.emit()
 
 
-    def notify_airfoil_geo_te_gap (self, xBlend: float ):
+    def notify_airfoil_geo_te_gap (self, moving : bool = False):
         """ notify self that current airfoil geometry TE gap has changed rapidly """  
 
-        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil
-
-        self.sig_airfoil_geo_te_gap.emit (xBlend)
+        self.sig_airfoil_geo_te_gap.emit (moving)
 
 
-    def notify_airfoil_geo_le_radius (self, xBlend: float ):
+    def notify_airfoil_geo_le_radius (self, moving: bool = False):
         """ notify self that current airfoil geometry LE radius has changed rapidly """  
 
-        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil
-
-        self.sig_airfoil_geo_le_radius.emit (xBlend)
+        self.sig_airfoil_geo_le_radius.emit (moving)
 
 
     def notify_airfoil_flap_set (self, is_set: bool):
         """ notify self that current airfoil flap setting has changed rapidly """  
 
         self.airfoil.geo.set_flap (moving=True)
-
-        self._add_polar_set_to_design_temp()                        # neuralfoils to temp design airfoil
 
         self.sig_airfoil_flap_set.emit (is_set)
 
@@ -642,7 +650,7 @@ class App_Model (QObject):
             new_design = not moving
 
         if new_design:
-            self.notify_airfoil_changed()         # notify change of airfoil - new design
+            self.notify_geo_changed()         # notify change of airfoil - new design
         else:
             self.sig_new_airfoil.emit()           # notify change of airfoil - no new design yet
 

@@ -443,7 +443,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
         """ returns signed y value of the last B-Spline control point which is half the te gap"""
         return self.curve.cpoints_y[-1]
 
-    def set_te_gap(self, te_gap: float, xBlend: float = None):
+    def set_te_gap(self, te_gap: float, xBlend: float = None, moving=False):
         """
         Apply a trailing-edge gap to this side. Sign of the gap is applied based on the side type (upper/lower). 
         The gap is blended over a specified range from the trailing edge.
@@ -452,6 +452,9 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
             te_gap: ! half of the airfoil trailing-edge gap !
             xBlend: blending range from trailing edge, 0.0..1.0
         """
+
+        # keep moving baseline handling local to side-level TE updates
+        self.set_cPoints(moving=moving)
 
         # sign sanity
         if self.type == Line.Type.UPPER:
@@ -473,7 +476,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
 
         if xBlend == 0.0:
             y[-1] = y[-1] + dgap
-            self.cPoints = list(zip(x, y))
+            self.set_cPoints(list(zip(x, y)), moving=moving)
             return
 
         # Convert trailing-edge blend length in x-space to a curve parameter start.
@@ -493,7 +496,7 @@ class Side_Airfoil_BSpline (Side_Airfoil_Curve):
 
             y[i] += dgap * tfac
 
-        self.set_cPoints(list(zip(x, y)))
+        self.set_cPoints(list(zip(x, y)), moving=moving)
 
 
 

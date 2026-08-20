@@ -84,8 +84,6 @@ def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
         color = 'springgreen'  
     elif airfoil_type == usedAs.SEED:
         color = 'dodgerblue'
-    elif airfoil_type == usedAs.DESIGN_TEMP:
-        color = 'deeppink'
     elif airfoil_type == usedAs.REF: 
         i, n = airfoil.usedAs_i_Ref (airfoils)  
         color = color_in_series ('lightskyblue', i, n, delta_hue=0.4)                      
@@ -108,7 +106,7 @@ def _label_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> str:
     if airfoil.usedAs == usedAs.REF:
         i, n = airfoil.usedAs_i_Ref (airfoils)  
         use = f"Ref {i+1}: "
-    elif airfoil.usedAs in [usedAs.DESIGN, usedAs.NORMAL, usedAs.DESIGN_TEMP] or airfoil.usedAs is None: # no prefix 
+    elif airfoil.usedAs in [usedAs.DESIGN, usedAs.NORMAL] or airfoil.usedAs is None: # no prefix 
         use = ""
     else: 
         use = f"{airfoil.usedAs}: " 
@@ -182,6 +180,7 @@ class Movable_Highpoint (Movable_Point):
             return f"{self.y:.2%} @ {self.x:.2%}"
 
 
+    @override
     def _moving (self, _):
         """ slot - point is moved by mouse """
         # overlaoded to update airfoil geo 
@@ -194,6 +193,9 @@ class Movable_Highpoint (Movable_Point):
 
         # update line plot item 
         self._line_plot_item.setData (line.x, line.y)
+
+        # signal moving
+        super()._moving()
 
 
     def _finished (self, _):
@@ -209,62 +211,36 @@ class Movable_Highpoint (Movable_Point):
 
 class Movable_TE_Point (Movable_Point):
     """ 
-    Represents the upper TE point. 
-    When moved the upper plot item will be updated
-    When finished final TE gap will be set 
+    Represents TE gap via a draggable point at TE.
+    Geometry mutation is handled by the owning artist callback.
     """
 
     name = "TE gap"
 
     def __init__ (self, 
-                  geo : Geometry, 
-                  upper_plot_item : pg.PlotDataItem, 
+                  te_gap : float,
                   show_label_static_with_value = False, 
                   movable = False, 
                   **kwargs):
-
-        # Bezier is changed via control points 
-        if geo.isCurve:
-            movable = False 
-
-        self._geo = geo
-        self._upper_plot_item = upper_plot_item
         self._show_label_static_with_value = show_label_static_with_value
 
-        xy = self._te_point_xy()
+        xy = 1.0, te_gap / 2.0
+        jpoint = JPoint (xy, y_limits=(0.0, 0.05))
 
-        super().__init__(xy, movable=movable, **kwargs)
-
-    
-    def _te_point_xy (self): 
-        return self._geo.upper.x[-1], self._geo.upper.y[-1]
-    
-
-    def _moving (self, _):
-        """ slot -point is moved"""
-
-        # update highpoint coordinates
-        self._geo.set_te_gap (self.y * 2 , moving=True)
-
-        # update self xy if we run against limits 
-        self.setPos(self._te_point_xy())
-
-        # update line plot item 
-        self._upper_plot_item.setData (self._geo.upper.x, self._geo.upper.y)
+        super().__init__(jpoint, movable=movable, show_label_static=movable, **kwargs)
 
 
-    def _finished (self, _):
-        """ slot - point moving is finished"""
-        # final highpoint coordinates
-        self._geo.set_te_gap (self.y * 2, moving=False)
-        self._changed()
+    @property
+    def te_gap_by_point (self) -> float:
+        """ returns the TE gap as set by the point position """
+        return self.y * 2.0
 
 
     @override
     def label_static (self, *_):
         """label static"""
         if self._show_label_static_with_value:
-            return f"{self.name}  {self.y*2:.2%}"
+            return f"{self.name}  {self.te_gap_by_point:.2%}"
         else: 
             return super().label_static() 
 
@@ -272,13 +248,13 @@ class Movable_TE_Point (Movable_Point):
     @override
     def label_hover (self, *_):
         """label when hovered"""
-        return f"{self.name}  {self.y*2:.2%}"
+        return f"{self.name}  {self.te_gap_by_point:.2%}"
 
 
     @override
     def label_moving (self, *_):
         """label when moving"""
-        return f"{self.name}  {self.y*2:.2%} with {Geometry.TE_GAP_XBLEND:.0%} blend range"
+        return f"{self.name}  {self.te_gap_by_point:.2%}"
 
     @override
     def _label_opts (self, moving=False, hover=False) -> dict:
@@ -298,77 +274,46 @@ class Movable_TE_Point (Movable_Point):
 
 
 
-class Movable_LE_Point (Movable_Point):
+class Movable_LE_Radius (Movable_Point):
     """ 
     Represents the LE radius . 
-    When moved the LE radius will be updated
-    When finished final LE radius will be set 
+        - when moved the LE, callback will be called 
+        - radius can be retrieved by le_radius_by_point property
     """
     name =  "LE radius"
 
     def __init__ (self, 
-                  geo : Geometry, 
-                  circle : pg.ScatterPlotItem, 
+                  radius : float, 
                   show_label_static_with_value = False, 
                   movable = False, 
                   **kwargs):
 
-        # Bezier and BSpline is changed via control points  
-        if geo.isCurve:
-            movable = False 
-
         self._show_label_static_with_value = show_label_static_with_value
-        self._geo = geo
-        self._circle_item = circle
-        xy = 2 * self._geo.le_radius , 0
 
-        super().__init__(xy, movable=movable, show_label_static = movable, **kwargs)
+        xy = 2 * radius , 0
+        jpoint = JPoint(xy, y_limits=(0,0))
+
+        super().__init__(jpoint, movable=movable, show_label_static = movable, **kwargs)
   
 
-    def _moving (self, _):
-        """ slot - when point is moved"""
-
-        # update radius 
-        new_radius = self.x / 2
-        new_radius = min(0.05,  new_radius)
-        new_radius = max(0.002, new_radius)
-
-        # update self xy if we run against limits 
-        self.setPos(2 * new_radius,0)
-
-        # update line plot item 
-        self._circle_item.setData ([new_radius], [0])
-        self._circle_item.setSize (2 * new_radius)
-
-
-    def _finished (self, _):
-        """ slot - point moving is finished"""
-
-        # final highpoint coordinates
-        new_radius = self.x / 2
-        self._geo.set_le_radius (new_radius)
-        self._changed()
+    @property
+    def le_radius_by_point (self) -> float:
+        """ returns the LE radius as set by the point position """
+        return np.hypot (self.x, self.y) / 2
 
 
     @override
     def label_static (self, *_):
         """label static"""
         if self._show_label_static_with_value:
-            return f"{self.name}  {self.x/2:.2%}"
+            return f"{self.name}  {self.le_radius_by_point:.2%}"
         else: 
             return super().label_static() 
-
-
-    @override
-    def label_hover (self, *_):
-        """label when hovered"""
-        return f"{self.name}  {self.x/2:.2%}"
-
 
     @override
     def label_moving (self, *_):
         """label when moving"""
-        return f"{self.name}  {self.x/2:.2%} with {Geometry.LE_RADIUS_XBLEND:.0%} blend range"
+        return f"{self.name}  {self.le_radius_by_point:.2%} "
 
 
 
@@ -419,7 +364,7 @@ class Movable_Side_Bezier (Movable_Curve):
     def _update_curve (self):
         """ update curve from movable points"""
         # here - take side to intersect setting if needed
-        self._side.set_cPoints_from_jpoints(self.jpoints)
+        self._airfoil.geo.set_cPoints_from_jpoints_for(self._side.type, self.jpoints, moving=True)
 
 
     def refresh (self):
@@ -442,7 +387,6 @@ class Movable_Side_Bezier (Movable_Curve):
         self._update_curve_item()
 
 
-
     def _add_point (self, pos_x, pos_y):
         """ add controlpoint to Bezier curve - called by mouse ctrl_click on Bezier line """ 
 
@@ -452,14 +396,6 @@ class Movable_Side_Bezier (Movable_Curve):
         self.curve.elevate_degree()
 
         self._finished_point()
-
-        # index, point = self._side.check_new_controlPoint_at (pos_x, pos_y)
-       
-        # if index is not None: 
-
-        #     self._side.add_controlPoint (index, point)
-        #     # _finished will do the rest - and init complete refresh
-        #     self._finished_point()
  
 
     def _delete_point (self, aPoint : Movable_Point):
@@ -537,7 +473,7 @@ class Movable_Side_BSpline (Movable_Curve):
     def _update_curve (self):
         """ update curve from movable points"""
         # here - take side to intersect setting if needed
-        self._side.set_cPoints_from_jpoints(self.jpoints)
+        self._airfoil.geo.set_cPoints_from_jpoints_for(self._side.type, self.jpoints, moving=True)
 
 
     def refresh (self):
@@ -842,7 +778,7 @@ class Movable_Side_CST (Movable_Curve):
     def _update_curve (self):
         """ update curve from movable points"""
         # here - take side to intersect setting if needed
-        self._side.set_cPoints_from_jpoints(self.jpoints)
+        self._airfoil.geo.set_cPoints_from_jpoints_for(self._side.type, self.jpoints, moving=True)
 
 
     def refresh (self):
@@ -941,14 +877,7 @@ class Airfoil_Artist (Artist):
 
     @property
     def airfoils (self) -> list [Airfoil]: 
-
-        airfoils : list [Airfoil] = list(self.data_list)   
-        for airfoil in airfoils:
-            if airfoil.design_temp:
-                airfoils.append(airfoil.design_temp)
-                break
-
-        return airfoils
+        return self.data_list   
 
 
     def _plot (self): 
@@ -958,8 +887,6 @@ class Airfoil_Artist (Artist):
         # are there many airfoils - one of them is DESIGN? 
 
         there_is_design     = any(a.usedAsDesign for a in self.airfoils) 
-        there_is_design_tmp = any(a.usedAs == usedAs.DESIGN_TEMP for a in self.airfoils)
-
 
         for iair, airfoil in enumerate (self.airfoils):
             if (airfoil.isLoaded):
@@ -992,9 +919,6 @@ class Airfoil_Artist (Artist):
                         width = 2
                         antialias = True
                         zValue = 3
-                    elif airfoil.usedAs == usedAs.DESIGN_TEMP:
-                        style = Qt.PenStyle.DashLine
-                        zValue = 4
                     elif airfoil.usedAs != usedAs.NORMAL:
                         color = QColor (color).darker (110)
                 elif airfoil.usedAs == usedAs.NORMAL:
@@ -1012,10 +936,6 @@ class Airfoil_Artist (Artist):
 
                 if self.show_points:
                     s = 'o'
-                    if airfoil.usedAsDesign and there_is_design_tmp:
-                        s = None                                        # only symbols for temp design airfoil
-                    elif airfoil.usedAs == usedAs.DESIGN_TEMP:
-                        sPen, sBrush, sSize = pg.mkPen(color, width=1.5), 'black', 9
                 else:
                     s = None
 
@@ -1171,7 +1091,10 @@ class TE_Gap_Artist (Artist):
 
     def __init__ (self, *args, **kwargs):
 
-        self._xBlend = None                             # blend range
+        self._point_item : Movable_TE_Point   = None
+        self._airfoil_item : pg.PlotDataItem  = None
+        self._range_item : pg.LinearRegionItem = None
+
         super().__init__ (*args, **kwargs)
 
 
@@ -1181,60 +1104,117 @@ class TE_Gap_Artist (Artist):
     @property
     def design_airfoil (self) -> Airfoil:
         for airfoil in self.airfoils:
-            if airfoil.design_temp:
-                return airfoil.design_temp
+            if airfoil.usedAsDesign:
+                return airfoil
+
 
     @property
-    def xBlend (self): return self._xBlend
-
-    def set_xBlend (self, xBlend):
-        """ set blend range for LE circle """
-        self._xBlend = xBlend 
-        self.set_show (xBlend is not None)
+    def geo (self) -> Geometry:
+        """ the geometry of the design airfoil """
+        return self.design_airfoil.geo if self.design_airfoil else None
 
 
     def _plot (self): 
     
         if not self.design_airfoil: return
 
+        movable_range = not self.geo.isCST
+
         color = _color_airfoil (self.airfoils, self.design_airfoil)
+        pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
 
-        for line in [self.design_airfoil.geo.upper, 
-                     self.design_airfoil.geo.lower]:
-            
-            style = _linestyle_of (line._type)
-            pen   = pg.mkPen(color, width=1.0, style=style)
+        self._airfoil_item = self._plot_dataItem (self.geo.x, self.geo.y, pen = pen, zValue=5)
 
-            p = self._plot_dataItem (line.x, line.y, pen = pen, zValue=5)
-
-            # te gap point for upper line 
-
-            if line.type == Line.Type.UPPER:
-                pt = Movable_TE_Point (self.design_airfoil.geo, p, show_label_static_with_value=True,
-                                       movable=False, color=color)
-                self._add (pt) 
+        pt = Movable_TE_Point (self.geo.te_gap, show_label_static_with_value=True,
+                               movable=True, color=color,
+                               on_move=self._on_te_gap_moving)
+        self._add (pt) 
+        self._point_item = pt
 
         # plot blending range
 
-        if self.xBlend is not None:
+        pen = pg.mkPen("dimgray", width=1)
+        lr  = pg.LinearRegionItem (values=[1.0-self.geo.te_gap_xBlend, 1.0], pen=pen, movable=False, span=(0.2, 0.8))
 
-            pen = pg.mkPen("dimgray", width=1)
-            lr  = pg.LinearRegionItem (values=[1.0-self.xBlend, 1.0], pen=pen, movable=False, span=(0.2, 0.8))
+        lr.lines[0].setMovable(movable_range)
+        lr.lines[0].setPen (pg.mkPen(COLOR_EDITABLE, width=1))
+        lr.lines[0].setHoverPen (pg.mkPen(COLOR_HOVER, width=1))
+        lr.lines[1].setMovable(False)
+        lr.sigRegionChanged.connect (self._on_xBlend_moving)
 
-            lab = pg.InfLineLabel(lr.lines[0], f"Blending Range {self.xBlend:.0%}", position=0.95, 
-                                  color=Artist.COLOR_LEGEND)
+        pg.InfLineLabel(lr.lines[0], "Blend from LE {value:.0%}", position=0.95,
+                        color=Artist.COLOR_LEGEND)
 
-            self._add(lr)
+        self._add(lr)
+        self._range_item = lr
+
+        msg = "Move TE marker to change TE gap"
+        if movable_range:
+            msg += ", or move the left line of the blending range to change"
+        self.set_help_message (msg)
+
+
+    def _on_te_gap_moving (self):
+        """slot - TE-gap point changed by user; update geometry centrally."""
+
+        if self.geo is None:
+            return
+
+        new_te_gap = self._point_item.te_gap_by_point
+
+        if new_te_gap == self.geo.te_gap:
+            return
+
+        self.geo.set_te_gap (new_te_gap, moving=True)
+
+        # snap point to actual model value without triggering move callbacks again
+        self._point_item.setPos_silent (1.0, self.geo.te_gap / 2.0)
+
+        self._airfoil_item.setData (self.geo.x, self.geo.y)
+
+        self.sig_moving.emit()
+
+
+    def _on_xBlend_moving (self, lr : pg.LinearRegionItem):
+        """ slot - blend range is changed by user """
+
+        if self.geo is None:
+            return
+
+        xStart, xEnd = lr.getRegion()
+        if xEnd != 1.0:
+            lr.setRegion ((xStart, 1.0))
+
+        xBlend = 1.0 - xStart
+        self.geo.set_te_gap (self._point_item.te_gap_by_point, xBlend=xBlend, moving=True)
+
+        # in case clipping changed blend value, sync region to model
+        xStart_model = 1.0 - self.geo.te_gap_xBlend
+        if xStart != xStart_model:
+            lr.setRegion ((xStart_model, 1.0))
+
+        self._airfoil_item.setData (self.geo.x, self.geo.y)
+
+        self.sig_moving.emit()
 
 
 
 
 class LE_Radius_Artist (Artist):
-    """Plot airfoil based on current LE radius"""
+    """
+    Helper artist for plotting and editing the LE radius of the design airfoil
+    
+    Changes in geometry will be only with "moving=True" - no final change! 
+    """
 
     def __init__ (self, *args, **kwargs):
 
-        self._xBlend = None                             # blend range
+
+        self._point_item  : Movable_LE_Radius   = None
+        self._circle_item : pg.ScatterPlotItem  = None
+        self._airfoil_item : pg.PlotDataItem    = None
+        self._range_item : pg.LinearRegionItem  = None
+
         super().__init__ (*args, **kwargs)
 
 
@@ -1242,62 +1222,98 @@ class LE_Radius_Artist (Artist):
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
     @property
-    def design_airfoil (self) -> Airfoil:
+    def airfoil (self) -> Airfoil:
         for airfoil in self.airfoils:
-            if airfoil.design_temp:
-                return airfoil.design_temp
-    
-    @property
-    def xBlend (self): return self._xBlend
+            if airfoil.usedAsDesign: return airfoil
 
-    def set_xBlend (self, xBlend):
-        """ set blend range for LE circle """
-        self._xBlend = xBlend 
-        self.set_show (xBlend is not None)
+    @property
+    def geo (self) -> Geometry:
+        """ the geometry of the design airfoil """
+        return self.airfoil.geo if self.airfoil else None
 
 
     def _plot (self): 
     
-        if not self.design_airfoil: return
+        if not self.airfoil: return
 
-        color = _color_airfoil (self.airfoils, self.design_airfoil)
+        movable = not self.geo.isCurve
+
+        # plot actual contour of the design airfoil - dotted line
+
+        color = _color_airfoil (self.airfoils, self.airfoil)
+        pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
             
-        for line in [self.design_airfoil.geo.upper, 
-                     self.design_airfoil.geo.lower]:
-            
-            style = _linestyle_of (line._type)
-            pen   = pg.mkPen(color, width=1.0, style=style)
+        self._airfoil_item = self._plot_dataItem (self.geo.x, self.geo.y, pen = pen, zValue=5)
 
-            self._plot_dataItem (line.x, line.y, pen = pen, zValue=5)
+        # plot le circle and moving point to change the le radius
 
-        # plot le circle 
-
-        radius = self.design_airfoil.geo.le_radius
-        circle_item = self._plot_circle (radius, 0, color=color, size=2*radius, 
+        radius = self.airfoil.geo.le_radius
+        self._circle_item = self._plot_circle (radius, 0, color=color, size=2*radius, 
                                         style=Qt.PenStyle.DotLine)
-        pl = Movable_LE_Point (self.design_airfoil.geo, circle_item, 
-                               show_label_static_with_value=True, movable=False, color=color)
-        self._add(pl) 
+        
+        p = Movable_LE_Radius (radius, color=color, show_label_static_with_value=True, 
+                               movable=movable,
+                               on_move=self._on_radius_moving)
+        self._add(p)
+        self._point_item = p
 
         # plot blending range
 
-        if self.xBlend is not None:
+        pen = pg.mkPen("dimgray", width=1)
+        lr  = pg.LinearRegionItem (values=[0, self.geo.le_radius_xBlend], pen=pen, movable=False, span=(0.15, 0.85))
+        lr.lines[0].setMovable(False)
+        lr.lines[1].setMovable(movable)
+        lr.lines[1].setPen (pg.mkPen(COLOR_EDITABLE, width=1))
+        lr.lines[1].setHoverPen (pg.mkPen(COLOR_HOVER, width=1))
+        lr.sigRegionChanged.connect (self._on_xBlend_moving)
 
-            pen = pg.mkPen("dimgray", width=1)
-            lr  = pg.LinearRegionItem (values=[0, self.xBlend], pen=pen, movable=False, span=(0.2, 0.8))
+        pg.InfLineLabel(lr.lines[1], "Blending Range {value:.0%}", position=0.95,
+                                color=Artist.COLOR_LEGEND) 
+        self._add(lr)
 
-            lab = pg.InfLineLabel(lr.lines[1], f"Blending Range {self.xBlend:.0%}", position=0.95,  
-                                  color=Artist.COLOR_LEGEND) 
+        # show mouse helper message
+        if movable:
+            msg = "Move LE marker to change LE radius, move right line of blending range to change"
+            self.set_help_message (msg)
 
-            self._add(lr)
+
+
+    def _on_xBlend_moving (self, lr : pg.LinearRegionItem):
+        """ slot - blend range is changed by user """
+
+        radius = self._point_item.le_radius_by_point
+        x0, xBlend = lr.getRegion()
+
+        self.geo.set_le_radius (radius, xBlend=xBlend, moving=True)
+
+        self._airfoil_item.setData (self.geo.x, self.geo.y)         # update airfoil contour
+
+        self.sig_moving.emit()                                      # update all other artists
+
+
+    def _on_radius_moving (self):
+        """slot - LE-radius point changed by user; update geometry centrally."""
+
+        if self.geo is None:
+            return
+
+        new_radius = self._point_item.le_radius_by_point
+        self.geo.set_le_radius (new_radius, moving=True)
+
+        # snap point to actual model value without triggering move callbacks again
+        self._point_item.setPos_silent (2 * self.geo.le_radius, 0.0)
+
+        self._airfoil_item.setData (self.geo.x, self.geo.y)         # update airfoil contour
+        self._circle_item.setData ([self.geo.le_radius], [0])       # update le circle
+        self._circle_item.setSize (2*self.geo.le_radius)            # update le circle size
+
+        self.sig_moving.emit()                                      # update all other artists
+
 
 
 
 class Bezier_Artist (Artist):
     """Plot and edit airfoils Bezier control points """
-
-    sig_bezier_changed      = pyqtSignal()           # bezier curve final changed 
-    sig_bezier_moved        = pyqtSignal()           # bezier control point moved
 
 
     @property
@@ -1337,8 +1353,8 @@ class Bezier_Artist (Artist):
                     p = Movable_Side_Bezier (airfoil, side, color=color, 
                                              movable=movable,
                                              show_label=show_label,
-                                             on_changed=self.sig_bezier_changed.emit,
-                                             on_move=self.sig_bezier_moved.emit)
+                                             on_changed=self.sig_changed.emit,
+                                             on_move=self.sig_moving.emit)
                     self._add(p)
 
 
@@ -1352,8 +1368,6 @@ class Bezier_Artist (Artist):
 
 class BSpline_Artist (Artist):
     """Plot and edit airfoils BSpline control points """
-
-    sig_bspline_changed     = pyqtSignal()           # bspline curve changed 
 
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
@@ -1394,7 +1408,8 @@ class BSpline_Artist (Artist):
                     p = Movable_Side_BSpline (airfoil, side, color=color, movable=movable,
                                               show_static=movable,      # make helper curve visible to ctrl-click
                                               show_label=show_label,
-                                              on_changed=self.sig_bspline_changed.emit) 
+                                              on_changed=self.sig_changed.emit,
+                                              on_move=self.sig_moving.emit)
                     self._add(p)
 
                     # plot knot points as small vertical lines
@@ -1463,8 +1478,6 @@ class BSpline_Artist (Artist):
 class CST_Artist (Artist):
     """Plot and edit airfoils CST control points """
 
-    sig_cst_changed     = pyqtSignal()           # CST curve changed
-
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
@@ -1501,13 +1514,15 @@ class CST_Artist (Artist):
                 pl = Movable_Side_CST (airfoil, airfoil.geo.lower, color=color, movable=movable,
                                         show_static=movable,      # make helper curve visible to ctrl-click
                                         show_label=show_label,
-                                        on_changed=self.sig_cst_changed.emit)
+                                        on_changed=self.sig_changed.emit,
+                                        on_move=self.sig_moving.emit)
                 self._add(pl, name="CST weights scaled by 0.5")
 
                 pu = Movable_Side_CST (airfoil, airfoil.geo.upper, color=color, movable=movable,
                                         show_static=movable,      # make helper curve visible to ctrl-click
                                         show_label=show_label,
-                                        on_changed=self.sig_cst_changed.emit)
+                                        on_changed=self.sig_changed.emit,
+                                        on_move=self.sig_moving.emit)
                 self._add(pu)
 
                 # plot leading edge weight point
@@ -1517,7 +1532,8 @@ class CST_Artist (Artist):
                                            lower_plot_item=pl._curve_item,
                                            color=color, movable=movable,
                                            show_label_static=show_label,
-                                           on_changed=self.sig_cst_changed.emit)
+                                           on_changed=self.sig_changed.emit,
+                                           on_move=self.sig_moving.emit)
                 self._add(p)
 
                 # plot te thickness point
@@ -1526,7 +1542,8 @@ class CST_Artist (Artist):
                                                lower_plot_item=pl._curve_item,
                                                color=color, movable=movable,
                                                show_label_static=show_label,
-                                               on_changed=self.sig_cst_changed.emit)
+                                               on_changed=self.sig_changed.emit,
+                                               on_move=self.sig_moving.emit)
                 self._add(p)
 
         # show mouse helper message
@@ -1885,11 +1902,8 @@ class Airfoil_Line_Artist (Artist, QObject):
     Plot thickness, camber line of an airfoil, print max values 
     """
 
-    sig_geometry_changed     = pyqtSignal()          # airfoil data changed 
-
     @property
     def airfoils (self) -> list [Airfoil]: return self.data_list
-
 
     def _plot (self): 
 
@@ -1931,37 +1945,15 @@ class Airfoil_Line_Artist (Artist, QObject):
 
                 ph = Movable_Highpoint (airfoil.geo, line, p, 
                                             movable=airfoil.isEdited, color=color,
-                                            on_changed=self.sig_geometry_changed.emit )
+                                            on_changed=self.sig_changed.emit,
+                                            on_move=self.sig_moving.emit)
                 self._add (ph) 
-
-
-                # te gap point for DESIGN 
-
-                if airfoil.usedAsDesign and is_upper:
-                    pt = Movable_TE_Point (airfoil.geo, p, 
-                                            movable=airfoil.usedAsDesign, color=color,
-                                            on_changed=self.sig_geometry_changed.emit )
-                    self._add (pt) 
-
-
-            # plot le circle 
-
-            radius = airfoil.geo.le_radius
-            
-            circle_item = self._plot_circle (radius, 0, color=color, size=2*radius, 
-                                            style=Qt.PenStyle.DotLine)
-            pl = Movable_LE_Point (airfoil.geo, circle_item, 
-                                    movable=airfoil.usedAsDesign, color=color,
-                                    on_changed=self.sig_geometry_changed.emit )
-            self._add(pl) 
 
 
         # show mouse helper message
         if any(airfoil.isEdited for airfoil in self.airfoils):
             msg = "Move markers to modify geometry"
             self.set_help_message (msg)
-
-
 
 
 
@@ -2042,15 +2034,7 @@ class Polar_Artist (Artist):
 
     @property
     def airfoils (self) -> list [Airfoil]: 
-
-        airfoils : list [Airfoil] = list(self.data_list)   
-
-        # add temporary design airfoil if exists, e.g. for live design update 
-        for airfoil in airfoils:
-            if airfoil.design_temp:
-                airfoils.append(airfoil.design_temp)
-                break
-        return airfoils
+        return list(self.data_list)
 
 
     def _plot (self): 
@@ -2182,9 +2166,6 @@ class Polar_Artist (Artist):
             linewidth=1.5
         elif airfoil.usedAs == usedAs.DESIGN:  
             linewidth=1.5
-        elif airfoil.usedAs == usedAs.DESIGN_TEMP:  
-            linewidth=1.0
-            style = Qt.PenStyle.DashLine
         elif airfoil.usedAs == usedAs.NORMAL and not there_is_design:  
             linewidth=1.5
         else:

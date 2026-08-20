@@ -23,7 +23,7 @@ from .geometry      import (Geometry, Line, Panelling, Curvature_Abstract)
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 # enum for fitting leading edge curvature - free, fixed or c2 continuity
@@ -112,6 +112,9 @@ class Side_Airfoil_Curve (Line):
         # for fitting - store current deviation to target
         self._target_deviation : Deviation_Line = None
         self._is_matched       = False              # true if side is finally matched to target
+
+        # baseline control points during interactive moving updates
+        self._moving_cPoints : list[tuple] | None = None
 
 
     def set_panelling(self, nPanels: int, le_bunch: float = None, te_bunch: float = None):
@@ -212,9 +215,24 @@ class Side_Airfoil_Curve (Line):
         """ curve control points as xy"""
         return self.curve.cpoints
     
-    def set_cPoints(self, cpx_or_cp, cpy=None):
+    def set_cPoints(self, cpx_or_cp=None, cpy=None, moving=False):
         """ set the curve control points"""
-        self.curve.set_cpoints (cpx_or_cp, cpy)
+
+        # Decision for move-baseline usage is owned here:
+        # - while moving: capture once, then always restore baseline first
+        # - final apply after moving: restore baseline once if it exists
+        if moving or self._moving_cPoints is not None:
+            if self._moving_cPoints is None:
+                self._moving_cPoints = list(self.cPoints)
+            else:
+                self.curve.set_cpoints (self._moving_cPoints)
+
+        if cpx_or_cp is not None:
+            self.curve.set_cpoints (cpx_or_cp, cpy)
+
+        if not moving:
+            self._moving_cPoints = None
+
         self.reset_target_deviation ()
 
 
@@ -224,12 +242,12 @@ class Side_Airfoil_Curve (Line):
 
         raise NotImplementedError("cPoints_as_jpoints must be implemented in subclass")
 
-    def set_cPoints_from_jpoints(self, jpoints: list[JPoint]):
+    def set_cPoints_from_jpoints(self, jpoints: list[JPoint], moving=False):
         """ set the curve control points from JPoints"""
 
         cPoints = [(jp.x, jp.y) for jp in jpoints]
 
-        self.set_cPoints(cPoints)
+        self.set_cPoints(cPoints, moving=moving)
 
 
     @property
@@ -430,18 +448,8 @@ class Geometry_Curve (Geometry):
         self._upper : Side_Airfoil_Curve     = None       # upper side as Side_Airfoil_Curve object
         self._lower : Side_Airfoil_Curve     = None       # lower side as Side_Airfoil_Curve object
 
-        # Keep a baseline during interactive TE-gap moves so every update starts
-        # from the same original curve shape (xBlend-only changes stay effective).
-        self._te_gap_move_upper_cp = None
-        self._te_gap_move_lower_cp = None
-
-
     def _reset (self):
         """ reinit the dependand lines of self""" 
-
-        # clear transient TE-gap move baseline whenever dependent line state is reset
-        self._te_gap_move_upper_cp = None
-        self._te_gap_move_lower_cp = None
 
         # overloaded Bezier do not reset upper and lower as they define the geometry
         if self._upper is not None:
@@ -546,7 +554,20 @@ class Geometry_Curve (Geometry):
         self._reset()
 
 
-    def finished_change_of (self, side : Side_Airfoil_Curve, matched = False):
+    def set_cPoints_from_jpoints_for (self, line_type : Line.Type, jpoints: list[JPoint], moving=False):
+        """ set new curve control points from JPoints for upper or lower side - update geometry"""
+
+        if line_type == Line.Type.UPPER:
+            side = self._upper
+        elif line_type == Line.Type.LOWER:
+            side = self._lower
+
+        side.set_cPoints_from_jpoints (jpoints, moving=moving)
+
+        self.finished_change_of (side, moving=moving)
+
+
+    def finished_change_of (self, side : Side_Airfoil_Curve, matched = False, moving=False):
         """ confirm Bezier changes for aSide - update geometry"""
 
         if matched:
@@ -565,7 +586,7 @@ class Geometry_Curve (Geometry):
             self.lower.set_te_gap (side.te_gap)
 
         mod = self.MOD_CURVE + " " + side.name
-        self._changed (mod, mod_info)
+        self._changed (mod, mod_info, moving=moving)
 
 
     @override
@@ -630,33 +651,22 @@ class Geometry_Curve (Geometry):
             xBlend:   the blending range from trailing edge 0..1
         """
 
-        if xBlend is None:
-            xBlend = Geometry.TE_GAP_XBLEND
+        xBlend_change = False
+        if xBlend is not None:
+            xBlend = clip (xBlend, 0.1, 1.0)
+            xBlend_change =  self.te_gap_xBlend != xBlend
+            self._te_gap_xBlend = xBlend
+
 
         new_gap = clip (new_gap, 0.0, 0.1)
-        xBlend  = clip (xBlend, 0.1, 1.0)
 
-        if self.te_gap == new_gap:
+        if self.te_gap == new_gap and not xBlend_change:
             return
 
-        if moving:
-            # Initialize move baseline once and re-use it for all move updates.
-            if self._te_gap_move_upper_cp is None:
-                self._te_gap_move_upper_cp = list(self.upper.cPoints)
-                self._te_gap_move_lower_cp = list(self.lower.cPoints)
+        self.upper.set_te_gap (new_gap * 0.5, self.te_gap_xBlend, moving=moving)
+        self.lower.set_te_gap (new_gap * 0.5, self.te_gap_xBlend, moving=moving)
 
-        # If a move baseline exists, always restart from it (also on final call).
-        if self._te_gap_move_upper_cp is not None:
-            self.upper.set_cPoints(self._te_gap_move_upper_cp)
-            self.lower.set_cPoints(self._te_gap_move_lower_cp)
-
-        self.upper.set_te_gap (new_gap * 0.5, xBlend)
-        self.lower.set_te_gap (new_gap * 0.5, xBlend)
-
-        if not moving:
-            # End move session and drop baseline after the final apply.
-            self._reset () 
-            self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))   # finalize (parent) airfoil 
+        self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2), moving=moving)   # finalize (parent) airfoil 
 
 
 

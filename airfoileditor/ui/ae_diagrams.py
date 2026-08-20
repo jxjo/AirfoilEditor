@@ -622,11 +622,14 @@ class Item_Airfoil (Diagram_Item):
         # connect signals of app model
 
         self.app_model.sig_airfoil_geo_changed.connect      (self.refresh_artists)
-        self.app_model.sig_airfoil_geo_te_gap.connect       (self._te_artist.set_xBlend)
-        self.app_model.sig_airfoil_geo_le_radius.connect    (self._le_artist.set_xBlend)
+        self.app_model.sig_airfoil_geo_te_gap.connect       (self._on_te_gap_change)
+        self.app_model.sig_airfoil_geo_le_radius.connect    (self._le_artist.set_show)
+
         self.app_model.sig_airfoil_geo_paneling.connect     (self._on_paneling_changed)
         self.app_model.sig_airfoil_flap_set.connect         (self._on_flap_changed)
         self.app_model.sig_airfoil_geo_curve.connect        (self._on_curve_changed)
+
+        self.app_model.sig_geo_changing.connect             (self._on_geo_changing)   
 
         self.app_model.sig_xo2_new_design.connect           (self._on_new_design)
 
@@ -668,6 +671,26 @@ class Item_Airfoil (Diagram_Item):
         self._flap_artist.set_show (is_flap)
         if is_flap:
             self.refresh_artists()        # refresh to show flap line
+
+    def _on_te_gap_change (self, is_te_gap_change : bool):
+        """ slot to handle te gap is changing signal """
+
+        if self._te_artist.show != is_te_gap_change:
+            # switch off design mode when te gap is changing 
+            if self.design_airfoil :
+                self.design_airfoil.set_isEdited (not is_te_gap_change)
+            self.refresh_artists()        # refresh to show te gap line
+
+        self._te_artist.set_show (is_te_gap_change)                        # refresh to show new values
+
+
+    def _on_geo_changing (self, source = None):
+        """ slot to handle airfoil geometry is fast changing - switch off show points of all artists"""
+
+        # guard - if source is self, then this is a signal from self - no need to refresh artists again
+        if source == self: return
+
+        self.refresh_artists()       
 
 
     def _on_paneling_changed (self, is_paneling : bool):
@@ -911,23 +934,18 @@ class Item_Airfoil (Diagram_Item):
         self._add_artist (a)
 
         a = Airfoil_Line_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
-        a.sig_geometry_changed.connect (self.app_model.notify_airfoil_changed)
         self._line_artist = a
         self._add_artist (a)
 
         a = Bezier_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
-        a.sig_bezier_changed.connect (self.app_model.notify_airfoil_changed)
-        a.sig_bezier_moved.connect (self.app_model.notify_airfoil_geo_changed)
         self._bezier_artist = a
         self._add_artist (a)
 
         a = BSpline_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
-        a.sig_bspline_changed.connect (self.app_model.notify_airfoil_changed)
         self._bspline_artist = a
         self._add_artist (a)
 
         a = CST_Artist (self, lambda: self.airfoils, show=self._show_control_points, show_legend=True)
-        a.sig_cst_changed.connect (self.app_model.notify_airfoil_changed)
         self._cst_artist = a
         self._add_artist (a)
 
@@ -962,6 +980,16 @@ class Item_Airfoil (Diagram_Item):
         a  = Xo2_GeoConstraint_Artist (self, lambda: self.geo_constraints,
                                        airfoil_fn=lambda: self.app_model.airfoil_seed, show=False, show_legend=True)
         self._add_artist (a)
+
+        # connect moving and changed signals of all to app model 
+
+        for a in self._artists:
+            a.sig_changed.connect (self.app_model.notify_geo_changed)
+            a.sig_moving.connect  (lambda: self.app_model.notify_geo_changing (source=self))
+
+
+
+
 
     @override
     def setup_viewRange (self):
@@ -1078,6 +1106,7 @@ class Item_Curvature (Diagram_Item):
         # connect signals of app model
 
         self.app_model.sig_xo2_new_design.connect           (self.refresh_artists)
+        self.app_model.sig_geo_changing.connect             (self._on_geo_changing)
 
 
     @property
@@ -1088,7 +1117,16 @@ class Item_Curvature (Diagram_Item):
     @property
     def airfoils (self) -> list[Airfoil]: 
         return self.app_model.airfoils_to_show
-        
+
+
+    def _on_geo_changing (self, source = None):
+        """ slot to handle airfoil geometry is fast changing"""
+
+        # guard - if source is self, then this is a signal from self - no need to refresh artists again
+        if source == self: return
+
+        self.refresh_artists()       
+      
 
     def setup_artists (self):
         """ create and setup the artists of self"""
@@ -1321,21 +1359,19 @@ class Item_Polars (Diagram_Item):
 
         self.app_model.sig_new_polars.connect               (self.refresh)
         self.app_model.sig_polar_set_changed.connect        (self.refresh)
-        self.app_model.sig_airfoil_geo_changed.connect      (self._on_design_temp_changed)  # fast nf polar ...
-        self.app_model.sig_airfoil_flap_set.connect         (self._on_design_temp_changed)  # fast nf polar ...
-        self.app_model.sig_airfoil_geo_le_radius.connect    (self._on_design_temp_changed)  # fast nf polar ...
-        self.app_model.sig_airfoil_geo_te_gap.connect       (self._on_design_temp_changed)  # fast nf polar ...
+        self.app_model.sig_geo_changing.connect             (self._on_geo_changing) 
         self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh)
 
         self.app_model.sig_xo2_new_design.connect           (self.refresh)
 
 
-    def _on_design_temp_changed (self, show : bool = True):
-        """ slot - Design temp changed - refresh fast nf polars"""
+    def _on_geo_changing (self, source = None):
+        """ slot to handle airfoil geometry is fast changing"""
 
-        a : Polar_Artist
-        for a in self._get_artist (Polar_Artist):
-            a.refresh ()
+        # guard - if source is self, then this is a signal from self - no need to refresh artists again
+        if source == self: return
+
+        self.refresh_artists()       
 
 
     @property

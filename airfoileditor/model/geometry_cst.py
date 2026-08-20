@@ -109,11 +109,12 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
         """ cst weights (control points) as xy"""
         return self.curve.cpoints
     
-    def set_cPoints(self, weights : list | np.ndarray):
+    def set_cPoints(self, weights : list | np.ndarray, moving=False):
         """ set CST weights (control points) - compatibility with other side classes"""
 
         # create dummy cpx array for compatibility with set_cpoints
         self.curve.set_cpoints (np.zeros_like(weights), weights)
+
         self.reset_target_deviation ()
 
 
@@ -123,7 +124,7 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
         self.reset_target_deviation ()
 
 
-    def set_te_gap(self, te_gap: float):
+    def set_te_gap(self, te_gap: float, xBlend: float = None):
         """ 
         set trailing edge gap to this side. Sign of the gap is applied based on the side type (upper/lower). 
         and recalculate deviation
@@ -162,18 +163,19 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
         return jpoints
 
     @override
-    def set_cPoints_from_jpoints(self, jpoints: list[JPoint]):
+    def set_cPoints_from_jpoints(self, jpoints: list[JPoint], moving=False):
         """ set CST weights from JPoints (control points)"""
 
-        cPoints = []
+        weights = []
         for jp in jpoints:
-            x, y = jp.x, jp.y 
+            y = jp.y 
 
             # scale y back to original range
             y *= 2.0
 
-            cPoints.append((x, y))
-        self.curve.set_cpoints(*zip(*cPoints))
+            weights.append(y)
+
+        self.set_cPoints(weights, moving=moving)
 
 
 

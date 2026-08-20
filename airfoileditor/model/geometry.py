@@ -1324,7 +1324,7 @@ class Line:
         return self.y[-1]
 
 
-    def set_te_gap (self, te_gap : float, xBlend : float = None):
+    def set_te_gap (self, te_gap : float, xBlend : float = None, moving=False):
         """
         Apply a trailing-edge gap to this side. Sign of the gap is applied based on the side type (upper/lower). 
         The gap is blended over a specified range from the trailing edge.
@@ -1332,6 +1332,7 @@ class Line:
         Args:
             te_gap: ! half of the airfoil trailing-edge gap !
             xBlend: blending range from trailing edge, 0.0..1.0
+            moving: compatibility flag for curve-based sides; ignored for basic Line.
         """
         # sign sanity
         if self.type == Line.Type.UPPER:
@@ -1343,7 +1344,7 @@ class Line:
             xBlend = Geometry.TE_GAP_XBLEND
 
         if dgap == 0.0:
-            return  # no change needed
+            pass                # xBlend could have been changed
 
         y_new = np.zeros (len(self.x))
         for i in range(len(self.x)):
@@ -1587,6 +1588,8 @@ class Geometry ():
 
         self._curvature : Curvature_Abstract = None  # curvature object
 
+        self._te_gap_xBlend    = None           # x position from TE where te gap blending starts
+        self._le_radius_xBlend = None           # x position from LE where le radius blending ends
         self._panelling = None                  # "paneller"  for spline or Bezier 
         self._flap_setter = None                # "flap setter" 
 
@@ -1607,17 +1610,20 @@ class Geometry ():
             - save the modification made aMod with optional val
             - handle callbacks"""
 
+        is_dat_based = self._x_org is not None and self._y_org is not None
+
         # sanity: rthere must be temp data
-        if self._x is None or self._y is None:
+        if is_dat_based and (self._x is None or self._y is None):
             logger.warning (f"{self} _changed called but no temp xy data available")
             return
 
         if not moving:
 
             # when final, set temp _x _y to final 
-            self._x_org     = np.asarray (self._x)
-            self._y_org     = np.asarray (self._y)
-            self._clear_xy()
+            if is_dat_based:
+                self._x_org     = np.asarray (self._x)
+                self._y_org     = np.asarray (self._y)
+                self._clear_xy()
 
             # store modification made - can be list or single mod 
             if remove_empty and (val is None or not (str(val))):
@@ -1819,6 +1825,14 @@ class Geometry ():
     def te_gap (self) -> float: 
         """ trailing edge gap"""
         return  round(float (self.y[0] - self.y[-1]),7)
+
+    @property
+    def te_gap_xBlend (self) -> float:
+        """ x position from TE where te gap blending starts """
+        if self._te_gap_xBlend is None:
+            return self.TE_GAP_XBLEND
+        else:
+            return self._te_gap_xBlend
     
     @property
     def te_angle (self) -> float: 
@@ -1827,6 +1841,7 @@ class Geometry ():
         upper = self.upper.te_angle
         lower = self.lower.te_angle
         return abs (upper - lower)
+
 
     @property
     def le_radius (self) -> float: 
@@ -1837,6 +1852,17 @@ class Geometry ():
             return round (1.0 / self.curvature.at_le, 7)
         else: 
             return 0.0 
+
+    @property
+    def le_radius_xBlend (self) -> float:
+        """ 
+        x position from LE where le radius blending ends
+        """
+        if self._le_radius_xBlend is None: 
+            return self.LE_RADIUS_XBLEND
+        else: 
+            return self._le_radius_xBlend
+
 
     @property
     def le_curvature (self) -> float: 
@@ -2059,7 +2085,7 @@ class Geometry ():
         return self.thickness.yFn (x)
     
 
-    def set_te_gap (self, new_gap : float, xBlend = TE_GAP_XBLEND, moving=False):
+    def set_te_gap (self, new_gap : float, xBlend : float = None, moving=False):
         """ set te gap - must be / will be normalized .
 
         Args: 
@@ -2067,21 +2093,22 @@ class Geometry ():
             xBlend:   the blending range from trailing edge 0..1
         """
 
+        if xBlend is not None:
+            self._te_gap_xBlend = clip (xBlend, 0.1, 1.0)
+
+
         try: 
             new_gap = clip (new_gap, 0.0, 0.1)
-            xBlend  = clip (xBlend, 0.1, 1.0)
+
+            # clear xy to reset upper and lower side objects
+            self._clear_xy()
 
             if new_gap == self.te_gap:
                 return
 
-            # create new side objects from x,y to allow repeated setting of te gap
-            self._upper = self.side_class (np.flip (self.x [0: self.iLe + 1]), np.flip (self.y [0: self.iLe + 1]),
-                                     linetype=Line.Type.UPPER)
-            self._lower = self.side_class (self.x[self.iLe:], self.y[self.iLe:],
-                                     linetype=Line.Type.LOWER)
-
-            self._upper.set_te_gap (new_gap / 2.0, xBlend)
-            self._lower.set_te_gap (new_gap / 2.0, xBlend)
+            # set gap in upper and lower side objects - the gap is split between upper and lower
+            self.upper.set_te_gap (new_gap / 2.0, self.te_gap_xBlend)
+            self.lower.set_te_gap (new_gap / 2.0, self.te_gap_xBlend)
 
             self._rebuild_from_upper_lower ()
 
@@ -2092,7 +2119,7 @@ class Geometry ():
 
 
 
-    def set_le_radius (self, new_radius : float, xBlend = LE_RADIUS_XBLEND, moving=False):
+    def set_le_radius (self, new_radius : float, xBlend : float = None, moving=False):
         """ 
         Set le radius of upper and lower which is the reciprocal of curvature at le
         
@@ -2100,9 +2127,12 @@ class Geometry ():
             new_radius:  new radius to apply 
             xBlend:      the blending range from leading edge 0.001..1
         """
+        if xBlend is not None:
+            self._le_radius_xBlend = clip (xBlend, 0.01, 1.0)
+    
 
         try: 
-            self._set_le_radius (new_radius, xBlend) 
+            self._set_le_radius (new_radius, self.le_radius_xBlend) 
 
             self._rebuild_from_upper_lower ()
             self._changed (Geometry.MOD_LE_RADIUS, round(new_radius*100,2), moving=moving)
@@ -2124,7 +2154,7 @@ class Geometry ():
             self.set_le_radius (1.0 / new_curvature, xBlend, moving)
 
 
-    def _set_le_radius (self, new_radius : float, xBlend : float = 0.1):
+    def _set_le_radius (self, new_radius : float, xBlend : float = LE_RADIUS_XBLEND):
         """ 
         Set le radius which is the reciprocal of curvature at le 
 
@@ -2139,31 +2169,35 @@ class Geometry ():
         new_radius = clip (new_radius, 0.001, 0.03)             # limit radius to reasonable values
         xBlend     = clip (xBlend, 0.01, 1.0)  
 
-        # reset curvature so it's rebuild from x,y to get original curvature at LE
-        self._curvature = None
-
-        cur_radius = 1 / self.curvature.at_le
+        # use original x,y (reset) 
+        self._clear_xy()
+        cur_radius = self.le_radius
         factor     = new_radius / cur_radius
 
-        # go over each thickness point, changing the thickness appropriately
+        x_thickness = np.copy (self.thickness.x)
+        y_thickness = np.copy (self.thickness.y)
+        y_camber    = np.copy (self.camber.y)
 
-        new_thickness = np.zeros (len(self.thickness.x))  
+        new_thickness = np.zeros (len(x_thickness))
+        srfac         = (abs (factor)) ** 0.5
 
-        for i in range(len(self.thickness.x)):
-            # thickness factor tails off exponentially away from trailing edge
-            arg = min (self.thickness.x[i] / xBlend, 15.0)
-            srfac = (abs (factor)) ** 0.5 
+        for i in range(len(x_thickness)):
+            # thickness factor tails off exponentially away from leading edge
+            arg = min (x_thickness[i] / xBlend, 15.0)
             tfac = 1.0 - (1.0 - srfac) * np.exp(-arg)
-            new_thickness [i] = self.thickness.y [i] * tfac
+            new_thickness [i] = y_thickness [i] * tfac
 
-        # create new side objects from x,y to allow repeated setting of te gap 
+        # create new side objects from x,y to allow repeated setting of te gap
 
-        self._upper  = self.side_class (self.thickness.x, self.camber.y + new_thickness / 2.0 ,
+        self._upper  = self.side_class (x_thickness, y_camber + new_thickness / 2.0,
                                  linetype=Line.Type.UPPER)
-        self._lower  = self.side_class (self.thickness.x, self.camber.y - new_thickness / 2.0 ,
+        self._lower  = self.side_class (x_thickness, y_camber - new_thickness / 2.0,
                                  linetype=Line.Type.LOWER)
-        
+
         self._rebuild_from_upper_lower ()
+
+        # ensure new le radius is calculated with the new value
+        self._reset()
 
 
     @property
@@ -2340,8 +2374,8 @@ class Geometry ():
  
         # Translate so that the leading edge is at 0,0 
 
-        xn = self._x - xLe
-        yn = self._y - yLe
+        xn = self.x - xLe
+        yn = self.y - yLe
 
         # Rotate the airfoil so chord is on x-axis 
 

@@ -16,6 +16,7 @@ see: https://pyqtgraph.readthedocs.io/en/latest/getting_started/plotting.html
 """
 
 from typing             import override, Callable
+from contextlib         import contextmanager
 
 import numpy as np
 
@@ -129,7 +130,8 @@ class Movable_Point (pg.TargetItem):
                   label_anchor = (0,1),
                   color = "red", 
                   brush=None,
-                  on_changed = None,
+                  on_changed = None,                # callback when finished moving with new coordinates
+                  on_move = None,                   # callback when moving with new coordinates
                   **kwargs):
 
         # use JPoint to check xy limits 
@@ -150,6 +152,8 @@ class Movable_Point (pg.TargetItem):
 
         self._id = id
         self._callback_changed = on_changed if (callable(on_changed) and movable) else None 
+        self._callback_move    = on_move if (callable(on_move) and movable) else None
+        self._callback_suspend_count = 0
 
         self._show_label_static = show_label_static
         self._label_anchor = label_anchor
@@ -237,7 +241,8 @@ class Movable_Point (pg.TargetItem):
         xy = self._jpoint.xy
 
         # and reset maybe corrected x,y, 
-        self.setPos (xy) 
+        with self._suspend_callbacks():
+            self.setPos (xy) 
 
         return xy
 
@@ -250,6 +255,22 @@ class Movable_Point (pg.TargetItem):
 
     @property
     def id (self): return self._id 
+
+
+    @property
+    def callbacks_suspended (self) -> bool:
+        """True while point callbacks are temporarily suspended."""
+        return self._callback_suspend_count > 0
+
+
+    @contextmanager
+    def _suspend_callbacks (self):
+        """Temporarily suppress move callbacks to avoid re-entrant update loops."""
+        self._callback_suspend_count += 1
+        try:
+            yield
+        finally:
+            self._callback_suspend_count -= 1
 
 
     def set_name (self, aName :str):
@@ -301,6 +322,15 @@ class Movable_Point (pg.TargetItem):
         """ default slot - point is moved by mouse """
         # to be overlaoded 
 
+        if self.callbacks_suspended:
+            return
+
+        # callback to parent when moving
+        if callable(self._callback_move):
+            # let events finish before calling callback
+            self._callback_move() 
+
+
     def _finished (self):
         """ default slot -  when point move is finished """
         # to be overlaoded 
@@ -332,16 +362,17 @@ class Movable_Point (pg.TargetItem):
     def setPos_silent (self, *args): 
         """ same as superclass targetItem.setPos but doesn't signal sigPositionChanged """
 
-        # jpoint will take care of the x,y limits 
-        self._jpoint.set_xy (*args)
-        xy = self._jpoint.xy
+        with self._suspend_callbacks():
+            # jpoint will take care of the x,y limits 
+            self._jpoint.set_xy (*args)
+            xy = self._jpoint.xy
 
-        # used for high speed refresh 
-        newPos = pg.Point(xy)
-        if (round(self._pos.x(), 6) !=  round(newPos.x(), 6) or
-            round(self._pos.y(), 6) !=  round(newPos.y(), 6)): 
-            self._pos = newPos
-            GraphicsObject.setPos(self, self._pos)            # call grand pa to avoid signal 
+            # used for high speed refresh 
+            newPos = pg.Point(xy)
+            if (round(self._pos.x(), 6) !=  round(newPos.x(), 6) or
+                round(self._pos.y(), 6) !=  round(newPos.y(), 6)): 
+                self._pos = newPos
+                GraphicsObject.setPos(self, self._pos)            # call grand pa to avoid signal 
 
 
     @override
@@ -620,8 +651,7 @@ class Movable_Curve (pg.PlotCurveItem):
         # callback to parent when moving
         if callable(self._callback_move):
             # let events finish before calling callback
-            # QTimer.singleShot(0, lambda: self._callback_move()) 
-            self._callback_move() 
+            QTimer.singleShot(0, lambda: self._callback_move()) 
 
 
     def _add_point (self, x: float, y: float) -> bool:
@@ -912,6 +942,9 @@ class Artist(QObject):
     show_mouse_helper_default   = True                  # global setting to show mouse helper points
 
     sig_help_message     = pyqtSignal (object, str)     # new user help message of self 
+
+    sig_moving           = pyqtSignal ()                # Moving_Point or Curve is moving 
+    sig_changed          = pyqtSignal ()                # moving finished - data changed
 
 
     def __init__ (self, pi: pg.PlotItem , 

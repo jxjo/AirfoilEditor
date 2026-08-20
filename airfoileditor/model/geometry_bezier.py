@@ -356,7 +356,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         """ returns signed y value of the last bezier control point which is half the te gap"""
         return self.curve.cpoints_y[-1]
 
-    def set_te_gap(self, te_gap: float, xBlend: float = None):
+    def set_te_gap(self, te_gap: float, xBlend: float = None, moving=False):
         """
         Apply a trailing-edge gap to this side. Sign of the gap is applied based on the side type (upper/lower). 
         The gap is blended over a specified range from the trailing edge.
@@ -366,14 +366,15 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
             xBlend: blending range from trailing edge, 0.0..1.0
         """
 
+        # keep moving baseline handling local to side-level TE updates
+        self.set_cPoints(moving=moving)
+
         # sign sanity
         if self.type == Line.Type.UPPER:
             dgap = -(abs(self.te_gap) - abs(te_gap))
         elif self.type == Line.Type.LOWER:
             dgap = abs(self.te_gap) - abs(te_gap)
 
-        if dgap == 0.0:
-            return  # No change needed
         
         if xBlend is None:
             xBlend = Geometry.TE_GAP_XBLEND
@@ -406,7 +407,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
 
             y[i] += dgap * tfac
 
-        self.set_cPoints(list(zip(x, y)))    
+        self.set_cPoints(list(zip(x, y)), moving=moving)    
 
 
     # ------------------
