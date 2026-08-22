@@ -17,7 +17,7 @@ from ..base.spline          import Bezier
 
 from .geometry              import Geometry, Line
 from .geometry_curve        import Side_Airfoil_Curve, Geometry_Curve
-from .geometry              import Panelling
+from .geometry              import Paneling
 
 import logging
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 #  Panel Distribution  
 # -----------------------------------------------------------------------------
 
-class Panelling_Bezier (Panelling):
+class Paneling_Bezier (Paneling):
     """
     Helper class which represents the target panel distribution of a Bezier based airfoil.
     Stores parameters and handles serialization.
@@ -36,9 +36,9 @@ class Panelling_Bezier (Panelling):
 
     @classmethod    
     def to_dict (cls, d:dict) :
-        """ save current values of panelling parameters to dict"""
+        """ save current values of paneling parameters to dict"""
 
-        # save panelling values 
+        # save paneling values 
         if cls._nPanels != cls.N_PANELS_DEFAULT:
             d["bezier_nPanels"] = cls._nPanels
         else: 
@@ -57,9 +57,9 @@ class Panelling_Bezier (Panelling):
 
     @classmethod
     def from_dict (cls, d:dict) :
-        """ load panelling parameters from dict and set them as class variables"""
+        """ load paneling parameters from dict and set them as class variables"""
 
-        # load panelling values 
+        # load paneling values 
         if "bezier_nPanels" in d:
             cls._nPanels = d["bezier_nPanels"]
         if "bezier_le_bunch" in d:
@@ -108,7 +108,7 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
             self._linetype = Line.Type.UPPER if cpy_vals[1] > 0 else Line.Type.LOWER
         
         # Initialize nPanels to default per-side value based on type
-        self._nPanels = Panelling.nPanels_for(self.type)
+        self._nPanels = Paneling.nPanels_for(self.type)
 
         # lazy filling Bezier cached values for x,y
         if not self._curve.has_u:
@@ -256,14 +256,14 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
         nPoints = nPanels_per_side + 1
 
         # Get cosine distribution in arc-length space
-        u_cos = Panelling._cosine_distribution(nPoints, le_bunch, te_bunch)
+        u_cos = Paneling._cosine_distribution(nPoints, le_bunch, te_bunch)
         
         # Map to curve parameter space via arc-length inversion
         return self._u_of_arc_fractions(curve, u_cos)
 
 
     def _curve_state_key (self) -> tuple:
-        """ hashable key of current control points + panelling params, for u cache invalidation"""
+        """ hashable key of current control points + paneling params, for u cache invalidation"""
         return hash((
             tuple(float(v) for cp in self.curve.cpoints for v in cp),
             self._nPanels,
@@ -522,11 +522,11 @@ class Geometry_Bezier (Geometry_Curve):
 
     @override
     @property 
-    def panelling (self) -> Panelling_Bezier:
+    def paneling (self) -> Paneling_Bezier:
         """ returns the target panel distribution / helper """
-        if self._panelling is None:
-            self._panelling = Panelling_Bezier()  
-        return self._panelling
+        if self._paneling is None:
+            self._paneling = Paneling_Bezier()  
+        return self._paneling
 
 
     @override

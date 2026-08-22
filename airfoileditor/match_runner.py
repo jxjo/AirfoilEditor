@@ -483,38 +483,8 @@ class Matcher (QThread):
 
         self._side.re_fit_curve(self._targets.side, le_curvature=self._targets.le_curvature, ncp=ncp)   
 
-        # ----- optional global search differential evolution find dv_start --------
-
-        if ncp < 5:
-
-            self._nevals     = 0                                # current number of objective function evals
-
-            self.sig_pass_start.emit (self._ipass, ncp, True)   # dialog can update UI, new ncp, global search
-            self.msleep(10)                                     # give parent some time to do updates
-    
-            n_vars      = len(bounds)
-            pop_size    = max(20,  n_vars * 5)                  # 10-15x the number of variables
-            generations = max(300, n_vars * 100)                # Scale with problem complexity
-
-            dv_start, _, gen = differential_evolution (
-                    f, bounds,
-                    bound_mode='reflect',
-                    pop_size=pop_size, mutation_factor=0.6, crossover_rate=0.9,
-                    generations=generations,
-                    no_improve_break=30, no_improve_thr=1e-3,   # Threshold for improvement
-                    stop_callback=self.isInterruptionRequested, # QThread method 
-                    seed=42)                                    # Reproducible results
-        
-            objective = self._objectiveFn (dv_start, show_info=True)  # final evaluation with info printout
-            logger.info (f"Finished DE within {gen} generations, {self._nevals} evals, objective: {objective:.6f}")
-
-            step_size = 0.1                                     # fixed step size for Nelder-Mead after global search 
-
-        else:
-
-            step_size = self._step_size(ncp)                    # step size based on number of control points
-
-            dv_start = self._map_curve_to_dv ()
+        step_size = self._step_size(ncp)                        # step size based on number of control points
+        dv_start  = self._map_curve_to_dv ()
 
         # ----- local optimizer find minimum --------
 

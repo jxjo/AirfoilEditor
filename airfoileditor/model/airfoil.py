@@ -23,7 +23,7 @@ from ..base.spline          import HicksHenne
 
 from .geometry              import (Geometry, Line, GeometryException,
                                     Flap_Definition, Flap_Setter)
-from .geometry_spline       import Geometry_Splined, Panelling_Spline
+from .geometry_spline       import Geometry_Splined, Paneling_Spline
 from .geometry_hicks_henne  import Geometry_HicksHenne
 
 from .geometry_curve        import Geometry_Curve
@@ -927,20 +927,20 @@ class Airfoil:
 
         Args:
             nPanels: number of panels for repaneling 
-            le_bunch: optional bunching factor for leading edge - see Panelling
+            le_bunch: optional bunching factor for leading edge - see Paneling
             te_bunch: optional bunching factor for trailing edge - see Pannelling
             mod_string: optional modification identifier for fileName and name
         """
 
-        panelling : Panelling_Spline = self.geo.panelling
+        paneling : Paneling_Spline = self.geo.paneling
 
-        if panelling is None:
-            raise GeometryException (f"{self} has no panelling - cannot repanel")
+        if paneling is None:
+            raise GeometryException (f"{self} has no paneling - cannot repanel")
 
         if le_bunch is not None:
-            panelling.set_le_bunch (le_bunch)
+            paneling.set_le_bunch (le_bunch)
         if te_bunch is not None:
-            panelling.set_te_bunch (te_bunch)
+            paneling.set_te_bunch (te_bunch)
 
         self.geo.repanel (nPanels)
 
@@ -983,9 +983,6 @@ class Airfoil:
         """ proxy to flap setter of geometry"""
 
         return self.geo.flap_setter
-        # if self._flap_setter is None and not self.isFlapped: 
-        #     self._flap_setter = Flap_Setter_Xfoil (self)
-        # return self._flap_setter 
 
 
     def do_flap (self, flap_def = None):

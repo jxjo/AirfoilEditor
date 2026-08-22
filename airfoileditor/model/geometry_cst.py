@@ -12,7 +12,7 @@ from ..base.common_utils  import clip
 from ..base.cst           import CST, fit_cst_from_xy
 from ..base.math_util     import JPoint
 
-from .geometry            import Geometry, Line, Panelling
+from .geometry            import Geometry, Line, Paneling
 from .geometry_curve      import Geometry_Curve, Side_Airfoil_Curve, LE_Mode
 
 import logging
@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 
-class Panelling_CST(Panelling):
-    """Panelling helper for CST based geometry."""
+class Paneling_CST(Paneling):
+    """Paneling helper for CST based geometry."""
 
     @classmethod
     def to_dict(cls, d: dict):
@@ -71,19 +71,19 @@ class Side_Airfoil_CST(Side_Airfoil_Curve):
 
         self._curve = CST(weights=weights,le_weight=le_weight, te_gap=te_gap, n1=n1, n2=n2)
 
-        self._nPanels = nPanels if nPanels is not None else Panelling.nPanels_for(linetype)
-        self._le_bunch = Panelling.LE_BUNCH_DEFAULT
-        self._te_bunch = Panelling.TE_BUNCH_DEFAULT
+        self._nPanels = nPanels if nPanels is not None else Paneling.nPanels_for(linetype)
+        self._le_bunch = Paneling.LE_BUNCH_DEFAULT
+        self._te_bunch = Paneling.TE_BUNCH_DEFAULT
 
 
     @override
-    def set_panelling(self, nPanels: int, le_bunch: float = None, te_bunch: float = None):
+    def set_paneling(self, nPanels: int, le_bunch: float = None, te_bunch: float = None):
         """ set panel distribution parameters for this side - CST needs at least 10 panels """
-        super().set_panelling(int(max(10, nPanels)), le_bunch, te_bunch)
+        super().set_paneling(int(max(10, nPanels)), le_bunch, te_bunch)
 
 
     def _curve_state_key(self) -> tuple:
-        """ hashable key of current CST weights/params + panelling params, for u cache invalidation """
+        """ hashable key of current CST weights/params + paneling params, for u cache invalidation """
         cst = self._curve
         return hash((
             tuple(float(w) for w in cst.weights),
@@ -295,10 +295,10 @@ class Geometry_CST(Geometry_Curve):
 
     @override
     @property
-    def panelling(self) -> Panelling_CST:
-        if self._panelling is None:
-            self._panelling = Panelling_CST()
-        return self._panelling
+    def paneling(self) -> Paneling_CST:
+        if self._paneling is None:
+            self._paneling = Paneling_CST()
+        return self._paneling
 
 
     @property
@@ -343,25 +343,28 @@ class Geometry_CST(Geometry_Curve):
 
 
     @override
-    def repanel(self, nPanels: int = None, just_finalize=False):
-        if not just_finalize:
-            self._repanel(nPanels)
-        else:
-            self._panelling.save()
+    def repanel(self, nPanels: int = None, moving=False):
+        """
+        Repanel self with a new panel distribution.
+        """
 
-        self._reset()
-        self._changed(Geometry.MOD_REPANEL)
+        self._repanel(nPanels)
+
+        if not moving:
+            self._paneling.save()
+
+        self._changed (Geometry.MOD_REPANEL, moving=moving)
 
 
     @override
     def _repanel(self, nPanels: int = None, **kwargs):
-        nPanels = nPanels if nPanels is not None else self.panelling.nPanels
+        nPanels = nPanels if nPanels is not None else self.paneling.nPanels
 
-        nPanels_upper = Panelling.nPanels_for(Line.Type.UPPER, nPanels)
-        nPanels_lower = Panelling.nPanels_for(Line.Type.LOWER, nPanels)
+        nPanels_upper = Paneling.nPanels_for(Line.Type.UPPER, nPanels)
+        nPanels_lower = Paneling.nPanels_for(Line.Type.LOWER, nPanels)
 
-        self.upper.set_panelling(nPanels_upper, self.panelling.le_bunch, self.panelling.te_bunch)
-        self.lower.set_panelling(nPanels_lower, self.panelling.le_bunch, self.panelling.te_bunch)
+        self.upper.set_paneling(nPanels_upper, self.paneling.le_bunch, self.paneling.te_bunch)
+        self.lower.set_paneling(nPanels_lower, self.paneling.le_bunch, self.paneling.te_bunch)
 
         return True
 

@@ -16,8 +16,8 @@ from typing                 import override
 from ..base.math_util       import * 
 from ..base.spline          import Spline1D, Spline2D
 
-from .geometry      import (Line, Geometry, Curvature_Abstract, 
-                                    Panelling, GeometryException)
+from .geometry              import (Line, Geometry, Curvature_Abstract, 
+                                    Paneling, GeometryException)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 #  Panel Distribution  
 # -----------------------------------------------------------------------------
 
-class Panelling_Spline (Panelling):
+class Paneling_Spline (Paneling):
     """
     Helper class which represents the target panel distribution of an airfoil 
 
@@ -38,9 +38,9 @@ class Panelling_Spline (Panelling):
 
     @classmethod    
     def to_dict (cls, d:dict) :
-        """ save current values of panelling parameters to dict"""
+        """ save current values of paneling parameters to dict"""
 
-        # save panelling values 
+        # save paneling values 
         if cls._nPanels != cls.N_PANELS_DEFAULT:
             d["spline_nPanels"] = cls._nPanels
         else: 
@@ -59,9 +59,9 @@ class Panelling_Spline (Panelling):
 
     @classmethod
     def from_dict (cls, d:dict) :
-        """ load panelling parameters from dict and set them as class variables"""
+        """ load paneling parameters from dict and set them as class variables"""
 
-        # load panelling values 
+        # load paneling values 
         if "spline_nPanels" in d:
             cls._nPanels = d["spline_nPanels"]
         if "spline_le_bunch" in d:
@@ -77,7 +77,7 @@ class Panelling_Spline (Panelling):
             - running from 0..1
             - having nPanels+1 points 
         """
-        return Panelling._cosine_distribution(nPanels_per_side + 1, self.le_bunch, self.te_bunch)
+        return Paneling._cosine_distribution(nPanels_per_side + 1, self.le_bunch, self.te_bunch)
 
 
     def new_u (self, 
@@ -99,8 +99,8 @@ class Panelling_Spline (Panelling):
             nPanels = nPanels if nPanels is not None else self._nPanels
             # overwrite number of panels of self 
  
-            nPan_upper = Panelling.nPanels_for(Line.Type.UPPER, nPanels)
-            nPan_lower = Panelling.nPanels_for(Line.Type.LOWER, nPanels)
+            nPan_upper = Paneling.nPanels_for(Line.Type.UPPER, nPanels)
+            nPan_lower = Paneling.nPanels_for(Line.Type.LOWER, nPanels)
            
             # new distribution for upper and lower - points = +1 
             # ensuring LE is at uLe_target 
@@ -260,11 +260,11 @@ class Geometry_Splined (Geometry):
         return self._spline
 
     @property 
-    def panelling (self) -> Panelling_Spline:
+    def paneling (self) -> Paneling_Spline:
         """ returns the target panel distribution / helper """
-        if self._panelling is None:
-            self._panelling = Panelling_Spline()   # (self.nPanels)
-        return self._panelling
+        if self._paneling is None:
+            self._paneling = Paneling_Spline()   # (self.nPanels)
+        return self._paneling
 
 
     @property
@@ -292,9 +292,9 @@ class Geometry_Splined (Geometry):
         if self._uLe is None: 
             try: 
                 self._uLe = self._le_find()
-            except: 
+            except ValueError as e: 
                 self._uLe = self.spline.u[self.iLe] 
-                logger.warning (f"{self} le_find failed - taking geometric uLe:{self._uLe:.7f}")
+                logger.warning (f"{self} le_find failed - taking geometric uLe:{self._uLe:.7f} - {e}")
         return self._uLe
 
 
@@ -433,46 +433,25 @@ class Geometry_Splined (Geometry):
         return  self.spline.eval (u)
 
 
-    def scalarProductFn (self,u): 
-        """ return the scalar product of a vector from TE to u and the tangent at u
-        Used for finding LE where this value is 0.0at u"""
-
-        # exact trailing edge point 
-        xTe = (self.x[0] + self.x[-1]) / 2
-        yTe = (self.y[0] + self.y[-1]) / 2
-
-        x,y = self.xyFn(u) 
-
-        # vector 1 from te to point 
-        dxTe = x - xTe
-        dyTe = y - yTe
-        # vector2 tangent at point 
-        dx, dy = self.spline.eval(u, der=1) 
-
-        dot = dx * dxTe + dy * dyTe
-
-        return dot 
-
-
-    def repanel (self,  nPanels : int = None, just_finalize = False):
+    def repanel (self,  nPanels : int = None,  moving = False):
         """
-        Repanel self with a new cosinus distribution.
+        Repanel self with a new panel distribution.
 
         If no new panel numbers are defined, the current numbers for upper and lower side remain. 
         """
 
         try: 
 
-            if not just_finalize:
-                self._repanel (nPanels = nPanels)
+            self._repanel (nPanels = nPanels, based_on_org = True)
             
             # repanel could lead to a slightly different le 
             super()._normalize()               # do not do iteration in self.normalize       
 
-            # save the actual panelling options as class variables
-            self._panelling.save() 
+            # save the actual paneling options as class variables
+            if not moving:
+                self._paneling.save() 
 
-            self._changed (Geometry.MOD_REPANEL)
+            self._changed (Geometry.MOD_REPANEL, moving=moving)
 
         except GeometryException: 
             logger.error ("Error during repanel")
@@ -486,14 +465,12 @@ class Geometry_Splined (Geometry):
         Inner repanel without normalization and change handling
             - retain = True keeps the current distribution for the new calculated LE 
             - nPanels = new total number of panels (optional)
-            - based_on_org = True will use original x,y coordinates to build spline (if available
+            - based_on_org = True will use original x,y coordinates to build spline 
         """
 
-        # for repeated repanelling use the original x,y coordinates to repanel to avoid numerical issues
-        if based_on_org and self._x_org is not None and self._y_org is not None:
-            
-            self._x, self._y = None, None                       # will use original x,y coordinates to build spline 
-            self._reset()
+        # for repeated repaneling use the original x,y coordinates to repanel 
+        if based_on_org :
+            self._clear_xy()
             logger.debug (f"{self} repanel based on org x,y")
 
         # sanity
@@ -501,7 +478,7 @@ class Geometry_Splined (Geometry):
             raise ValueError (f"{self} - repanel: u and x don't fit")
 
         # re(calculate) panel distribution of spline so LE will be at uLe and iLe  
-        u_new = self.panelling.new_u (self.spline.u, self.iLe, self.uLe,
+        u_new = self.paneling.new_u (self.spline.u, self.iLe, self.uLe,
                                           retain=retain, nPanels=nPanels)
 
         # new calculated x,y coordinates  
@@ -533,16 +510,86 @@ class Geometry_Splined (Geometry):
 
 
     def _le_find (self):
-        """ returns u (arc) value of leading edge based on scalar product tangent and te vector = 0"""
+        """returns LE parameter u where tangent-normal passes through the trailing edge."""
 
-        iLe_guess = np.argmin (self.x)              # first guess for Le point 
-        uLe_guess = self.spline.u[iLe_guess-1]      # '-1'  a little aside 
+        def scalar_product (u):
+            """root of tangent dot (TE->point) equals zero at LE definition used here."""
 
-        umin = max (0.4, uLe_guess-0.1)
-        umax = min (0.6, uLe_guess+0.1)
- 
-        # exact determination of root  = scalar product = 0.0 
-        uLe = findRoot (self.scalarProductFn, uLe_guess , bounds=(umin, umax)) 
+            # exact trailing edge point
+            xTe = (self.x[0] + self.x[-1]) / 2
+            yTe = (self.y[0] + self.y[-1]) / 2
+
+            x, y = self.xyFn(u)
+
+            # vector 1 from TE to point
+            dxTe = x - xTe
+            dyTe = y - yTe
+            # vector 2 tangent at point
+            dx, dy = self.spline.eval(u, der=1)
+
+            return dx * dxTe + dy * dyTe
+
+        iLe_guess = int(np.argmin(self.x))          # first guess for LE point
+        iLe_ref = max(0, iLe_guess - 1)             # a little aside from geometric LE
+        uLe_guess = self.spline.u[iLe_ref]
+
+        umin = max (0.35, uLe_guess - 0.15)
+        umax = min (0.65, uLe_guess + 0.15)
+
+        u_grid = self.spline.u
+
+        def find_bracket(i0: int, i1: int):
+            """Find a sign-changing bracket or exact root in u_grid index range."""
+            i0 = max(0, i0)
+            i1 = min(len(u_grid) - 1, i1)
+
+            for i in range(i0, i1):
+                ua = u_grid[i]
+                ub = u_grid[i + 1]
+
+                fa = scalar_product(ua)
+                if fa == 0.0:
+                    return (ua, ua)
+
+                fb = scalar_product(ub)
+                if fb == 0.0:
+                    return (ub, ub)
+
+                if fa * fb < 0.0:
+                    return (ua, ub)
+
+            return None
+
+        # 1) local bracket around geometric LE
+        bracket = find_bracket(iLe_guess - 6, iLe_guess + 6)
+
+        # 2) fallback bracket inside LE search window [umin, umax]
+        if bracket is None:
+            in_window = np.where((u_grid >= umin) & (u_grid <= umax))[0]
+            if len(in_window) >= 2:
+                bracket = find_bracket(int(in_window[0]), int(in_window[-1]))
+
+        if bracket is None:
+            raise ValueError(f"{self} le_find could not bracket root in [{umin:.6f}, {umax:.6f}]")
+
+        if bracket[0] == bracket[1]:
+            uLe = bracket[0]
+        else:
+            a, b = bracket
+
+            # Fast path: secant on valid sign-changing bracket.
+            secant_result = secant_fn(scalar_product, a, b, 8)
+            secant_u = secant_result[0] if secant_result is not None else None
+
+            if secant_u is not None and a <= secant_u <= b:
+                uLe = secant_u
+            else:
+                # Stable fallback if secant fails or leaves bracket.
+                bisection_result = bisection_fn(scalar_product, a, b, 24, tolerance=1e-10)
+                if bisection_result is None or bisection_result[0] is None:
+                    raise ValueError(f"{self} le_find bisection failed for bracket [{a:.6f}, {b:.6f}]")
+                uLe = bisection_result[0]
+
         logger.debug (f"{self} le_find u_guess:{uLe_guess:.7f} u:{uLe:.7f}")
 
         return uLe

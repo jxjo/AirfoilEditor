@@ -1137,7 +1137,7 @@ class Xo2_Transition_Artist (Artist):
 
         legend_name = "Point of Transition xtr"
 
-        color  = _color_airfoil ([], airfoil).darker (120) 
+        color  = _color_airfoil (airfoil).darker (120) 
         symbol = self.SYMBOL_TRANSITION_RIGHT
         size   = 40
         brush  = QColor ("black")

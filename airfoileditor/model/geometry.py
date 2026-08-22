@@ -552,7 +552,7 @@ class Flap_Setter (Flap_Definition):
 # -----------------------------------------------------------------------------
 
 
-class Panelling:
+class Paneling:
     """
     Abstract helper class which represents the target panel distribution of an airfoil 
 
@@ -596,7 +596,7 @@ class Panelling:
 
     def nPanels_default_of (self, linetype) -> int: 
         """ number of panels for UPPER/LOWER"""
-        return Panelling.nPanels_for(linetype, self.nPanels)
+        return Paneling.nPanels_for(linetype, self.nPanels)
 
 
     @staticmethod
@@ -612,7 +612,7 @@ class Panelling:
             Per-side panel count
         """
         if total_nPanels is None:
-            total_nPanels = Panelling.N_PANELS_DEFAULT
+            total_nPanels = Paneling.N_PANELS_DEFAULT
         
         if total_nPanels % 2 == 0:
             return int(total_nPanels / 2)
@@ -658,7 +658,7 @@ class Panelling:
         Returns a cosine-based distribution array of length nPoints over [0, 1].
 
         Bunching near LE is controlled by le_bunch, bunching near TE by te_bunch.
-        Used by Panelling_Spline directly as u, and by curve-based pannelling
+        Used by Paneling_Spline directly as u, and by curve-based pannelling
         (Bezier, B-Spline) as arc-length fractions that are subsequently mapped
         to curve parameter u via arc-length inversion.
         """
@@ -1590,7 +1590,7 @@ class Geometry ():
 
         self._te_gap_xBlend    = None           # x position from TE where te gap blending starts
         self._le_radius_xBlend = None           # x position from LE where le radius blending ends
-        self._panelling = None                  # "paneller"  for spline or Bezier 
+        self._paneling = None                  # "paneller"  for spline or Bezier 
         self._flap_setter = None                # "flap setter" 
 
         self._modification_dict = {}            # dict of modifications made to self 
@@ -1740,7 +1740,7 @@ class Geometry ():
 
 
     @property 
-    def panelling (self) -> None:
+    def paneling (self) -> Paneling:
         """ base - as self can't be paneled return None """
         return None
 
@@ -2218,6 +2218,10 @@ class Geometry ():
         If successful, new geometry is set  
         """
 
+        if self.flap_setter is None:
+            logger.warning (f"{self} cannot set_flap (either already flapped or curved)")
+            return
+        
         upper_new, lower_new = self.flap_setter.set_flap (flap_angle=flap_angle, flap_def=flap_def)
 
         if upper_new and lower_new:
@@ -2435,18 +2439,13 @@ class Geometry ():
 
 
     def repanel (self, **kwargs):
-        """repanel self with a new cosinus distribution 
-
-            to be overloaded
-        """
+        """repanel self with a new panel distribution  """
         raise NotImplementedError
-    
-    def _repanel (self, **kwargs):
-        """repanel self with a new cosinus distribution 
 
-            to be overloaded
-        """
-        pass
+
+    def _repanel (self, **kwargs):
+        """inner repanel self with a new panel distribution"""
+        raise NotImplementedError
 
 
     def blend (self, geo1_in : 'Geometry', geo2_in : 'Geometry', blendBy : float, moving=False):

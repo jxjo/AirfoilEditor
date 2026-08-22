@@ -402,7 +402,7 @@ class Panel_File_Modify_Small (Panel_File_Modify):
         Button (l,r,c,  text="&Finish ...", width=100, set=self.sig_finish.emit, 
                         toolTip="Save current airfoil, optionally modify name and leave edit mode")
         Button (l,r,c+2,text="&Cancel",  width=80, colSpan=3,
-                        set=lambda : self.sig_cancel.emit(),
+                        set=self.sig_cancel.emit,
                         toolTip="Cancel modifications of airfoil and leave edit mode")
         l.setColumnMinimumWidth (1,12)
         l.setColumnStretch (4,2)
@@ -631,7 +631,7 @@ class Panel_Geometry_Small (Panel_Geometry):
 
 
 class Panel_Panels (Panel_Airfoil_Abstract):
-    """ Panelling information """
+    """ Paneling information """
 
     name = 'Panels'
 
@@ -698,7 +698,7 @@ class Panel_Panels (Panel_Airfoil_Abstract):
 
 
 class Panel_Panels_Small (Panel_Panels):
-    """ Panelling information - small version"""
+    """ Paneling information - small version"""
 
     _main_margins = Panel_Airfoil_Abstract.MAIN_MARGINS_MINI
 

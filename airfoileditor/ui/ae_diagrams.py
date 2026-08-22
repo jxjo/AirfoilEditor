@@ -114,7 +114,7 @@ class Panel_Airfoils (Edit_Panel):
         
     @property 
     def show_design_airfoils (self) -> bool: 
-        return self.app_model.show_airfoil_design
+        return self.app_model.show_design
       
 
     def _n_REF (self) -> int:
@@ -292,7 +292,7 @@ class Panel_Airfoils (Edit_Panel):
 
     def set_show_design_airfoils (self, show : bool): 
 
-        self.app_model.set_show_airfoil_design(show)
+        self.app_model.set_show_design(show)
 
         self.sig_airfoils_to_show_changed.emit()
 
@@ -614,6 +614,7 @@ class Item_Airfoil (Diagram_Item):
         self._airfoil_artist        : Airfoil_Artist = None
         self._le_artist             : LE_Radius_Artist = None
         self._te_artist             : TE_Gap_Artist = None
+        self._paneling_artist       : Paneling_Artist = None
         self._deviation_line_artist : Deviation_Line_Artist = None
         self._curvature_comb_artist : Curvature_Comb_Artist = None
 
@@ -621,15 +622,16 @@ class Item_Airfoil (Diagram_Item):
 
         # connect signals of app model
 
-        self.app_model.sig_airfoil_geo_changed.connect      (self.refresh_artists)
-        self.app_model.sig_airfoil_geo_te_gap.connect       (self._on_te_gap_change)
-        self.app_model.sig_airfoil_geo_le_radius.connect    (self._le_artist.set_show)
-
-        self.app_model.sig_airfoil_geo_paneling.connect     (self._on_paneling_changed)
-        self.app_model.sig_airfoil_flap_set.connect         (self._on_flap_changed)
-        self.app_model.sig_airfoil_geo_curve.connect        (self._on_curve_changed)
-
+        # fast changes 
         self.app_model.sig_geo_changing.connect             (self._on_geo_changing)   
+        self.app_model.sig_geo_curve_changing.connect       (self._on_curve_changed)
+
+        # enter/leave modes - show/hide artists
+        self.app_model.sig_te_gap_mode.connect              (self._on_te_gap_mode)
+        self.app_model.sig_le_radius_mode.connect           (self._le_artist.set_show)
+        self.app_model.sig_flap_set_mode.connect            (self._on_flap_set_mode)
+        self.app_model.sig_paneling_mode.connect            (self._on_paneling_mode)
+        self.app_model.sig_blend_mode.connect               (self._on_blend_mode)
 
         self.app_model.sig_xo2_new_design.connect           (self._on_new_design)
 
@@ -665,23 +667,34 @@ class Item_Airfoil (Diagram_Item):
         """ is one airfoil used as design and is Bezier, B-spline or CST based?"""
         return any (a.usedAsDesign and a.geo.isCurve for a in self.airfoils)
 
-    def _on_flap_changed (self, is_flap : bool):
-        """ slot to handle flap of airfoil changed signal """
 
-        self._flap_artist.set_show (is_flap)
-        if is_flap:
-            self.refresh_artists()        # refresh to show flap line
+    def _on_flap_set_mode (self, active : bool):
+        """ slot to handle flap set mode entering/leaving """
 
-    def _on_te_gap_change (self, is_te_gap_change : bool):
-        """ slot to handle te gap is changing signal """
+        self._flap_artist.set_show (active)
+        if active:
+            self.refresh_artists()        
 
-        if self._te_artist.show != is_te_gap_change:
+
+    def _on_te_gap_mode (self, active : bool):
+        """ slot to handle te gap mode entering/leaving """
+
+        if self._te_artist.show != active:
             # switch off design mode when te gap is changing 
             if self.design_airfoil :
-                self.design_airfoil.set_isEdited (not is_te_gap_change)
-            self.refresh_artists()        # refresh to show te gap line
+                self.design_airfoil.set_isEdited (not active)
+            self.refresh_artists()        
 
-        self._te_artist.set_show (is_te_gap_change)                        # refresh to show new values
+        self._te_artist.set_show (active)                        
+
+
+    def _on_blend_mode (self, active : bool):
+        """ slot to handle blend mode entering/leaving """
+
+        # show temp geometry x,y of Design airfoil 
+        self._airfoil_artist.set_show_design_geometry (active) 
+
+        # self._blend_artist.set_show (active)
 
 
     def _on_geo_changing (self, source = None):
@@ -693,17 +706,21 @@ class Item_Airfoil (Diagram_Item):
         self.refresh_artists()       
 
 
-    def _on_paneling_changed (self, is_paneling : bool):
-        """ slot to handle paneling of airfoil changed signal """
+    def _on_paneling_mode (self, active : bool):
+        """ slot to handle paneling mode entering/leaving """
 
         # switch off Line artist
-        for artist in self._get_artist (Airfoil_Line_Artist):
-            if artist.show: artist.set_show (False)
+        if active:
+            self._line_artist.set_show (False)
 
-        # switch on/off show points
-        artist : Airfoil_Artist
-        for artist in self._get_artist (Airfoil_Artist):
-            artist.set_show_points (is_paneling)
+        # switch off curve control points when paneling is active 
+        self.set_show_control_points(not active)
+
+        # switch on/off Paneling artist
+        self._paneling_artist.set_show (active)
+
+        # refresh section panel and all artists
+        self.refresh()
 
 
     def _on_curve_changed (self, side_type : Line.Type):
@@ -955,6 +972,10 @@ class Item_Airfoil (Diagram_Item):
 
         a = Deviation_Line_Artist (self, lambda: self.airfoils, show=False, show_legend=True)
         self._deviation_line_artist = a
+        self._add_artist (a)
+
+        a  = Paneling_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True)
+        self._paneling_artist = a
         self._add_artist (a)
 
         a  = Flap_Artist (self, lambda: self.design_airfoil, show=False, show_legend=True)
@@ -1848,7 +1869,6 @@ class Diagram_Airfoil_Polar (Diagram):
         self.app_model.sig_new_case.connect          (self.refresh)    
         self.app_model.sig_new_airfoil.connect       (self.refresh)
 
-        self.app_model.sig_airfoil_changed.connect   (self.refresh)
         self.app_model.sig_etc_changed.connect       (self.refresh)
         self.app_model.sig_settings_loaded.connect   (lambda: self.set_settings (self.app_model.settings))
         self.app_model.sig_polar_set_changed.connect (self.panel_polar.refresh)

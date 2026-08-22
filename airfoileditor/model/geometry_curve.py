@@ -19,7 +19,7 @@ from ..base.common_utils    import clip
 from ..base.cst             import CST
 from ..base.spline          import Bezier, BSpline
 
-from .geometry      import (Geometry, Line, Panelling, Curvature_Abstract)
+from .geometry      import (Geometry, Line, Paneling, Curvature_Abstract)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -104,8 +104,8 @@ class Side_Airfoil_Curve (Line):
         
         # Panel distribution state - owned by side
         self._nPanels = None                        # per-side number of panels
-        self._le_bunch = Panelling.LE_BUNCH_DEFAULT
-        self._te_bunch = Panelling.TE_BUNCH_DEFAULT
+        self._le_bunch = Paneling.LE_BUNCH_DEFAULT
+        self._te_bunch = Paneling.TE_BUNCH_DEFAULT
         self._u = None                              # cached panel distribution
         self._u_state_key = None                    # curve state key when u was calculated
         
@@ -117,7 +117,7 @@ class Side_Airfoil_Curve (Line):
         self._moving_cPoints : list[tuple] | None = None
 
 
-    def set_panelling(self, nPanels: int, le_bunch: float = None, te_bunch: float = None):
+    def set_paneling(self, nPanels: int, le_bunch: float = None, te_bunch: float = None):
         """
         Set panel distribution parameters for this side.
         Called by geometry when repaneling, pushes new parameters from geometry to side.
@@ -138,10 +138,10 @@ class Side_Airfoil_Curve (Line):
     def u (self ) -> list [float]:
         """ 
         Panel distribution as curve parameter u values.
-        Computed on demand with automatic invalidation on curve state or panelling parameter changes.
+        Computed on demand with automatic invalidation on curve state or paneling parameter changes.
         """
         if self._nPanels is None:
-            raise ValueError(f"{self}: nPanels not set - call set_panelling first")
+            raise ValueError(f"{self}: nPanels not set - call set_paneling first")
         
         # Check if recalculation needed
         if self._u is None or self._u_state_key != self._curve_state_key():
@@ -153,7 +153,7 @@ class Side_Airfoil_Curve (Line):
 
     def _curve_state_key(self) -> tuple:
         """
-        Returns a hashable key representing the current curve shape and panelling parameters,
+        Returns a hashable key representing the current curve shape and paneling parameters,
         used to invalidate the cached 'u' panel distribution.
         Must be implemented in subclass (e.g. control points for Bezier/BSpline, weights for CST).
         """
@@ -170,7 +170,7 @@ class Side_Airfoil_Curve (Line):
         nPoints = nPanels_per_side + 1
 
         # Get cosine distribution in arc-length space
-        u_cos = Panelling._cosine_distribution(nPoints, le_bunch, te_bunch)
+        u_cos = Paneling._cosine_distribution(nPoints, le_bunch, te_bunch)
 
         # Map to curve parameter space via arc-length inversion
         return self._u_of_arc_fractions(curve, u_cos)
@@ -681,28 +681,25 @@ class Geometry_Curve (Geometry):
 
     @override
     @property 
-    def panelling (self) -> Panelling:
+    def paneling (self) -> Paneling:
         """ returns the target panel distribution / helper """
         raise NotImplementedError    # has to be implemented in Bezier or B-Spline
     
 
-    def repanel (self,  nPanels : int = None, just_finalize = False):
+    def repanel (self,  nPanels : int = None, moving = False):
         """
         Repanel self with a new cosinus distribution.
 
         If no new panel numbers are defined, the current numbers for upper and lower side remain. 
         """
 
-        if not just_finalize:
-            self._repanel (nPanels)
+        self._repanel (nPanels)
 
-        else: 
-            # save the actual panelling options as class variables
-            self._panelling.save() 
+        if not moving: 
+            # save the actual paneling options as class variables
+            self.paneling.save() 
 
-        # reset chached values
-        self._reset()
-        self._changed (Geometry.MOD_REPANEL)
+        self._changed (Geometry.MOD_REPANEL, moving=moving)
 
 
 
@@ -711,17 +708,17 @@ class Geometry_Curve (Geometry):
         Inner repanel without change handling
         """
 
-        nPanels   = nPanels if nPanels is not None else self.panelling.nPanels
+        nPanels   = nPanels if nPanels is not None else self.paneling.nPanels
         logger.debug (f"{self} _repanel {nPanels}")
 
         # Calculate per-side panel counts
-        nPanels_upper = Panelling.nPanels_for(Line.Type.UPPER, nPanels)
-        nPanels_lower = Panelling.nPanels_for(Line.Type.LOWER, nPanels)
+        nPanels_upper = Paneling.nPanels_for(Line.Type.UPPER, nPanels)
+        nPanels_lower = Paneling.nPanels_for(Line.Type.LOWER, nPanels)
         
-        # Update panelling parameters on both sides
-        # Pass bunching parameters from geometry's panelling settings
-        self.upper.set_panelling(nPanels_upper, self.panelling.le_bunch, self.panelling.te_bunch)
-        self.lower.set_panelling(nPanels_lower, self.panelling.le_bunch, self.panelling.te_bunch)
+        # Update paneling parameters on both sides
+        # Pass bunching parameters from geometry's paneling settings
+        self.upper.set_paneling(nPanels_upper, self.paneling.le_bunch, self.paneling.te_bunch)
+        self.lower.set_paneling(nPanels_lower, self.paneling.le_bunch, self.paneling.te_bunch)
 
         return True
 

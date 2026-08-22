@@ -512,7 +512,7 @@ class Mode_Modify (Mode_Abstract):
             airfoil.save()
 
         # show airfoil design initially
-        self._app_model.set_show_airfoil_design (True)
+        self._app_model.set_show_design (True)
 
         # switch app_model to this mode with new Design Case - will get/create first design
         self._app_model.set_mode_and_case (self.mode_id, Case_Direct_Design (airfoil))
@@ -590,7 +590,7 @@ class Mode_As_Bezier (Mode_Abstract):
         self._app_model.set_mode_and_case (self.mode_id, Case_Match_Target (airfoil, new_airfoil_cls=Airfoil_Bezier))
 
         # show airfoil design initially
-        self._app_model.set_show_airfoil_design (True)
+        self._app_model.set_show_design (True)
 
         super().on_enter()
 
@@ -627,7 +627,7 @@ class Mode_As_Bezier (Mode_Abstract):
             l = QHBoxLayout()
 
             p = Panel_File_Modify_Small (self, self._app_model, width=250, lazy=True, has_head=False)
-            # p.sig_cancel.connect                (self.cancel)
+            p.sig_cancel.connect                (self.cancel)
             p.sig_finish.connect                (self.finish)
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
@@ -662,7 +662,7 @@ class Mode_As_BSpline (Mode_Abstract):
         self._app_model.set_mode_and_case (self.mode_id, Case_Match_Target (airfoil, new_airfoil_cls=Airfoil_BSpline))
 
         # show airfoil design initially
-        self._app_model.set_show_airfoil_design (True)
+        self._app_model.set_show_design (True)
 
         super().on_enter()
 
@@ -699,7 +699,7 @@ class Mode_As_BSpline (Mode_Abstract):
             l = QHBoxLayout()
 
             p = Panel_File_Modify_Small (self, self._app_model, width=250, lazy=True, has_head=False)
-            # p.sig_cancel.connect                (self.cancel)
+            p.sig_cancel.connect                (self.cancel)
             p.sig_finish.connect                (self.finish)
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
@@ -738,7 +738,7 @@ class Mode_As_CST (Mode_Abstract):
         self._app_model.set_mode_and_case (self.mode_id, Case_Match_Target (airfoil, new_airfoil_cls=Airfoil_CST))
 
         # show airfoil design initially
-        self._app_model.set_show_airfoil_design (True)
+        self._app_model.set_show_design (True)
 
         super().on_enter()
 
@@ -775,6 +775,7 @@ class Mode_As_CST (Mode_Abstract):
             l = QHBoxLayout()
 
             p = Panel_File_Modify_Small (self, self._app_model, width=250, lazy=True, has_head=False)
+            p.sig_cancel.connect                (self.cancel)
             p.sig_finish.connect                (self.finish)
             p.sig_toggle_panel_size.connect     (self.toggle_minimized)
             l.addWidget (p)
@@ -829,7 +830,7 @@ class Mode_Optimize (Mode_Abstract):
         self._app_model.set_mode_and_case (self.mode_id, Case_Optimize (pathFileName))
 
         # don't show airfoil design initially
-        self._app_model.set_show_airfoil_design(False)
+        self._app_model.set_show_design(False)
 
         super().on_enter()
 

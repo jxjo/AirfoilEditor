@@ -15,7 +15,7 @@ from ..base.spline              import Bezier, HicksHenne, BSpline
 
 from ..model.airfoil            import (Airfoil, Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST, 
                                         usedAs, Geometry, Flap_Setter)
-from ..model.geometry           import Line, Panelling
+from ..model.geometry           import Line, Paneling
 from ..model.geometry_curve     import Geometry_Curve
 from ..model.geometry_bezier    import Geometry_Bezier,  Side_Airfoil_Bezier
 from ..model.geometry_bspline   import Geometry_BSpline, Side_Airfoil_BSpline
@@ -69,8 +69,19 @@ SYMBOL_TRANSITION_RIGHT  = _symbol_transition_right()
 
 # -------- helper functions ------------------------
 
-def _color_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> QColor:
+def _color_airfoil (airfoils : list[Airfoil] | Airfoil | None = None, airfoil: Airfoil = None) -> QColor:
     """ returns QColor for airfoil depending on its type """
+
+    # Allow shorthand call style: _color_airfoil(airfoil)
+    if isinstance(airfoils, Airfoil) and airfoil is None:
+        airfoil = airfoils
+        airfoils = None
+
+    if airfoils is None:
+        airfoils = []
+
+    if airfoil is None or not isinstance(airfoil, Airfoil):
+        return QColor('gray')
 
     alpha = 1.0
     airfoil_type = airfoil.usedAs
@@ -356,7 +367,7 @@ class Movable_Side_Bezier (Movable_Curve):
     @property
     def u (self) -> list:
         """ the Bezier parameter  """
-        # here - take from the 'side' property which delegates to panelling
+        # here - take from the 'side' property which delegates to paneling
         return self._side.u
 
 
@@ -465,7 +476,7 @@ class Movable_Side_BSpline (Movable_Curve):
     @property
     def u (self) -> list:
         """ the BSpline parameter  """
-        # here - take from the 'side' property which delegates to panelling
+        # here - take from the 'side' property which delegates to paneling
         return self._side.u
 
 
@@ -770,7 +781,7 @@ class Movable_Side_CST (Movable_Curve):
     @property
     def u (self) -> list:
         """ the CST parameter  """
-        # here - take from the 'side' property which delegates to panelling
+        # here - take from the 'side' property which delegates to paneling
         return self._side.u
 
 
@@ -833,28 +844,21 @@ class Airfoil_Artist (Artist):
                   show_points = False,
                   **kwargs):
 
-        self._show_panels = False                       # show ony panels 
         self._show_points = show_points is True         # show coordinate points
         self._show_airfoils_refs_scaled = True          # show reference airfoils scaled 
+        self._show_design_geometry = False              # show design geometry x,y
 
         super().__init__ (*args, **kwargs)
 
 
     @property
-    def show_panels(self): return self._show_panels
-    def set_show_panels (self, aBool): 
-        self._show_panels = aBool 
-        if self._show_panels: 
-            self.set_show_points (False)
-
-
-    @property
     def show_points (self): return self._show_points
-    def set_show_points (self, aBool):
+    def set_show_points (self, aBool, refresh=True):
         """ user switch to show point (marker )
         """
         self._show_points = aBool is True 
-        self.refresh()
+        if refresh:
+            self.refresh()
 
 
     @property
@@ -864,6 +868,15 @@ class Airfoil_Artist (Artist):
     
     def set_show_airfoils_refs_scaled (self, aBool):
         self._show_airfoils_refs_scaled = aBool
+        self.refresh()
+
+    @property
+    def show_design_geometry (self) -> bool:
+        """ True if design geometry will be shown """
+        return self._show_design_geometry
+
+    def set_show_design_geometry (self, aBool):
+        self._show_design_geometry = aBool
         self.refresh()
 
 
@@ -892,7 +905,6 @@ class Airfoil_Artist (Artist):
             if (airfoil.isLoaded):
 
                 # no legend if it is only one airfoil 
-
                 if len(self.airfoils) == 1:
                     label = None                                    # suppress legend 
                 else: 
@@ -907,64 +919,50 @@ class Airfoil_Artist (Artist):
                 width   = 1
                 style   = Qt.PenStyle.SolidLine
                 zValue  = 1
-                scale   = 1.0 
                 antialias = False
 
                 if airfoil.usedAs == usedAs.FINAL:
                     width = 2
                     antialias = True
                     zValue = 5                                      # final top most 
-                elif there_is_design:
-                    if airfoil.usedAsDesign:
-                        width = 2
-                        antialias = True
-                        zValue = 3
-                    elif airfoil.usedAs != usedAs.NORMAL:
-                        color = QColor (color).darker (110)
-                elif airfoil.usedAs == usedAs.NORMAL:
+                elif airfoil.usedAsDesign:
+                    width = 2
+                    antialias = True
+                    zValue = 3
+                    if self.show_design_geometry:
+                        style   = Qt.PenStyle.DotLine
+                elif airfoil.usedAs == usedAs.NORMAL and not there_is_design:
                     width = 2
                     antialias = True
 
                 pen = pg.mkPen(color, width=width, style=style)
+                # if there is only one airfoil, fill the airfoil contour with a soft color tone  
+                brush = pg.mkBrush (color.darker (600)) if len(self.airfoils) == 1 else None
 
-                # x,y = airfoil.geo.x, airfoil.geo.y 
-                x,y = airfoil.x, airfoil.y
+                # x,y Coordinates of the airfoil contour - airfoil.xy or airfoil.geo.xy (temp)
+                if airfoil.usedAsDesign and  self.show_design_geometry:
+                    x,y = airfoil.geo.x, airfoil.geo.y
+                else:
+                    x,y = airfoil.x, airfoil.y
 
                 # optional symbol for points
-
                 sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
-
                 if self.show_points:
                     s = 'o'
                 else:
                     s = None
 
                 # apply optional scale value for reference airfoils 
-
                 if self.show_airfoils_refs_scaled and airfoil.usedAs == usedAs.REF:
-                    scale = airfoil.scale_factor
-                    x,y = x * scale, y * scale
+                    x,y = x * airfoil.scale_factor, y * airfoil.scale_factor
 
                 # plot contour and fill airfoil if it's only one 
-                #   use geometry.xy to refelect changes in diesign airfoil
-
-                if len(self.airfoils) == 1: 
-
-                    # if there is only one airfoil, fill the airfoil contour with a soft color tone  
-                    brush = pg.mkBrush (color.darker (600))
-                    
-                    # plot note if reflexed or rearloaded
-                    self._plot_reflexed_rearloaded (airfoil, color)
-
-                else: 
-                    brush = None
 
                 self._plot_and_connect (airfoil, x, y, name=label, pen = pen, symbol=s, symbolSize=sSize, symbolPen=sPen, 
                                         symbolBrush=sBrush, fillLevel=0.0, fillBrush=brush, antialias = antialias,
                                         zValue=zValue)
 
                 # optional plot of real LE defined by spline 
-
                 if self.show_points and airfoil.geo.isSplined:
                     textColor = None
                     if airfoil.isNormalized:
@@ -976,14 +974,13 @@ class Airfoil_Artist (Artist):
 
                     self._plot_point (airfoil.geo.le_real, color=brushcolor, brush=brushcolor,
                                       text=text, textColor=textColor, anchor=(1.1,0.5) )
-                    
-                # optional plot of LE angle lines
-                if self.show_points and airfoil.usedAsDesign:
-                    self._plot_le_angle_lines (airfoil, color)
+
+                # plot note if reflexed or rearloaded
+                if len(self.airfoils) == 1: 
+                    self._plot_reflexed_rearloaded (airfoil, color)
 
         # show help message 
         self.set_help_message ("Click on an airfoil to show its key values")
-
 
 
     def _plot_and_connect (self, airfoil: Airfoil, *args, **kwargs) -> pg.PlotDataItem:
@@ -1012,6 +1009,53 @@ class Airfoil_Artist (Artist):
             self._plot_point ((x,y), size=0, text="Rearloaded", anchor=(0.5,-1.0), textColor=textColor)
 
 
+
+class Paneling_Artist (Artist):
+    """Helper Artist during paneling of the design airfoil."""
+
+    def __init__ (self, *args, **kwargs):
+
+        super().__init__ (*args, **kwargs)
+
+
+    @property
+    def design_airfoil (self) -> Airfoil:
+        return self.data_object
+
+    @property
+    def geo (self) -> Geometry:
+        return self.design_airfoil.geo if self.design_airfoil else None
+
+
+    def _plot (self): 
+    
+        if not self.geo: return
+
+        color = _color_airfoil (self.design_airfoil)
+        pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
+
+        # symbol for points
+        sPen, sBrush, sSize = pg.mkPen(color, width=1), 'black', 7
+        s = 'o'
+
+        self._plot_dataItem (self.geo.x, self.geo.y, pen = pen, zValue=5,
+                             symbol=s, symbolSize=sSize, symbolPen=sPen, symbolBrush=sBrush,)
+
+
+        self._plot_le_angle_lines (self.design_airfoil, color)
+
+        # print info about the paneling
+        y = self.geo.upper.max_xy[1] + 0.05 
+
+        text = f"{self.geo.nPanels} panels"
+        self._plot_point ((0.4, y), size=0, text=text, anchor=(0.5, 0.0), zValue=5)
+        text = f"LE bunch {self.geo.paneling.le_bunch}"
+        self._plot_point ((0.0, y), size=0, text=text, anchor=(0.0, 0.0), zValue=5)
+        text = f"TE bunch {self.geo.paneling.te_bunch}"
+        self._plot_point ((1.0, y), size=0, text=text, anchor=(1.0, 0.0), zValue=5)
+
+
+
     def _plot_le_angle_lines (self, airfoil : Airfoil, color : QColor): 
         """ plot helper lines showing le panel angle"""
 
@@ -1021,27 +1065,24 @@ class Airfoil_Artist (Artist):
 
         # upper line
         x2, y2   = airfoil.geo.x[iLe-1], airfoil.geo.y[iLe-1]
-        yEnd   = 0.08
+        yEnd   = 0.06
         xEnd   = interpolate (yLe, y2, xLe, x2, yEnd)
-
-        self._plot_dataItem ([xLe, xEnd], [yLe, yEnd], pen=pg.mkPen(color, style=Qt.PenStyle.DotLine))
+        self._plot_dataItem ([xLe, xEnd], [yLe, yEnd], pen=pg.mkPen(self.COLOR_LEGEND, width=0.75), antialias=True)
 
         # lower line
         x2, y2   = airfoil.geo.x[iLe+1], airfoil.geo.y[iLe+1]
-        yEnd   = -0.08
+        yEnd   = -0.06
         xEnd   = interpolate (yLe, y2, xLe, x2, yEnd)
-
-        self._plot_dataItem ([xLe, xEnd], [yLe, yEnd], pen=pg.mkPen(color, style=Qt.PenStyle.DotLine))
+        self._plot_dataItem ([xLe, xEnd], [yLe, yEnd], pen=pg.mkPen(self.COLOR_LEGEND, width=0.75), antialias=True)
 
         # text LE angle
-
         angle = airfoil.geo.panelAngle_le
         text  = f"LE angle {angle:.1f}°"
         if angle >  Geometry.LE_PANEL_ANGLE_TOO_BLUNT:
             text += " (too blunt)"
         elif angle < Geometry.PANEL_ANGLE_TOO_SHARP:    
             text += " (too sharp)"
-        self._plot_point ((xEnd,yEnd), size=0, text=text, textColor=None, anchor=(-0.05, 1))  
+        self._plot_point ((xEnd,yEnd), size=0, text=text, anchor=(-0.05, 1))  
 
 
 
@@ -1049,14 +1090,8 @@ class Flap_Artist (Artist):
     """Plot Flap data during flap setting  """
 
     @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
-    @property
     def design_airfoil (self) -> Airfoil:
-        for airfoil in self.airfoils:
-            if airfoil.usedAsDesign:
-                return airfoil 
-
+        return self.data_object 
 
     def _plot (self): 
     
@@ -1064,11 +1099,16 @@ class Flap_Artist (Artist):
         if flap_setter is None: return 
 
         geo_flapped = self.design_airfoil.geo
-        color = _color_airfoil ([], self.design_airfoil)
+        color = _color_airfoil (self.design_airfoil)
 
-        # plot flapped airfoil is done in Airfoil_Artist
+        # plot flapped airfoil 
 
-        # plot flap angle 
+        pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
+            
+        self._plot_dataItem (geo_flapped.x, geo_flapped.y, pen = pen, zValue=5)
+    
+        # plot flap angle label
+
         x,y,_,_ = geo_flapped.te
         self._plot_point ((x,y), size=0,text=f"{flap_setter.flap_angle:.1f}°", anchor=(-0.1, 0.5), zValue=10)
 
@@ -1080,7 +1120,7 @@ class Flap_Artist (Artist):
             if flap_setter.y_flap_spec == 'y/t':
                 text += f", {flap_setter.y_flap:.0%}"
             else:
-                text = f", {hinge_point[1]:.3f}"
+                text += f", {hinge_point[1]:.3f}"
 
         self._plot_point (hinge_point, color=color, size=10,text=text )
 
@@ -1099,14 +1139,8 @@ class TE_Gap_Artist (Artist):
 
 
     @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
-    @property
     def design_airfoil (self) -> Airfoil:
-        for airfoil in self.airfoils:
-            if airfoil.usedAsDesign:
-                return airfoil
-
+        return self.data_object
 
     @property
     def geo (self) -> Geometry:
@@ -1120,7 +1154,7 @@ class TE_Gap_Artist (Artist):
 
         movable_range = not self.geo.isCST
 
-        color = _color_airfoil (self.airfoils, self.design_airfoil)
+        color = _color_airfoil (self.design_airfoil)
         pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
 
         self._airfoil_item = self._plot_dataItem (self.geo.x, self.geo.y, pen = pen, zValue=5)
@@ -1219,35 +1253,31 @@ class LE_Radius_Artist (Artist):
 
 
     @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
-    @property
-    def airfoil (self) -> Airfoil:
-        for airfoil in self.airfoils:
-            if airfoil.usedAsDesign: return airfoil
+    def design_airfoil (self) -> Airfoil:
+        return self.data_object
 
     @property
     def geo (self) -> Geometry:
         """ the geometry of the design airfoil """
-        return self.airfoil.geo if self.airfoil else None
+        return self.design_airfoil.geo if self.design_airfoil else None
 
 
     def _plot (self): 
     
-        if not self.airfoil: return
+        if not self.design_airfoil: return
 
         movable = not self.geo.isCurve
 
         # plot actual contour of the design airfoil - dotted line
 
-        color = _color_airfoil (self.airfoils, self.airfoil)
+        color = _color_airfoil (self.design_airfoil)
         pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
             
         self._airfoil_item = self._plot_dataItem (self.geo.x, self.geo.y, pen = pen, zValue=5)
 
         # plot le circle and moving point to change the le radius
 
-        radius = self.airfoil.geo.le_radius
+        radius = self.design_airfoil.geo.le_radius
         self._circle_item = self._plot_circle (radius, 0, color=color, size=2*radius, 
                                         style=Qt.PenStyle.DotLine)
         
@@ -1320,7 +1350,7 @@ class Bezier_Artist (Artist):
     def airfoils (self) -> list [Airfoil]: return self.data_list
 
     def refresh_from_side (self, aLinetype : Line.Type):
-        """ fast refesh of bezier control points for one line type"""
+        """ fast refresh of bezier control points for one line type"""
 
         p : Movable_Side_Bezier
         for p in self._plots: 
@@ -1957,10 +1987,10 @@ class Airfoil_Line_Artist (Artist, QObject):
 
 
 
-class Panelling_Du_Artist (Artist):
+class Paneling_Du_Artist (Artist):
     """
     Artist to plot the normalised panel-spacing distribution (Δu × n per side)
-    for the current panelling settings.  A value of 1.0 corresponds to a
+    for the current paneling settings.  A value of 1.0 corresponds to a
     perfectly uniform distribution; values < 1 indicate denser panels.
     """
 
@@ -1968,13 +1998,13 @@ class Panelling_Du_Artist (Artist):
 
     def _plot (self):
 
-        panelling : Panelling = self.data_object
-        if panelling is None: return
+        paneling : Paneling = self.data_object
+        if paneling is None: return
 
-        n = max (panelling.nPanels // 2, 10)
+        n = max (paneling.nPanels // 2, 10)
         nPoints = n + 1
         # Use cosine distribution directly (no arc-length mapping needed for visualization)
-        u  = panelling._cosine_distribution(nPoints, panelling.le_bunch, panelling.te_bunch)
+        u  = paneling._cosine_distribution(nPoints, paneling.le_bunch, paneling.te_bunch)
         du = np.diff (u) * n                    # normalised: uniform → 1.0
 
         pen = pg.mkPen (QColor('dodgerblue'), width=1.0)
@@ -1983,7 +2013,6 @@ class Panelling_Du_Artist (Artist):
         # dashed reference line at 1.0 (uniform)
         pen_ref = pg.mkPen (QColor ("gray"), width=1, style=Qt.PenStyle.DashLine)
         self._plot_dataItem (np.array ([0.0, 1.0]), np.array ([1.0, 1.0]), pen=pen_ref)
-
 
 
 

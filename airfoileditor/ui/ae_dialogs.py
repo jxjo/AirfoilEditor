@@ -20,7 +20,7 @@ from ..model.airfoil            import Airfoil
 from ..model.airfoil_exports    import Export_Airfoil_Dxf
 from ..model.geometry           import Geometry, Flap_Setter
 from ..model.geometry_curve     import LE_Mode
-from ..model.geometry_spline    import Geometry_Splined, Panelling_Spline
+from ..model.geometry_spline    import Geometry_Splined, Paneling_Spline
 from ..model.geometry_cst       import Geometry_CST, Side_Airfoil_CST
 from ..model.case               import Match_Targets, Case_Match_Target
 from ..base.pso                 import Pso_Options
@@ -232,6 +232,7 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
 
+        self.app_model.notify_blend_mode (True)         # notify self that blend mode is entering
 
     @property
     def app_model (self) -> App_Model:
@@ -260,7 +261,7 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
         if self._airfoil2_copy is not None: 
             self.airfoil.geo.blend(self.airfoil_seed.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, moving=True)
-            self.app_model.notify_geo_changed()
+            self.app_model.notify_geo_changing()
 
 
     @property
@@ -271,17 +272,19 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
     def set_airfoil_2 (self, aAirfoil : Airfoil = None):
         """ set new 2nd airfoil - do blend - signal change"""
 
+        # add/show second airfoil
         self.app_model.set_airfoil_2 (aAirfoil)
-        self.refresh()
 
         # first blend with new airfoil - use copy as airfoil2 could be normalized
-
-        self._airfoil2_copy = aAirfoil.asCopy() if aAirfoil is not None else None
-
         if aAirfoil is not None: 
+            self._airfoil2_copy = aAirfoil.asCopy() 
             self.airfoil.geo.blend(self.airfoil_seed.geo, self._airfoil2_copy.geo, 
                                      self._blendBy, moving=True)
-            self.app_model.notify_geo_changed()
+        else:
+            self._airfoil2_copy = None
+
+        self.refresh()
+        self.app_model.notify_geo_changing()
 
 
     def _init_layout(self) -> QLayout:
@@ -317,6 +320,8 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
     def done(self, result: int) -> None:
         """ close or x-Button pressed"""
 
+        self.app_model.notify_blend_mode (False)         # notify that blend mode is leaving
+
         if self._changes:
             # do final blend with high quality (splined) 
             self.airfoil.geo.blend (self.airfoil_seed.geo, self.airfoil_2.geo, self.blendBy) 
@@ -346,11 +351,11 @@ class Repanel_Airfoil_Dialog (Dialog_Modeless):
         super().__init__ (parent, **kwargs)
 
         # do a first repanel with the actual parameters 
-        self.geo._repanel (based_on_org=True)              # repanel based on original x,y
+        self.geo.repanel (moving=True)              # repanel based on original x,y
         self._changes = True
 
         # switch on show panels mode in diagram
-        self._app_model.notify_airfoil_geo_paneling (True)
+        self._app_model.notify_paneling_mode (True)
 
 
     @property
@@ -369,26 +374,26 @@ class Repanel_Airfoil_Dialog (Dialog_Modeless):
         r += 1 
         Label  (l,r,1, get="Panels", align=Qt.AlignmentFlag.AlignRight)
         FieldI (l,r,2, width=60, step=10, lim=(40, 400),
-                        obj=self.geo.panelling, prop=Panelling_Spline.nPanels,
+                        obj=self.geo.paneling, prop=Paneling_Spline.nPanels,
                         style=self._le_bunch_style)
         r += 1 
         Slider (l,r,1, colSpan=3, width=150, align=Qt.AlignmentFlag.AlignHCenter,
                         lim=(40, 400), dec=0, # step=10,
-                        obj=self.geo.panelling, prop=Panelling_Spline.nPanels)
+                        obj=self.geo.paneling, prop=Paneling_Spline.nPanels)
         Label  (l,r,0, get="LE bunch")
         Label  (l,r,4, get="TE bunch")
 
         r += 1
         FieldF (l,r,0, width=60, step=0.02, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch,
+                        obj=self.geo.paneling, prop=Paneling_Spline.le_bunch,
                         style=self._le_bunch_style)
         Slider (l,r,1, width=100, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.le_bunch)
+                        obj=self.geo.paneling, prop=Paneling_Spline.le_bunch)
 
         Slider (l,r,3, width=100, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
+                        obj=self.geo.paneling, prop=Paneling_Spline.te_bunch)
         FieldF (l,r,4, width=60, step=0.02, lim=(0, 1),
-                        obj=self.geo.panelling, prop=Panelling_Spline.te_bunch)
+                        obj=self.geo.paneling, prop=Paneling_Spline.te_bunch)
         r += 1
         Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)        
         SpaceC (l,5, width=5)
@@ -421,20 +426,19 @@ class Repanel_Airfoil_Dialog (Dialog_Modeless):
 
         super()._on_widget_changed (widget)
 
-        self.geo._repanel (based_on_org=True)              # repanel based on original x,y 
+        self.geo.repanel (moving=True)                      # repanel based on original x,y 
         self.refresh()
-        self._app_model.notify_airfoil_geo_paneling (True)
+        self._app_model.notify_geo_changing (source=self)
 
 
     def done(self, result: int) -> None:
         """ close or x-Button pressed"""
 
         if self._changes:
-            # finalize modifications
-            self.geo.repanel (just_finalize=True)
+            self.geo.repanel (moving=False)                 # modify airfoil geometry final
             self._app_model.notify_geo_changed ()
 
-        self._app_model.notify_airfoil_geo_paneling (False)     # switch off panel mode in diagram
+        self._app_model.notify_paneling_mode (False)        # switch off panel mode in diagram
 
         return super().done(result)
 
@@ -458,7 +462,7 @@ class Flap_Airfoil_Dialog (Dialog_Modeless):
         super().__init__ (parent, **kwargs)
 
         # switch on TE gap mode in diagram
-        self.app_model.notify_airfoil_flap_set (True)
+        self.app_model.notify_flap_set_mode (True)
 
 
     @property
@@ -470,8 +474,12 @@ class Flap_Airfoil_Dialog (Dialog_Modeless):
         return self.app_model.airfoil
 
     @property
+    def geo (self) -> Geometry:
+        return self.airfoil.geo
+
+    @property
     def flap_setter (self) -> Flap_Setter:
-        return self.airfoil.flap_setter
+        return self.geo.flap_setter
 
     @property
     def has_been_flapped (self) -> bool:
@@ -520,7 +528,9 @@ class Flap_Airfoil_Dialog (Dialog_Modeless):
 
         self.refresh()
 
-        self.app_model.notify_airfoil_flap_set (True)
+        self.geo.set_flap (moving=True)                     # apply flap setter intermediate
+
+        self.app_model.notify_geo_changing (source=self)
 
 
     def done(self, result: int) -> None:
@@ -528,10 +538,11 @@ class Flap_Airfoil_Dialog (Dialog_Modeless):
 
         if self.has_been_flapped:
             # finalize modifications
-            self.airfoil.do_flap ()                             # modify airfoil geometry
+            self.geo.set_flap ()                             # modify airfoil geometry final
+
             self.app_model.notify_geo_changed()
 
-        self.app_model.notify_airfoil_flap_set (False)      # switch off flap mode in diagram
+        self.app_model.notify_flap_set_mode (False)      # switch off flap mode in diagram
 
         return super().done(result)
 
@@ -554,7 +565,7 @@ class TE_Gap_Dialog (Dialog_Modeless):
         super().__init__ (parent, **kwargs)
 
         # switch on TE gap mode in diagram
-        self.app_model.notify_airfoil_geo_te_gap (moving=True)
+        self.app_model.notify_te_gap_mode (active=True)
 
 
     @property
@@ -644,7 +655,7 @@ class TE_Gap_Dialog (Dialog_Modeless):
             self.app_model.notify_geo_changed ()
 
         # switch off TE gap mode in diagram
-        self.app_model.notify_airfoil_geo_te_gap (moving=False)
+        self.app_model.notify_te_gap_mode (active=False)
 
         return super().done(result)
 
@@ -915,7 +926,7 @@ class LE_Radius_Dialog (Dialog_Modeless):
         super().__init__ (parent, **kwargs)
 
         # switch on LE radius mode in diagram
-        self.app_model.notify_airfoil_geo_le_radius (moving=True)
+        self.app_model.notify_le_radius_mode (active=True)
 
 
     @property
@@ -1016,7 +1027,7 @@ class LE_Radius_Dialog (Dialog_Modeless):
             self.app_model.notify_geo_changed ()
 
         # switch off LE radius mode in diagram
-        self.app_model.notify_airfoil_geo_le_radius (moving=False)
+        self.app_model.notify_le_radius_mode (active=False)
 
         return super().done(result)
 

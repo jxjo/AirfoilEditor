@@ -92,7 +92,7 @@ def color_in_series (color : QColor | str, i, n, delta_hue=0.1):
 
 
 pg.setConfigOptions(antialias=False)
-pg.setConfigOptions(mouseRateLimit=30)
+pg.setConfigOptions(mouseRateLimit=20)
 pg.setConfigOption('background', 'k')    # black background - consistent across all systems
 
 

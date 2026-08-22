@@ -20,8 +20,6 @@ from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
 from PyQt6.QtCore            import QCoreApplication, pyqtSignal, QObject, QThread, QTimer
-from PyQt6.QtWidgets         import QWidget
-from pyqtgraph               import PlotItem
 
 from .resources              import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
@@ -32,9 +30,9 @@ from .model.airfoil          import Airfoil, usedAs
 from .model.airfoil_examples import Example
 from .model.geometry         import Line
 from .model.geometry_curve   import Geometry_Curve, Side_Airfoil_Curve, LE_Mode
-from .model.geometry_spline  import Panelling_Spline
-from .model.geometry_bezier  import Panelling_Bezier
-from .model.geometry_bspline import Panelling_BSpline
+from .model.geometry_spline  import Paneling_Spline
+from .model.geometry_bezier  import Paneling_Bezier
+from .model.geometry_bspline import Paneling_BSpline
 from .model.geometry_cst     import Geometry_CST
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from .model.xo2_driver       import Worker, Xoptfoil2
@@ -125,32 +123,36 @@ class App_Model (QObject):
     sig_new_case                = pyqtSignal()          # new case selected
     sig_new_airfoil             = pyqtSignal()          # new airfoil selected
 
-    sig_airfoil_changed         = pyqtSignal()          # current airfoil changed (geometry etc)
+    # fast geometry updates during user interaction - no new design airfoil created yet
+    sig_geo_changing            = pyqtSignal(object)    # geometry changing including source widget
+    sig_geo_curve_changing      = pyqtSignal(Line.Type) # curve (Bezier or B-Spline) during match curve 
+
+    # enter/leave modes - show/hide artists
+    sig_te_gap_mode             = pyqtSignal(bool)      
+    sig_le_radius_mode          = pyqtSignal(bool)    
+    sig_flap_set_mode           = pyqtSignal(bool)      
+    sig_paneling_mode           = pyqtSignal(bool) 
+    sig_blend_mode              = pyqtSignal(bool)     
+
+    # etc 
     sig_etc_changed             = pyqtSignal()          # reference airfoils etc changed
     sig_settings_loaded         = pyqtSignal()          # settings loaded for current airfoil
-
     sig_polar_set_changed       = pyqtSignal()          # polar set of one or more airfoils changed
-    sig_new_polars              = pyqtSignal()          # new polars generated (Watchdog)
+    sig_new_polars              = pyqtSignal()          # new xfoil polars generated (Watchdog)
 
-    sig_airfoil_geo_changed     = pyqtSignal()          # airfoil geometry is fast changing / moving 
-    sig_geo_changing            = pyqtSignal(object)    # fast geometry changing including source widget
-    sig_airfoil_geo_te_gap      = pyqtSignal(object)    # te gap is fast changing / moving
-    sig_airfoil_geo_le_radius   = pyqtSignal(bool)      # le radius is fast changing / moving
-    sig_airfoil_geo_paneling    = pyqtSignal(bool)      # airfoil panelling is fast changing / moving
-    sig_airfoil_flap_set        = pyqtSignal(bool)      # flap setting (Flapper) changed / moving
-    sig_airfoil_geo_curve       = pyqtSignal(Line.Type) # new curve (Bezier or B-Spline) during match curve 
-
+    # xoptfoil2 optimization
     sig_xo2_run_started         = pyqtSignal()          # optimization run started
     sig_xo2_run_finished        = pyqtSignal()          # optimization run finished
-    sig_xo2_new_state           = pyqtSignal()          # Xoptfoil2 new info/state (Watchdog)
-    sig_xo2_new_design          = pyqtSignal()          # Xoptfoil2 new current design index (Watchdog)
-    sig_xo2_new_step            = pyqtSignal()          # Xoptfoil2 new step (Watchdog)
-    sig_xo2_still_running       = pyqtSignal()          # Xoptfoil2 still running (Watchdog)
-    sig_xo2_input_changed       = pyqtSignal()          # xo2 input data changed (opPoints, ref airfoils, ...)
-    sig_xo2_opPoint_def_selected= pyqtSignal()          # xo2 opPoint definition selected
+    sig_xo2_new_state           = pyqtSignal()          # new info/state (Watchdog)
+    sig_xo2_new_design          = pyqtSignal()          # new current design index (Watchdog)
+    sig_xo2_new_step            = pyqtSignal()          # new step (Watchdog)
+    sig_xo2_still_running       = pyqtSignal()          # still running (Watchdog)
+    sig_xo2_input_changed       = pyqtSignal()          # input data changed (opPoints, ref airfoils, ...)
+    sig_xo2_opPoint_def_selected= pyqtSignal()          # opPoint definition selected
 
 
     def __init__(self, workingDir_default: str = None, start_watchdog: bool = True):
+
         super().__init__()
 
         self._workingDir_default= workingDir_default if workingDir_default else os.getcwd()
@@ -162,25 +164,24 @@ class App_Model (QObject):
         self._is_first_run      = False                 # is first run of this version
 
         self._mode_id : Mode_Id = None                  # current app mode
+        self._case : Case_Abstract = None               # design Case holding all designs 
 
         self._airfoil           = None                  # current airfoil 
         self._airfoils_ref      = []                    # reference airfoils 
         self._airfoil_2         = None                  # 2nd airfoil for blend  
         self._exporter_airfoil  = None                  # current airfoil exporter
-        self._show_airfoil_design = True                # show design airfoil by default
-
-        self._xo2_iopPoint_def  = 0                     # current xo2 opPoint definition index
-        self._xo2_run_started   = False                 # has xo2 run started
+        self._show_design = True                        # show design airfoil by default
 
         self._polar_definitions = []                    # current polar definitions  
-        self._case : Case_Abstract = None               # design Case holding all designs 
 
         self._settings = {}                             # actual loaded settings dict
         self._airfoil_settings_loaded = False           # have settings been loaded for current airfoil
-
         self._is_lower_minimized= False                 # is lower panel minimized
         
         self._watchdog = None                           # watchdog thread (may not be started)
+
+        self._xo2_iopPoint_def  = 0                     # current xo2 opPoint definition index
+        self._xo2_run_started   = False                 # has xo2 run started
 
         # set working dir for Example airfoils created
         Example.workingDir_default = workingDir_default   
@@ -303,7 +304,7 @@ class App_Model (QObject):
             self._xo2_run_started = False
 
             self._watchdog.set_case_optimize (None)                         # stop watching
-            self.set_show_airfoil_design (False)                            # not show design airfoil finally
+            self.set_show_design (False)                            # not show design airfoil finally
             # assign polar set to the last design airfoil (it was assigned without polar set during optimization)
             if self.airfoil:
                 self.airfoil.set_polarSet (Polar_Set (self.airfoil, polar_def=self.polar_definitions, only_active=True))
@@ -318,7 +319,7 @@ class App_Model (QObject):
 
         if self._matcher:
             line_type = self._matcher._side.type
-            self.sig_airfoil_geo_curve.emit (line_type)                     # update diagram
+            self.sig_geo_curve_changing.emit (line_type)                     # update diagram
             QCoreApplication.processEvents()
 
 
@@ -514,10 +515,14 @@ class App_Model (QObject):
 
     def notify_geo_changing (self, source = None):
         """ 
-        Notify self that current airfoil geometry is moving rapidly
+        Notify self that current airfoil *geometry* is changing rapidly during user edit
+
+        A new polar set with just NeuralFoil polars is assigned to avoid XFoil 
+        polar generation during moving of the geometry.
 
         Args: 
-            source: optional source of the change - can be a widget, plot item, ... to avoid feedback loops
+            source: optional source of the change - can be a widget, plot item, ...
+                     to avoid feedback loops
         """
 
         design = self.airfoil_design
@@ -531,11 +536,15 @@ class App_Model (QObject):
 
             logger.debug (f"{self} geo moving - polar set replaced with neuralfoil polars")
 
-            self.sig_geo_changing.emit(source)        # inform diagram and data panel - geo is moving
+            self.sig_geo_changing.emit(source)        
 
 
     def notify_geo_changed (self):
-        """ notify self that current airfoil has changed """
+        """ 
+        Notify self that current airfoil has finally changed 
+        
+        A new design airfoil is created and added to the case.
+        """
 
         design = self.airfoil_design
 
@@ -567,35 +576,30 @@ class App_Model (QObject):
         self._refresh_polar_sets (silent=False)
 
 
-    def notify_airfoil_geo_changed (self):
-        """ notify self that current airfoil geometry has changed rapidly """
-
-        self.sig_airfoil_geo_changed.emit()
-
-
-    def notify_airfoil_geo_te_gap (self, moving : bool = False):
-        """ notify self that current airfoil geometry TE gap has changed rapidly """  
-
-        self.sig_airfoil_geo_te_gap.emit (moving)
+    def notify_te_gap_mode (self, active : bool = False):
+        """ notify entering TE gap mode to change TE gap """  
+        self.sig_te_gap_mode.emit (active)
 
 
-    def notify_airfoil_geo_le_radius (self, moving: bool = False):
-        """ notify self that current airfoil geometry LE radius has changed rapidly """  
-
-        self.sig_airfoil_geo_le_radius.emit (moving)
-
-
-    def notify_airfoil_flap_set (self, is_set: bool):
-        """ notify self that current airfoil flap setting has changed rapidly """  
-
-        self.airfoil.geo.set_flap (moving=True)
-
-        self.sig_airfoil_flap_set.emit (is_set)
+    def notify_le_radius_mode (self, active: bool = False):
+        """ notify entering LE radius mode to change LE radius """
+        self.sig_le_radius_mode.emit (active)
 
 
-    def notify_airfoil_geo_paneling (self, is_paneling: bool = True):
-        """ notify self that current airfoil panelling has changed rapidly """  
-        self.sig_airfoil_geo_paneling.emit (is_paneling)
+    def notify_flap_set_mode (self, active: bool):
+        """ notify entering flap set mode to change flap setting """  
+        self.sig_flap_set_mode.emit (active)
+
+
+    def notify_paneling_mode (self, active: bool = True):
+        """ notify self that paneling mode is entering/leaving """  
+        self.sig_paneling_mode.emit (active)
+
+
+    def notify_blend_mode (self, active: bool = True):
+        """ notify self that blend mode is entering/leaving """  
+       
+        self.sig_blend_mode.emit (active)
 
 
     def notify_match_target_changed (self, refit_for : Side_Airfoil_Curve | Geometry_CST= None, moving=False):
@@ -650,9 +654,9 @@ class App_Model (QObject):
             new_design = not moving
 
         if new_design:
-            self.notify_geo_changed()         # notify change of airfoil - new design
+            self.notify_geo_changed()                               # notify change of airfoil - new design
         else:
-            self.sig_new_airfoil.emit()           # notify change of airfoil - no new design yet
+            self.sig_new_airfoil.emit()                             # notify change of airfoil - no new design yet
 
     @property
     def airfoil_2 (self) -> Airfoil:
@@ -664,6 +668,7 @@ class App_Model (QObject):
             self._airfoil_2.set_usedAs (usedAs.NORMAL)
         if airfoil: 
             airfoil.set_usedAs (usedAs.SECOND)
+            self._refresh_polar_sets (silent=True)                  # attach polar set to new airfoil 2
         self._airfoil_2 = airfoil
         self.sig_etc_changed.emit()             
 
@@ -698,13 +703,13 @@ class App_Model (QObject):
             if airfoil.usedAs == usedAs.DESIGN:
                 return airfoil
     @property                    
-    def show_airfoil_design (self) -> bool:
+    def show_design (self) -> bool:
         """ should the design airfoil be shown"""
         # here in app_model that this setting applies to all designs
-        return self._show_airfoil_design
+        return self._show_design
 
-    def set_show_airfoil_design (self, show: bool):
-        self._show_airfoil_design = show
+    def set_show_design (self, show: bool):
+        self._show_design = show
 
 
     @property
@@ -806,7 +811,7 @@ class App_Model (QObject):
         for airfoil in self.airfoils:
 
             if airfoil.usedAs == usedAs.DESIGN:
-                if self.show_airfoil_design:                        # show design airfoil according to global setting  
+                if self.show_design:                                # show design airfoil according to global setting  
                     airfoils.append (airfoil)
             elif airfoil.get_property("show",True):                 # individual show property
                 airfoils.append (airfoil)
@@ -972,11 +977,11 @@ class App_Model (QObject):
             self._airfoil_settings_loaded = False
             logger.info (f"{self} Settings loaded: {s.pathFileName}")
 
-        # panelling 
+        # paneling 
 
-        Panelling_Spline.from_dict(s)
-        Panelling_Bezier.from_dict(s)
-        Panelling_BSpline.from_dict(s)
+        Paneling_Spline.from_dict(s)
+        Paneling_Bezier.from_dict(s)
+        Paneling_BSpline.from_dict(s)
 
         # polar definitions 
 
@@ -1048,10 +1053,10 @@ class App_Model (QObject):
             s = Airfoil_Settings (self.airfoil)
             s.clear()                                       # new rebuild of settings
 
-        # save panelling values 
-        Panelling_Spline.to_dict(s)
-        Panelling_Bezier.to_dict(s)
-        Panelling_BSpline.to_dict(s)
+        # save paneling values 
+        Paneling_Spline.to_dict(s)
+        Paneling_Bezier.to_dict(s)
+        Paneling_BSpline.to_dict(s)
 
 
         # add reference airfoils 
@@ -1129,7 +1134,7 @@ class App_Model (QObject):
 
             case.clear_results ()
             self.set_airfoil (None, silent=True)                # clear current airfoil during optimization run
-            self.set_show_airfoil_design (True)                 # do show design airfoil initially
+            self.set_show_design (True)                 # do show design airfoil initially
 
             self._watchdog.set_case_optimize (case)             # will start watching this case
 
