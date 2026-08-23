@@ -485,7 +485,9 @@ class Match_Targets:
 
 
     @classmethod
-    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, ncp : int,
+    def from_airfoil (cls, airfoil : Airfoil, sidetype : Line.Type, 
+                      ncp : int,
+                      ncp_auto : bool = True,
                       le_mode: LE_Mode  = LE_Mode.FIXED) -> 'Match_Targets':
         """ create Match_Targets from an Airfoil and side name 'upper' or 'lower' """
 
@@ -507,7 +509,7 @@ class Match_Targets:
         le_curvature = round (airfoil.geo.curvature.at_le, 0)
         le_monoton   = airfoil.geo.curvature.max_is_at_le
 
-        instance = cls (side, curv, ncp=ncp,
+        instance = cls (side, curv, ncp=ncp, ncp_auto=ncp_auto,
                         le_curvature=le_curvature, 
                         le_monoton=le_monoton,
                         le_mode=le_mode)
@@ -607,6 +609,9 @@ class Match_Targets:
     def set_use_pso(self, val: bool):
         self._use_pso = val
 
+    def set_pso_options(self, options: Pso_Options):
+        self._pso_options = options
+
     def set_pso_seed(self, seed: int):
         self._pso_options.set_seed(int(seed))
 
@@ -683,6 +688,11 @@ class Case_Match_Target (Case_Direct_Design):
 
         ncp = airfoil_initial.geo.lower.ncp
         self._targets_lower = Match_Targets.from_airfoil (airfoil_target, Line.Type.LOWER, ncp, le_mode=le_mode)
+
+        # Keep optimizer tuning consistent across upper/lower runs and one shared UI dialog.
+        pso_options_shared = Pso_Options()
+        self._targets_upper.set_pso_options(pso_options_shared)
+        self._targets_lower.set_pso_options(pso_options_shared)
 
 
     @property

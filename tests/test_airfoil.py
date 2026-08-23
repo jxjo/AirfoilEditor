@@ -15,7 +15,7 @@ import os
 
 from airfoileditor.model.airfoil          import Airfoil, Airfoil_Bezier, GEO_BASIC, GEO_SPLINE
 from airfoileditor.model.airfoil_examples import Root_Example, Tip_Example
-from airfoileditor.model.geometry         import Geometry, Flap_Setter
+from airfoileditor.model.geometry         import Geometry, Flap_Setter, Flap_Definition
 from airfoileditor.model.geometry_spline  import Geometry_Splined, Curvature_of_Spline
 from airfoileditor.model.geometry_bezier  import Geometry_Bezier
 from airfoileditor.model.geometry_curve   import Curvature_of_Curve
@@ -48,8 +48,8 @@ class Test_Airfoil:
 
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.2903642, 0.0764996)
-        assert geo.camber._get_maximum()    == (0.4152061, 0.0170131)
+        assert np.allclose(geo.thickness._get_maximum(), (0.2903642, 0.0764996), atol=1e-7)
+        assert np.allclose(geo.camber._get_maximum(), (0.4152061, 0.0170131), atol=1e-7)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -96,8 +96,8 @@ class Test_Airfoil:
 
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.2903512, 0.076502)
-        assert geo.camber._get_maximum()    == (0.4152475, 0.0170127)
+        assert np.allclose(geo.thickness._get_maximum(), (0.2903512, 0.076502), atol=1e-7)
+        assert np.allclose(geo.camber._get_maximum(), (0.4152475, 0.0170127), atol=1e-7)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -180,11 +180,32 @@ class Test_Airfoil:
         airfoil1.normalize()
         airfoil2.normalize()
 
+        t1 = airfoil1.geo.max_thick
+        t2 = airfoil2.geo.max_thick
         airfoil.do_blend (airfoil1, airfoil2, blendBy=0.0)
-        assert airfoil1.geo.max_thick == airfoil.geo.max_thick
+        t = airfoil.geo.max_thick
+        assert t == t1  
+
 
         airfoil.do_blend (airfoil1, airfoil2, blendBy=0.5)
-        assert airfoil.geo.max_thick == 7.3015 / 100
+        t = airfoil.geo.max_thick
+        assert t == 7.3015 / 100
+
+
+    def test_flap(self):
+
+        airfoil = Root_Example(geometry=GEO_SPLINE)
+
+        flap_def = Flap_Definition()
+        flap_def.set_x_flap(0.70)
+        flap_def.set_flap_angle(10.0)
+
+        airfoil.do_flap(flap_def)
+
+        _, y_te_upper, _, y_te_lower = airfoil.geo.te
+        y_te_mid = (y_te_upper + y_te_lower) / 2.0
+
+        assert np.isclose(y_te_mid, -0.052248234128998296)
 
 
 
@@ -316,8 +337,8 @@ class Test_Airfoil_Bezier:
         
         # thickness, camber 
 
-        assert geo.thickness._get_maximum() == (0.3140447, 0.1110653)
-        assert geo.camber._get_maximum()    == (0.3973535, 0.0140229)
+        assert np.allclose(geo.thickness._get_maximum(), (0.3140447, 0.1110653), atol=1e-7)
+        assert np.allclose(geo.camber._get_maximum(), (0.3973535, 0.0140229), atol=1e-7)
 
         with pytest.raises(NotImplementedError):
             geo.set_maxThick  (0.08)
@@ -444,60 +465,4 @@ class Test_Worker:
             print (f"{worker}: {worker.finished_errortext}")
 
         assert polar_file
-
-
-
-
-    def test_worker_set_flap (self, temp_dir):
-
-        import shutil
-
-        Worker().isReady (".", min_version=self.WORKER_MIN_VERSION)
-        assert Worker.ready
-
-        worker = Worker()
-        airfoil = Root_Example(geometry = GEO_SPLINE)
-
-        # saveAs 
-
-        airfoil = Root_Example(geometry = GEO_SPLINE)
-
-        destName = 'haha'
-        airfoil_path = airfoil.saveAs (dir=str(temp_dir), destName=destName)
-
-        # ------- set flap ---------------------------------------------
-
-        print (f"\n{Worker.NAME_EXE} setting flap ...")
-
-        outname = destName+'_flapped'
-        fileName_flapped = worker.set_flap (airfoil_path, x_flap=0.7, flap_angle=10, outname=outname)
-
-        assert fileName_flapped
-
-        # ------- load flapped airfoil ---------------------------------------------
-
-        fileName = outname + '.dat'
-        airfoil_flapped = Airfoil (pathFileName=fileName, workingDir=str(temp_dir))
-        airfoil_flapped.load()
-
-        assert airfoil_flapped.isFlapped
-        assert airfoil_flapped.geo.curvature.flap_kink_at == 0.70509515
-
-
-# Main program for testing 
-if __name__ == "__main__":
-
-    test = Test_Airfoil()
-    test.test_geo_basic()
-    test.test_geo_splined()
-    test.test_airfoil_geo_functions ()
-    test.test_airfoil_file_functions (temp_dir())
-
-    test = Test_Airfoil_Bezier()
-    test.test_geo_bezier ()
-
-    test = Test_Worker()
-    test.test_worker_ready()
-    test.test_worker_generate_polar()
-    test.test_worker_set_flap ()
 

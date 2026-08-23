@@ -23,7 +23,7 @@ from .geometry      import (Geometry, Line, Paneling, Curvature_Abstract)
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 
 # enum for fitting leading edge curvature - free, fixed or c2 continuity

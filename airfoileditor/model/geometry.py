@@ -62,7 +62,7 @@ import math
 import numpy as np
 
 from ..base.common_utils    import clip, StrEnum_Extended, fromDict, toDict
-from ..base.math_util       import JPoint, findMax, findMin, newton, panel_angles
+from ..base.math_util       import JPoint, newton, panel_angles
 from ..base.spline          import Spline1D, Spline2D
 
 import logging
@@ -1395,45 +1395,64 @@ class Line:
         """
         max_y = abs(np.max(self.y))
         min_y = abs(np.min(self.y))
-        
-        if max_y == 0.0 and min_y == 0.0:              # optimize symmetrical
-            xmax = 0.5 
-            ymax = 0.0 
-        else: 
-            x = self.x
-            is_upper_side = max_y >= min_y
 
-            # reverse y for lower side to find maximum
-            y = self.y if is_upper_side else self.y * -1.0
-            imax = np.argmax(y)
+        if max_y == 0.0 and min_y == 0.0:
+            return 0.5, 0.0
 
-            # build a little helper spline to find exact maximum
-            if imax > 3 and imax < (len(self.x) -3 ): 
+        x = self.x
+        is_upper_side = max_y >= min_y
 
-                istart = imax - 3
-                iend   = imax + 3
-                mask = (x >= x[istart]) & (x <= x[iend])
-                y_local = y[mask]
-                x_local = x[mask]
+        # Reverse lower-side values so the local search always targets a maximum.
+        y = self.y if is_upper_side else self.y * -1.0
+        imax = int(np.argmax(y))
 
-                local_spline = Spline1D (x_local, y_local)
+        xmax = float(x[imax])
+        ymax = float(y[imax])
 
-                # nelder mead search
-                bounds = (x_local[0], x_local[-1])
-                xmax = findMax (local_spline.eval, x[imax], bounds=bounds)
-                ymax = local_spline.eval(xmax)
+        # Refine the discrete maximum with a local spline when there is enough neighborhood.
+        if 3 < imax < len(self.x) - 3:
 
+            istart = imax - 3
+            iend   = imax + 3
+            mask = (x >= x[istart]) & (x <= x[iend])
+            x_local = x[mask]
+            y_local = y[mask]
+
+            local_spline = Spline1D(x_local, y_local)
+
+            bounds = (float(x_local[0]), float(x_local[-1]))
+            x_guess = float(np.clip(xmax, bounds[0], bounds[1]))
+
+            xmax_newton = None
+            try:
+                xmax_newton, _ = newton(
+                    lambda x_val: local_spline.eval(float(x_val), der=1),
+                    lambda x_val: local_spline.eval(float(x_val), der=2),
+                    x_guess,
+                    epsilon=1e-10,
+                    max_iter=25,
+                    bounds=bounds)
+            except ValueError:
+                pass
+
+            newton_is_valid = (
+                xmax_newton is not None
+                and np.isfinite(xmax_newton)
+                and bounds[0] <= xmax_newton <= bounds[1]
+                and float(local_spline.eval(xmax_newton, der=2)) <= 0.0)
+
+            if newton_is_valid:
+                xmax = float(xmax_newton)
+                ymax = float(local_spline.eval(xmax))
             else:
-                xmax = x[imax]
-                ymax = y[imax]
+                i_local_max = int(np.argmax(y_local))
+                xmax = float(x_local[i_local_max])
+                ymax = float(y_local[i_local_max])
 
-            # revert back if lower side
-            ymax = ymax if is_upper_side else -ymax
+        if not is_upper_side:
+            ymax = -ymax
 
-            # limit decimals to a reasonable value
-            xmax = round(xmax, 7)
-            ymax = round(ymax, 7)
-        return xmax, ymax
+        return round(xmax, 7), round(ymax, 7)
 
 
 
@@ -1610,7 +1629,7 @@ class Geometry ():
             - save the modification made aMod with optional val
             - handle callbacks"""
 
-        is_dat_based = self._x_org is not None and self._y_org is not None
+        is_dat_based = self.isBasic or self.isSplined
 
         # sanity: rthere must be temp data
         if is_dat_based and (self._x is None or self._y is None):

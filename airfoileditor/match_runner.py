@@ -878,8 +878,10 @@ class Match_Airfoil:
         
         # Create targets automatically from target airfoil
         ncp = side_class.NCP_DEFAULT
-        self._targets_upper = Match_Targets.from_airfoil(airfoil_target, Line.Type.UPPER, ncp)
-        self._targets_lower = Match_Targets.from_airfoil(airfoil_target, Line.Type.LOWER, ncp)
+        ncp_auto = False                        # for speed - no auto mode here, just use default ncp for both sides
+
+        self._targets_upper = Match_Targets.from_airfoil(airfoil_target, Line.Type.UPPER, ncp, ncp_auto=ncp_auto)
+        self._targets_lower = Match_Targets.from_airfoil(airfoil_target, Line.Type.LOWER, ncp, ncp_auto=ncp_auto)
         
         # Create the resulting airfoil
         self._airfoil = airfoil_class.on_airfoil(airfoil_target)

@@ -452,111 +452,108 @@ def bisection(array,value):
 #------------ Bisection - find Root  -----------------------------------
 
 
-def bisection_fn (f,a,b,N, tolerance=None):
-    '''Approximate solution of f(x)=0 on interval [a,b] by bisection method.
+def bisection_fn(f, a, b, N, tolerance=None) -> tuple[float | None, int]:
+    """Approximate a root of ``f(x) = 0`` on ``[a, b]`` with bisection.
 
-    Parameters
-    ----------
-    f : function
-        The function for which we are trying to approximate a solution f(x)=0.
-    a,b : numbers
-        The interval in which to search for a solution. The function returns
-        None if f(a)*f(b) >= 0 since a solution is not guaranteed.
-    N : (positive) integer
-        The number of iterations to implement.
+    Args:
+        f: Scalar function for which a root is searched.
+        a: Lower interval boundary.
+        b: Upper interval boundary.
+        N: Maximum number of bisection iterations.
+        tolerance: Optional interval-width stop criterion.
 
-    Returns
-    -------
-    x_N : number
-        The midpoint of the Nth interval computed by the bisection method. The
-        initial interval [a_0,b_0] is given by [a,b]. If f(m_n) == 0 for some
-        midpoint m_n = (a_n + b_n)/2, then the function returns this solution.
-        If all signs of values f(a_n), f(b_n) and f(m_n) are the same at any
-        iteration, the bisection method fails and return None.
-    '''
+    Returns:
+        tuple[float | None, int]: ``(x, n_iter)`` with root estimate and
+        performed iterations. Returns ``(None, n_iter)`` when bisection cannot
+        proceed due to missing sign change.
+    """
     # from https://patrickwalls.github.io/mathematicalpython/root-finding/root-finding/
 
-    if   abs(f(a)) < 10e-10 : return a, 0
-    elif abs(f(b)) < 10e-10 : return b, 0
-    elif f(a)*f(b) > 0:
-        print("Bisection method fails.", a, f(a), b, f(b))
+    fa = f(a)
+    if abs(fa) < 1e-9:
+        return a, 0
+
+    fb = f(b)
+    if abs(fb) < 1e-9:
+        return b, 0
+
+    if fa * fb > 0:
         return None, 0
+
     a_n = a
     b_n = b
-    for n in range(1,N+1):
-        m_n = (a_n + b_n)/2
-        if not tolerance is None and abs(a_n - b_n) < tolerance:
-            return m_n, n 
-        f_m_n = f(m_n)
-        if f(a_n)*f_m_n < 0:
-            a_n = a_n
-            b_n = m_n
-        elif f(b_n)*f_m_n < 0:
-            a_n = m_n
-            b_n = b_n
-        elif f_m_n == 0:
-            print("Found exact solution.")
+
+    for n in range(1, N + 1):
+        m_n = 0.5 * (a_n + b_n)
+
+        if tolerance is not None and abs(a_n - b_n) < tolerance:
             return m_n, n
+
+        f_m_n = f(m_n)
+        if f_m_n == 0:
+            return m_n, n
+
+        if f(a_n) * f_m_n < 0:
+            b_n = m_n
+        elif f(b_n) * f_m_n < 0:
+            a_n = m_n
         else:
-            print("Bisection method fails.")
-            return None
+            return None, n
 
-    return (a_n + b_n)/2, n
+    return 0.5 * (a_n + b_n), N
 
 
-def secant_fn (f,a,b,N):
-    '''Approximate solution of f(x)=0 on interval [a,b] by the secant method.
+def secant_fn(f, a, b, N) -> tuple[float | None, int]:
+    """Approximate a root of ``f(x) = 0`` on ``[a, b]`` with secant updates.
 
-    Parameters
-    ----------
-    f : function
-        The function for which we are trying to approximate a solution f(x)=0.
-    a,b : numbers
-        The interval in which to search for a solution. The function returns
-        None if f(a)*f(b) >= 0 since a solution is not guaranteed.
-    N : (positive) integer
-        The number of iterations to implement.
+    Args:
+        f: Scalar function for which a root is searched.
+        a: Lower interval boundary.
+        b: Upper interval boundary.
+        N: Maximum number of secant iterations.
 
-    Returns
-    -------
-    m_N : number
-        The x intercept of the secant line on the the Nth interval
-            m_n = a_n - f(a_n)*(b_n - a_n)/(f(b_n) - f(a_n))
-        The initial interval [a_0,b_0] is given by [a,b]. If f(m_n) == 0
-        for some intercept m_n then the function returns this solution.
-        If all signs of values f(a_n), f(b_n) and f(m_n) are the same at any
-        iterations, the secant method fails and return None.
-
-    Examples
-    --------
-    >>> f = lambda x: x**2 - x - 1
-    >>> secant(f,1,2,5)
-    1.6180257510729614
-    '''
+    Returns:
+        tuple[float | None, int]: ``(x, n_iter)`` where ``x`` is the estimated
+        root, or ``None`` if the method cannot start or continue.
+    """
 
     # from https://patrickwalls.github.io/mathematicalpython/root-finding/secant/
 
-    if f(a)*f(b) >= 0:
-        print("Secant method fails.")
-        return None
+    fa = f(a)
+    fb = f(b)
+    if fa * fb >= 0:
+        return None, 0
+
     a_n = a
     b_n = b
-    for n in range(1,N+1):
-        m_n = a_n - f(a_n)*(b_n - a_n)/(f(b_n) - f(a_n))
+
+    for n in range(1, N + 1):
+        fa_n = f(a_n)
+        fb_n = f(b_n)
+        denom = fb_n - fa_n
+        if denom == 0:
+            return None, n
+
+        m_n = a_n - fa_n * (b_n - a_n) / denom
         f_m_n = f(m_n)
-        if f(a_n)*f_m_n < 0:
-            a_n = a_n
-            b_n = m_n
-        elif f(b_n)*f_m_n < 0:
-            a_n = m_n
-            b_n = b_n
-        elif f_m_n == 0:
-            # print("Found exact solution.")
+
+        if f_m_n == 0:
             return m_n, n
+
+        if fa_n * f_m_n < 0:
+            b_n = m_n
+        elif fb_n * f_m_n < 0:
+            a_n = m_n
         else:
-            print("Secant method fails.")
-            return None
-    return a_n - f(a_n)*(b_n - a_n)/(f(b_n) - f(a_n)), n
+            return None, n
+
+    fa_n = f(a_n)
+    fb_n = f(b_n)
+    denom = fb_n - fa_n
+    if denom == 0:
+        return None, N
+
+    return a_n - fa_n * (b_n - a_n) / denom, N
 
 
 
@@ -618,62 +615,61 @@ def binary_search(f, target, low, high, max_iter=10):
 
 #------------ Newton iteration - find Root  -----------------------------------
 
-def newton(f,Df,x0,epsilon = 10e-8 , max_iter= 50, bounds=None):
-    '''Approximate solution of f(x)=0 by Newton's method.
+def newton(f, Df, x0, epsilon=1e-7, max_iter=50, bounds=None) -> tuple[float, int]:
+    """Approximate a root of ``f(x) = 0`` with Newton's method.
 
-        Implement Newton's method: compute the linear approximation
-        of f(x) at xn and find x intercept by the formula
-            x = xn - f(xn)/Df(xn)
-        Continue until abs(f(xn)) < epsilon and return xn.
-        If Df(xn) == 0, raise Error .
+    Args:
+        f: Function for which a root is searched.
+        Df: Derivative of ``f``.
+        x0: Initial guess for the root.
+        epsilon: Convergence tolerance. Iteration stops when
+            ``abs(f(x)) < epsilon``.
+        max_iter: Maximum number of Newton iterations.
+        bounds: Optional ``(xmin, xmax)`` clamp for ``x``. Each bound can be
+            ``None`` to disable that side.
 
-            Parameters
-    ----------
-    f : function
-        Function for which we are searching for a solution f(x)=0.
-    Df : function
-        Derivative of f(x).
-    x0 : number
-        Initial guess for a solution f(x)=0.
-    epsilon : number
-        Stopping criteria is abs(f(x)) < epsilon.
-    max_iter : integer
-        Maximum number of iterations of Newton's method.
-    bounds : optional - tuple of lower and upper bound of x
+    Returns:
+        tuple[float, int]: ``(x, n_iter)`` with the estimated root and the
+        number of iterations performed.
 
-    Returns
-    -------
-    xn : number
-    niter : iterations needed 
-    '''
-    # from https://patrickwalls.github.io/mathematicalpython/root-finding/root-finding/
+    Raises:
+        ValueError: If the derivative is zero away from the LE special case
+            (``x == 0.0``), or if the provided bounds are invalid.
+    """
 
-    xn = x0
-    for n in range(0,max_iter):
+    if bounds is not None:
+        x_min, x_max = bounds
+        if x_min is not None and x_max is not None and x_min > x_max:
+            raise ValueError(f"Invalid bounds for Newton iteration: {bounds}")
+    else:
+        x_min, x_max = None, None
 
-        if bounds is not None: 
-            if   xn > bounds[1]: xn = bounds[1]
-            elif xn < bounds[0]: xn = bounds[0]
+    def _clamp(x):
+        if x_max is not None and x > x_max:
+            return x_max
+        if x_min is not None and x < x_min:
+            return x_min
+        return x
+
+    xn = _clamp(float(x0))
+    n_iter = 0
+
+    for _ in range(max_iter):
+        n_iter += 1
 
         fxn = f(xn)
         if abs(fxn) < epsilon:
             break
 
-        if xn <= 0.0:
-            pass
         Dfxn = Df(xn)
         if Dfxn == 0:
-            if xn == 0.0:                       # special case at LE 
+            if xn == 0.0:                       # special case at LE
                 break
-            else: 
-                raise ValueError ("Newton iteration: Zero derivative. No solution found.")
-        xn = xn - fxn/Dfxn
+            raise ValueError("Newton iteration: Zero derivative. No solution found.")
 
-    if bounds is not None: 
-        if   xn > bounds[1]: xn = bounds[1]
-        elif xn < bounds[0]: xn = bounds[0]
+        xn = _clamp(xn - fxn / Dfxn)
 
-    return xn, n + 1
+    return _clamp(xn), n_iter
 
 
 
