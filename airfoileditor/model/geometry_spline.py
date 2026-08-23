@@ -579,7 +579,7 @@ class Geometry_Splined (Geometry):
 
             # Fast path: secant on valid sign-changing bracket.
             secant_result = secant_fn(scalar_product, a, b, 8)
-            secant_u = secant_result[0] if secant_result is not None else None
+            secant_u = secant_result[0]
 
             if secant_u is not None and a <= secant_u <= b:
                 uLe = secant_u

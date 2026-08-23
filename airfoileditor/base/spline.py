@@ -417,6 +417,90 @@ class Spline1D:
 
 
 
+def build_local_spline1d(x,
+                         y,
+                         x_center=None,
+                         i_center=None,
+                         i_radius: int | None = None,
+                         boundary: str = "natural",
+                         min_points: int = 3,
+                         require_strict_x: bool = True) -> tuple[Spline1D | None, int, int]:
+    """Build a local Spline1D window around either x_center or i_center.
+
+    Exactly one of ``x_center`` or ``i_center`` must be provided.
+
+    Args:
+        x: Full x-coordinate array.
+        y: Full y-coordinate array.
+        x_center: Optional x coordinate used to center the local window.
+        i_center: Optional index used to center the local window.
+        i_radius: Optional half-window size in indices. Defaults to 3.
+        boundary: Boundary mode passed to ``Spline1D``.
+        min_points: Minimum required local points.
+        require_strict_x: If True, reject local windows with non-increasing x.
+
+    Returns:
+        tuple[Spline1D | None, int, int]:
+            ``(spline, i0, i1)`` where ``[i0, i1)`` is the used window.
+            On failure, ``spline`` is ``None`` and ``i0/i1`` indicate the
+            best-effort clipped window.
+    """
+
+    x_arr = np.asarray(x, dtype=float)
+    y_arr = np.asarray(y, dtype=float)
+
+    n = len(x_arr)
+    if n != len(y_arr) or n == 0:
+        return None, 0, 0
+
+    if min_points < 3:
+        min_points = 3
+
+    if i_radius is None:
+        i_radius = 3
+    i_radius = max(1, int(i_radius))
+
+    has_x_center = x_center is not None
+    has_i_center = i_center is not None
+    if has_x_center == has_i_center:
+        return None, 0, 0
+
+    if has_i_center:
+        center_idx = int(i_center)
+        if center_idx < 0 or center_idx >= n:
+            return None, 0, 0
+    else:
+        center_idx = int(np.searchsorted(x_arr, float(x_center)))
+        center_idx = int(np.clip(center_idx, 0, n - 1))
+
+    # Build a clipped window around the center and re-balance at edges.
+    target_size = min(n, max(min_points, 2 * i_radius + 1))
+    i0 = max(0, center_idx - i_radius)
+    i1 = min(n, center_idx + i_radius + 1)
+
+    if i1 - i0 < target_size:
+        if i0 == 0:
+            i1 = min(n, target_size)
+        elif i1 == n:
+            i0 = max(0, n - target_size)
+
+    if i1 - i0 < min_points:
+        return None, i0, i1
+
+    x_local = x_arr[i0:i1]
+    y_local = y_arr[i0:i1]
+
+    if require_strict_x and np.any(np.diff(x_local) <= 0.0):
+        return None, i0, i1
+
+    try:
+        local_spline = Spline1D(x_local, y_local, boundary=boundary)
+    except ValueError:
+        return None, i0, i1
+
+    return local_spline, i0, i1
+
+
 
 #------------ Spline 2D -----------------------------------
 

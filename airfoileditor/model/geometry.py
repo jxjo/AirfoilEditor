@@ -63,7 +63,7 @@ import numpy as np
 
 from ..base.common_utils    import clip, StrEnum_Extended, fromDict, toDict
 from ..base.math_util       import JPoint, newton, panel_angles
-from ..base.spline          import Spline1D, Spline2D
+from ..base.spline          import Spline1D, Spline2D, build_local_spline1d
 
 import logging
 logger = logging.getLogger(__name__)
@@ -215,16 +215,15 @@ class Flap_Setter (Flap_Definition):
         if side_x.size < 2:
             return float(x_hinge), float(y_hinge)
 
-        idx = np.searchsorted(side_x, x_hinge)
-        i0 = max(0, idx - 5)
-        i1 = min(len(side_x), idx + 5)
-        local_x = side_x[i0:i1].copy()
-        local_y = side_y[i0:i1].copy()
-
-        if local_x.size < 2:
+        local_spline, i0, i1 = build_local_spline1d(
+            side_x, side_y,
+            x_center=float(x_hinge),
+            i_radius=5)
+        if local_spline is None:
             return float(x_hinge), float(y_hinge)
 
-        local_spline = Spline1D(local_x, local_y, boundary='natural')
+        local_x = side_x[i0:i1]
+        local_y = side_y[i0:i1]
 
         def f_distance(x):
             y     = local_spline.eval(float(x))
@@ -342,14 +341,17 @@ class Flap_Setter (Flap_Definition):
                   np.isclose(side_y, y_hinge, rtol=0.0, atol=1e-12)):
             return float(x_hinge), float(y_hinge)
 
-        idx = np.searchsorted(side_x, x_hinge)
-        i0 = max(0, idx - 5)
-        i1 = min(len(side_x), idx + 5)
+        idx = int(np.searchsorted(side_x, x_hinge))
+        main_spline, i0, i1 = build_local_spline1d(
+            side_x, side_y,
+            x_center=float(x_hinge),
+            i_radius=5)
+
+        if main_spline is None:
+            return float(x_hinge), float(y_hinge)
+
         local_x = side_x[i0:i1].copy()
         local_y = side_y[i0:i1].copy()
-
-        if local_x.size < 3:
-            return float(x_hinge), float(y_hinge)
 
         beta_rad = np.radians(-beta_degrees)
         cos_b, sin_b = np.cos(beta_rad), np.sin(beta_rad)
@@ -364,8 +366,13 @@ class Flap_Setter (Flap_Definition):
         x_rot = np.asarray(x_rot, dtype=float)
         y_rot = np.asarray(y_rot, dtype=float)
 
-        main_spline = Spline1D(local_x, local_y, boundary='natural')
-        flap_spline = Spline1D(x_rot, y_rot, boundary='natural')
+        center_local_idx = int(np.clip(idx - i0, 0, len(x_rot) - 1))
+        flap_spline, _, _ = build_local_spline1d(
+            x_rot, y_rot,
+            i_center=center_local_idx,
+            i_radius=5)
+        if flap_spline is None:
+            return float(x_hinge), float(y_hinge)
 
         def f_corner(x):
             return main_spline.eval(float(x)) - flap_spline.eval(float(x))
@@ -1239,20 +1246,13 @@ class Line:
         if x_val >= x_arr[-1]:
             return float(y_arr[-1])
 
-        i = np.searchsorted(x_arr, x_val)
-        lo = max(0, i - 2)
-        hi = min(len(x_arr) - 1, i + 2)
-        if hi - lo < 2:
-            lo = max(0, min(lo, len(x_arr) - 2))
-            hi = min(len(x_arr) - 1, lo + 2)
+        local_spline, _, _ = build_local_spline1d(
+            x_arr, y_arr,
+            x_center=x_val, i_radius=2)
+        if local_spline is None:
+            return float(np.interp(x_val, x_arr, y_arr))
 
-        xx = x_arr[lo:hi + 1]
-        yy = y_arr[lo:hi + 1]
-        if xx.size < 2:
-            return float(yy[0])
-
-        spline = Spline1D(xx, yy, boundary='natural')
-        return float(spline.eval(x_val))
+        return float(local_spline.eval(x_val))
 
 
     def yFn (self, x, splined: bool = False):
@@ -1411,43 +1411,42 @@ class Line:
 
         # Refine the discrete maximum with a local spline when there is enough neighborhood.
         if 3 < imax < len(self.x) - 3:
+            local_spline, i0, i1 = build_local_spline1d(
+                x, y,
+                i_center=imax, boundary='notaknot')
 
-            istart = imax - 3
-            iend   = imax + 3
-            mask = (x >= x[istart]) & (x <= x[iend])
-            x_local = x[mask]
-            y_local = y[mask]
+            if local_spline is not None:
+                x_local = x[i0:i1]
+                y_local = y[i0:i1]
 
-            local_spline = Spline1D(x_local, y_local)
+                bounds = (float(x_local[0]), float(x_local[-1]))
+                x_guess = float(np.clip(xmax, bounds[0], bounds[1]))
 
-            bounds = (float(x_local[0]), float(x_local[-1]))
-            x_guess = float(np.clip(xmax, bounds[0], bounds[1]))
+                xmax_newton = None
+                try:
+                    xmax_newton, _ = newton(
+                        lambda x_val: local_spline.eval(float(x_val), der=1),
+                        lambda x_val: local_spline.eval(float(x_val), der=2),
+                        x_guess,
+                        epsilon=1e-10,
+                        max_iter=25,
+                        bounds=bounds)
+                except ValueError:
+                    pass
 
-            xmax_newton = None
-            try:
-                xmax_newton, _ = newton(
-                    lambda x_val: local_spline.eval(float(x_val), der=1),
-                    lambda x_val: local_spline.eval(float(x_val), der=2),
-                    x_guess,
-                    epsilon=1e-10,
-                    max_iter=25,
-                    bounds=bounds)
-            except ValueError:
-                pass
+                newton_is_valid = (
+                    xmax_newton is not None
+                    and np.isfinite(xmax_newton)
+                    and bounds[0] <= xmax_newton <= bounds[1]
+                    and float(local_spline.eval(xmax_newton, der=2)) <= 0.0)
 
-            newton_is_valid = (
-                xmax_newton is not None
-                and np.isfinite(xmax_newton)
-                and bounds[0] <= xmax_newton <= bounds[1]
-                and float(local_spline.eval(xmax_newton, der=2)) <= 0.0)
-
-            if newton_is_valid:
-                xmax = float(xmax_newton)
-                ymax = float(local_spline.eval(xmax))
-            else:
-                i_local_max = int(np.argmax(y_local))
-                xmax = float(x_local[i_local_max])
-                ymax = float(y_local[i_local_max])
+                if newton_is_valid:
+                    xmax = float(xmax_newton)
+                    ymax = float(local_spline.eval(xmax))
+                else:
+                    i_local_max = int(np.argmax(y_local))
+                    xmax = float(x_local[i_local_max])
+                    ymax = float(y_local[i_local_max])
 
         if not is_upper_side:
             ymax = -ymax
