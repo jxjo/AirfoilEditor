@@ -872,7 +872,7 @@ class Airfoil_Artist (Artist):
 
     @property
     def show_design_geometry (self) -> bool:
-        """ True if design geometry will be shown """
+        """ True if temporary design geometry will be shown """
         return self._show_design_geometry
 
     def set_show_design_geometry (self, aBool):
@@ -929,7 +929,7 @@ class Airfoil_Artist (Artist):
                     width = 2
                     antialias = True
                     zValue = 3
-                    if self.show_design_geometry:
+                    if self.show_design_geometry and airfoil.geo.is_temp_xy:
                         style   = Qt.PenStyle.DotLine
                 elif airfoil.usedAs == usedAs.NORMAL and not there_is_design:
                     width = 2
@@ -940,7 +940,7 @@ class Airfoil_Artist (Artist):
                 brush = pg.mkBrush (color.darker (600)) if len(self.airfoils) == 1 else None
 
                 # x,y Coordinates of the airfoil contour - airfoil.xy or airfoil.geo.xy (temp)
-                if airfoil.usedAsDesign and  self.show_design_geometry:
+                if airfoil.usedAsDesign and self.show_design_geometry and airfoil.geo.is_temp_xy:
                     x,y = airfoil.geo.x, airfoil.geo.y
                 else:
                     x,y = airfoil.x, airfoil.y
@@ -1101,12 +1101,6 @@ class Flap_Artist (Artist):
         geo_flapped = self.design_airfoil.geo
         color = _color_airfoil (self.design_airfoil)
 
-        # plot flapped airfoil 
-
-        pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
-            
-        self._plot_dataItem (geo_flapped.x, geo_flapped.y, pen = pen, zValue=5)
-    
         # plot flap angle label
 
         x,y,_,_ = geo_flapped.te
@@ -1156,8 +1150,6 @@ class TE_Gap_Artist (Artist):
 
         color = _color_airfoil (self.design_airfoil)
         pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
-
-        self._airfoil_item = self._plot_dataItem (self.geo.x, self.geo.y, pen = pen, zValue=5)
 
         pt = Movable_TE_Point (self.geo.te_gap, show_label_static_with_value=True,
                                movable=True, color=color,
@@ -1243,10 +1235,8 @@ class LE_Radius_Artist (Artist):
 
     def __init__ (self, *args, **kwargs):
 
-
         self._point_item  : Movable_LE_Radius   = None
         self._circle_item : pg.ScatterPlotItem  = None
-        self._airfoil_item : pg.PlotDataItem    = None
         self._range_item : pg.LinearRegionItem  = None
 
         super().__init__ (*args, **kwargs)
@@ -1273,8 +1263,6 @@ class LE_Radius_Artist (Artist):
         color = _color_airfoil (self.design_airfoil)
         pen   = pg.mkPen(color, width=1.0, style=Qt.PenStyle.DotLine)
             
-        self._airfoil_item = self._plot_dataItem (self.geo.x, self.geo.y, pen = pen, zValue=5)
-
         # plot le circle and moving point to change the le radius
 
         radius = self.design_airfoil.geo.le_radius
@@ -1316,8 +1304,6 @@ class LE_Radius_Artist (Artist):
 
         self.geo.set_le_radius (radius, xBlend=xBlend, moving=True)
 
-        self._airfoil_item.setData (self.geo.x, self.geo.y)         # update airfoil contour
-
         self.sig_moving.emit()                                      # update all other artists
 
 
@@ -1333,7 +1319,6 @@ class LE_Radius_Artist (Artist):
         # snap point to actual model value without triggering move callbacks again
         self._point_item.setPos_silent (2 * self.geo.le_radius, 0.0)
 
-        self._airfoil_item.setData (self.geo.x, self.geo.y)         # update airfoil contour
         self._circle_item.setData ([self.geo.le_radius], [0])       # update le circle
         self._circle_item.setSize (2*self.geo.le_radius)            # update le circle size
 
@@ -2078,7 +2063,7 @@ class Polar_Artist (Artist):
 
         # load or generate polars which are not loaded up to now
 
-        is_design_mode = False
+        is_moving_design_mode = False
 
         for airfoil in self.airfoils: 
             polarSet = airfoil.polarSet
@@ -2091,14 +2076,14 @@ class Polar_Artist (Artist):
                     polarSet.load_or_generate_polars (VLM=False)
             else:
                 logger.debug (f"{airfoil} has no polarSet to plot")
-            if airfoil.usedAsDesign:
-                is_design_mode = True
+            if airfoil.usedAsDesign and airfoil.geo.is_temp_xy:
+                is_moving_design_mode = True
 
         # plot polars of airfoils
 
         nPolar_plotted    = 0 
-        nPolar_generating = 0                     # is there a polar in calculation 
-        also_xfoil        = False                  # is there a xfoil polar not only neuralfoil polar
+        nPolar_generating = 0                       # is there a polar in calculation 
+        also_neuralfoil   = False                   # is there a neuralfoil polar
         error_msg         = []  
 
         for airfoil in self.airfoils:
@@ -2130,8 +2115,8 @@ class Polar_Artist (Artist):
                         if self.show_bubbles:
                             self._plot_bubble_info (polar, color)
 
-                        if polar.is_xfoil:
-                            also_xfoil = True
+                        if polar.is_neuralfoil:
+                            also_neuralfoil = True
                             
 
         logger.debug (f"{self} {nPolar_plotted} polars plotted, {nPolar_generating} generating ")
@@ -2144,22 +2129,23 @@ class Polar_Artist (Artist):
 
         # show generating message 
 
+        text = ""
         if nPolar_generating > 0: 
             if nPolar_generating == 1:
                 text = f"Generating polar"
             else: 
                 text = f"Generating {nPolar_generating} polars"
-            self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, itemPos=(0.5, 1))
+
+        elif is_moving_design_mode and not also_neuralfoil:
+            text = f"No live polar: no NeuralFoil polar defined."
+
+        if text:
+            self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, 
+                             parentPos=(0.5, 0.7), itemPos=(0.5, 1))
 
         # show help message 
 
-        if is_design_mode:
-            if also_xfoil and nPolar_generating == 0:
-                self.set_help_message ("Show only Neuralfoil polars for full live update of design changes")
-            else:
-                self.set_help_message ("")
-        else:
-            self.set_help_message ("Click on a polar to show its key values")
+        self.set_help_message ("Click on a polar to show its key values")
 
 
     def _plot_and_connect (self, polar: 'Polar', *args, **kwargs) -> pg.PlotDataItem:
@@ -2194,7 +2180,11 @@ class Polar_Artist (Artist):
         elif airfoil.usedAs == usedAs.FINAL:  
             linewidth=1.5
         elif airfoil.usedAs == usedAs.DESIGN:  
-            linewidth=1.5
+            if airfoil.geo.is_temp_xy:                          # design geo/polar is "on move" - show dashed line
+                linewidth=1.5
+                style = Qt.PenStyle.DotLine
+            else:
+                linewidth=1.5
         elif airfoil.usedAs == usedAs.NORMAL and not there_is_design:  
             linewidth=1.5
         else:

@@ -942,6 +942,13 @@ class Polar_Set:
                 self.polars.remove(polar)
 
 
+    def reset_polars (self):
+        """ Resets all loaded polar data of polars of self """
+
+        for polar in self.polars:
+            polar.unload()
+
+
     def load_or_generate_polars (self, normal=True, VLM=True):
         """ 
         Either loads or (if not already exist) generate polars of myAirfoil 
@@ -1709,6 +1716,7 @@ class Polar (Polar_Definition):
         """ unloads self - clears cached polar values """
         self._values.clear ()
         self._error_reason = None
+        self._airfoil_as_CST = None                         # lazy loaded CST representation will be cleared too
 
 
     def _import_from_data_set (self, data_set: Polar_Data_Set):

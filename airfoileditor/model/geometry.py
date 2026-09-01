@@ -1722,7 +1722,16 @@ class Geometry ():
         self._x = None
         self._y = None 
         self._reset()
- 
+
+
+    @property
+    def is_temp_xy (self) -> bool:
+        """ 
+        true if _x,_y is set which is typically when a modification is in progress (moved) 
+        and not yet finalized
+        """
+        return self._x is not None and self._y is not None
+
 
     @property
     def iLe (self) -> int: 

@@ -270,6 +270,27 @@ class App_Model (QObject):
             self.sig_polar_set_changed.emit()
 
 
+    def _on_geo_changing_mode (self, enter = True):
+        """ slot to handle entering/leaving of a geometry changing mode (TE gap, LE radius, Flap set, Paneling, Blend) """
+
+        design = self.airfoil_design
+
+        if not design:  return
+
+        if enter:
+            # replace polar set of the design airfoil with just neuralfoil polars to avoid xfoil polar generation during moving
+            polar_defs = [p for p in self.polar_definitions if p.is_neuralfoil]
+            if polar_defs:
+                design.set_polarSet (Polar_Set (design, polar_def=polar_defs, only_active=True))
+
+            logger.debug (f"{self} enter geo moving - polar set replaced with neuralfoil polars")
+        else:
+            # restore polar set of the design airfoil with all polar definitions
+            design.set_polarSet (Polar_Set (design, polar_def=self.polar_definitions, only_active=True))
+
+            logger.debug (f"{self} leave geo moving - polar set reset with all polar definitions")
+
+
     def _on_xo2_new_design (self):
         """ slot to handle new design during Xoptfoil2 run signaled by watchdog """
 
@@ -527,14 +548,13 @@ class App_Model (QObject):
 
         design = self.airfoil_design
 
-        if design:
+        if design and design.polarSet:
 
-            # replace polar set of the design airfoil with just neuralfoil polars to avoid xfoil polar generation during moving
-            polar_defs = [p for p in self.polar_definitions if p.is_neuralfoil]
-            if polar_defs:
-                self.airfoil.set_polarSet (Polar_Set (design, polar_def=polar_defs, only_active=True))
+            # reset all loaded polars including CST reprersentation to avoid using old polar data during moving
+            polar_set : Polar_Set = design.polarSet
+            polar_set.reset_polars()
 
-            logger.debug (f"{self} geo moving - polar set replaced with neuralfoil polars")
+            logger.debug (f"{self} geo moving - polar set reset")
 
             self.sig_geo_changing.emit(source)        
 
@@ -578,27 +598,41 @@ class App_Model (QObject):
 
     def notify_te_gap_mode (self, active : bool = False):
         """ notify entering TE gap mode to change TE gap """  
+
+        self._on_geo_changing_mode (enter=active)                 # assign polar set with just neuralfoil polars during moving       
+
         self.sig_te_gap_mode.emit (active)
 
 
     def notify_le_radius_mode (self, active: bool = False):
         """ notify entering LE radius mode to change LE radius """
+
+        self._on_geo_changing_mode (enter=active)                 # assign polar set with just neuralfoil polars during moving       
+
         self.sig_le_radius_mode.emit (active)
 
 
-    def notify_flap_set_mode (self, active: bool):
+    def notify_flap_set_mode (self, active: bool = False):
         """ notify entering flap set mode to change flap setting """  
+
+        self._on_geo_changing_mode (enter=active)                 # assign polar set with just neuralfoil polars during moving       
+
         self.sig_flap_set_mode.emit (active)
 
 
-    def notify_paneling_mode (self, active: bool = True):
+    def notify_paneling_mode (self, active: bool = False):
         """ notify self that paneling mode is entering/leaving """  
+
+        self._on_geo_changing_mode (enter=active)                 # assign polar set with just neuralfoil polars during moving       
+
         self.sig_paneling_mode.emit (active)
 
 
-    def notify_blend_mode (self, active: bool = True):
+    def notify_blend_mode (self, active: bool = False):
         """ notify self that blend mode is entering/leaving """  
-       
+
+        self._on_geo_changing_mode (enter=active)                 # assign polar set with just neuralfoil polars during moving       
+
         self.sig_blend_mode.emit (active)
 
 

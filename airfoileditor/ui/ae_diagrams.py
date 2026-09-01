@@ -628,7 +628,7 @@ class Item_Airfoil (Diagram_Item):
 
         # enter/leave modes - show/hide artists
         self.app_model.sig_te_gap_mode.connect              (self._on_te_gap_mode)
-        self.app_model.sig_le_radius_mode.connect           (self._le_artist.set_show)
+        self.app_model.sig_le_radius_mode.connect           (self._on_le_radius_mode)
         self.app_model.sig_flap_set_mode.connect            (self._on_flap_set_mode)
         self.app_model.sig_paneling_mode.connect            (self._on_paneling_mode)
         self.app_model.sig_blend_mode.connect               (self._on_blend_mode)
@@ -672,20 +672,27 @@ class Item_Airfoil (Diagram_Item):
         """ slot to handle flap set mode entering/leaving """
 
         self._flap_artist.set_show (active)
-        if active:
-            self.refresh_artists()        
+
+        # show temp geometry x,y of Design airfoil 
+        self._airfoil_artist.set_show_design_geometry (active) 
+
+
+    def _on_le_radius_mode (self, active : bool):
+        """ slot to handle le radius mode entering/leaving """
+
+        self._le_artist.set_show (active)    
+
+        # show temp geometry x,y of Design airfoil 
+        self._airfoil_artist.set_show_design_geometry (active) 
 
 
     def _on_te_gap_mode (self, active : bool):
         """ slot to handle te gap mode entering/leaving """
 
-        if self._te_artist.show != active:
-            # switch off design mode when te gap is changing 
-            if self.design_airfoil :
-                self.design_airfoil.set_isEdited (not active)
-            self.refresh_artists()        
-
         self._te_artist.set_show (active)                        
+
+        # show temp geometry x,y of Design airfoil 
+        self._airfoil_artist.set_show_design_geometry (active) 
 
 
     def _on_blend_mode (self, active : bool):
@@ -693,8 +700,6 @@ class Item_Airfoil (Diagram_Item):
 
         # show temp geometry x,y of Design airfoil 
         self._airfoil_artist.set_show_design_geometry (active) 
-
-        # self._blend_artist.set_show (active)
 
 
     def _on_geo_changing (self, source = None):
@@ -709,7 +714,7 @@ class Item_Airfoil (Diagram_Item):
     def _on_paneling_mode (self, active : bool):
         """ slot to handle paneling mode entering/leaving """
 
-        # switch off Line artist
+        # switch off Line artist as there would be too much on the screen 
         if active:
             self._line_artist.set_show (False)
 
