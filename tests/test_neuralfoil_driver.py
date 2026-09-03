@@ -1,13 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pytest
-
-from airfoileditor.model.neuralfoil_driver import Neuralfoil_Driver
+from airfoileditor.model.nf_driver import Neuralfoil_Evaluator
 
 
-def test_neuralfoil_driver_placeholder_predict_raises():
-    driver = Neuralfoil_Driver()
-
-    with pytest.raises(NotImplementedError):
-        driver.predict()
+def test_neuralfoil_evaluator_exposes_polar_api():
+    assert Neuralfoil_Evaluator.NAME == "NeuralFoil"
+    assert callable(Neuralfoil_Evaluator.get_polar_data_set)
