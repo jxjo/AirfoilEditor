@@ -510,7 +510,8 @@ class Movable_Curve (pg.PlotCurveItem):
                   color = None, 
                   movable = False,
                   label_anchor = (0,1),
-                  show_static = False,                              # plot also when not in move 
+                  show_static = False,                              # plot curve also when not in move 
+                  show_on_move = True,                              # plot curve on moving
                   show_label = True,                                # show label P0, P1, ... for control points
                   movable_point_class = Movable_Curve_Point,        # to choose an individual Movable_Point
                   on_changed = None,                                # callback when finished moving a point with new list of points
@@ -522,6 +523,7 @@ class Movable_Curve (pg.PlotCurveItem):
         self._callback_move    = on_move if (callable(on_move) and movable) else None
         self._id = id 
         self.movable = movable 
+        self._show_on_move = show_on_move
  
         # init polyline of control points as PlotCurveItem (self)
           
@@ -570,7 +572,7 @@ class Movable_Curve (pg.PlotCurveItem):
         self._u = None                                  # u distribution of helper curve 
         self._curve_item = None                         # plotItem of curve 
 
-        if movable or show_static: 
+        if (movable and show_on_move) or show_static: 
 
             pen = pg.mkPen (QColor (color), width=1, style=Qt.PenStyle.DashLine)
             self._curve_item = pg.PlotCurveItem ([0],[0], pen=pen)
@@ -643,8 +645,9 @@ class Movable_Curve (pg.PlotCurveItem):
 
         self.setData(*self.points_xy())                     # update self (polyline) 
 
-        if self._curve_item: 
-            self._update_curve()                                    
+        self._update_curve()                                    
+
+        if self._curve_item and self._show_on_move: 
             self._update_curve_item ()
             self._curve_item.show()
 

@@ -250,11 +250,13 @@ class Side_Airfoil_Curve (Line):
         self.set_cPoints(cPoints, moving=moving)
 
 
+    @override
     @property
     def x (self):
         # overloaded curve caches values
         return self.curve.eval(self.u)[0]
-    
+
+    @override
     @property
     def y (self): 
         # overloaded curve caches values
@@ -611,6 +613,7 @@ class Geometry_Curve (Geometry):
     def y (self):
         # take from the two sides
         return np.concatenate ((np.flip(self.upper.y), self.lower.y[1:]))
+
     
     @override
     @property
@@ -657,14 +660,11 @@ class Geometry_Curve (Geometry):
             xBlend_change =  self.te_gap_xBlend != xBlend
             self._te_gap_xBlend = xBlend
 
-
         new_gap = clip (new_gap, 0.0, 0.1)
 
-        if self.te_gap == new_gap and not xBlend_change:
-            return
-
-        self.upper.set_te_gap (new_gap * 0.5, self.te_gap_xBlend, moving=moving)
-        self.lower.set_te_gap (new_gap * 0.5, self.te_gap_xBlend, moving=moving)
+        if self.te_gap != new_gap or xBlend_change:
+            self.upper.set_te_gap (new_gap * 0.5, self.te_gap_xBlend, moving=moving)
+            self.lower.set_te_gap (new_gap * 0.5, self.te_gap_xBlend, moving=moving)
 
         self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2), moving=moving)   # finalize (parent) airfoil 
 

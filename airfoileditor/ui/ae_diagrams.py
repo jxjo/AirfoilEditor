@@ -624,7 +624,6 @@ class Item_Airfoil (Diagram_Item):
 
         # fast changes 
         self.app_model.sig_geo_changing.connect             (self._on_geo_changing)   
-        self.app_model.sig_geo_curve_changing.connect       (self._on_curve_changed)
 
         # enter/leave modes - show/hide artists
         self.app_model.sig_te_gap_mode.connect              (self._on_te_gap_mode)
@@ -673,17 +672,11 @@ class Item_Airfoil (Diagram_Item):
 
         self._flap_artist.set_show (active)
 
-        # show temp geometry x,y of Design airfoil 
-        self._airfoil_artist.set_show_design_geometry (active) 
-
 
     def _on_le_radius_mode (self, active : bool):
         """ slot to handle le radius mode entering/leaving """
 
         self._le_artist.set_show (active)    
-
-        # show temp geometry x,y of Design airfoil 
-        self._airfoil_artist.set_show_design_geometry (active) 
 
 
     def _on_te_gap_mode (self, active : bool):
@@ -691,24 +684,25 @@ class Item_Airfoil (Diagram_Item):
 
         self._te_artist.set_show (active)                        
 
-        # show temp geometry x,y of Design airfoil 
-        self._airfoil_artist.set_show_design_geometry (active) 
-
 
     def _on_blend_mode (self, active : bool):
         """ slot to handle blend mode entering/leaving """
 
-        # show temp geometry x,y of Design airfoil 
-        self._airfoil_artist.set_show_design_geometry (active) 
+        # nothing to do
+        pass
 
 
     def _on_geo_changing (self, source = None):
         """ slot to handle airfoil geometry is fast changing - switch off show points of all artists"""
 
-        # guard - if source is self, then this is a signal from self - no need to refresh artists again
-        if source == self: return
-
-        self.refresh_artists()       
+        # refresh only if self is shown
+        if not self.show:
+            return
+        
+        # refresh all artists except the source
+        for artist in self._artists:
+            if artist != source:
+                artist.refresh()
 
 
     def _on_paneling_mode (self, active : bool):
@@ -726,14 +720,6 @@ class Item_Airfoil (Diagram_Item):
 
         # refresh section panel and all artists
         self.refresh()
-
-
-    def _on_curve_changed (self, side_type : Line.Type):
-        """ slot to handle curve of airfoil changed signal """
-
-        self._bezier_artist.refresh_from_side (side_type)
-        self._bspline_artist.refresh_from_side (side_type)
-        self._cst_artist.refresh_from_side (side_type)
 
         
     def _on_new_design (self):
@@ -1011,7 +997,7 @@ class Item_Airfoil (Diagram_Item):
 
         for a in self._artists:
             a.sig_changed.connect (self.app_model.notify_geo_changed)
-            a.sig_moving.connect  (lambda: self.app_model.notify_geo_changing (source=self))
+            a.sig_moving.connect  (lambda artist=a: self.app_model.notify_geo_changing (source=artist))
 
 
 
@@ -1913,6 +1899,11 @@ class Diagram_Airfoil_Polar (Diagram):
         show = s.get(self.panel_polar.name, False)     
         self._set_show_item (Item_Polars, show, silent=True)        # silent set
 
+        if show:
+            # as Item_Polars have a common panel_polar (and no section panel) 
+            # it has to be refreshed to show switched on/off state
+            self.panel_polar.refresh()
+
         show = s.get(Item_Airfoil.name, None)
         self._set_show_item (Item_Airfoil, show, silent=True)       # silent set
 
@@ -1999,7 +1990,7 @@ class Diagram_Airfoil_Polar (Diagram):
         item.set_desired_xLink_name (Item_Airfoil.name)             # link x axis to airfoil item
         self._add_item (item, r, 0, colspan=2, rowStretch=3)
 
-        if Worker.ready:
+        if Worker.ready or Neuralfoil_Evaluator.ready:
             r += 1
             default_settings = [{"xyVars" : (var.CD,var.CL)}, {"xyVars" : (var.CL,var.GLIDE)}]
 

@@ -560,9 +560,6 @@ class Geometry_BSpline (Geometry_Curve):
             # re-fit curve to current target coordinates or to self if no target coordinates defined 
             side.re_fit_curve ( target_side=target_side, ncp=ncp, le_curvature=le_curvature)   
 
-            self._reset()
-
-            if not moving:
-                mod = self.MOD_CURVE + " " + side.name
-                self._changed (mod, f"#Ctrl Points={ncp}")
+            mod = self.MOD_CURVE + " " + side.name
+            self._changed (mod, f"#Ctrl Points={ncp}", moving=moving)
 

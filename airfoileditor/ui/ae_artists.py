@@ -126,22 +126,6 @@ def _label_airfoil (airfoils : list[Airfoil], airfoil: Airfoil) -> str:
     return label 
 
 
-def _linestyle_of (aType : Line.Type) -> QColor:
-    """ returns PenStyle for line depending on its type """
-
-    if aType == Line.Type.CAMBER:
-        style = Qt.PenStyle.DashDotLine
-    elif aType == Line.Type.THICKNESS:
-        style = Qt.PenStyle.DashLine
-    elif aType == Line.Type.UPPER:
-        style = Qt.PenStyle.DotLine
-    elif aType == Line.Type.LOWER:
-        style = Qt.PenStyle.DotLine
-    else:
-        style = Qt.PenStyle.SolidLine
-
-    return style
-
 
 class Movable_Highpoint (Movable_Point):
     """ 
@@ -203,7 +187,8 @@ class Movable_Highpoint (Movable_Point):
         self.setPos(line.highpoint.xy)
 
         # update line plot item 
-        self._line_plot_item.setData (line.x, line.y)
+        if self._line_plot_item is not None:
+            self._line_plot_item.setData (line.x, line.y)
 
         # signal moving
         super()._moving()
@@ -317,14 +302,15 @@ class Movable_LE_Radius (Movable_Point):
     def label_static (self, *_):
         """label static"""
         if self._show_label_static_with_value:
-            return f"{self.name}  {self.le_radius_by_point:.2%}"
+            return self.label_moving()
         else: 
             return super().label_static() 
 
     @override
     def label_moving (self, *_):
         """label when moving"""
-        return f"{self.name}  {self.le_radius_by_point:.2%} "
+        curv = 1/self.le_radius_by_point if self.le_radius_by_point != 0 else 0
+        return f"LE radius {self.le_radius_by_point:.2%} \nLE curvature {curv:.0f}"
 
 
 
@@ -566,8 +552,6 @@ class Movable_CST_LE_Weight (Movable_Point):
 
     def __init__ (self, 
                   geo : Geometry_CST, 
-                  upper_plot_item : pg.PlotDataItem, 
-                  lower_plot_item : pg.PlotDataItem,
                   show_label_static_with_value = False, 
                   movable = False, 
                   color : QColor|str = 'r',
@@ -578,8 +562,6 @@ class Movable_CST_LE_Weight (Movable_Point):
 
         self._show_label_static_with_value = show_label_static_with_value
         self._geo = geo
-        self._upper_plot_item = upper_plot_item
-        self._lower_plot_item = lower_plot_item
 
         xy = self._le_point_xy()
 
@@ -614,7 +596,7 @@ class Movable_CST_LE_Weight (Movable_Point):
     def _moving (self, _):
         """ slot - when point is moved"""
 
-        # update highpoint coordinates - scale up 
+        # update LE weight - scale up 
         new_weight = self.y * 2
         self._geo.set_le_weight (new_weight, moving=True)
 
@@ -623,15 +605,14 @@ class Movable_CST_LE_Weight (Movable_Point):
         self.setPos(xy)
         self._update_helper_line (xy)
 
-        # update line plot item 
-        self._upper_plot_item.setData (self._geo.upper.x, self._geo.upper.y)
-        self._lower_plot_item.setData (self._geo.lower.x, self._geo.lower.y)    
+        # signal moving
+        super()._moving()
 
 
     def _finished (self, _):
         """ slot - point moving is finished"""
 
-        # final highpoint coordinates
+        # final geometry update
         new_weight = self.y * 2
         self._geo.set_le_weight (new_weight, moving=False)
         self._changed()
@@ -668,8 +649,6 @@ class Movable_CST_TE_Thickness (Movable_Point):
 
     def __init__ (self, 
                   geo : Geometry_CST, 
-                  upper_plot_item : pg.PlotDataItem, 
-                  lower_plot_item : pg.PlotDataItem,
                   show_label_static_with_value = False, 
                   movable = False, 
                   color : QColor|str = 'r',
@@ -680,8 +659,6 @@ class Movable_CST_TE_Thickness (Movable_Point):
 
         self._show_label_static_with_value = show_label_static_with_value
         self._geo = geo
-        self._upper_plot_item = upper_plot_item
-        self._lower_plot_item = lower_plot_item
 
         xy = self._te_point_xy()
 
@@ -695,22 +672,21 @@ class Movable_CST_TE_Thickness (Movable_Point):
     def _moving (self, _):
         """ slot - when point is moved"""
 
-        # update highpoint coordinates
+        # update geometry
         self._geo.set_te_gap(self.y * 2, moving=True)
 
         # update self xy if we run against limits 
         xy = self._te_point_xy()
         self.setPos(xy)
 
-        # update line plot item 
-        self._upper_plot_item.setData (self._geo.upper.x, self._geo.upper.y)
-        self._lower_plot_item.setData (self._geo.lower.x, self._geo.lower.y)    
+        # signal moving
+        super()._moving()
 
 
     def _finished (self, _):
         """ slot - point moving is finished"""
 
-        # final highpoint coordinates
+        # final TE thickness
         new_te_gap = self.y * 2
         self._geo.set_te_gap(new_te_gap, moving=False)
         self._changed()
@@ -846,7 +822,6 @@ class Airfoil_Artist (Artist):
 
         self._show_points = show_points is True         # show coordinate points
         self._show_airfoils_refs_scaled = True          # show reference airfoils scaled 
-        self._show_design_geometry = False              # show design geometry x,y
 
         super().__init__ (*args, **kwargs)
 
@@ -870,15 +845,6 @@ class Airfoil_Artist (Artist):
         self._show_airfoils_refs_scaled = aBool
         self.refresh()
 
-    @property
-    def show_design_geometry (self) -> bool:
-        """ True if temporary design geometry will be shown """
-        return self._show_design_geometry
-
-    def set_show_design_geometry (self, aBool):
-        self._show_design_geometry = aBool
-        self.refresh()
-
 
     def set_current (self, aLineLabel):
         # tries to set a highlighted airfoil to section with name ''aLineLabel' 
@@ -888,31 +854,28 @@ class Airfoil_Artist (Artist):
                 self.plot ()
 
 
-    @property
-    def airfoils (self) -> list [Airfoil]: 
-        return self.data_list   
-
-
     def _plot (self): 
+
+        airfoils  : list [Airfoil] = self.data_list
     
-        color_palette = random_colors (len(self.airfoils))
+        color_palette = random_colors (len(airfoils))
 
         # are there many airfoils - one of them is DESIGN? 
 
-        there_is_design     = any(a.usedAsDesign for a in self.airfoils) 
+        there_is_design     = any(a.usedAsDesign for a in airfoils) 
 
-        for iair, airfoil in enumerate (self.airfoils):
+        for iair, airfoil in enumerate (airfoils):
             if (airfoil.isLoaded):
 
                 # no legend if it is only one airfoil 
-                if len(self.airfoils) == 1:
+                if len(airfoils) == 1:
                     label = None                                    # suppress legend 
                 else: 
-                    label = _label_airfoil (self.airfoils, airfoil)
+                    label = _label_airfoil (airfoils, airfoil)
 
                 # set color, width, ZValue, symbol style depending on airfoil usage and no of airfoils  
 
-                color = _color_airfoil (self.airfoils, airfoil)
+                color = _color_airfoil (airfoils, airfoil)
                 if color is None: color = color_palette [iair]
 
                 # default 
@@ -926,21 +889,23 @@ class Airfoil_Artist (Artist):
                     antialias = True
                     zValue = 5                                      # final top most 
                 elif airfoil.usedAsDesign:
-                    width = 2
+                    if airfoil.geo.is_moving:
+                        style   = Qt.PenStyle.DotLine
+                        width = 1.5
+                    else:
+                        width = 2
                     antialias = True
                     zValue = 3
-                    if self.show_design_geometry and airfoil.geo.is_temp_xy:
-                        style   = Qt.PenStyle.DotLine
                 elif airfoil.usedAs == usedAs.NORMAL and not there_is_design:
                     width = 2
                     antialias = True
 
                 pen = pg.mkPen(color, width=width, style=style)
                 # if there is only one airfoil, fill the airfoil contour with a soft color tone  
-                brush = pg.mkBrush (color.darker (600)) if len(self.airfoils) == 1 else None
+                brush = pg.mkBrush (color.darker (600)) if len(airfoils) == 1 else None
 
                 # x,y Coordinates of the airfoil contour - airfoil.xy or airfoil.geo.xy (temp)
-                if airfoil.usedAsDesign and self.show_design_geometry and airfoil.geo.is_temp_xy:
+                if airfoil.usedAsDesign and airfoil.geo.is_moving:
                     x,y = airfoil.geo.x, airfoil.geo.y
                 else:
                     x,y = airfoil.x, airfoil.y
@@ -976,7 +941,7 @@ class Airfoil_Artist (Artist):
                                       text=text, textColor=textColor, anchor=(1.1,0.5) )
 
                 # plot note if reflexed or rearloaded
-                if len(self.airfoils) == 1: 
+                if len(airfoils) == 1: 
                     self._plot_reflexed_rearloaded (airfoil, color)
 
         # show help message 
@@ -1331,32 +1296,17 @@ class Bezier_Artist (Artist):
     """Plot and edit airfoils Bezier control points """
 
 
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
-    def refresh_from_side (self, aLinetype : Line.Type):
-        """ fast refresh of bezier control points for one line type"""
-
-        p : Movable_Side_Bezier
-        for p in self._plots: 
-            if isinstance (p, Movable_Side_Bezier) and p._side.type == aLinetype:
-                if len (p._movable_points) != len(p._side.cPoints):
-                    # when matching, thread could have changed ncp - complete refresh
-                    self.refresh()     
-                    return
-                else:
-                    # just update control point items
-                    p.refresh()
-
     def _plot (self): 
-    
-        # is there on airfoil with editable bezier curve?
-        one_airfoil_movable = any(airfoil.isBezierBased and airfoil.isEdited for airfoil in self.airfoils)
 
-        for airfoil in self.airfoils:
+        airfoils  : list [Airfoil] = self.data_list
+
+        # is there on airfoil with editable bezier curve?
+        one_airfoil_movable = any(airfoil.isBezierBased and airfoil.isEdited for airfoil in airfoils)
+
+        for airfoil in airfoils:
             if airfoil.isBezierBased and airfoil.isLoaded:
 
-                color = _color_airfoil (self.airfoils, airfoil)
+                color = _color_airfoil (airfoils, airfoil)
                 movable = airfoil.isEdited and self.show_mouse_helper
 
                 side : Side_Airfoil_Bezier
@@ -1368,6 +1318,7 @@ class Bezier_Artist (Artist):
                     p = Movable_Side_Bezier (airfoil, side, color=color, 
                                              movable=movable,
                                              show_label=show_label,
+                                             show_on_move=False,        # is done in Airfoil_Artist
                                              on_changed=self.sig_changed.emit,
                                              on_move=self.sig_moving.emit)
                     self._add(p)
@@ -1384,34 +1335,18 @@ class Bezier_Artist (Artist):
 class BSpline_Artist (Artist):
     """Plot and edit airfoils BSpline control points """
 
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
-
-    def refresh_from_side (self, aLinetype : Line.Type):
-        """ fast refesh of bspline control points for one line type"""
-
-        p : Movable_Side_BSpline
-        for p in self._plots: 
-            if isinstance (p, Movable_Side_BSpline) and p._side.type == aLinetype:
-                if len (p._movable_points) != len(p._side.cPoints):
-                    # when matching, thread could have changed ncp - complete refresh
-                    self.refresh()     
-                    return
-                else:
-                    # just update control point items
-                    p.refresh()
-
 
     def _plot (self): 
-    
-        # is there on airfoil with editable bspline curve?
-        one_airfoil_movable = any(airfoil.isBSplineBased and airfoil.isEdited for airfoil in self.airfoils)
 
-        for airfoil in self.airfoils:
+        airfoils  : list [Airfoil] = self.data_list
+
+        # is there on airfoil with editable bspline curve?
+        one_airfoil_movable = any(airfoil.isBSplineBased and airfoil.isEdited for airfoil in airfoils)
+
+        for airfoil in airfoils:
             if airfoil.isBSplineBased and airfoil.isLoaded:
 
-                color = _color_airfoil (self.airfoils, airfoil)
+                color = _color_airfoil (airfoils, airfoil)
                 movable = airfoil.isEdited and self.show_mouse_helper
 
                 # Show labels only for the movable airfoil when there's one editable, otherwise show all
@@ -1422,6 +1357,7 @@ class BSpline_Artist (Artist):
 
                     p = Movable_Side_BSpline (airfoil, side, color=color, movable=movable,
                                               show_static=movable,      # make helper curve visible to ctrl-click
+                                              show_on_move=False,       # is done in Airfoil_Artist
                                               show_label=show_label,
                                               on_changed=self.sig_changed.emit,
                                               on_move=self.sig_moving.emit)
@@ -1493,34 +1429,18 @@ class BSpline_Artist (Artist):
 class CST_Artist (Artist):
     """Plot and edit airfoils CST control points """
 
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
-
-    def refresh_from_side (self, aLinetype : Line.Type):
-        """ fast refesh of bspline control points for one line type"""
-
-        p : Movable_Side_CST
-        for p in self._plots: 
-            if isinstance (p, Movable_Side_CST) and p._side.type == aLinetype:
-                if len (p._movable_points) != len(p._side.cPoints):
-                    # when matching, thread could have changed ncp - complete refresh
-                    self.refresh()     
-                    return
-                else:
-                    # just update control point items
-                    p.refresh()
-
 
     def _plot (self): 
-    
-        # is there on airfoil with editable bspline curve?
-        one_airfoil_movable = any(airfoil.isCSTBased and airfoil.isEdited for airfoil in self.airfoils)
 
-        for airfoil in self.airfoils:
+        airfoils  : list [Airfoil] = self.data_list
+
+        # is there on airfoil with editable bspline curve?
+        one_airfoil_movable = any(airfoil.isCSTBased and airfoil.isEdited for airfoil in airfoils)
+
+        for airfoil in airfoils:
             if airfoil.isCSTBased and airfoil.isLoaded:
 
-                color = _color_airfoil (self.airfoils, airfoil)
+                color = _color_airfoil (airfoils, airfoil)
                 movable = airfoil.isEdited and self.show_mouse_helper
 
                 # Show labels only for the movable airfoil when there's one editable, otherwise show all
@@ -1528,6 +1448,7 @@ class CST_Artist (Artist):
 
                 pl = Movable_Side_CST (airfoil, airfoil.geo.lower, color=color, movable=movable,
                                         show_static=movable,      # make helper curve visible to ctrl-click
+                                        show_on_move=False,       # is done in Airfoil_Artist
                                         show_label=show_label,
                                         on_changed=self.sig_changed.emit,
                                         on_move=self.sig_moving.emit)
@@ -1535,6 +1456,7 @@ class CST_Artist (Artist):
 
                 pu = Movable_Side_CST (airfoil, airfoil.geo.upper, color=color, movable=movable,
                                         show_static=movable,      # make helper curve visible to ctrl-click
+                                        show_on_move=False,       # is done in Airfoil_Artist
                                         show_label=show_label,
                                         on_changed=self.sig_changed.emit,
                                         on_move=self.sig_moving.emit)
@@ -1543,22 +1465,18 @@ class CST_Artist (Artist):
                 # plot leading edge weight point
 
                 p = Movable_CST_LE_Weight (airfoil.geo, 
-                                           upper_plot_item=pu._curve_item,
-                                           lower_plot_item=pl._curve_item,
-                                           color=color, movable=movable,
-                                           show_label_static=show_label,
-                                           on_changed=self.sig_changed.emit,
-                                           on_move=self.sig_moving.emit)
+                                        color=color, movable=movable,
+                                        show_label_static=show_label,
+                                        on_changed=self.sig_changed.emit,
+                                        on_move=self.sig_moving.emit)
                 self._add(p)
 
                 # plot te thickness point
                 p = Movable_CST_TE_Thickness (airfoil.geo,
-                                               upper_plot_item=pu._curve_item,
-                                               lower_plot_item=pl._curve_item,
-                                               color=color, movable=movable,
-                                               show_label_static=show_label,
-                                               on_changed=self.sig_changed.emit,
-                                               on_move=self.sig_moving.emit)
+                                        color=color, movable=movable,
+                                        show_label_static=show_label,
+                                        on_changed=self.sig_changed.emit,
+                                        on_move=self.sig_moving.emit)
                 self._add(p)
 
         # show mouse helper message
@@ -1572,16 +1490,15 @@ class CST_Artist (Artist):
 class Deviation_Line_Artist (Artist):
     """Plot deviation of curves to its target_line """
 
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
 
     def _plot (self): 
-    
+
+        airfoils  : list [Airfoil] = self.data_list
+
         # get geo of design airfoil - if it is Bezier or BSpline based
 
         geo : Geometry_Curve = None
-        for airfoil in self.airfoils:
+        for airfoil in airfoils:
             if airfoil.usedAsDesign and airfoil.geo.isCurve:
                 geo = airfoil.geo 
 
@@ -1642,17 +1559,17 @@ class Deviation_Line_Artist (Artist):
 class Hicks_Henne_Artist (Artist):
     """Plot and edit airfoils Hicks Henne functions of airfoils  """
 
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
 
     def _plot (self): 
-    
+
+        airfoils  : list [Airfoil] = self.data_list
+
         y_factor = 20 
 
-        for airfoil in self.airfoils:
+        for airfoil in airfoils:
             if airfoil.isHicksHenneBased and airfoil.isLoaded:
 
-                color_airfoil = _color_airfoil (self.airfoils, airfoil)
+                color_airfoil = _color_airfoil (airfoils, airfoil)
 
                 side : Side_Airfoil_HicksHenne
                 for side in [airfoil.geo.upper, airfoil.geo.lower]:     # paint upper on top 
@@ -1720,15 +1637,14 @@ class Curvature_Artist (Artist):
         self._show_derivative = aBool 
         self.plot()
 
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
 
     def _plot (self): 
 
-        for airfoil in self.airfoils:
+        airfoils  : list [Airfoil] = self.data_list
+    
+        for airfoil in airfoils:
 
-            color = _color_airfoil (self.airfoils, airfoil)
+            color = _color_airfoil (airfoils, airfoil)
 
             sides = []
             if self.show_upper: sides.append (airfoil.geo.curvature.upper)
@@ -1743,7 +1659,7 @@ class Curvature_Artist (Artist):
                 else: 
                     pen = pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine)
 
-                label   = f"{side.name} - {_label_airfoil (self.airfoils, airfoil)}"
+                label   = f"{side.name} - {_label_airfoil (airfoils, airfoil)}"
                 zValue = 3 if airfoil.usedAsDesign else 1
 
                 self._plot_dataItem (x, y, name=label, pen=pen, zValue=zValue)
@@ -1828,21 +1744,14 @@ class Curvature_Comb_Artist (Artist):
     """
     name = 'Curvature' 
 
-    def __init__ (self, *args, show_derivative=False, **kwargs):
- 
-        super().__init__ (*args, **kwargs)
-
-
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
 
     def _plot (self): 
 
+        airfoils  : list [Airfoil] = self.data_list
 
-        for airfoil in self.airfoils:
+        for airfoil in airfoils:
 
-            color = _color_airfoil (self.airfoils, airfoil)
+            color = _color_airfoil (airfoils, airfoil)
 
             # plot outline of comb
 
@@ -1917,40 +1826,38 @@ class Airfoil_Line_Artist (Artist, QObject):
     Plot thickness, camber line of an airfoil, print max values 
     """
 
-    @property
-    def airfoils (self) -> list [Airfoil]: return self.data_list
-
     def _plot (self): 
 
-        airfoil: Airfoil
+        airfoils  : list [Airfoil] = self.data_list
 
-        for iair, airfoil in enumerate (self.airfoils):
+        for iair, airfoil in enumerate (airfoils):
 
-            color = _color_airfoil (self.airfoils, airfoil)
+            color = _color_airfoil (airfoils, airfoil)
             color.setAlphaF (0.8)
 
             # plot all 'lines' of airfoil 
 
             for line in airfoil.geo.lines_dict.values():
-                
-                style = _linestyle_of (line._type)
+
+                if line._type == Line.Type.CAMBER:
+                    style = Qt.PenStyle.DashDotLine
+                elif line._type == Line.Type.THICKNESS:
+                    style = Qt.PenStyle.DashDotDotLine
+                else:
+                    style = None
+
                 if airfoil.usedAsDesign:
                     zValue = 5                                  # plot design on top 
                 else:
                     zValue = 4 
 
-                is_upper = line.type == Line.Type.UPPER
-                is_lower = line.type == Line.Type.LOWER
-                is_upper_lower = is_upper or is_lower
+                # plot - not upper and lower
 
-                if iair == 0 and not is_upper_lower:            # line legend only for the first airfoil 
-                    name = line.name
-                else: 
-                    name = None 
-
-                # plot upper and lower only for design (to visualize move highpoint)
-
-                if airfoil.usedAsDesign or not is_upper_lower:
+                if style is not None:
+                    if iair == 0:                               # line legend only for the first airfoil 
+                        name = line.name
+                    else: 
+                        name = None 
                     pen = pg.mkPen(color, width=1, style=style)
                     p = self._plot_dataItem (line.x, line.y, pen = pen, name = name, zValue=zValue)
                 else: 
@@ -1966,7 +1873,7 @@ class Airfoil_Line_Artist (Artist, QObject):
 
 
         # show mouse helper message
-        if any(airfoil.isEdited for airfoil in self.airfoils):
+        if any(airfoil.isEdited for airfoil in airfoils):
             msg = "Move markers to modify geometry"
             self.set_help_message (msg)
 
@@ -2046,26 +1953,23 @@ class Polar_Artist (Artist):
             self.refresh()
 
 
-    @property
-    def airfoils (self) -> list [Airfoil]: 
-        return list(self.data_list)
-
-
     def _plot (self): 
         """ do plot of airfoil polars in the prepared axes  """
 
-        if not self.airfoils : return 
+        airfoils  : list [Airfoil] = self.data_list
+
+        if not airfoils : return 
 
         # cancel all polar generations which are not for this current set of airfoils 
         #   to avoid to many os worker threads 
 
-        Polar_Task.terminate_instances_except_for (self.airfoils)
+        Polar_Task.terminate_instances_except_for (airfoils)
 
         # load or generate polars which are not loaded up to now
 
         is_moving_design_mode = False
 
-        for airfoil in self.airfoils: 
+        for airfoil in airfoils: 
             polarSet = airfoil.polarSet
             if polarSet:
                 if self.show_VLM_also:
@@ -2076,7 +1980,7 @@ class Polar_Artist (Artist):
                     polarSet.load_or_generate_polars (VLM=False)
             else:
                 logger.debug (f"{airfoil} has no polarSet to plot")
-            if airfoil.usedAsDesign and airfoil.geo.is_temp_xy:
+            if airfoil.usedAsDesign and airfoil.geo.is_moving:
                 is_moving_design_mode = True
 
         # plot polars of airfoils
@@ -2086,11 +1990,11 @@ class Polar_Artist (Artist):
         also_neuralfoil   = False                   # is there a neuralfoil polar
         error_msg         = []  
 
-        for airfoil in self.airfoils:
+        for airfoil in airfoils: 
 
             if airfoil.polarSet:
  
-                color_airfoil = _color_airfoil (self.airfoils, airfoil)
+                color_airfoil = _color_airfoil (airfoils, airfoil)
 
                 # filter only visible polars, sort by re descending, then has_xtrip=False first 
                 polarSet : Polar_Set = airfoil.polarSet
@@ -2109,7 +2013,7 @@ class Polar_Artist (Artist):
                         # generate increasing color hue value for the polars of an airfoil 
                         color = color_in_series (color_airfoil, iPolar, len(polars), delta_hue=0.1)
 
-                        self._plot_polar (self.airfoils, airfoil, polar, color)
+                        self._plot_polar (airfoils, airfoil, polar, color)
 
                         # plot bubble info if available
                         if self.show_bubbles:
@@ -2180,7 +2084,7 @@ class Polar_Artist (Artist):
         elif airfoil.usedAs == usedAs.FINAL:  
             linewidth=1.5
         elif airfoil.usedAs == usedAs.DESIGN:  
-            if airfoil.geo.is_temp_xy:                          # design geo/polar is "on move" - show dashed line
+            if airfoil.geo.is_moving:                          # design geo/polar is "on move" - show dashed line
                 linewidth=1.5
                 style = Qt.PenStyle.DotLine
             else:

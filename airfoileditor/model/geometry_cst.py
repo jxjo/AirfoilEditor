@@ -314,12 +314,12 @@ class Geometry_CST(Geometry_Curve):
         return self.upper.cst.le_weight
 
     def set_le_weight(self, le_weight: float, moving=False):
+
         le_weight = round(le_weight,3)
         self.upper.set_le_weight(le_weight)
         self.lower.set_le_weight(le_weight)
-        if not moving:
-          self._reset()
-          self._changed(self.MOD_CURVE + " LE weight", le_weight)
+
+        self._changed (self.MOD_CURVE + " LE weight", le_weight, moving=moving)
 
 
     @property
@@ -337,9 +337,7 @@ class Geometry_CST(Geometry_Curve):
         self.upper.set_te_gap(0.5 * new_gap)
         self.lower.set_te_gap(0.5 * new_gap)
 
-        if not moving:
-            self._reset()
-            self._changed(Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2))
+        self._changed (Geometry.MOD_TE_GAP, round(self.te_gap * 100, 2), moving=moving)
 
 
     @override
@@ -483,7 +481,4 @@ class Geometry_CST(Geometry_Curve):
         self.set_le_weight (le_weight, moving=True)             # moving - avoid double changed
         self.set_te_gap (te_thickness, moving=True)
 
-        self._reset()
-
-        if not moving:
-            self._changed (self.MOD_CURVE + " ", f"#Weights={ncp}")
+        self._changed (self.MOD_CURVE + " ", f"#Weights={ncp}", moving=moving)

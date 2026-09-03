@@ -1514,9 +1514,9 @@ class Line:
             y_new = 0.0      
         elif self.type == Line.Type.LOWER:             # range is negative
             y_new = max (-0.5, y_new)
-            y_new = min (-0.005, y_new)
+            y_new = min (-0.001, y_new)
         else: 
-            y_new = max (0.005, y_new)
+            y_new = max (0.001, y_new)
             y_new = min (0.5, y_new)
 
         # the approach is quite simple: scale all y values by factor new/old
@@ -1597,8 +1597,6 @@ class Geometry ():
         self._x = None   
         self._y = None
 
-        self._callback_changed = onChange       # callback when self was changed (by user) 
-
         self._thickness : Line = None           # thickness distribution
         self._camber    : Line = None           # camber line
         self._upper     : Line = None           # upper side
@@ -1608,15 +1606,16 @@ class Geometry ():
 
         self._te_gap_xBlend    = None           # x position from TE where te gap blending starts
         self._le_radius_xBlend = None           # x position from LE where le radius blending ends
-        self._paneling = None                  # "paneller"  for spline or Bezier 
+        self._paneling = None                   # "paneller"  for spline or Bezier 
         self._flap_setter = None                # "flap setter" 
 
+        self._callback_changed = onChange       # callback when self was changed (by user) 
         self._modification_dict = {}            # dict of modifications made to self 
+        self._moving = False                    # flag indicating if the geometry is currently being modified
 
 
     @override
     def __repr__(self) -> str:
-        # overwritten to get a nice print string 
         return f"<{type(self).__name__}>"
 
 
@@ -1626,7 +1625,10 @@ class Geometry ():
                   moving = False):
         """ handle geometry changed 
             - save the modification made aMod with optional val
-            - handle callbacks"""
+            - handle callbacks
+        """
+
+        self.set_is_moving (moving)                             # save state of moving flag
 
         is_dat_based = self.isBasic or self.isSplined
 
@@ -1658,6 +1660,7 @@ class Geometry ():
         else:
             # moving - just reset dependent data - no callback, no final xy, no modification dict
             self._reset()
+
 
     @property
     def modification_dict (self) -> list [tuple]:
@@ -1725,12 +1728,15 @@ class Geometry ():
 
 
     @property
-    def is_temp_xy (self) -> bool:
-        """ 
-        true if _x,_y is set which is typically when a modification is in progress (moved) 
-        and not yet finalized
-        """
-        return self._x is not None and self._y is not None
+    def is_moving (self) -> bool:
+        """ true if the geometry is currently being fast modified """
+        # in case of moving, the _x and _y arrays are temporarily set
+        # - but not for curves - so better double check with flag
+        return self._moving or (self._x is not None and self._y is not None)
+
+    def set_is_moving (self, moving: bool):
+        """ set the moving flag """
+        self._moving = moving
 
 
     @property

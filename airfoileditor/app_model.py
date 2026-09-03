@@ -125,7 +125,6 @@ class App_Model (QObject):
 
     # fast geometry updates during user interaction - no new design airfoil created yet
     sig_geo_changing            = pyqtSignal(object)    # geometry changing including source widget
-    sig_geo_curve_changing      = pyqtSignal(Line.Type) # curve (Bezier or B-Spline) during match curve 
 
     # enter/leave modes - show/hide artists
     sig_te_gap_mode             = pyqtSignal(bool)      
@@ -335,14 +334,6 @@ class App_Model (QObject):
         self.sig_xo2_new_state.emit()
 
 
-    def _on_match_results (self, ipass, nevals, result):
-        """ slot to handle new match results signaled by Matcher"""
-
-        if self._matcher:
-            line_type = self._matcher._side.type
-            self.sig_geo_curve_changing.emit (line_type)                     # update diagram
-            QCoreApplication.processEvents()
-
 
     def _on_match_finished (self, result : Match_Result ):
         """ slot to handle match finished signaled by Matcher"""
@@ -352,7 +343,8 @@ class App_Model (QObject):
             self._matcher.sig_new_results.disconnect ()
 
             aSide = self._matcher._side
-            self.airfoil.geo.finished_change_of (aSide, matched=True) # will reset geo and handle changed  
+            geo : Geometry_Curve = self.airfoil.geo
+            geo.finished_change_of (aSide, matched=True)                # will reset geo, moving and handle changed  
 
             case : Case_Match_Target = self.case
             case.set_match_result (result)
@@ -1201,13 +1193,17 @@ class App_Model (QObject):
             side = self.airfoil.geo.lower
             targets = case.targets_lower
 
+        # set moving flag to indicate UI that the geometry is being modified
+
+        self.airfoil.geo.set_is_moving (True)
+
         # set matcher and start thread
 
         self._matcher = Matcher ()
  
         self._matcher.set_match (side, targets)
 
-        self._matcher.sig_new_results.connect     (self._on_match_results)
+        self._matcher.sig_new_results.connect     (self.notify_geo_changing)
         self._matcher.sig_finished.connect        (self._on_match_finished)
 
         QTimer.singleShot(0, self._matcher.start)
