@@ -1981,10 +1981,6 @@ class Diagram_Airfoil_Polar (Diagram):
         item = Item_Airfoil (self, self.app_model)     
         self._add_item (item, r, 0, colspan=2, rowStretch=3)
 
-        # show curvature comb in new version 
-        if self.app_model._is_first_run:
-            item.set_show_curvature_comb (True)
-
         r += 1
         item = Item_Curvature (self, self.app_model, show=False)
         item.set_desired_xLink_name (Item_Airfoil.name)             # link x axis to airfoil item

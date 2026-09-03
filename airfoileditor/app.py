@@ -64,9 +64,9 @@ APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
 __version__      = "5.0b1"                   # hatch "version dynamic" - PEP440 compliant version string
 
-CHANGE_TEXT      = "- Airfoils based on CST-Kulfan<br>"  + \
-                   "- Integration of NeuralFoil<br>" + \
-                   "- Integrated flap handling routines"
+CHANGE_TEXT      = "- Represent airfoils with CST-Kulfan parameters<br>" + \
+                   "- Fast polar prediction with integrated NeuralFoil<br>" + \
+                   "- Built-in flap setting without the Worker executable"
 
 
 class Main (QMainWindow):

@@ -303,7 +303,7 @@ class Polar_Definition:
 
     def __init__(self, dataDict : dict = None):
         
-        self._nf_model_size = fromDict (dataDict, "nf_model_size", None)    # None → xfoil polar
+        self._nf_model_size = fromDict (dataDict, "nf_model_size", "xlarge")    # None → xfoil polar
 
         # sanity check for xfoil and neuralfoil availability
         if self.is_neuralfoil and not Neuralfoil_Evaluator.ready:
