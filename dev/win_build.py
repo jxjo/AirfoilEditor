@@ -13,6 +13,7 @@ It supports:
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,20 @@ def _project_metadata(repo_root: Path) -> tuple[str, str]:
     package_name = _run(["hatch", "project", "metadata", "name"], cwd=repo_root, capture_output=True)
     package_version = _run(["hatch", "project", "metadata", "version"], cwd=repo_root, capture_output=True)
     return package_name, package_version
+
+
+def _windows_version(package_version: str) -> tuple[str, int, int]:
+    match = re.fullmatch(r"(\d+)\.(\d+)(?:\.(\d+))?(?:[abrc]\d+)?", package_version)
+    if match is None:
+        raise ValueError(f"Unsupported version for Windows installer: {package_version}")
+
+    major = int(match.group(1))
+    minor = int(match.group(2))
+    patch = int(match.group(3) or 0)
+    if max(major, minor, patch) > 65535:
+        raise ValueError(f"Windows version component is too large: {package_version}")
+
+    return f"{major}.{minor}.{patch}", major, minor
 
 
 def _remove_dir_if_exists(path: Path, attempts: int = 6, delay_s: float = 0.8) -> None:
@@ -202,6 +217,7 @@ def build_exe(repo_root: Path, *, test_mode: str = "none") -> None:
 
 def build_installer(repo_root: Path) -> None:
     package_name, package_version = _project_metadata(repo_root)
+    windows_version, version_major, version_minor = _windows_version(package_version)
 
     win_exe_dir = f"{package_name}-{package_version}_win_exe"
     installer_name = f"{package_name}-{package_version}_win_setup.exe"
@@ -228,6 +244,9 @@ def build_installer(repo_root: Path) -> None:
             "makensis.exe",
             "/V3",
             f"/DVERSION={package_version}",
+            f"/DVERSION_FILE={windows_version}",
+            f"/DVERSION_MAJOR={version_major}",
+            f"/DVERSION_MINOR={version_minor}",
             f"/DAPP_NAME={APP_NAME}",
             f"/DPACKAGE_NAME={package_name}",
             f"/DWIN_EXE_DIR={win_exe_dir}",

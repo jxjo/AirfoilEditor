@@ -11,9 +11,6 @@
 ; INSTALLER_NAME
 
 
-; Extract major and minor version from VERSION (e.g., "4.2.1")
-!searchparse "${VERSION}" "" VERSIONMAJOR "." VERSIONMINOR "." VERSIONPATCH
-
 !define COMPANYNAME "Jochen Guenzel"
 
 ; These will be set dynamically by the build script
@@ -66,7 +63,7 @@ Page custom FileAssocPage FileAssocPageLeave
 !insertmacro MUI_LANGUAGE "English"
 
 ; Version Information
-VIProductVersion "${VERSION}.0"
+VIProductVersion "${VERSION_FILE}.0"
 VIAddVersionKey "ProductName" "${APP_NAME}"
 VIAddVersionKey "CompanyName" "${COMPANYNAME}"
 VIAddVersionKey "FileDescription" "${DESCRIPTION}"
@@ -123,8 +120,8 @@ Section "Install"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "${COMPANYNAME}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "URLInfoAbout" "${ABOUTURL}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${VERSION}"
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "VersionMajor" ${VERSIONMAJOR}
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "VersionMinor" ${VERSIONMINOR}
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "VersionMajor" ${VERSION_MAJOR}
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "VersionMinor" ${VERSION_MINOR}
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoRepair" 1
   
