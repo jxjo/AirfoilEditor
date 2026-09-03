@@ -2,14 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## 5.0
+## 5.0b1
 
-Work in progress:
+### Added
 
-- New: CST-Kulfan-based airfoil support
-- New: [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation
-- Set Flap: Is done now by AE replacing XFOIL routine - no Worker needed anymore for this
-- More to come...
+- Support for CST (Kulfan)-based airfoils
+- Integrated [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation
+- Flap setting is now handled internally instead of the XFOIL routine, eliminating the need to run the `Worker` executable
+
+### Changed
+
+- Numerous minor improvements
+- Extensive refactoring
+
+### Fixed
+
+- Various bug fixes
+
 
 
 ## 4.3.2
