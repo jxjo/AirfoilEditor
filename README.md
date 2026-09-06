@@ -2,7 +2,7 @@
 
 ### Version 5.0 beta 1
 
-This pre-release adds CST-Kulfan-based airfoil support and integrates [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation.
+This release adds CST-Kulfan-based airfoil support and integrates [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation. For details, see [About Version 5.0](doc/ABOUT_5.0.md).
 
 The **AirfoilEditor** is a fast airfoil viewer, analyzer, and advanced geometry editor with integrated Xoptfoil2-based optimization. The app provides three operating modes:
 
