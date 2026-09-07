@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 5.0b2
+
+### Added
+
+- NeuralFoil: bubble detection and cp_min at operating point
+
+### Fixed
+
+- save polar settings XFOIL
+
+
+
 ## 5.0b1
 
 ### Added
