@@ -243,7 +243,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         r,c = 0,0 
 
         Label  (l,r,c, get="Polar Driver")
-        ComboBox (l,r,c+1,  width=90, options=Polar_Definition.drivers(),
+        ComboBox (l,r,c+1,  width=90, options=Polar_Definition.drivers(), colSpan=2, 
                         obj=self, prop=Polar_Definition_Dialog.driver,
                         disable=len(Polar_Definition.drivers()) == 1,
                         toolTip="Select the polar driver (XFOIL or NeuralFoil) for this polar.")
