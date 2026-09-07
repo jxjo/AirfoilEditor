@@ -55,9 +55,9 @@ class Polar_Data_Row:
     cm: float
     xtrt: float
     xtrb: float
-    xf_cp_min: float | None = None                    # xfoil: minimum pressure coefficient
-    xf_bubble_top: Polar_Bubble_Range | None = None   # xfoil: laminar bubble top side
-    xf_bubble_bot: Polar_Bubble_Range | None = None   # xfoil: laminar bubble bot side
+    cp_min: float | None = None                       # minimum pressure coefficient (XFOIL or NeuralFoil)
+    bubble_top: Polar_Bubble_Range | None = None      # laminar separation bubble on top side
+    bubble_bot: Polar_Bubble_Range | None = None      # laminar separation bubble on bottom side
     nf_confidence: float | None = None                # neuralfoil: prediction confidence [0..1]
 
 

@@ -149,9 +149,9 @@ class Xfoil_Polar_Parser:
                         cm=cm,
                         xtrt=xtrt,
                         xtrb=xtrb,
-                        xf_cp_min=cp_min,
-                        xf_bubble_top=bubble_top,
-                        xf_bubble_bot=bubble_bot,
+                        cp_min=cp_min,
+                        bubble_top=bubble_top,
+                        bubble_bot=bubble_bot,
                     )
                 )
 

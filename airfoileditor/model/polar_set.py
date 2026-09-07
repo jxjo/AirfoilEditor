@@ -1751,11 +1751,11 @@ class Polar (Polar_Definition):
             self._values[var.CD][i] = row.cd
             self._values[var.CDP][i] = row.cdp if row.cdp is not None else np.nan
             self._values[var.CM][i] = row.cm
-            self._values[var.CP_MIN][i] = row.xf_cp_min if row.xf_cp_min is not None else np.nan
+            self._values[var.CP_MIN][i] = row.cp_min if row.cp_min is not None else np.nan
             self._values[var.XTRT][i] = row.xtrt
             self._values[var.XTRB][i] = row.xtrb
-            self._values[var.BUBBLE_TOP][i] = (row.xf_bubble_top.x_start, row.xf_bubble_top.x_end) if row.xf_bubble_top else None
-            self._values[var.BUBBLE_BOT][i] = (row.xf_bubble_bot.x_start, row.xf_bubble_bot.x_end) if row.xf_bubble_bot else None
+            self._values[var.BUBBLE_TOP][i] = (row.bubble_top.x_start, row.bubble_top.x_end) if row.bubble_top else None
+            self._values[var.BUBBLE_BOT][i] = (row.bubble_bot.x_start, row.bubble_bot.x_end) if row.bubble_bot else None
             self._values[var.NF_CONFIDENCE][i] = row.nf_confidence if row.nf_confidence is not None else np.nan
 
         cl = self._values[var.CL]

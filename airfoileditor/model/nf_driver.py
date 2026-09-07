@@ -12,7 +12,7 @@ import numpy as np
 import time
 
 from dataclasses        import dataclass
-from .polar_dto         import Polar_Data_Row, Polar_Data_Set, Polar_File_Meta
+from .polar_dto         import Polar_Bubble_Range, Polar_Data_Row, Polar_Data_Set, Polar_File_Meta
 
 import logging
 logger = logging.getLogger(__name__)
@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 
 try:
     from .neuralfoil_core.neuralfoil.core_api import (get_aero_from_kulfan_parameters,
-                                                      available_model_sizes)
+                                                      available_model_sizes,
+                                                      N_BL_POINTS,
+                                                      bl_x_points)
     _NF_AVAILABLE = True
     _NF_ERROR = ''
 except ImportError:
@@ -64,6 +66,7 @@ class Neuralfoil_Evaluator:
 
     MODEL_SIZE_DEFAULT = "xlarge"
     MIN_CONFIDENCE     = 0.5                            # minimum NeuralFoil confidence for a valid polar point
+    BUBBLE_H_THRESHOLD =  3.8                           # shape factor above which a panel is considered separated
 
     @staticmethod
     def is_available () -> bool:
@@ -251,12 +254,53 @@ class Neuralfoil_Evaluator:
             arr = np.asarray (val, dtype=float).reshape (-1)
             return arr if arr.size > 1 else np.full (len (alpha_arr), arr.item())
 
+        def _panel_matrix (prefix: str, n_panels: int) -> np.ndarray:
+            """Local helper to reshape panel values into alpha x panels layout."""
+            cols = []
+            for i in range (n_panels):
+                key = f"{prefix}_{i}"
+                val = predict.get (key)
+                if val is None:
+                    cols.append (np.full (len (alpha_arr), np.nan))
+                else:
+                    arr = np.asarray (val, dtype=float).reshape (-1)
+                    if arr.size == 0:
+                        cols.append (np.empty (0, dtype=float))
+                    elif arr.size == 1:
+                        cols.append (np.full (len (alpha_arr), float (arr.item())))
+                    else:
+                        cols.append (arr)
+
+            if not cols:
+                return np.empty ((0, 0), dtype=float)
+
+            n_alpha = len (alpha_arr)
+            matrix = np.full ((n_alpha, len (cols)), np.nan, dtype=float)
+            for j, col in enumerate (cols):
+                if len (col) == n_alpha:
+                    matrix[:, j] = col
+                elif len (col) == 1:
+                    matrix[:, j] = float (col[0])
+            return matrix
+
         cl   = _col ("CL")
         cd   = _col ("CD")
         cm   = _col ("CM")
         xtrt = _col ("Top_Xtr")
         xtrb = _col ("Bot_Xtr")
         conf = _col ("analysis_confidence")
+
+        n_panels = N_BL_POINTS
+        upper_ue = _panel_matrix ("upper_bl_ue/vinf", n_panels)
+        lower_ue = _panel_matrix ("lower_bl_ue/vinf", n_panels)
+        cp_upper = 1.0 - upper_ue ** 2
+        cp_lower = 1.0 - lower_ue ** 2
+        cp_min = np.nanmin (np.concatenate ((cp_upper, cp_lower), axis=1), axis=1)
+
+        upper_H = _panel_matrix ("upper_bl_H", n_panels)
+        lower_H = _panel_matrix ("lower_bl_H", n_panels)
+        bubble_top = Neuralfoil_Evaluator._estimate_bubble (upper_H, xtrt)
+        bubble_bot = Neuralfoil_Evaluator._estimate_bubble (lower_H, xtrb)
 
         return [
             Polar_Data_Row (
@@ -267,7 +311,34 @@ class Neuralfoil_Evaluator:
                 cm         = float (cm[i]),
                 xtrt       = float (xtrt[i]),
                 xtrb       = float (xtrb[i]),
+                cp_min     = None if np.isnan (cp_min[i]) else float (cp_min[i]),
+                bubble_top = bubble_top[i],
+                bubble_bot = bubble_bot[i],
                 nf_confidence = None if np.isnan (conf[i]) else float (conf[i]),
             )
             for i in range (len (alpha_arr))
         ]
+
+
+    @classmethod
+    def _estimate_bubble (cls, H: np.ndarray, xtr: np.ndarray) -> list[Polar_Bubble_Range | None]:
+        """Estimate a laminar separation bubble per row from the BL shape factor.
+
+        A panel is considered separated once its shape factor exceeds BUBBLE_H_THRESHOLD;
+        the bubble is assumed to end at the (natural) transition point, since NeuralFoil
+        provides no wall shear stress to detect reattachment directly, unlike XFOIL.
+        """
+        results: list[Polar_Bubble_Range | None] = []
+        for i in range (H.shape[0]):
+            if xtr[i] >= 1.0:                              # no transition detected - can't be a bubble
+                results.append (None)
+                continue
+            separated = (H[i] >= cls.BUBBLE_H_THRESHOLD) & (bl_x_points < xtr[i])
+            idx = np.where (separated)[0]
+            if idx.size == 0:
+                results.append (None)
+            else:
+                x_start = float (bl_x_points[idx[0]])
+                x_end   = float (max (bl_x_points[idx[-1]], xtr[i]))
+                results.append (Polar_Bubble_Range (x_start=x_start, x_end=x_end))
+        return results
