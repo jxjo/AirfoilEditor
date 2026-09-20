@@ -2340,10 +2340,7 @@ class Geometry ():
         Using linear interpolation - shall be overloaded 
         """
         # evaluate the corresponding y-values on lower side 
-        upper_y = np.zeros (len(new_x))
-        for i, x in enumerate (new_x):
-            upper_y[i] = self.upper.yFn(x)
-
+        upper_y = self.upper.yFn (new_x)
         upper_y = np.round(upper_y, 10)
 
         return upper_y
@@ -2356,10 +2353,7 @@ class Geometry ():
         Using linear interpolation - shall be overloaded 
         """
         # evaluate the corresponding y-values on lower side 
-        lower_y = np.zeros (len(new_x))
-        for i, x in enumerate (new_x):
-            lower_y[i] = self.lower.yFn(x)
-
+        lower_y = self.lower.yFn (new_x)
         lower_y = np.round(lower_y, 10)
 
         return lower_y
