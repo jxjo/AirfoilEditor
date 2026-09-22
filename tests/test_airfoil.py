@@ -48,8 +48,8 @@ class Test_Airfoil:
 
         # thickness, camber 
 
-        assert np.allclose(geo.thickness._get_maximum(), (0.2903642, 0.0764996), atol=1e-7)
-        assert np.allclose(geo.camber._get_maximum(), (0.4152061, 0.0170131), atol=1e-7)
+        assert np.allclose(geo.thickness.highpoint.xy, (0.2904050357, 0.0764998856), atol=1e-7)
+        assert np.allclose(geo.camber.highpoint.xy, (0.4152061, 0.0170131), atol=1e-7)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -75,7 +75,7 @@ class Test_Airfoil:
         airfoil = Root_Example(geometry = GEO_BASIC)
         curv : Curvature_of_Spline = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 317
+        assert round(curv.upper.highpoint.y,0) == 317
         assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.032
 
     
@@ -96,8 +96,8 @@ class Test_Airfoil:
 
         # thickness, camber 
 
-        assert np.allclose(geo.thickness._get_maximum(), (0.2903512, 0.076502), atol=1e-7)
-        assert np.allclose(geo.camber._get_maximum(), (0.4152475, 0.0170127), atol=1e-7)
+        assert np.allclose(geo.thickness.highpoint.xy, (0.2903913345, 0.0765022615), atol=1e-7)
+        assert np.allclose(geo.camber.highpoint.xy, (0.4152475, 0.0170127), atol=1e-7)
 
         geo.set_max_thick  (0.08)
         assert round(geo.max_thick,4) == 0.08
@@ -137,8 +137,8 @@ class Test_Airfoil:
         airfoil = Root_Example(geometry = GEO_SPLINE)
         curv : Curvature_of_Spline = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 317
-        assert round(curv.lower._get_maximum()[1],0) == 372
+        assert round(curv.upper.highpoint.y,0) == 317
+        assert round(curv.lower.highpoint.y,0) == 376
         assert round(np.min (np.abs(curv.lower.y[-10:])),3) == 0.032
 
 
@@ -337,8 +337,8 @@ class Test_Airfoil_Bezier:
         
         # thickness, camber 
 
-        assert np.allclose(geo.thickness._get_maximum(), (0.3140447, 0.1110653), atol=1e-7)
-        assert np.allclose(geo.camber._get_maximum(), (0.3973535, 0.0140229), atol=1e-7)
+        assert np.allclose(geo.thickness.highpoint.xy, (0.3141853326, 0.1110653662), atol=1e-7)
+        assert np.allclose(geo.camber.highpoint.xy, (0.3974111949, 0.0140228974), atol=1e-7)
 
         with pytest.raises(NotImplementedError):
             geo.set_maxThick  (0.08)
@@ -358,8 +358,8 @@ class Test_Airfoil_Bezier:
         airfoil = Airfoil_Bezier()
         curv : Curvature_of_Curve = airfoil.geo.curvature
 
-        assert round(curv.upper._get_maximum()[1],0) == 61.0
-        assert round(curv.lower._get_maximum()[1],0) == 104.0
+        assert round(curv.upper.highpoint.y,0) == 61.0
+        assert round(curv.lower.highpoint.y,0) == 104.0
 
         te_curv = curv.lower.y[-10:]
         assert round(np.min (np.abs(te_curv)),3) == 0.062

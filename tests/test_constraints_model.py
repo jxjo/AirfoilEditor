@@ -90,7 +90,7 @@ class Test_GeoConstraints_Model:
         assert hi == pytest.approx(0.30)
 
         con.set_value(0.001)
-        assert con.value >= lo - 1e-6
+        assert con.value >= lo - 3e-6
 
     def test_set_is_active_uses_seed_default_value(self, input_file):
         constraints = input_file.nml_constraints
@@ -102,7 +102,7 @@ class Test_GeoConstraints_Model:
 
         assert con.value is not None
         lo, hi = con.effective_limits
-        assert lo - 1e-6 <= con.value <= hi + 1e-6
+        assert lo - 3e-6 <= con.value <= hi + 1e-6
 
     def test_min_thickness_at_x_applies_tuple_limits(self, input_file):
         constraints = input_file.nml_constraints

@@ -613,6 +613,44 @@ def binary_search(f, target, low, high, max_iter=10):
     return (low + high) * 0.5
 
 
+
+def extremum (x : np.ndarray, y : np.ndarray, mode="max") -> tuple[float, float]:
+    """
+    Returns a single refined extremum (max or min) using a 3-point quadratic fit.
+    
+    Parameters:
+        x    : 1D array of monotonically increasing x-values
+        y    : 1D array of y-values
+        mode : "max" or "min"
+    
+    Returns:
+        x_ext : refined x-position of extremum
+        y_ext : refined y-position of extremum
+    """
+
+    if mode == "max":
+        idx = np.argmax(y)
+    elif mode == "min":
+        idx = np.argmin(y)
+    else:
+        raise ValueError("mode must be 'max' or 'min'")
+
+    # Ensure we have neighbors for the 3-point fit
+    if idx == 0 or idx == len(y) - 1:
+        # Cannot refine at boundaries
+        return x[idx], y[idx]
+
+    # Quadratic fit over three points
+    coeff = np.polyfit(x[idx-1:idx+2], y[idx-1:idx+2], 2)
+    a, b, c = coeff
+
+    # Vertex of the parabola
+    x_ext = -b / (2 * a)
+    y_ext = c - b*b / (4 * a)
+
+    return x_ext, y_ext
+
+
 #------------ Newton iteration - find Root  -----------------------------------
 
 def newton(f, Df, x0, epsilon=1e-7, max_iter=50, bounds=None) -> tuple[float, int]:

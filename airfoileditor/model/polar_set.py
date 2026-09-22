@@ -304,6 +304,8 @@ class Polar_Definition:
     def __init__(self, dataDict : dict = None):
         
         self._nf_model_size = fromDict (dataDict, "nf_model_size", None)    # None → xfoil polar
+        self._specVar       = None
+        self._type          = None
 
         # sanity check for xfoil and neuralfoil availability
         if self.is_neuralfoil and not Neuralfoil_Evaluator.ready:
@@ -319,9 +321,7 @@ class Polar_Definition:
         self._valRange  = fromDict (dataDict, "valRange", self.VAL_RANGE_ALPHA)
         if isinstance(self._valRange, tuple):
             self._valRange = list(self._valRange)
-        self._specVar   = None 
         self.set_specVar (fromDict (dataDict, "specVar",  var.ALPHA))       # it is a enum
-        self._type      = None 
         self.set_type    (fromDict (dataDict, "type",     polarType.T1))    # it is a enum
 
         self._ncrit     = fromDict (dataDict, "ncrit",    7.0)
