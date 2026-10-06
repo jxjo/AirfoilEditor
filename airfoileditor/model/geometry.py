@@ -2431,10 +2431,10 @@ class Geometry ():
 
         # prepare geo2 Geometry to have linear or splined interpolation for blending
 
-        if moving and not geo2_in.isBasic:
+        if (moving or self.isBasic) and not geo2_in.isBasic:
             # ensure geo2 is basic Geometry to have linear interpolation for blending
             geo2 = Geometry (np.copy(geo2_in.x), np.copy(geo2_in.y))
-        elif not moving and  geo2_in.isBasic:
+        elif not (moving or self.isBasic) and  geo2_in.isBasic:
             # ensure geo2 has no basic Geometry 
             from .geometry_spline import Geometry_Splined
             geo2 = Geometry_Splined (np.copy(geo2_in.x), np.copy(geo2_in.y))  

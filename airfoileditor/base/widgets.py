@@ -1069,13 +1069,9 @@ class Field (Field_With_Label, QLineEdit):
         super()._set_Qwidget (refresh=refresh,**kwargs)
         val = self._val if self._val is not None else ''
 
-        if refresh:
-            # setText resets cursor position - save and restore in case of refresh 
-            cursor_pos = self.cursorPosition() 
-            self.setText (str(val))
-            self.setCursorPosition (cursor_pos)
-        else: 
-            self.setText (str(val))
+        cursor_pos = self.cursorPosition() if self.hasFocus() else 0
+        self.setText (str(val))
+        self.setCursorPosition (cursor_pos)
 
 
     @override

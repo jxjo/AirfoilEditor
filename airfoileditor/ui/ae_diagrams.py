@@ -387,7 +387,8 @@ class Panel_Polar_Defs (Edit_Panel):
                             toolTip="Show/Hide this polar in diagram")  
             w.sig_changed.connect (self._on_polar_def_changed)
 
-            Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name_with_v(self.chord))
+            Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name_with_v(self.chord),
+                        toolTip=lambda p=polar_def: p.name_with_v(self.chord))
 
             # either tool buttons 
             if not polar_def.is_mandatory: 

@@ -464,8 +464,9 @@ class Polar_Definition:
 
     @property
     def is_VLM_polar (self) -> bool:
-        """ True if self is a VLM polar definition (xtript and xtripb set to default VLM values)"""
-        return (self._xtript == self.XTRIP_VLM) and (self._xtripb == self.XTRIP_VLM)    
+        """Return whether this is a separate forced-transition Xfoil VLM polar."""
+        return self.is_xfoil and ((self._xtript == self.XTRIP_VLM) and
+                                 (self._xtripb == self.XTRIP_VLM))
 
 
     @property
@@ -616,7 +617,7 @@ class Polar_Definition:
             text += f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
             text += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
 
-        text += " - NF" if self.is_neuralfoil else " - XFOIL"
+        text += " - NF" if self.is_neuralfoil else " - XF"
         return text
 
 
@@ -818,13 +819,13 @@ class Polar_Set:
 
     @property
     def polars_VLM (self) -> list ['Polar']: 
-        """ VLM polars of self which typically have a forced transition"""
-        return [polar for polar in self.polars if polar.is_VLM_polar]
+        """Return NeuralFoil polars and forced-transition Xfoil VLM polars."""
+        return [polar for polar in self.polars if polar.is_neuralfoil or polar.is_VLM_polar]
 
 
     @property
     def polars_normal (self) -> list ['Polar']: 
-        """ normal polars of self which are not for VLM (forced transition)"""
+        """Return normal polars, including NeuralFoil polars shared with VLM."""
         return [polar for polar in self.polars if not polar.is_VLM_polar]
 
 
@@ -861,19 +862,15 @@ class Polar_Set:
 
 
     def ensure_polars_VLM (self):
-        """ ensure that every 'normal' polar has a sister VLM polar in self """
+        """Ensure every normal Xfoil polar has a separate VLM sister."""
 
-        polars_normal = list(filter(lambda polar: not polar.is_VLM_polar, self.polars))
         polars_VLM    = self.polars_VLM
 
-        for polar in polars_normal:
-            # is there already a VLM polar for this polar def ?
-            has_vlm = False
-            for vlm_polar in polars_VLM:
-                if polar.is_equal_to (vlm_polar, ignore_active=True, ignore_xtrip=True):
-                    has_vlm = True
-                    break
-            if not has_vlm:
+        for polar in self.polars_normal:
+            if polar.is_neuralfoil:
+                continue
+            if not any (polar.is_equal_to (vlm_polar, ignore_active=True, ignore_xtrip=True)
+                        for vlm_polar in polars_VLM):
                 # create VLM polar def 
                 vlm_polar_def = Polar_Definition(polar._as_dict())
                 vlm_polar_def.set_xtript (Polar_Definition.XTRIP_VLM)
@@ -934,7 +931,7 @@ class Polar_Set:
 
 
     def remove_polars_VLM (self):
-        """ remove all VLM polars from self """
+        """Remove separate Xfoil VLM polars, preserving shared NeuralFoil polars."""
         polar: Polar
         for polar in self.polars[:]: 
             if polar.is_VLM_polar:
@@ -949,7 +946,8 @@ class Polar_Set:
             polar.unload()
 
 
-    def load_or_generate_polars (self, normal=True, VLM=True):
+    def load_or_generate_polars (self, normal=True, VLM=True,
+                                 only_polars: list['Polar'] | None = None):
         """ 
         Either loads or (if not already exist) generate polars of myAirfoil 
             for normal and/or VVLM polars of self.
@@ -957,11 +955,19 @@ class Polar_Set:
         # select polars to be loaded/generated
 
         polars : list['Polar'] = []
-        if normal:
-            polars.extend (self.polars_normal)
+        for polar in self.polars:
+            if polar.is_neuralfoil:
+                include_polar = normal or VLM
+            elif polar.is_VLM_polar:
+                include_polar = VLM
+            else:
+                include_polar = normal
 
-        if VLM:
-            polars.extend (self.polars_VLM)
+            if only_polars is not None:
+                include_polar = include_polar and polar in only_polars
+
+            if include_polar:
+                polars.append (polar)
 
         # load already existing polar file (xfoil) or generate and load polar (Neuralfoil)
 
