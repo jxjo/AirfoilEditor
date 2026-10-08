@@ -172,7 +172,7 @@ class Airfoil_Save_Dialog (Dialog_Modal):
 class Polar_Definition_Dialog (Dialog_Modeless):
     """ Dialog to edit a single polar definition"""
 
-    _width  = 500
+    _width  = 490
 
     name = "Edit Polar Definition"
 
@@ -182,6 +182,8 @@ class Polar_Definition_Dialog (Dialog_Modeless):
                   fixed_chord : float = None,                               # fixed chord length in mm
                   is_new : bool = False,                                    # new polar definition, ensure changed
                   allow_transition : bool = True,                           # allow transition definition
+                  close_on_click_outside = True,
+                  always_footer = True,
                   **kwargs): 
 
         self._small_mode        = small_mode
@@ -190,7 +192,9 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         self._allow_transition  = allow_transition
 
         # init layout etc 
-        super().__init__ (*args, **kwargs)
+        super().__init__ (*args, close_on_click_outside=close_on_click_outside, 
+                          always_footer=always_footer,
+                          **kwargs)
 
         self._changes = is_new                                              # ensure changed if new polar definition
 
@@ -242,14 +246,14 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         l = QGridLayout()
         r,c = 0,0 
 
-        Label  (l,r,c, get="Polar Driver")
+        Label  (l,r,c, get="Polar driver")
         ComboBox (l,r,c+1,  width=90, options=Polar_Definition.drivers(), colSpan=2, 
                         obj=self, prop=Polar_Definition_Dialog.driver,
                         disable=len(Polar_Definition.drivers()) == 1,
                         toolTip="Select the polar driver (XFOIL or NeuralFoil) for this polar.")
         Label  (l,r,c+4, get="Model ", 
                         hide=lambda: not self.polar_def.is_neuralfoil)
-        ComboBox (l,r,c+5,  width=80, colSpan=2,  
+        ComboBox (l,r,c+5,  width=80, colSpan=3,  
                         options=Neuralfoil_Evaluator.available_model_sizes(),
                         obj=self.polar_def, prop=Polar_Definition.nf_model_size,
                         hide=lambda:not self.polar_def.is_neuralfoil,
@@ -259,10 +263,10 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         r += 1
 
         Label  (l,r,c, get="Polar type")
-        _tip = lambda: "Polar type is always T1 for NeuralFoil polars" if self.polar_def.is_neuralfoil else "Polar type for XFOIL polars"
+        _tip = "T1: fixed Reynolds number. T2: fixed Re * sqrt(cl)."
         ComboBox (l,r,c+1,  width=70, options=polarType.values(),
                         obj=self.polar_def, prop=Polar_Definition.type,
-                        disable=lambda: self._polar_type_fixed or self.polar_def.is_neuralfoil,
+                disable=lambda: self._polar_type_fixed,
                         toolTip=_tip)
         Label  (l,r,c+2, get="Fix", style=style.COMMENT,
                 hide=lambda: not self._polar_type_fixed)
@@ -270,7 +274,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         FieldF (l,r,c, width=70, step=10, lim=(1, 99999), unit="k", dec=0,
                         lab=lambda: "Re number" if self.polar_def.type == polarType.T1 else "Re · √Cl", 
                         obj=self.polar_def, prop=Polar_Definition.re_asK)
-        l.setColumnMinimumWidth (c,80)
+        l.setColumnMinimumWidth (c,85)
         c += 2
         ToolButton  (l,r,c, icon=Icon.EDIT, set=self.calc_re,
                         toolTip=self._tooltip_calc_re)
@@ -290,7 +294,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
                         obj=self.polar_def, prop=Polar_Definition.ncrit)
         l.setColumnMinimumWidth (c,45)
         c += 2
-        SpaceC  (l,c, width=10, stretch=5)
+        l.setColumnStretch(c, 1)
 
         c = 0 
         
@@ -309,7 +313,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
                                 obj=self.polar_def, prop=Polar_Definition.has_xtrip,
                                 toolTip="Define a forced laminar-turbulent transition." )
                 r += 1
-                FieldF  (l,r,c, lab="Upper Side", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
+                FieldF  (l,r,c, lab="Upper side", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
                                 obj=self.polar_def, prop=Polar_Definition.xtript,
                                 hide=lambda: not self.polar_def.has_xtrip)
                 FieldF  (l,r,c+4, lab="Lower", width=60, step=1, lim=(0.0, 100), dec=0, unit='%',
@@ -324,7 +328,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
                             toolTip="This polar will be calculated with a flap definition.\n" + 
                                      "The flap definition is stored in the polar definition.")
             r += 1
-            FieldF  (l,r,c, lab="Flap Angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
+            FieldF  (l,r,c, lab="Flap angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
                             obj=lambda: self.flap_def, prop=Flap_Definition.flap_angle,
                             hide=lambda: not self.polar_def.is_flapped)
             FieldF  (l,r,c+4, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
@@ -345,19 +349,17 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             _tip = "<br>The smaller the value, the smoother the polar, the more time is needed."
             _tip_a = "Step size for polar values of alpha." + _tip
             _tip_c = "Step size for polar values of cl."    + _tip
-            FieldF (l,r,c, lab=f"Step {var.ALPHA}", width=70, step=0.1, lim=(0.1, 1.0), dec=2,
+            FieldF (l,r,c, lab=f"Polar Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
                             hide = lambda: self.polar_def.specVar != var.ALPHA,
                             toolTip=_tip_a)
-            FieldF (l,r,c, lab=f"Step {var.CL}", width=70, step=0.01, lim=(0.01, 0.1), dec=2,
+            FieldF (l,r,c, lab=f"Polar Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
                             hide = lambda: self.polar_def.specVar != var.CL,
                             toolTip=_tip_c)
-            r += 1
-            SpaceR (l, r, height=10, stretch=1)
-        else:
-            r += 1
-            SpaceR (l, r, height=1, stretch=1)
+        r += 1
+        SpaceR (l, r, height=1, stretch=1)
+
         return l
 
 

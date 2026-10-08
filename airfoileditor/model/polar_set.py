@@ -29,6 +29,7 @@
 
 """
 
+import math
 import os
 from copy                   import copy 
 from typing                 import Tuple, override
@@ -117,7 +118,7 @@ class polarType (StrEnum_Extended):
 
 SPEC_ALLOWED = [var.ALPHA, var.CL]
 
-RE_SCALE_ROUND_TO  = 5000                               # round when polar is scaled down 
+RE_SCALE_ROUND_TO  = 2000                               # round when polar is scaled down 
 MA_SCALE_ROUND_DEC = 2
 
 
@@ -284,6 +285,7 @@ class Polar_Definition:
 
     VAL_RANGE_ALPHA = [-4.0, 13.0, 0.3]         # default value range for alpha polar
     VAL_RANGE_CL    = [-0.2, 1.2, 0.05]
+    VAL_RANGE_CL_T2 = [0.05, 1.5, 0.05]
 
 
     POLAR_XFOIL      = 'XFOIL'                  # driver of polar calculation 
@@ -317,12 +319,13 @@ class Polar_Definition:
 
         # init instance variables from dataDict or defaults
 
-        self._autoRange = fromDict (dataDict, "autoRange",True)
-        self._valRange  = fromDict (dataDict, "valRange", self.VAL_RANGE_ALPHA)
-        if isinstance(self._valRange, tuple):
-            self._valRange = list(self._valRange)
+        self._autoRange = True   # deactivated fromDict (dataDict, "autoRange",True)
+        self._valRange  = self.VAL_RANGE_ALPHA.copy()
         self.set_specVar (fromDict (dataDict, "specVar",  var.ALPHA))       # it is a enum
         self.set_type    (fromDict (dataDict, "type",     polarType.T1))    # it is a enum
+
+        saved_range_step = fromDict (dataDict, "valRangeStep", self.valRange_step)
+        self.set_valRange_step (saved_range_step)
 
         self._ncrit     = fromDict (dataDict, "ncrit",    7.0)
         self._xtript    = fromDict (dataDict, "xtript",   None)             # forced transition top side
@@ -355,7 +358,10 @@ class Polar_Definition:
         toDict (d, "ncrit",          self.ncrit) 
         toDict (d, "specVar",        str(self.specVar))                 # specVar is enum
         toDict (d, "autoRange",      self.autoRange) 
-        toDict (d, "valRange",       self.valRange) 
+        if self.autoRange:
+            toDict (d, "valRangeStep", self.valRange_step)
+        else:
+            toDict (d, "valRange",       self.valRange)
         toDict (d, "active",         self.active) 
 
         if self._xtript is not None:
@@ -484,12 +490,14 @@ class Polar_Definition:
                 raise ValueError(f"{aVar} is not a valid specVar")
 
         if self.is_neuralfoil:
-            aVar = var.ALPHA                                            # NeuralFoil supports alpha sweep only
+            aVar = var.CL if self.type == polarType.T2 else var.ALPHA
 
         if aVar in (var.ALPHA, var.CL) and self._specVar != aVar:
             self._specVar = aVar 
             if self._specVar == var.ALPHA:                              # reset value range only when changed
                 self._valRange = self.VAL_RANGE_ALPHA.copy()
+            elif self.is_neuralfoil and self.type == polarType.T2:
+                self._valRange = self.VAL_RANGE_CL_T2.copy()
             else: 
                 self._valRange = self.VAL_RANGE_CL.copy()
 
@@ -506,9 +514,6 @@ class Polar_Definition:
                 aType = polarType(aType)
             except ValueError:
                 raise ValueError(f"{aType} is not a valid polar type")
-
-        if self.is_neuralfoil:
-            aType = polarType.T1                    # NeuralFoil supports T1 only
 
         if isinstance (aType, polarType) and self._type != aType: 
             self._type = aType 
@@ -536,7 +541,7 @@ class Polar_Definition:
         return self._autoRange 
 
     def set_autoRange (self, aBool : bool): 
-        self._autoRange = aBool is True  
+        self._autoRange = (self.is_neuralfoil and self.type == polarType.T2) or aBool is True
 
 
     @property
@@ -634,18 +639,29 @@ class Polar_Definition:
 
     def is_equal_to (self, aDef: 'Polar_Definition', 
                      ignore_active=False, ignore_xtrip=False,
-                     re_abs_tolerance: float | None = None) -> bool:
-        """ True if aPolarDef is equals self"""
+                     re_rel_tolerance: float | None = None) -> bool:
+        """Return whether the polar definitions match.
+
+        Args:
+            aDef: Polar definition to compare with self.
+            ignore_active: Exclude the active flag from comparison.
+            ignore_xtrip: Exclude forced transition settings from comparison.
+            re_rel_tolerance: Allowed Reynolds difference relative to the larger
+                magnitude (0.05 means 5%). None requires exact equality.
+
+        Returns:
+            True if all non-ignored settings match within the Reynolds tolerance.
+        """
 
         if isinstance (aDef, Polar_Definition):
-            if re_abs_tolerance is not None:
-                if abs (self.re - aDef.re) > re_abs_tolerance:
+            if re_rel_tolerance is not None:
+                if not math.isclose (self.re, aDef.re, rel_tol=re_rel_tolerance):
                     return False
 
             self_dict = self._as_dict()
             aDef_dict = aDef._as_dict()
 
-            if re_abs_tolerance is not None:
+            if re_rel_tolerance is not None:
                 self_dict.pop('re', None)
                 aDef_dict.pop('re', None)
 
@@ -700,9 +716,15 @@ class Polar_Definition:
             return
         self._nf_model_size = model_size
         if model_size is not None:                      # switching to NeuralFoil — enforce constraints
-            self.set_type     (polarType.T1)            # T1 only (fixed Re sweep)
-            self.set_specVar  (var.ALPHA)               # alpha sweep only
+            self.set_type     (self.type or polarType.T1)
+            self.set_specVar  (var.CL if self.type == polarType.T2 else var.ALPHA)
             self.set_ma       (0.0)                     # incompressible only
+            if self.type == polarType.T2:
+                self.set_autoRange (True)
+                # An XFOIL T2 range may contain zero/negative cl. When switching
+                # drivers, replace that unsupported range with the NF T2 default.
+                if self.valRange_from <= 0.0:
+                    self.set_valRange (self.VAL_RANGE_CL_T2)
 
 
     @property
@@ -1262,8 +1284,7 @@ class Polar (Polar_Definition):
             self.set_valRange   (polar_def.valRange)        # at the end to ensure correct specVar and autoRange are set first
 
             if re_scale is not None and re_scale != 1.0:                              # scale reynolds if requested
-                re_scaled = round (self.re * re_scale / RE_SCALE_ROUND_TO, 0)
-                re_scaled = re_scaled * RE_SCALE_ROUND_TO
+                re_scaled = round (self.re * re_scale / RE_SCALE_ROUND_TO, 0) * RE_SCALE_ROUND_TO
                 ma_scaled = round (self.ma * re_scale,  MA_SCALE_ROUND_DEC)
                 self.set_re (re_scaled)
                 self.set_ma (ma_scaled)
