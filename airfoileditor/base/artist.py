@@ -1133,13 +1133,12 @@ class Artist(QObject):
         refresh current plots - only if PlotItem of self is visible 
         """
 
-        if self.show: 
-            try:                                            # pi is Diagram_Item
-                if self._pi.isVisible_effective():
-                    self.plot()
-            except:
-                if self._pi.isVisible():                    # pi Plot Item
-                    self.plot()
+        if self.show:
+
+            # pi is either a Diagram_Item with isVisible_effective or a PlotItem with isVisible
+            is_visible = getattr(self._pi, "isVisible_effective", self._pi.isVisible)
+            if is_visible():
+                self.plot()
 
 
     # --------------  private -------------

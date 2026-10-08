@@ -494,14 +494,6 @@ class Container_Panel (Panel_Abstract):
         self.setToolTip (hint)
               
 
-
-    @property
-    def edit_panels (self) -> list['Edit_Panel']:
-        """ list of first level Edit_Panels defined in self"""
-
-        return self.panels_of_layout (self.layout())
-
-
     def refresh (self):
         """ refresh all child Panels self"""
 
@@ -511,12 +503,14 @@ class Container_Panel (Panel_Abstract):
 
         if self.shouldBe_visible:
 
+            edit_panels = self.panels_of_layout (self.layout())
+
             # first hide the now not visible panels so layout won't be stretched
-            for p in self.edit_panels:
+            for p in edit_panels:
                 if not p.shouldBe_visible: p.refresh() 
 
             # now show the now visible panels - reinit layout if needed (with lazy there can be no layout yet)
-            for p in self.edit_panels:
+            for p in edit_panels:
                 reinit = show_now or (self.shouldBe_visible and p._panel.layout() is None)
                 if p.shouldBe_visible: p.refresh (reinit_layout=reinit) 
 
@@ -1547,6 +1541,7 @@ class Dialog_Modeless (Dialog_Modal):
         lock_widget_while_open: Optional QWidget to visually lock while this dialog is open.
         close_on_click_outside: Whether to close the dialog when clicking outside of it.
         is_live_update: Whether the dialog is live updating parent (show in title).
+        always_footer: Whether to always show the footer button box.
     """
 
     sig_changed = pyqtSignal(object)                # signal any change in this dialog
@@ -1556,6 +1551,7 @@ class Dialog_Modeless (Dialog_Modal):
                   lock_widget_while_open : QWidget | None = None,
                   close_on_click_outside : bool = True,
                   is_live_update : bool = True,
+                  always_footer : bool = False,
                   **kwargs):
 
         self._lock_widget = lock_widget_while_open
@@ -1563,6 +1559,7 @@ class Dialog_Modeless (Dialog_Modal):
         self._lock_overlay : Disabled_Overlay | None = None
 
         self._close_on_click_outside = bool(close_on_click_outside)
+        self._show_footer = always_footer or not self._close_on_click_outside
 
         self._live_connections : list[tuple[object, callable]] = []
 
@@ -1585,15 +1582,15 @@ class Dialog_Modeless (Dialog_Modal):
         if isinstance (parent_widget, QWidget):
             parent_widget.installEventFilter (self)
 
-
         # more compact layout 
-
         l = self.layout()
         l.setContentsMargins (QMargins(0,0,0,0))
-        set_background (self._panel, darker_factor=95)
+
+        # adjust background if no footer is shown
+        if not self._show_footer:
+            set_background (self._panel, darker_factor=95)
 
         # lock the target widget, so the user cannot edit it while this dialog is open
-
         self._lock_target_widget()
 
 
@@ -1629,10 +1626,11 @@ class Dialog_Modeless (Dialog_Modal):
     def _init_footer_layout (self) -> QLayout | None:
         """ no footer layout by default for live-edit dialogs """
 
-        if not self._close_on_click_outside:
+        if self._show_footer:
             # add a mini close button to the footer if auto-close is not enabled
             l = QHBoxLayout()
-            Label (l, get="You may also edit in diagrams", style=style.COMMENT)  
+            if not self._close_on_click_outside:
+                Label (l, get="You may also edit in diagrams", style=style.COMMENT)  
             l.addStretch()
             Button (l, text="Close",  width=60, set=self.accept)
             return l  

@@ -627,22 +627,23 @@ def extremum (x : np.ndarray, y : np.ndarray, mode="max") -> tuple[float, float]
         x_ext : refined x-position of extremum
         y_ext : refined y-position of extremum
     """
+    valid = np.isfinite (x) & np.isfinite (y)
+    x_valid = x[valid]
+    y_valid = y[valid]
+    if len (y_valid) == 0:
+        return None, None
 
-    if mode == "max":
-        idx = np.argmax(y)
-    elif mode == "min":
-        idx = np.argmin(y)
-    else:
-        raise ValueError("mode must be 'max' or 'min'")
+    idx = np.argmax (y_valid) if mode == "max" else np.argmin (y_valid)
 
     # Ensure we have neighbors for the 3-point fit
-    if idx == 0 or idx == len(y) - 1:
-        # Cannot refine at boundaries
-        return x[idx], y[idx]
+    if idx == 0 or idx == len (y_valid) - 1:
+        return x_valid[idx], y_valid[idx]
 
     # Quadratic fit over three points
-    coeff = np.polyfit(x[idx-1:idx+2], y[idx-1:idx+2], 2)
+    coeff = np.polyfit (x_valid[idx-1:idx+2], y_valid[idx-1:idx+2], 2)
     a, b, c = coeff
+    if not np.isfinite (coeff).all () or np.isclose (a, 0.0):
+        return x_valid[idx], y_valid[idx]
 
     # Vertex of the parabola
     x_ext = -b / (2 * a)

@@ -421,7 +421,7 @@ class Panel_Polar_Defs (Edit_Panel):
             polar_def = self.polar_defs[id]
 
         diag = Polar_Definition_Dialog (self, polar_def, is_new=is_new,
-                                        parentPos=(0.05, -0.2), dialogPos=(0,1.0), fixed_chord=self.chord)
+                                        parentPos=(0.05, -0.2), dialogPos=(0,0.8), fixed_chord=self.chord)
         
         diag.sig_changed.connect (self._on_polar_def_changed)           # live update with NeuralFoil polars
         diag.sig_final_changed.connect (self._on_polar_def_changed)     # final update when dialog is closed

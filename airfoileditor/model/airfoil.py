@@ -359,10 +359,13 @@ class Airfoil:
     def info_short_as_html (self, thickness_color = None, camber_color = None) -> str:
         """ comprehensive info about self as formatted html string"""
 
-        def row (label: str, value: str, label_at: str = None, value_at: str = None) -> str:
+        def row (label: str, value: str, label_at: str = None, value_at: str = None, color_value : str= None) -> str:
+
+            color_tag = f"color: {color_value};" if color_value else ""
+
             return (f"<tr>"
                     f"<td style='padding-right: 5px'>{label}</td>"
-                    f"<td style='padding-right:10px; color: {thickness_color if label == 'Thickness' else camber_color if label == 'Camber' else ''}'>{value}</td>"
+                    f"<td style='padding-right:10px; {color_tag}'>{value}</td>"
                     f"<td style='padding-right: 5px'>{label_at if label_at is not None else ''}</td>"
                     f"<td style='padding-right: 5px'>{value_at if value_at is not None else ''}</td>"
                     f"</tr>")
@@ -371,8 +374,8 @@ class Airfoil:
 
         if self.isLoaded and self.geo and self.geo.max_thick:          # could be strak airfoil
             rows = [
-                row ("Thickness",    f"{self.geo.max_thick:.2%}",        "at", f"{self.geo.max_thick_x:.2%}"),
-                row ("Camber",       f"{self.geo.max_camb:.2%}",         "at", f"{self.geo.max_camb_x:.2%}"),
+                row ("Thickness",    f"{self.geo.max_thick:.2%}",        "at", f"{self.geo.max_thick_x:.2%}", color_value=thickness_color),
+                row ("Camber",       f"{self.geo.max_camb:.2%}",         "at", f"{self.geo.max_camb_x:.2%}", color_value=camber_color),
                 row ("Curvature LE", f"{self.geo.curvature.at_le:.0f}",  "TE", f"{self.geo.curvature.max_te:.0f}"),
             ]
             info += f"<table>{''.join(rows)}</table>"
