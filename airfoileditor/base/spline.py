@@ -1019,18 +1019,65 @@ class Bezier:
 
     def eval_y_on_x (self, x, fast=True, epsilon=10e-10):
         """
-        Evaluate ``y`` for a given x coordinate on the curve.
+        Evaluate ``y`` for one or more x coordinates on the curve.
 
         Use either a cached linearized lookup or a Newton solve for ``u(x)``.
 
         Args:
-            x: Target x coordinate.
+            x: Target x coordinate or array of coordinates.
             fast: Use cached linear interpolation when possible.
             epsilon: Convergence tolerance passed to ``newton``.
 
         Returns:
-            float: y coordinate at the requested x location.
+            float | np.ndarray: y coordinate(s) at the requested x location(s).
         """
+
+        if not np.isscalar (x):
+            x_values = np.asarray (x, dtype=float)
+            x_flat = x_values.ravel ()
+
+            x0 = self._eval_1D (self._cpx, 0.0)
+            x1 = self._eval_1D (self._cpx, 1.0)
+            u = np.where (x_flat >= x1, 1.0, 0.0)
+            inside = (x_flat > x0) & (x_flat < x1)
+            pending = inside.copy ()
+
+            if fast and self._x is not None:
+                cached = inside & (x_flat >= self._x[0]) & (x_flat <= self._x[-1])
+                u[cached] = np.interp (x_flat[cached], self._x, self._u)
+                pending &= ~cached
+
+            if np.any (pending):
+                x_pending = x_flat[pending]
+
+                # Cached samples seed Newton even when the final result must be accurate.
+                if self._x is not None and len (self._x) > 3:
+                    u_pending = np.interp (x_pending, self._x, self._u)
+                else:
+                    u_pending = binary_search (
+                        f=lambda u: self._eval_1D (self._cpx, u),
+                        target=x_pending,
+                        low=0.01,
+                        high=0.99,
+                        max_iter=5,
+                    )
+
+                u_pending, _ = newton (
+                    f=lambda u: self._eval_1D (self._cpx, u) - x_pending,
+                    Df=lambda u: self._eval_1D (self._cpx, u, der=1) + 1e-12,
+                    x0=u_pending,
+                    epsilon=epsilon,
+                    max_iter=20,
+                    bounds=(0.0, 1.0),
+                )
+
+                u[pending] = u_pending
+
+            y_values = self._eval_1D (self._cpy, u).reshape (x_values.shape)
+            if not fast:
+                # Match scalar behavior by caching only results from the accurate path.
+                self._y_on_x_cache.update (zip (x_flat.tolist (), y_values.ravel ().tolist ()))
+            return y_values
 
         # check for cached value 
         y = self._y_on_x_cache.get(x)

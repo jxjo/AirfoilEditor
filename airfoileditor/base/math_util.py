@@ -592,17 +592,34 @@ def binary_search(f, target, low, high, max_iter=10):
     Find x in [low, high] where f(x) ≈ target using binary search.
     
     Assumes f is monotonically increasing on [low, high].
+    For array targets, ``f`` must accept and return array-like values.
     
     Args:
-        f: Monotonically increasing function to search.
-        target: Target value to find.
-        low: Lower bound of search range.
-        high: Upper bound of search range.
+        f: Monotonically increasing function to search; vectorized for array targets.
+        target: Target value or array of values to find.
+        low: Lower bound or array of lower bounds.
+        high: Upper bound or array of upper bounds.
         max_iter: Maximum number of iterations (default 10, narrows range to ~1/1024).
     
     Returns:
-        float: Approximation of x where f(x) = target.
+        float | ndarray: Approximation(s) of x where f(x) = target.
     """
+    if np.ndim(target) > 0 or np.ndim(low) > 0 or np.ndim(high) > 0:
+        target, low, high = np.broadcast_arrays(
+            np.asarray(target, dtype=float),
+            np.asarray(low, dtype=float),
+            np.asarray(high, dtype=float),
+        )
+        low = low.copy()
+        high = high.copy()
+
+        for _ in range(max_iter):
+            mid = (low + high) * 0.5
+            below = np.asarray(f(mid)) < target
+            low = np.where(below, mid, low)
+            high = np.where(below, high, mid)
+        return (low + high) * 0.5
+
     for _ in range(max_iter):
         mid = (low + high) * 0.5
         f_mid = f(mid)
@@ -658,9 +675,9 @@ def newton(f, Df, x0, epsilon=1e-7, max_iter=50, bounds=None) -> tuple[float, in
     """Approximate a root of ``f(x) = 0`` with Newton's method.
 
     Args:
-        f: Function for which a root is searched.
-        Df: Derivative of ``f``.
-        x0: Initial guess for the root.
+        f: Function for which a root is searched; vectorized for array initial guesses.
+        Df: Derivative of ``f``; vectorized when ``x0`` is an array.
+        x0: Initial guess for the root or roots.
         epsilon: Convergence tolerance. Iteration stops when
             ``abs(f(x)) < epsilon``.
         max_iter: Maximum number of Newton iterations.
@@ -668,13 +685,53 @@ def newton(f, Df, x0, epsilon=1e-7, max_iter=50, bounds=None) -> tuple[float, in
             ``None`` to disable that side.
 
     Returns:
-        tuple[float, int]: ``(x, n_iter)`` with the estimated root and the
-        number of iterations performed.
+        tuple[float | ndarray, int]: ``(x, n_iter)`` with the estimated root(s).
+        For an array initial guess, ``n_iter`` is the number of iterations used
+        for the batch (stopping when all values converge or ``max_iter`` is reached).
 
     Raises:
         ValueError: If the derivative is zero away from the LE special case
             (``x == 0.0``), or if the provided bounds are invalid.
     """
+    if not np.isscalar(x0):
+        if bounds is None:
+            x_min, x_max = None, None
+        else:
+            x_min, x_max = bounds
+            if x_min is not None and x_max is not None and x_min > x_max:
+                raise ValueError(f"Invalid bounds for Newton iteration: {bounds}")
+
+        def _clamp_array(values):
+            if x_min is not None:
+                values = np.maximum(values, x_min)
+            if x_max is not None:
+                values = np.minimum(values, x_max)
+            return values
+
+        xn = _clamp_array(np.asarray(x0, dtype=float).copy())
+        n_iter = 0
+
+        for _ in range(max_iter):
+            n_iter += 1
+            fxn = np.asarray(f(xn), dtype=float)
+            converged = np.abs(fxn) < epsilon
+            if np.all(converged):
+                break
+
+            dfxn = np.asarray(Df(xn), dtype=float)
+            zero_derivative = (dfxn == 0) & ~converged
+            if np.any(zero_derivative & (xn != 0.0)):
+                raise ValueError("Newton iteration: Zero derivative. No solution found.")
+
+            finished = converged | (zero_derivative & (xn == 0.0))
+            if np.all(finished):
+                break
+
+            active = ~finished
+            delta = np.divide(fxn, dfxn, out=np.zeros_like(xn), where=active)
+            xn = _clamp_array(np.where(active, xn - delta, xn))
+
+        return xn, n_iter
 
     if bounds is not None:
         x_min, x_max = bounds

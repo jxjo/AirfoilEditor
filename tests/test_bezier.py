@@ -8,6 +8,7 @@
 
 import numpy as np 
 from airfoileditor.base.spline import *
+from airfoileditor.base.math_util import binary_search, newton
 
 class Test_Bezier:
 
@@ -33,6 +34,47 @@ class Test_Bezier:
 
         np.testing.assert_allclose(x_arr, x_scalar, atol=1e-10)
         np.testing.assert_allclose(y_arr, y_scalar, atol=1e-10)
+
+    def test_array_bisection_and_newton(self):
+        """Root helpers accept array-valued targets and initial guesses."""
+        targets = np.array([0.2, 0.5, 0.8])
+        roots = binary_search(lambda values: values, targets, 0.0, 1.0, max_iter=12)
+        np.testing.assert_allclose(roots, targets, atol=1e-3)
+
+        initial = np.ones_like(targets)
+        roots, iterations = newton(
+            lambda values: values**2 - targets,
+            lambda values: 2 * values,
+            initial,
+            epsilon=1e-12,
+            bounds=(0.0, 1.0),
+        )
+        np.testing.assert_allclose(roots, np.sqrt(targets), atol=1e-10)
+        assert iterations > 0
+
+    def test_eval_y_on_x_array_matches_scalar(self):
+        """Array inverse-x evaluation matches scalar results across cache modes."""
+        control_points = (
+            self.bez.cpoints,
+            [(2.0, 0.1), (2.1, 0.4), (3.5, 0.8), (4.0, 0.2)],
+        )
+
+        for points in control_points:
+            for warm_cache in (False, True):
+                for fast in (False, True):
+                    curve_array = Bezier(points)
+                    curve_scalar = Bezier(points)
+                    if warm_cache:
+                        u = np.linspace(0.0, 1.0, 101)
+                        curve_array.eval(u)
+                        curve_scalar.eval(u)
+
+                    x_min, x_max = points[0][0], points[-1][0]
+                    x = np.linspace(x_min - 0.1, x_max + 0.1, 100)
+                    y_array = curve_array.eval_y_on_x(x, fast=fast)
+                    y_scalar = np.array ([curve_scalar.eval_y_on_x (xi, fast=fast) for xi in x])
+
+                    np.testing.assert_allclose(y_array, y_scalar, atol=1e-9)
 
     def test_eval_derivatives_finite_difference(self):
         """First and second derivatives from eval() agree with central finite differences."""
