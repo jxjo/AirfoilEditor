@@ -121,7 +121,7 @@ For polar generation, the Worker's `auto_range` feature optimizes the alpha rang
 
 ### Polars on Demand
 
-In both workflows, a polar is generated automatically when it is needed for display. For XFOIL-based polars, the computation runs asynchronously in the background and typically takes about 1-5 seconds. For NeuralFoil-based polars, the calculation is performed synchronously and usually takes only around 10 milliseconds.
+In both workflows, a polar is generated automatically when it is needed for display. For XFOIL-based polars, the computation runs asynchronously in the background and typically takes about 1-5 seconds. For NeuralFoil-based polars, the calculation is performed synchronously and takes only around 10 milliseconds for T1 polars and 100ms for T2 polars.
 
 Each generated XFOIL polar is stored in an individual file using XFOIL's format for fast reuse. This method enables the sequential review of airfoils or airfoil designs, displaying the polars without requiring additional user input.
 

@@ -36,7 +36,7 @@ from .widgets           import Icon
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.DEBUG)
 
 
 COLOR_EDITABLE      = QColor('orange')                          # Movable Point 
@@ -44,7 +44,7 @@ COLOR_HOVER         = QColor('deepskyblue')
 
 COLOR_GOOD          = QColor("lime").darker (120)
 COLOR_OK            = QColor("lightgray")
-COLOR_ERROR         = QColor('red').darker(120)
+COLOR_ERROR         = QColor('red').darker(100)
 COLOR_WARNING       = QColor('gold').darker(120)
 
 

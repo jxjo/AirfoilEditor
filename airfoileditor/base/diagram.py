@@ -55,7 +55,6 @@ class Diagram (QWidget):
         self._dataObject = dataObject
         self._section_panel = None 
         self._diagram_items_grid_dict = {}
-        self._show_first_time = True
 
         # set width and height 
 
@@ -319,13 +318,10 @@ class Diagram (QWidget):
             if item.show: 
                 item.refresh() 
 
-        # refresh all panels on viewPanel - but not the initial first time
+        # refresh all panels on viewPanel 
 
         if self._viewPanel:
-            if self._show_first_time:
-                self._show_first_time = False
-            else:
-                self._viewPanel.refresh()
+            self._viewPanel.refresh()
 
         super().showEvent (ev) 
 
@@ -445,6 +441,9 @@ class Diagram (QWidget):
         for item in self.diagram_items:
             item._set_settings (d_items.get(item.name, {}))
 
+        # rebuild the grid layout after applying show on/off
+        self._rebuild_grid_layout()
+
         # ensure at least view panel is refreshed
         if self._viewPanel and refresh:
             self._viewPanel.refresh()
@@ -557,14 +556,19 @@ class Diagram_Item (pg.PlotItem):
 
     def _settings (self) -> dict:
         """ return dictionary of self settings"""
+        # default - show state of the item 
         d = {}
+        toDict (d, "show", self.show)
         return d
 
 
     def _set_settings (self, aDict : dict) :
         """ apply settings from a dictionary"""
-        # to be overriden
-        pass
+
+        # default - show state of the item 
+        show = fromDict(aDict,"show", None)
+        if show is not None:
+            self.set_show(show)
 
 
     def _add_artist (self, artist : Artist):

@@ -388,6 +388,7 @@ class Panel_Polar_Defs (Edit_Panel):
             w.sig_changed.connect (self._on_polar_def_changed)
 
             Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name_with_v(self.chord),
+                        click_disabled=lambda p=polar_def: self.edit_polar_def(polar_def=p),
                         toolTip=lambda p=polar_def: p.name_with_v(self.chord))
 
             # either tool buttons 
@@ -419,6 +420,11 @@ class Panel_Polar_Defs (Edit_Panel):
 
         if isinstance (id, int):
             polar_def = self.polar_defs[id]
+
+        # set active if not already to have live updates in the diagram
+        if not polar_def.active:
+            polar_def.set_active(True)
+            self._on_polar_def_changed()
 
         diag = Polar_Definition_Dialog (self, polar_def, is_new=is_new,
                                         parentPos=(0.05, -0.2), dialogPos=(0,0.8), fixed_chord=self.chord)

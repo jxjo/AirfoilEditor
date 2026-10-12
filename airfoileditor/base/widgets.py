@@ -15,7 +15,7 @@ import os
 import sys
 import types
 import traceback
-from typing             import override
+from typing             import override, Callable
 from enum               import Enum
 
 from PyQt6.QtCore       import QSize, Qt, QMargins, pyqtSignal, QTimer, QEvent
@@ -886,12 +886,14 @@ class Field_With_Label (Widget):
 
     def __init__(self, *args, 
                  lab : str | None = None,                   # label of field 
-                 disable : bool | None = None,
+                 disable : Callable | bool | None = None,
                  lab_disable : bool = False,                # label will be disabled with field
-                 toolTip : str|None = None,
+                 toolTip : Callable | str | None = None,
+                 click_disabled : Callable |  None = None,  # callback when click on disabled widget
                  **kwargs):
 
         self._label = None 
+        self._click_disabled = click_disabled if callable(click_disabled) else None
 
         super().__init__(*args, disable=disable, toolTip=toolTip, **kwargs)
 
@@ -904,13 +906,26 @@ class Field_With_Label (Widget):
                                     colSpan=1,              # label is always only 1 column
                                     rowSpan=self._rowSpan,  # rowSpan same as parent field
                                     toolTip=None)           # no tooltip on label 
-            
 
     @override
     def __repr__(self) -> str:
         lab = self._label._val if self._label else ""
         text = f" '{str(self._val)}'" if self._val is not None else ''
         return f"<{type(self).__name__} {lab}{text} {id(self)}>"
+
+
+    @override
+    def event(self, event: QEvent):
+
+        # handle click on disabled widget
+        if (event.type() == QEvent.Type.MouseButtonPress
+                and not self.isEnabled()
+                and self._click_disabled is not None
+                and event.button() == Qt.MouseButton.LeftButton):
+            self._click_disabled()
+            return True
+
+        return super().event(event)
 
 
     @override

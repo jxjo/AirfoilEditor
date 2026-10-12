@@ -172,7 +172,7 @@ class Airfoil_Save_Dialog (Dialog_Modal):
 class Polar_Definition_Dialog (Dialog_Modeless):
     """ Dialog to edit a single polar definition"""
 
-    _width  = 490
+    _width  = 500
 
     name = "Edit Polar Definition"
 
@@ -286,13 +286,13 @@ class Polar_Definition_Dialog (Dialog_Modeless):
                         obj=self.polar_def, prop=Polar_Definition.ma,
                         disable=lambda: self.polar_def.is_neuralfoil,
                         toolTip=_tip)   # neuralfoil: ma is always 0.0
-        l.setColumnMinimumWidth (c,45)
+        l.setColumnMinimumWidth (c,50)
         c += 2
         SpaceC  (l,c, width=10)
         c += 1
         FieldF (l,r,c, lab="Ncrit", width=60, step=1, lim=(1, 20), dec=1,
                         obj=self.polar_def, prop=Polar_Definition.ncrit)
-        l.setColumnMinimumWidth (c,45)
+        l.setColumnMinimumWidth (c,50)
         c += 2
         l.setColumnStretch(c, 1)
 
@@ -345,15 +345,15 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             #                 get=self.polar_def.autoRange,
             #                 toolTip="If checked, the range of polar values is optimized by Worker\n" + 
             #                         "to cover the range from cl_min to cl_max")
-            r += 1
+            Label  (l,2,7, get=f"Step {"al" if self.polar_def.specVar == var.ALPHA else "cl"}", colSpan=2)
             _tip = "<br>The smaller the value, the smoother the polar, the more time is needed."
             _tip_a = "Step size for polar values of alpha." + _tip
             _tip_c = "Step size for polar values of cl."    + _tip
-            FieldF (l,r,c, lab=f"Polar Step {var.ALPHA}", width=60, step=0.1, lim=(0.1, 1.0), dec=2,
+            FieldF (l,2,8, width=60, step=0.1, lim=(0.1, 1.0), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
                             hide = lambda: self.polar_def.specVar != var.ALPHA,
                             toolTip=_tip_a)
-            FieldF (l,r,c, lab=f"Polar Step {var.CL}", width=60, step=0.01, lim=(0.01, 0.1), dec=2,
+            FieldF (l,2,8, width=60, step=0.01, lim=(0.01, 0.1), dec=2,
                             obj=self.polar_def, prop=Polar_Definition.valRange_step,
                             hide = lambda: self.polar_def.specVar != var.CL,
                             toolTip=_tip_c)

@@ -89,6 +89,9 @@ def fromDict(aDict : dict, key, default='no default'):
         key: the key to look for       
         default: the value if key is missing
     """
+    if not isinstance(aDict, dict):
+        aDict = {}
+
     preferred_type = None
 
     if default != 'no default':

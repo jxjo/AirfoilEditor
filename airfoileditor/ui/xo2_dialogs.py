@@ -1443,11 +1443,11 @@ class Xo2_Abstract_Options_Dialog (Dialog_Modeless):
 
         # add a mini reset button to the footer
         l = QHBoxLayout()
-        l.addSpacing(10)
-        Button (l, text="Reset",  width=40, set=self.set_default_values,
+        Button (l, text="Reset",  width=60, set=self.set_default_values,
                 button_style=button_style.SECONDARY,
                 toolTip="Reset these values to default values")
         l.addStretch()
+        Button (l, text="Close",  width=60, set=self.accept)
         return l  
 
 

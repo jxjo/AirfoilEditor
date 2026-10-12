@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - NeuralFoil: bubble detection and cp_min at operating point
+- NeuralFoil: T2 polars 
 
 ### Fixed
 
