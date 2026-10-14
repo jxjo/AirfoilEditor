@@ -101,7 +101,7 @@ def get_aero_from_kulfan_parameters(
     n_crit: float | np.ndarray = 9.0,
     xtr_upper: float | np.ndarray = 1.0,
     xtr_lower: float | np.ndarray = 1.0,
-    model_size: str = "xlarge",
+    model_size: str = "xxlarge",
 ) -> dict[str, float | np.ndarray]:
     """
     Computes aerodynamic coefficients and boundary layer parameters for an aerodynamics case.
@@ -152,7 +152,7 @@ def get_aero_from_kulfan_parameters(
             - "xxlarge"
             - "xxxlarge"
             Results in a speed-accuracy tradeoff. The larger the model, the more accurate the results, but the slower
-            the computation. The default is "xlarge".
+            the computation. The default is "xxlarge".
 
     Returns: A dictionary with the following keys:
 

@@ -675,6 +675,11 @@ class Polar_Definition:
                 aDef_dict.pop('xtript', None)
                 aDef_dict.pop('xtripb', None)
 
+            if not self.is_flap_set:            # could be flapped but with zero flap angle
+                self_dict.pop('flap', None)
+            if not aDef.is_flap_set:
+                aDef_dict.pop('flap', None)
+
             return self_dict == aDef_dict
         else:
             return False
@@ -696,7 +701,12 @@ class Polar_Definition:
             self.set_flap_def (Flap_Definition())
         else: 
             self.set_flap_def (None)
-    
+
+    @property
+    def is_flap_set (self) -> bool:
+        """ True if self has a flap definition with a non-zero flap angle"""
+        return self.is_flapped and self.flap_def.flap_angle != 0.0
+
     @property
     def flap_def (self) -> Flap_Definition:
         """ an optional flap definition of self"""

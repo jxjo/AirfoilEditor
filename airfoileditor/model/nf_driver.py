@@ -67,7 +67,7 @@ class Neuralfoil_Evaluator:
     CL_AUTO_STEP       =  0.05                          # fallback step when auto_range has no val_range
     T2_AUTO_RE_FACTOR  = 10.0                           # max effective Re as a factor of Re * sqrt(cl)
 
-    MODEL_SIZE_DEFAULT = "xlarge"
+    MODEL_SIZE_DEFAULT = "xxlarge"
     MIN_CONFIDENCE     = 0.5                            # minimum NeuralFoil confidence for a valid polar point
     BUBBLE_H_THRESHOLD =  3.8                           # shape factor above which a panel is considered separated
 
@@ -108,7 +108,7 @@ class Neuralfoil_Evaluator:
         Args:
             airfoil_as_cst: CST-Kulfan definition of the airfoil — Airfoil_As_CST instance
             meta:        polar parameters — re, ncrit, val_range, xtript/b, etc.
-            model_size: NeuralFoil model size ("xxsmall".."xxxlarge", default "xlarge").
+            model_size: NeuralFoil model size ("xxsmall".."xxxlarge", default "xxlarge").
             min_confidence: Minimum confidence for a valid point (default 0.5).
 
         Returns:

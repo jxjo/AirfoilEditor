@@ -328,7 +328,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
                             toolTip="This polar will be calculated with a flap definition.\n" + 
                                      "The flap definition is stored in the polar definition.")
             r += 1
-            FieldF  (l,r,c, lab="Flap angle", width=60, step=0.1, lim=(-20,20), dec=1, unit='°', 
+            FieldF  (l,r,c, lab="Flap angle", width=60, step=0.5, lim=(-20,20), dec=1, unit='°', 
                             obj=lambda: self.flap_def, prop=Flap_Definition.flap_angle,
                             hide=lambda: not self.polar_def.is_flapped)
             FieldF  (l,r,c+4, lab="Hinge x", width=60, step=1, lim=(1, 98), dec=1, unit="%",
