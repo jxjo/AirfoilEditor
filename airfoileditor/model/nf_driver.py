@@ -129,10 +129,13 @@ class Neuralfoil_Evaluator:
         if meta.polar_type == "T2":
             alpha_arr, predict = cls._predict_T2 (kulfan_parameters, meta, model_size)
         else:
-            alpha_arr = Neuralfoil_Evaluator._alpha_from_meta (meta)
             if meta.auto_range:
                 step      = meta.val_range[2] if meta.val_range is not None else 0.5
                 alpha_arr = np.arange (cls.ALPHA_AUTO_MIN, cls.ALPHA_AUTO_MAX + step * 0.5, step)
+            else:
+                alpha_arr = Neuralfoil_Evaluator._alpha_from_meta (meta)
+
+            alpha_arr = np.round (alpha_arr, 4)                      # ensure no decimal artifacts
 
             predict = get_aero_from_kulfan_parameters (
                 kulfan_parameters = kulfan_parameters,
@@ -168,6 +171,7 @@ class Neuralfoil_Evaluator:
         # apply derotation angle to the meta if the airfoil was derotated to normalize (flapped airfoil)
         if airfoil_as_cst.derotation_angle != 0.0:
             alpha_arr = alpha_arr - airfoil_as_cst.derotation_angle
+            alpha_arr = np.round (alpha_arr, 4)                      # ensure after substraction the values are rounded
 
         # apply auto_range mask to trim the polar to the interesting region between stalls
         if meta.auto_range and meta.polar_type != "T2":

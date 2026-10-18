@@ -1206,8 +1206,45 @@ class Artist(QObject):
                   zValue=3, 
                   angle=0, ensureInBounds=False,
                   name=None,
+                  html = None,                                      # alternate html for textitem 
                   **kwargs) -> pg.TargetItem:
-        """ plot point with text item at x, y - text will follow the point """
+        """Plot a point with an optional label that follows it in the ViewBox.
+
+        Coordinates are transformed with the artist's ``t_fn`` before plotting.
+        The point symbol and label remain screen-sized while the ViewBox is
+        zoomed. If ``html`` is supplied, it replaces the plain-text label.
+
+        Args:
+            *args: Point coordinates as ``(x, y)``, separate ``x`` and ``y``
+                values, or a :class:`JPoint`.
+            text: Optional plain-text label. Ignored as visible content when
+                ``html`` is supplied.
+            textColor: Label text color. Defaults to the artist's normal color.
+            textFill: Optional brush used to fill the label background.
+            textOffset: Label offset from the point in pixels.
+            anchor: Normalized label anchor within its bounds.
+            symbol: Point symbol name accepted by pyqtgraph's ``TargetItem``.
+            color: Point outline color; also supplies the default point brush.
+            brush: Optional point fill brush. Defaults to ``color``.
+            size: Point symbol size in pixels.
+            style: Qt pen style used to draw the point outline.
+            zValue: Graphics stacking order for the point.
+            angle: Label rotation angle in degrees.
+            ensureInBounds: If true, include the label bounds in ViewBox
+                autorange calculations.
+            name: Optional name used for a legend entry when a legend is shown.
+            html: Optional rich-text HTML content for the label. Takes
+                precedence over ``text``.
+            **kwargs: Additional keyword arguments passed to
+                :class:`pyqtgraph.TargetItem`.
+
+        Returns:
+            The created :class:`pyqtgraph.TargetItem`.
+
+        Raises:
+            ValueError: If the positional arguments cannot be interpreted as
+                point coordinates.
+        """
 
         # support x,y or (x,y) or  JPoint 
 
@@ -1233,13 +1270,19 @@ class Artist(QObject):
 
         color = QColor(textColor) if textColor else QColor(self.COLOR_NORMAL)
         labelOpts = {'anchor': anchor, 'color': color, 'fill': textFill, 'offset': textOffset, 
-                     'angle': angle, 'ensureInBounds': ensureInBounds}
+                    'angle': angle, 'ensureInBounds': ensureInBounds}
+
+        if html is not None and not text:
+            text = "dummy"                              # create a dummy label to be replaced by HTML content
 
         # create TargetItem  
 
         p = pg.TargetItem (pos=xy, pen= pen, brush = brush, 
                             symbol=symbol, size=size, movable=False,
                             label = text, labelOpts = labelOpts, **kwargs)
+
+        if html is not None:
+            p.label().setHtml(html)
 
         p.setZValue (zValue)
 

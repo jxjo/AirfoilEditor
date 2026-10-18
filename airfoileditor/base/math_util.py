@@ -631,7 +631,7 @@ def binary_search(f, target, low, high, max_iter=10):
 
 
 
-def extremum (x : np.ndarray, y : np.ndarray, mode="max") -> tuple[float, float]:
+def extremum (x : np.ndarray, y : np.ndarray, mode="max") -> tuple[float | None, float | None]:
     """
     Returns a single refined extremum (max or min) using a 3-point quadratic fit.
     
@@ -641,8 +641,8 @@ def extremum (x : np.ndarray, y : np.ndarray, mode="max") -> tuple[float, float]
         mode : "max" or "min"
     
     Returns:
-        x_ext : refined x-position of extremum
-        y_ext : refined y-position of extremum
+        x_ext : refined x-position of extremum or None if no valid extremum exists
+        y_ext : refined y-position of extremum or None if no valid extremum exists
     """
     valid = np.isfinite (x) & np.isfinite (y)
     x_valid = x[valid]

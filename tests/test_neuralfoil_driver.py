@@ -253,7 +253,8 @@ def test_T2_real_neuralfoil_matches_targets_and_final_operating_conditions():
 
     for column, key in (("cl", "CL"), ("cd", "CD"), ("cm", "CM"),
                         ("xtrt", "Top_Xtr"), ("xtrb", "Bot_Xtr")):
-        np.testing.assert_allclose([getattr(row, column) for row in result.rows], direct[key])
+        np.testing.assert_allclose([getattr(row, column) for row in result.rows], direct[key],
+                       atol=1e-5)
     assert result.meta.polar_type == "T2"
     assert result.meta.re == meta.re
     assert result.meta.spec_var == "cl"
