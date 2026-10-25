@@ -39,7 +39,8 @@ logger = logging.getLogger(__name__)
 def _size_opPoint (weighting : float, normal_size = 13) -> float:
     """ returns plot size of an opPoint (def) depending on weighting"""
 
-    return abs(weighting) ** 0.8 * normal_size 
+    s = abs(weighting) ** 0.5 * normal_size
+    return max (3,s) 
 
 
 
@@ -882,37 +883,21 @@ class Xo2_OpPoint_Artist (Artist):
             return COLOR_OK
 
         deviation = opPoint.deviation
-
         optType = opPoint_def.optType
-        optVar  = opPoint_def.optVar
-        allow_improved = opPoint_def._myList.allow_improved_target
 
         if optType == OPT_TARGET:                            # targets - take deviation to target
-            # Xoptfoil2 - colors for deviation 
+            # Xoptfoil2 - deviation is always positive 
             #
-            #   if (op_spec%allow_improved_target .and. opt_type == 'target-drag' .and. dev < 0d0) then 
-            #     how_good = Q_GOOD
-            #   else if (op_spec%allow_improved_target .and. opt_type /= 'target-drag' .and. dev > 0d0) then 
-            #     how_good = Q_GOOD
-            #   else
-            #     how_good = r_quality (abs(dev), 0.1d0, 2d0, 10d0)      ! in percent
-            #   end if
-            if allow_improved   and optVar == var.CD and deviation < 0.0:
+            if deviation < 0.1:
                 color = COLOR_GOOD
-            elif allow_improved and optVar != var.CD and deviation > 0.0:
-                color = COLOR_GOOD
+            elif deviation >= 10:
+                color = COLOR_ERROR
+            elif deviation >= 2.0:
+                color = COLOR_WARNING
+            elif deviation >= 0.1:
+                color = COLOR_OK
             else:
-                deviation = abs(deviation)
-                if deviation < 0.1:
-                    color = COLOR_GOOD
-                elif deviation >= 10:
-                    color = COLOR_ERROR
-                elif deviation >= 2.0:
-                    color = COLOR_WARNING
-                elif deviation >= 0.1:
-                    color = COLOR_OK
-                else:
-                    color = COLOR_OK
+                color = COLOR_OK
         else:                                               # min/max - deviation is improvement 
             # Xoptfoil2 - colors for improvement 
             #
@@ -973,7 +958,6 @@ class Xo2_OpPoint_Artist (Artist):
         label   = None 
         optVar  = opPoint_def.optVar
         optType = opPoint_def.optType
-        allow_improved = opPoint_def._myList.allow_improved_target
 
         # optVar must be in diagram to show distance as it comes from Xo2 results 
 
@@ -983,21 +967,13 @@ class Xo2_OpPoint_Artist (Artist):
 
             distance = opPoint.distance
 
-            if optType == OPT_TARGET:                            # targets - take deviation to target
-                if allow_improved   and optVar == var.CD and distance < 0.0:
-                    distance = 0.0
-                elif allow_improved and optVar != var.CD and distance > 0.0:
-                    distance = 0.0
-                else:
-                    distance = abs(distance)
-
             # format value for label 
 
             if  optType == OPT_TARGET:                              # targets - take deviation to target
                 if optVar == var.CD and round_down (distance,5):
-                    label = f"delta {optVar}: {distance:.5f}"
+                    label = f"Δ{optVar}: {distance:.5f}"
                 elif optVar != var.CD and round_up (distance,2):
-                    label = f"delta {optVar}: {distance:.2f}"        
+                    label = f"Δ{optVar}: {distance:.2f}"
                 else: 
                     label = f"hit"        
             else:                                               # min/max - deviation is improvement 

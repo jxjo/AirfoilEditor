@@ -54,7 +54,7 @@ class Panel_Airfoils (Edit_Panel):
     sig_airfoils_to_show_changed    = pyqtSignal()              # changed show filter 
     sig_airfoils_scale_changed      = pyqtSignal()              # airfoil scale changed
 
-    _main_margins  = (10, 5, 0, 5)                              # margins of Edit_Panel
+    _main_margins  = (10, 5, 5, 5)                              # margins of Edit_Panel
 
     def __init__(self, *args, **kwargs):
 
@@ -314,6 +314,7 @@ class Panel_Airfoils (Edit_Panel):
         airfoil = self.airfoils[id]
 
         diag = Airfoil_Scale_Dialog (self, airfoil.scale_factor, 
+                                     always_footer=True,
                                      parentPos=(0.9, 0.3), dialogPos=(0,0.3))
 
         diag.sig_changed.connect(airfoil.set_scale_factor)
@@ -362,7 +363,6 @@ class Panel_Polar_Defs (Edit_Panel):
         # no margins 
         super().__init__(*args, main_margins=(0,0,0,0), panel_margins=(0,0,0,0), **kwargs)
 
-    # ---------------------------------------------
 
     @property
     def polar_defs (self) -> list[Polar_Definition]: 
@@ -1354,7 +1354,7 @@ class Item_Polars (Diagram_Item):
     Diagram (Plot) Item for polars 
     """
 
-    name        = "View Polar"                          # used for link and section header 
+    name        = "View Polars"                          # used for link and section header 
     title       = None 
     subtitle    = None                                  # optional subtitle 
 
@@ -2076,7 +2076,7 @@ class Diagram_Airfoil_Polar (Diagram):
                             get=lambda: self.show_xo2_constraints, set=self.set_show_xo2_constraints,
                             hide=self.show_xo2_constraints_hidden)               
 
-            self._panel_optimization = Edit_Panel (title="Optimization", layout=l, switchable=False, height=(100,None),
+            self._panel_optimization = Edit_Panel (title="Optimization", layout=l, switchable=False, auto_height=True,
                                                    hide=lambda: not self.is_mode_optimize)
 
         return self._panel_optimization 
@@ -2198,6 +2198,14 @@ class Diagram_Airfoil_Polar (Diagram):
             if Worker.ready or Neuralfoil_Evaluator.ready:
 
                 Label (l,r,c, colSpan=2, get="Polar definitions") 
+                drivers = []
+                if Worker.ready:
+                    drivers.append("Xfoil")
+                if Neuralfoil_Evaluator.ready:
+                    drivers.append(Neuralfoil_Evaluator.NAME)
+                text = ", ".join(drivers) + "  "
+                Label  (l, r, c, colSpan=2, get=text, style=style.COMMENT, fontSize=size.SMALL,
+                        align=Qt.AlignmentFlag.AlignRight)
                 r += 1
 
                 # helper panel for polar definitions 
@@ -2254,20 +2262,10 @@ class Diagram_Airfoil_Polar (Diagram):
 
             self._panel_polar = Edit_Panel (title=Item_Polars.name, layout=l, auto_height=True, switchable  = True, 
                                             switched_on = lambda: self.show_polars,
+                                            main_margins = (10, 5, 5, 5),
                                             on_switched = lambda aBool: self.set_show_polars(aBool))
             
-            # patch Worker version into head of panel 
-            if Worker.ready or Neuralfoil_Evaluator.ready:
-                l_head = self._panel_polar._head.layout()
-                text  = f"{Worker.NAME} {Worker.version} " if Worker.ready else ""
-                text += f"<br>{Neuralfoil_Evaluator.NAME}" if Neuralfoil_Evaluator.ready else ""
-                Label  (l_head, get=text, style=style.COMMENT, fontSize=size.SMALL,
-                        align=Qt.AlignmentFlag.AlignBottom)
-
         return self._panel_polar 
-
-
-    # --- public slots ---------------------------------------------------
 
 
     @override
@@ -2283,9 +2281,6 @@ class Diagram_Airfoil_Polar (Diagram):
 
         super().refresh(also_viewRange=also_viewRange) 
 
-
-
-    # --- private slots ---------------------------------------------------
 
     def _on_new_mode (self):
         """ slot when entering / leaving mode  """

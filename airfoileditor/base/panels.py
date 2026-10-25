@@ -421,7 +421,7 @@ class Container_Panel (Panel_Abstract):
     def __init__(self, *args, 
                  layout : QLayout | None = None,
                  margins  : tuple = (0,0,0,0), 
-                 spacing : int = 5, 
+                 spacing : int = 3, 
                  **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -523,20 +523,20 @@ class Container_Panel (Panel_Abstract):
 
 class Edit_Panel (Panel_Abstract):
     """ 
-    Panel with/out a title and an optional on/off switch 
+    Panel with/out a title and an optional fold control
     having a layout area for content  
     """
 
     _height = (None, None) 
 
     _main_margins  = (10, 5,10, 5)             
-    _head_margins  = ( 0, 0, 0, 5)             
-    _panel_margins = (10, 0, 0, 0)           
+    _head_margins  = ( 0, 0, 0, 2)             
+    _panel_margins = (10, 0, 0, 3)           
 
     def __init__(self, *args, 
                  layout : QLayout | None = None,
                  lazy = False, 
-                 switchable : bool = False,                 # if True add on/off checkbox switch to header
+                 switchable : bool = False,                 # if True add fold button to header
                  switched_on : bool | Callable = True,      # initial switch state on/off or callable returning it
                  on_switched : Callable | None = None,      # callback when user switched on/off
                  hide_switched : bool = True,               # if True hide panel area when switched off
@@ -564,7 +564,7 @@ class Edit_Panel (Panel_Abstract):
         # set background color depending light/dark mode
 
         if Widget.light_mode:
-            self.set_background_color (darker_factor = 104)                 # make it darker 
+            self.set_background_color (darker_factor = 90)   #104              # make it darker 
         else: 
             self.set_background_color (darker_factor = 80)                  # make it lighter 
 
@@ -662,19 +662,18 @@ class Edit_Panel (Panel_Abstract):
         if aBool:
             self.refresh_panel (self._isDisabled)
 
-        # set by checkbox - callback to Diagram_Item or parent panel
+        # Notify Diagram_Item or parent panel after a user toggle.
         if not silent and callable (self._on_switched):              
             self._on_switched (aBool)
 
-        # refresh also header checkbox
         if not silent:
-            for w in self.header_widgets:
-                w.refresh ()
+            self.refresh_header ()
 
 
     def toggle_switched (self):
         """ toggle switched on/off """
         self.set_switched_on (not self.switched_on)
+
 
     @property
     def widgets (self) -> list[Widget]:
@@ -766,7 +765,7 @@ class Edit_Panel (Panel_Abstract):
 
     def _set_header_layout(self):
         """ set layout of self._head 
-            - with title text either checkbox or label
+            - with title text and an optional fold button
             - a subclass may add widgets to header layout in _add_to_header_layout
         """
 
@@ -777,9 +776,9 @@ class Edit_Panel (Panel_Abstract):
 
         if self._switchable:
             CheckBox (l_head, fontSize=size.HEADER, text=self.title_text(),
-                    get=lambda: self.switched_on, set=self.set_switched_on,
-                    toolTip='Show or hide -<br>Alternatively, you can double click on the panel')
-        else: 
+                      get=lambda: self.switched_on, set=self.set_switched_on,
+                      toolTip='Show or hide -<br>Alternatively, you can double click on the panel')
+        else:
             Label (l_head, fontSize=size.HEADER, get=self.title_text)
         l_head.setStretch (0,1)
 
@@ -1360,15 +1359,18 @@ class Dialog_Modal (QDialog):
 
         # build data panel, footer, main layout
 
-        self._panel = QWidget ()
-        set_background (self._panel, darker_factor=105)
+        # self._panel = QWidget ()
+        # set_background (self._panel, darker_factor=105)
 
         l_panel = self._init_layout()
         l_panel.setContentsMargins (QMargins(15, 10, 15, 5))
         if isinstance (l_panel, QGridLayout):
             l_panel.setVerticalSpacing(3)
 
-        self._panel.setLayout (l_panel)
+        self._panel = Edit_Panel (layout=l_panel, has_head=False,
+                                  main_margins  = (20,10,20,10),
+                                  panel_margins = (0, 0, 0, 0))
+        # self._panel.setLayout (l_panel)
 
         l_main   = QVBoxLayout()
         l_main.addWidget (self._panel, stretch=1)
@@ -1377,7 +1379,7 @@ class Dialog_Modal (QDialog):
 
         l_footer = self._init_footer_layout()
         if l_footer is not None:
-            l_footer.setContentsMargins (QMargins(15, 5, 15, 10))
+            l_footer.setContentsMargins (QMargins(20, 5, 20, 10))
             l_main.addLayout (l_footer)
 
         self.setLayout (l_main)
@@ -1555,7 +1557,6 @@ class Dialog_Modeless (Dialog_Modal):
                   **kwargs):
 
         self._lock_widget = lock_widget_while_open
-        self._lock_widget_enabled = None
         self._lock_overlay : Disabled_Overlay | None = None
 
         self._close_on_click_outside = bool(close_on_click_outside)
@@ -1603,7 +1604,6 @@ class Dialog_Modeless (Dialog_Modal):
             self._lock_widget = None
             return
 
-        self._lock_widget_enabled = self._lock_widget.isEnabled()
         self._lock_overlay = Disabled_Overlay(self._lock_widget)
 
 
@@ -1617,10 +1617,6 @@ class Dialog_Modeless (Dialog_Modal):
             except Exception:
                 pass
             self._lock_overlay = None
-
-        self._lock_widget = None
-        self._lock_widget_enabled = None
-
 
 
     def _init_footer_layout (self) -> QLayout | None:
@@ -1703,6 +1699,7 @@ class Dialog_Modeless (Dialog_Modal):
         # `done()` is the last reliable place where the dialog still knows whether
         # any field change signal has already arrived.
         self._unlock_target_widget ()
+        self._lock_widget = None                            # sanity - remove reference to locked widget
 
         # final change signal if desired
 
@@ -1814,7 +1811,7 @@ class Tab_Panel (QTabWidget):
 
         font = self.font() 
         _font = size.HEADER.value
-        font.setPointSize(_font[0])
+        font.setPointSize(_font[0]+ 1)                  # a little larger than header size
         font.setWeight   (_font[1])  
         self.setFont(font)
 
@@ -1823,7 +1820,7 @@ class Tab_Panel (QTabWidget):
         if Widget.light_mode:
             tab_style = """
             QTabWidget::pane { /* The tab widget frame */
-                border-top:1px solid #ababab;
+                border: none;
             }
 
             QTabWidget::tab-bar {
@@ -1843,6 +1840,7 @@ class Tab_Panel (QTabWidget):
             }
 
             QTabBar::tab:!selected {
+                color: #303030;
                 margin-top: 2px; /* make non-selected tabs look smaller */
                 background: #e5e5e5
             }
@@ -1857,7 +1855,7 @@ class Tab_Panel (QTabWidget):
 
             QTabBar::tab:selected {
                 color: #E0E0E0 /* #303030*/;
-                font-weight: 600;
+                font-weight: 700;
                 border-color: #9B9B9B;
                 /*border-bottom-color: #C2C7CB;  */
                 border-bottom-color: red; /* same as pane color */
@@ -1868,7 +1866,7 @@ class Tab_Panel (QTabWidget):
 
             tab_style = """
             QTabWidget::pane { /* The tab widget frame */
-                border-top:1px solid #505050;
+                border: none;
             }
 
             QTabWidget::tab-bar {
@@ -1904,7 +1902,7 @@ class Tab_Panel (QTabWidget):
             QTabBar::tab:selected {
                 /*color: white; */
                 color: #E0E0E0;
-                font-weight: 600;
+                font-weight: 700;
                 border-color: #909090;
                 border-bottom-color: #C2C7CB;   /* same as pane color */
             }
@@ -1945,4 +1943,3 @@ class Tab_Panel (QTabWidget):
                     return
         else:
             self.setCurrentIndex (0)
-

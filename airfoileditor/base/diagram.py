@@ -93,6 +93,7 @@ class Diagram (QWidget):
 
         l_main = QHBoxLayout()
         l_main.setContentsMargins (QMargins(0, 0, 0, 0))
+        l_main.setSpacing (3)
 
         if self._viewPanel is not None: 
             l_main.addWidget (self._viewPanel)

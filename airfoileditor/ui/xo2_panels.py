@@ -68,14 +68,7 @@ class Panel_Xo2_Abstract (Edit_Panel):
     def is_mode_optimize (self) -> bool:
         """ panel in optimize_mode or disabled ? - from App """
         return self.app_model.is_mode_optimize
-
-
-    @override
-    @property
-    def _isDisabled (self) -> bool:
-        """ overloaded: only enabled when not running """
-        return self.case.isRunning if self.is_mode_optimize else False
-    
+  
 
     @override
     def _set_panel_layout (self ):
@@ -225,7 +218,11 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
         if self._run_dialog_open:
             return                                                  # do nothing if already open
 
-        diag = Xo2_Run_Dialog (self, self.app_model, parentPos=(0.02,0.8), dialogPos=(0,1))
+        diag = Xo2_Run_Dialog (self, self.app_model,
+                               close_on_click_outside = False,
+                               always_footer = True,
+                               lock_widget_while_open=self.parent_container,
+                               parentPos=(0.02,0.8), dialogPos=(0,1))
         diag.finished.connect (self._on_run_dialog_closed)          # activate self again when dialog closed
 
         self._set_run_dialog_open(True)
@@ -313,7 +310,8 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         """ open text editor to edit Xoptfoil2 input description"""
 
         diag = Xo2_Description_Dialog (self,self.input_file.nml_info, 
-                                         parentPos=(1.0, 0.4), dialogPos=(0,1))
+                                       is_live_update=False,
+                                       parentPos=(1.0, 0.4), dialogPos=(0,1))
         diag.sig_final_changed.connect (self.refresh_and_notify)         
         diag.show ()
 
@@ -326,11 +324,11 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         if self.optimization_options.shape_functions == Nml_optimization_options.BEZIER:
 
             diag = Xo2_Bezier_Dialog (self, getter=self.input_file.nml_bezier_options, 
-                                         parentPos=(1,0.4), dialogPos=(0,1))
+                                      live_update=False, parentPos=(1,0.4), dialogPos=(0,1))
         elif self.optimization_options.shape_functions == Nml_optimization_options.HICKS_HENNE:
 
             diag = Xo2_Hicks_Henne_Dialog (self, getter=self.input_file.nml_hicks_henne_options, 
-                                         parentPos=(1,0.4), dialogPos=(0,1))
+                                         live_update=False, parentPos=(1,0.4), dialogPos=(0,1))
 
         if diag:
             diag.sig_final_changed.connect (self.refresh_and_notify)         
@@ -424,13 +422,17 @@ class Panel_Xo2_Operating_Conditions (Panel_Xo2_Abstract):
         """ edit default polar definition"""
 
         polar_def = self.opPoint_defs.polar_def_default
-        diag = Polar_Definition_Dialog (self, polar_def, small_mode=True, parentPos=(0.9,0.1), dialogPos=(0,1))
+        diag = Polar_Definition_Dialog (self, polar_def, xfoil_fixed=True, small_mode=True, 
+                                        parentPos=(0.9,0.1), dialogPos=(0,1))
 
         diag.setWindowTitle ("Default Polar of Op Points")
-        diag.exec()
+        diag.sig_final_changed.connect (self._on_polar_def_changed)         
+        diag.show()
 
+    def _on_polar_def_changed (self, polar_def):
+        """ handle changes to the default polar definition """
         self.opPoint_defs.set_polar_def_default (polar_def)
-        self.app_model.notify_xo2_input_changed()
+        self.refresh_and_notify()
 
 
     def _edit_flap_def (self):
@@ -452,9 +454,9 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
 
         super().__init__ (*args, **kwargs)
 
+        self._suppress_edit_on_selection = False
         self.app_model.sig_xo2_input_changed.connect        (self.refresh)              # refresh list
-        self.app_model.sig_xo2_opPoint_def_selected.connect (self.refresh)              # refresh list
-        self.app_model.sig_xo2_opPoint_def_selected.connect (self._edit_opPoint_def)     # open edit dialog
+        self.app_model.sig_xo2_opPoint_def_selected.connect (self._on_opPoint_def_selected)
 
     
     @property
@@ -465,9 +467,6 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
     def cur_opPoint_def (self) -> OpPoint_Definition:
         """ current, selected opPoint def"""
         return self.app_model.cur_opPoint_def
-
-    def set_cur_opPoint_def (self, opPoint_def: OpPoint_Definition):
-        self.app_model.set_cur_opPoint_def (opPoint_def)                # will signal selected changed
 
 
     def _init_layout (self): 
@@ -503,8 +502,19 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
         """ set from labelLong - for ComboBox"""
         for opPoint_def in self.opPoint_defs:
             if opPoint_def.labelLong == aStr:
-                self.set_cur_opPoint_def (opPoint_def)
+                self._suppress_edit_on_selection = True
+                try:
+                    self.app_model.set_cur_opPoint_def (opPoint_def)              # will signal selected changed
+                finally:
+                    self._suppress_edit_on_selection = False
                 break
+
+
+    def _on_opPoint_def_selected (self):
+        """Refresh the list and open the editor for user-driven selections."""
+        self.refresh ()
+        if not self._suppress_edit_on_selection:
+            self._edit_opPoint_def ()
 
 
     def _delete_opPoint_def (self):
@@ -512,7 +522,11 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
 
         next_opPoint_def = self.opPoint_defs.delete (self.cur_opPoint_def)
 
-        self.set_cur_opPoint_def (next_opPoint_def)
+        self._suppress_edit_on_selection = True
+        try:
+            self.app_model.set_cur_opPoint_def (next_opPoint_def)              # will signal selected changed
+        finally:
+            self._suppress_edit_on_selection = False
         self.app_model.notify_xo2_input_changed()
 
 
@@ -521,7 +535,7 @@ class Panel_Xo2_OpPoint_Defs (Panel_Xo2_Abstract):
 
         next_opPoint_def = self.opPoint_defs.create_after (self.cur_opPoint_def)
 
-        self.set_cur_opPoint_def (next_opPoint_def)
+        self.app_model.set_cur_opPoint_def (next_opPoint_def)                # will signal selected changed
         self.app_model.notify_xo2_input_changed()
 
 
@@ -590,7 +604,8 @@ class Panel_Xo2_Operating_Small (Panel_Xo2_OpPoint_Defs):
         """ edit default polar definition"""
 
         polar_def = self.opPoint_defs.polar_def_default
-        diag = Polar_Definition_Dialog (self, polar_def, small_mode=True, parentPos=(0.9,0.1), dialogPos=(0,1))
+        diag = Polar_Definition_Dialog (self, polar_def, xfoil_fixed=True, small_mode=True, 
+                                        parentPos=(0.9,0.1), dialogPos=(0,1))
 
         diag.setWindowTitle ("Default Polar of Op Points")
         diag.exec()

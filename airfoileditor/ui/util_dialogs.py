@@ -179,6 +179,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
     def __init__ (self, *args, 
                   small_mode = False,                                       # with flap etc 
                   polar_type_fixed = False,                                 # change of polar type not allowed 
+                  xfoil_fixed = False,                                      # change of xfoil driver not allowed
                   fixed_chord : float = None,                               # fixed chord length in mm
                   is_new : bool = False,                                    # new polar definition, ensure changed
                   allow_transition : bool = True,                           # allow transition definition
@@ -188,6 +189,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
 
         self._small_mode        = small_mode
         self._polar_type_fixed  = polar_type_fixed
+        self._xfoil_fixed       = xfoil_fixed
         self._fixed_chord       = fixed_chord
         self._allow_transition  = allow_transition
 
@@ -222,11 +224,18 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         else:
             return None
 
+    @property
+    def drivers (self) -> list[str]:
+        """ available polar drivers"""
+        if self._xfoil_fixed:
+            return [Polar_Definition.POLAR_XFOIL]
+        return Polar_Definition.drivers()
+    
 
     @property
     def driver (self) -> str:
         """ current polar driver"""
-        if self.polar_def.is_xfoil:
+        if self.polar_def.is_xfoil or self._xfoil_fixed:
             return Polar_Definition.POLAR_XFOIL
         elif self.polar_def.is_neuralfoil:
             return Polar_Definition.POLAR_NEURALFOIL
@@ -235,7 +244,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
 
     def set_driver (self, aDriver : str):
         """ set polar driver"""
-        if aDriver == Polar_Definition.POLAR_XFOIL:
+        if aDriver == Polar_Definition.POLAR_XFOIL or self._xfoil_fixed:
             self.polar_def.set_is_xfoil (True)
         elif aDriver == Polar_Definition.POLAR_NEURALFOIL:
             self.polar_def.set_is_neuralfoil (True)
@@ -247,10 +256,12 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         r,c = 0,0 
 
         Label  (l,r,c, get="Polar driver")
-        ComboBox (l,r,c+1,  width=90, options=Polar_Definition.drivers(), colSpan=2, 
-                        obj=self, prop=Polar_Definition_Dialog.driver,
-                        disable=len(Polar_Definition.drivers()) == 1,
-                        toolTip="Select the polar driver (XFOIL or NeuralFoil) for this polar.")
+        tip = "Select the polar driver (XFOIL or NeuralFoil) for this polar." \
+                    if not self._xfoil_fixed else "Only XFOIL supported."
+        ComboBox (l,r,c+1,  width=90, options=self.drivers, colSpan=2, 
+                        get=lambda: self.driver, set=self.set_driver, 
+                        disable=self._xfoil_fixed or len(self.drivers) == 1,
+                        toolTip=tip)
         Label  (l,r,c+4, get="Model ", 
                         hide=lambda: not self.polar_def.is_neuralfoil)
         ComboBox (l,r,c+5,  width=80, colSpan=3,  
@@ -345,7 +356,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
             #                 get=self.polar_def.autoRange,
             #                 toolTip="If checked, the range of polar values is optimized by Worker\n" + 
             #                         "to cover the range from cl_min to cl_max")
-            Label  (l,2,7, get=f"Step {"al" if self.polar_def.specVar == var.ALPHA else "cl"}", colSpan=2)
+            Label  (l,2,7, get=f"Δ {"alpha" if self.polar_def.specVar == var.ALPHA else "cl"}", colSpan=2)
             _tip = "<br>The smaller the value, the smoother the polar, the more time is needed."
             _tip_a = "Step size for polar values of alpha." + _tip
             _tip_c = "Step size for polar values of cl."    + _tip
@@ -443,7 +454,9 @@ class Airfoil_Scale_Dialog (Dialog_Modeless):
                     "This also scales the Reynolds numbers of its polars,<br>" +\
                     "so airfoils can be compared at their wing section.<br>")
         r += 1
-        FieldF (l,r,c, lab="Scale to", width=60, unit="%", step=10, dec=0, lim=(5,500),
+        SpaceR (l, r, height=5, stretch=0)
+        r += 1
+        FieldF (l,r,c, lab="Scale to", width=60, unit="%", step=5, dec=0, lim=(5,500),
                 obj=self, prop=Airfoil_Scale_Dialog.scale_factor)
         r += 1
         SpaceR (l, r, height=5, stretch=0)

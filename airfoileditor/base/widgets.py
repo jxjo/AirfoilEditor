@@ -59,7 +59,7 @@ class style (Enum):
 
 
 class size (Enum):
-    HEADER         = (13, QFont.Weight.Medium) # (13, QFont.Weight.ExtraLight)
+    HEADER         = (10, QFont.Weight.Bold)
     HEADER_SMALL   = (10, QFont.Weight.DemiBold)
     NORMAL         = ( 9, QFont.Weight.Normal) 
     SMALL          = ( 7, QFont.Weight.Normal) 
@@ -1023,8 +1023,9 @@ class Label (Widget, QLabel):
         """ returns initial normal palette of self"""
 
         palette =  self.palette()
-        if not self.light_mode:                             # dark mode: make labels a little darker (not white)   
-            palette =  self.palette()
+        if self._font == size.HEADER and self.light_mode:
+            palette.setColor(QPalette.ColorRole.WindowText, QColor("#303030"))
+        elif not self.light_mode:                           # dark mode: make labels a little darker (not white)
             color = palette.color(QPalette.ColorRole.WindowText).darker (150)
             palette.setColor(QPalette.ColorRole.WindowText,color)
         return palette

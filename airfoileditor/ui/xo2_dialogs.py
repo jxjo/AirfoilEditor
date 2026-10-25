@@ -538,6 +538,7 @@ class Xo2_New_Dialog (Dialog_Modal):
         polar_def = self.opPoint_defs.polar_def_default
         diag = Polar_Definition_Dialog (self._edit_panel, polar_def, 
                                         title="Default Polar of Op Points",
+                                        xfoil_fixed = True,
                                         small_mode=True, parentPos=(1.0,0.5), dialogPos=(0,0.5))
 
         diag.sig_final_changed.connect (self._on_polar_def_default_changed)
@@ -611,7 +612,7 @@ class Xo2_New_Dialog (Dialog_Modal):
 
 
 
-class Xo2_Run_Dialog (Dialog_Modal):
+class Xo2_Run_Dialog (Dialog_Modeless):
     """ Dialog to run/watch Xoptfoil2"""
 
     _width  = (350, None)
@@ -948,6 +949,7 @@ class Xo2_Run_Dialog (Dialog_Modal):
         return l
 
 
+    @override
     def _button_box (self):
         """ returns the QButtonBox with the buttons of self"""
 
@@ -967,6 +969,18 @@ class Xo2_Run_Dialog (Dialog_Modal):
 
         return buttonBox 
 
+
+    @override
+    def _init_footer_layout(self) -> QLayout | None:
+        """ initialize the footer layout with action buttons """
+
+        l = QHBoxLayout()
+
+        button_box = self._button_box()
+        if button_box:
+            l.addWidget(button_box)
+        return l
+    
 
     def _set_buttons (self):
         """ depending on xo2 state, set panel and button visibility """
@@ -1034,6 +1048,17 @@ class Xo2_Run_Dialog (Dialog_Modal):
         self.refresh()
 
 
+    def _lock_target_widget (self):
+        """ visually lock the configured widget while self is open """
+
+        if self.case.isRunning or self._about_to_run:
+            if self._lock_overlay is None:
+                super()._lock_target_widget()
+        else:
+            if self._lock_overlay is not None:
+                self._unlock_target_widget()
+        
+
     @override
     def refresh (self, disable=None):
         """ overridden to set panel view according to state """
@@ -1042,6 +1067,9 @@ class Xo2_Run_Dialog (Dialog_Modal):
 
         for panel in self.findChildren (Edit_Panel):
             panel.refresh()
+
+        # lock/unlock parent container panel when running/stopped
+        self._lock_target_widget()
 
 
     @override
@@ -1212,7 +1240,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog_Modeless):
     Allows live changes of the opPoint definition while the dialog is open.
     """
 
-    _width  = (330, None)           # minimum needed for polar definition
+    _width  = (340, None)           # minimum needed for polar definition
 
     name = "Operating Point Definition (New)"
 
@@ -1268,7 +1296,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog_Modeless):
 
         l =  QGridLayout()
         r,c, = 0,0
-        ComboBox (l,r,c, lab="Spec", width=90,
+        ComboBox (l,r,c, lab="Spec", width=100,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.specVar,
                     options=SPEC_TYPES,
                     toolTip="Specification of this Operating Point is either based on cl or alpha")
@@ -1277,7 +1305,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog_Modeless):
                     set=lambda aVal: self.cur_opPoint_def.set_specValue_limited(aVal),
                     toolTip="Specification of this Operating Point is on the polar")
         r += 1
-        ComboBox (l,r,c, lab="Type", width=90,
+        ComboBox (l,r,c, lab="Type", width=100,
                     obj=lambda: self.cur_opPoint_def, prop=OpPoint_Definition.opt_asString,
                     options=lambda:self.cur_opPoint_def.opt_allowed_asString(),
                     toolTip="Type of optimization for this Operating Point")
@@ -1367,7 +1395,8 @@ class Xo2_OpPoint_Def_Dialog (Dialog_Modeless):
 
 
     def _titletext (self) -> str:
-        return f"Operating Point {self.cur_opPoint_def.iPoint}"
+        self.name = f"Operating Point {self.cur_opPoint_def.iPoint}"
+        return super()._titletext()
 
 
     @property
@@ -1409,6 +1438,7 @@ class Xo2_OpPoint_Def_Dialog (Dialog_Modeless):
 
         diag = Polar_Definition_Dialog (self, new_polar_def, small_mode=True, polar_type_fixed=True,
                                         title=f"Individual Polar of Op Point {self.cur_opPoint_def.iPoint}",
+                                        xfoil_fixed=True,
                                         is_new=is_new,          # ensure final changed signal
                                         parentPos=(0.6, 0.5), dialogPos=(0, 0.5))
         diag.sig_final_changed.connect (self._on_polar_def_changed)
@@ -1438,6 +1468,7 @@ class Xo2_Abstract_Options_Dialog (Dialog_Modeless):
     """ Super class dialog to edit options of namelist group """
 
 
+    @override
     def _init_footer_layout (self) -> QLayout | None:
         """ no footer layout by default for live-edit dialogs """
 
@@ -1457,6 +1488,12 @@ class Xo2_Abstract_Options_Dialog (Dialog_Modeless):
         nml.set_to_default ()
 
         self._on_widget_changed(None)  # inform model about changes
+
+    
+    @override
+    def _titletext(self) -> str | None:
+        """ optional dynamic window title - no 'live' """
+        return self.name 
 
 
 

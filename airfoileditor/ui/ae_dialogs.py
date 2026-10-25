@@ -213,8 +213,6 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
 class Blend_Airfoil_Dialog (Dialog_Modeless):
     """ Dialog to blend two airfoils into a new one"""
 
-    _width  = 560
-
     name = "Blend Airfoil with ..."
 
 
@@ -291,28 +289,29 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
 
         l = QGridLayout()
         r = 0 
-        Label  (l,r,1, colSpan=5, get="Select airfoil to blend with and adjust blending value")
+        Label  (l,r,1, colSpan=5, get="Select airfoil to blend with and adjust blending value",
+                style=style.COMMENT)
         r += 1
         SpaceR (l, r, stretch=0, height=5) 
         r += 1 
         Label  (l,r,1, get="Airfoil")
-        Label  (l,r,3, get="Blended with")
+        Label  (l,r,3, get="Blended with", lab_disable=True,
+                    disable=lambda: self.airfoil_2 is None)
         Label  (l,r,6, get="Airfoil 2")
         r += 1 
         Field  (l,r,1, get=self.airfoil_seed.fileName, width = 130)
         SpaceC (l,2, width=10, stretch=0)
         Slider (l,r,3, width=110, lim=(0,1), get=lambda: self.blendBy,
-                       set=self.set_blendBy, hide=lambda: self.airfoil_2 is None)
+                       set=self.set_blendBy, disable=lambda: self.airfoil_2 is None)
         FieldF (l,r,4, width=60,  lim=(0, 100),get=lambda: self.blendBy, step=1, unit="%", dec=0,
-                       set=self.set_blendBy, hide=lambda: self.airfoil_2 is None)
+                       set=self.set_blendBy, disable=lambda: self.airfoil_2 is None)
         SpaceC (l,5, width=10, stretch=0)
         Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
                                     get=lambda: self.airfoil_2, set=self.set_airfoil_2,
                                     addEmpty=True,                                  # do not show first airfoil in directory
                                     initialDir=self.airfoil_seed)
-        SpaceC (l,7, width=5)
         r += 1
-        SpaceR (l, r) 
+        SpaceR (l, r,stretch=0) 
 
         return l
 
