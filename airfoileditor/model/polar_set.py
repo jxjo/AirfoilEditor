@@ -118,8 +118,12 @@ class polarType (StrEnum_Extended):
 
 SPEC_ALLOWED = [var.ALPHA, var.CL]
 
-RE_SCALE_ROUND_TO  = 2000                               # round when polar is scaled down 
 MA_SCALE_ROUND_DEC = 2
+
+
+def re_scale_round_to (re: float) -> int:
+    """Reynolds grid step for a scaled polar, finer below Re 50k."""
+    return 1000 if re < 50000 else 2000
 
 
 #--- Aero constants ---------------------------------------------------------------------------
@@ -306,6 +310,7 @@ class Polar_Definition:
     def __init__(self, dataDict : dict = None):
         
         self._nf_model_size = fromDict (dataDict, "nf_model_size", None)    # None → xfoil polar
+        self._is_VLM_polar = False
         self._specVar       = None
         self._type          = None
 
@@ -399,7 +404,9 @@ class Polar_Definition:
     
     def as_copy (self) -> 'Polar_Definition':
         """ return a copy of self """
-        return Polar_Definition (dataDict=self._as_dict())
+        copied_def = Polar_Definition (dataDict=self._as_dict())
+        copied_def.set_is_VLM_polar (self.is_VLM_polar)
+        return copied_def
 
 
     @property
@@ -468,11 +475,15 @@ class Polar_Definition:
                 self.set_xtripb (self.XTRIP_DEFAULT)
 
 
+    def set_is_VLM_polar (self, aBool : bool):
+        """Set the runtime-only VLM role of this polar definition."""
+        self._is_VLM_polar = bool (aBool)
+
+
     @property
     def is_VLM_polar (self) -> bool:
-        """Return whether this is a separate forced-transition Xfoil VLM polar."""
-        return self.is_xfoil and ((self._xtript == self.XTRIP_VLM) and
-                                 (self._xtripb == self.XTRIP_VLM))
+        """Return whether this is a separate VLM polar."""
+        return self._is_VLM_polar
 
 
     @property
@@ -623,6 +634,7 @@ class Polar_Definition:
             text += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
 
         text += " - NF" if self.is_neuralfoil else " - XF"
+        text += " VLM" if self.is_VLM_polar else ""
         return text
 
 
@@ -851,13 +863,13 @@ class Polar_Set:
 
     @property
     def polars_VLM (self) -> list ['Polar']: 
-        """Return NeuralFoil polars and forced-transition Xfoil VLM polars."""
-        return [polar for polar in self.polars if polar.is_neuralfoil or polar.is_VLM_polar]
+        """Return polars explicitly designated for VLM use."""
+        return [polar for polar in self.polars if polar.is_VLM_polar]
 
 
     @property
     def polars_normal (self) -> list ['Polar']: 
-        """Return normal polars, including NeuralFoil polars shared with VLM."""
+        """Return polars not designated for VLM use."""
         return [polar for polar in self.polars if not polar.is_VLM_polar]
 
 
@@ -886,7 +898,9 @@ class Polar_Set:
         
         if len(self.polars) == len(polar_set.polars):
             for i, polar in enumerate (self.polars):
-                if not polar.is_equal_to (polar_set.polars[i], ignore_active=False):
+                other_polar = polar_set.polars[i]
+                if polar.is_VLM_polar != other_polar.is_VLM_polar or \
+                   not polar.is_equal_to (other_polar, ignore_active=False):
                     return False
         else:
             return False 
@@ -894,19 +908,18 @@ class Polar_Set:
 
 
     def ensure_polars_VLM (self):
-        """Ensure every normal Xfoil polar has a separate VLM sister."""
+        """Ensure every normal polar has a separate VLM sister."""
 
         polars_VLM    = self.polars_VLM
 
         for polar in self.polars_normal:
-            if polar.is_neuralfoil:
-                continue
             if not any (polar.is_equal_to (vlm_polar, ignore_active=True, ignore_xtrip=True)
                         for vlm_polar in polars_VLM):
                 # create VLM polar def 
-                vlm_polar_def = Polar_Definition(polar._as_dict())
+                vlm_polar_def = polar.as_copy ()
                 vlm_polar_def.set_xtript (Polar_Definition.XTRIP_VLM)
                 vlm_polar_def.set_xtripb (Polar_Definition.XTRIP_VLM)
+                vlm_polar_def.set_is_VLM_polar (True)
 
                 # add VLM polar 
                 self._add_polar_defs (vlm_polar_def, only_active=False)
@@ -963,7 +976,7 @@ class Polar_Set:
 
 
     def remove_polars_VLM (self):
-        """Remove separate Xfoil VLM polars, preserving shared NeuralFoil polars."""
+        """Remove separate VLM polars, preserving normal polars."""
         polar: Polar
         for polar in self.polars[:]: 
             if polar.is_VLM_polar:
@@ -988,10 +1001,10 @@ class Polar_Set:
 
         polars : list['Polar'] = []
         for polar in self.polars:
-            if polar.is_neuralfoil:
-                include_polar = normal or VLM
-            elif polar.is_VLM_polar:
+            if polar.is_VLM_polar:
                 include_polar = VLM
+            elif polar.is_neuralfoil:
+                include_polar = normal
             else:
                 include_polar = normal
 
@@ -1294,7 +1307,9 @@ class Polar (Polar_Definition):
             self.set_valRange   (polar_def.valRange)        # at the end to ensure correct specVar and autoRange are set first
 
             if re_scale is not None and re_scale != 1.0:                              # scale reynolds if requested
-                re_scaled = round (self.re * re_scale / RE_SCALE_ROUND_TO, 0) * RE_SCALE_ROUND_TO
+                re_target = self.re * re_scale
+                re_step = re_scale_round_to (re_target)
+                re_scaled = round (re_target / re_step, 0) * re_step
                 ma_scaled = round (self.ma * re_scale,  MA_SCALE_ROUND_DEC)
                 self.set_re (re_scaled)
                 self.set_ma (ma_scaled)
@@ -1305,6 +1320,7 @@ class Polar (Polar_Definition):
                 self.set_flap_def   (copy (polar_def.flap_def))
 
             self.set_nf_model_size  (polar_def.nf_model_size)   # neuralfoil model size - None means xfoil polar
+            self.set_is_VLM_polar   (polar_def.is_VLM_polar)
 
 
     def __repr__(self) -> str:
@@ -1644,7 +1660,10 @@ class Polar (Polar_Definition):
             y = round (y,5) if yVar == var.CD else round(y,3)
 
         elif allow_outside_range:
-            y = yVals[0] if i < 0 else yVals[-1]                    # see return values of bisection
+            if xVar == yVar:                                # e.g. alpha interpolatted in alpha 
+                y = xVal 
+            else:
+                y = yVals[0] if i < 0 else yVals[-1]        # all other cases take the boundary value
 
         else: 
             y = None

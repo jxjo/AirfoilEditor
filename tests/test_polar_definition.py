@@ -1,5 +1,76 @@
 from airfoileditor.base.common_utils import fromDict
-from airfoileditor.model.polar_set import Polar, Polar_Definition
+from airfoileditor.model.nf_driver import Neuralfoil_Evaluator
+from airfoileditor.model.polar_set import Polar, Polar_Definition, Polar_Set
+
+
+def _make_neuralfoil_polar_set(monkeypatch):
+    monkeypatch.setattr(Neuralfoil_Evaluator, "ready", True)
+    monkeypatch.setattr(Neuralfoil_Evaluator, "available_model_sizes",
+                        staticmethod(lambda: ["xlarge"]))
+    polar_def = Polar_Definition({"nf_model_size": "xlarge"})
+    return Polar_Set(None, polar_def)
+
+
+def test_vlm_flag_is_runtime_metadata_not_transition_derived():
+    polar_def = Polar_Definition()
+    polar_def.set_xtript(Polar_Definition.XTRIP_VLM)
+    polar_def.set_xtripb(Polar_Definition.XTRIP_VLM)
+
+    assert not polar_def.is_VLM_polar
+
+    polar_def.set_is_VLM_polar(True)
+
+    assert polar_def.is_VLM_polar
+    assert "is_VLM_polar" not in polar_def._as_dict()
+    assert not Polar_Definition(polar_def._as_dict()).is_VLM_polar
+    assert polar_def.as_copy().is_VLM_polar
+
+
+def test_ensure_neuralfoil_vlm_sister_is_idempotent_and_removable(monkeypatch):
+    polar_set = _make_neuralfoil_polar_set(monkeypatch)
+    normal_polar = polar_set.polars[0]
+    normal_polar.set_xtript(Polar_Definition.XTRIP_VLM)
+    normal_polar.set_xtripb(Polar_Definition.XTRIP_VLM)
+
+    polar_set.ensure_polars_VLM()
+
+    assert len(polar_set.polars) == 2
+    vlm_polar = polar_set.polars_VLM[0]
+    assert polar_set.polars_normal == [normal_polar]
+    assert vlm_polar.is_VLM_polar
+    assert vlm_polar.is_neuralfoil
+    assert vlm_polar.xtript == Polar_Definition.XTRIP_VLM
+    assert vlm_polar.xtripb == Polar_Definition.XTRIP_VLM
+    assert vlm_polar.name != normal_polar.name
+
+    polar_set.ensure_polars_VLM()
+    assert len(polar_set.polars) == 2
+
+    polar_set.remove_polars_VLM()
+    assert polar_set.polars == [normal_polar]
+    assert vlm_polar.polar_set is None
+
+
+def test_load_or_generate_selects_normal_and_vlm_neuralfoil_separately(monkeypatch):
+    polar_set = _make_neuralfoil_polar_set(monkeypatch)
+    polar_set.ensure_polars_VLM()
+    normal_polar = polar_set.polars_normal[0]
+    vlm_polar = polar_set.polars_VLM[0]
+    loaded_polars = []
+
+    def load_polar(polar):
+        loaded_polars.append(polar)
+        polar.set_error_reason("stub")
+
+    monkeypatch.setattr(Polar, "load_polar", load_polar)
+
+    polar_set.load_or_generate_polars(normal=True, VLM=False)
+    assert loaded_polars == [normal_polar]
+
+    normal_polar.unload()
+    loaded_polars.clear()
+    polar_set.load_or_generate_polars(normal=False, VLM=True)
+    assert loaded_polars == [vlm_polar]
 
 
 def test_from_dict_returns_copy_of_list_default_for_none_value():

@@ -737,14 +737,22 @@ class OpPoint_Definition:
     def get_polar_value (self, variable : var, or_target=False) -> float|None:
         """ 
         Returns an interpolated variable value in self polar of seed airfoil.
-        If 'or_target' is True and variable is the target variable, the target value is returned.
+        If 'or_target' is True, return the target value or derive CD/glide from a fixed CL.
             None if polar doesn't exist 
         """
 
-        if self.optType == OPT_TARGET and variable == self.optVar and or_target:
-            if self.optValue is  None: 
-                logger.error (f"{self} - no target value set")
-            return self.optValue                               # target (opt)value is absolute value
+        if self.optType == OPT_TARGET and or_target:
+            if variable == self.optVar:
+                return self.optValue                               # target (opt)value is absolute value
+
+            if self.specVar == var.CL and (
+                (self.optVar == var.GLIDE and variable == var.CD) or
+                (self.optVar == var.CD and variable == var.GLIDE)
+            ):
+                if self.optValue is None or self.optValue == 0.0:
+                    logger.error (f"{self} - cannot derive {variable} from missing or zero target {self.optVar}")
+                    return None
+                return self.specValue / self.optValue
 
 
         polar = self._myList.get_seed_polar (self)
