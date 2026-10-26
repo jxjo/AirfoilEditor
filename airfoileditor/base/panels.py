@@ -193,7 +193,7 @@ class Disabled_Overlay(QWidget):
         # Center an optional status text above the dimmed overlay.
         self._label = QLabel(self._text_to_show, self)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setStyleSheet("color: rgba(255, 255, 255, 140); font-size: 14pt;")
+        self._label.setStyleSheet("color: rgba(255, 255, 255, 200); font-size: 14pt;")
 
         l_main = QVBoxLayout(self)
         l_main.setContentsMargins(QMargins(0, 0, 0, 0))
@@ -201,11 +201,17 @@ class Disabled_Overlay(QWidget):
 
         self.raise_()                               # Ensure it's on top
         self.show()
-    
+
+    @override
     def resizeEvent(self, event):
         # Keep overlay covering the entire parent window
         self.resize(self.parent().size())
 
+
+    @override
+    def mouseDoubleClickEvent(self, event):
+        """ default double click event - do not react"""
+        pass
 
 
 #------------------------------------------------------------------------------
@@ -1333,6 +1339,8 @@ class Dialog_Modal (QDialog):
         super().__init__(parent, flags=flags, **kwargs)
 
         self._parent = parent
+        self._main_window : QWidget | None = None           # window watched to restore self after minimize
+        self._is_done = False                               # dialog was closed - do not restore
         self._getter = getter
 
         self._dataObject = None
@@ -1527,7 +1535,60 @@ class Dialog_Modal (QDialog):
     @override
     def done (self, r : int):
         """ handle done actions - both accept and reject"""
+        self._is_done = True
+        self._remove_main_window_filter ()
         super().done(r)
+
+
+    @override
+    def showEvent (self, event):
+        """ watch the main window to be able to restore self after it was minimized """
+        self._is_done = False
+        self._install_main_window_filter ()
+        super().showEvent (event)
+
+
+    def _install_main_window_filter (self):
+        """ watch window state changes of the (main) window self belongs to """
+
+        main_window = self._parent.window() if isinstance (self._parent, QWidget) else None
+        if main_window is None or main_window is self or main_window is self._main_window:
+            return
+        self._remove_main_window_filter ()
+        self._main_window = main_window
+        main_window.installEventFilter (self)
+
+
+    def _remove_main_window_filter (self):
+        """ stop watching the main window """
+
+        if self._main_window is not None and not sip.isdeleted (self._main_window):
+            self._main_window.removeEventFilter (self)
+        self._main_window = None
+
+
+    def _bring_to_front (self):
+        """ show self again above the main window - it could be hidden or behind after minimize """
+
+        if self._is_done or self._main_window is None or sip.isdeleted (self._main_window):
+            return
+        if self._main_window.isMinimized():
+            return
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+
+    @override
+    def eventFilter (self, watched, event):
+        """ bring self to front when the main window is restored from minimized state """
+
+        if watched is self._main_window and event.type() == QEvent.Type.WindowStateChange:
+            was_minimized = bool(event.oldState() & Qt.WindowState.WindowMinimized)
+            if was_minimized and not watched.isMinimized():
+                QTimer.singleShot (0, self._bring_to_front)
+
+        return super().eventFilter (watched, event)
 
 
 
@@ -1765,6 +1826,9 @@ class Dialog_Modeless (Dialog_Modal):
     def eventFilter (self, watched, event):
         """ close this modeless dialog if its lifecycle parent gets hidden/closed """
         if watched is self.parentWidget() and event.type() in (QEvent.Type.Hide, QEvent.Type.Close):
+            # parent is also hidden when its window is minimized - self should survive that 
+            if event.type() == QEvent.Type.Hide and watched.window().isMinimized():
+                return super().eventFilter (watched, event)
             if self.isVisible():
                 self.accept()
         return super().eventFilter (watched, event)
