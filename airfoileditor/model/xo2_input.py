@@ -1843,11 +1843,18 @@ class GeoTarget_Definition:
         return OPT_TARGET
     
     @property
-    def optVar (self): 
+    def optVar (self) -> geo_parm | None: 
         return self._optVar
-    def set_optVar (self, aVal):  
-        # allow all ..   if aVal in GEO_OPT_VARS: 
-        self._optVar = aVal 
+    
+    def set_optVar (self, aVal : geo_parm | str | None):  
+
+        if isinstance(aVal, geo_parm) or aVal is None:
+            self._optVar = aVal
+        elif isinstance(aVal, str):
+            for var in GEO_OPT_VARS:
+                if var.value == aVal:
+                    self._optVar = var
+                    break
 
     @property
     def optValue (self): 
@@ -1871,7 +1878,7 @@ class GeoTarget_Definition:
     @property
     def label (self): 
         """ short label """
-        return f"{self.optVar}:  {self.optValue_in_perc:.2f}%"
+        return f"{self.optVar.value}:  {self.optValue_in_perc:.2f}%"
 
 
 
@@ -1925,7 +1932,7 @@ class GeoTarget_Definitions (list [GeoTarget_Definition]):
 
         for geo_def in self:
 
-            target_types.append (geo_def.optVar)
+            target_types.append (geo_def.optVar.value)
             target_values.append (geo_def.optValue)
             weightings.append (geo_def._weighting)                                          # raw value (None for default)
 

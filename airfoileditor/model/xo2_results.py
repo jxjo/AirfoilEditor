@@ -622,7 +622,7 @@ class Reader_OpPoints (Reader_Abstract):
     filename = 'Design_OpPoints.csv'
     objects_text  = ('set of op results', 'sets of op results')
 
-    def _load_results (self, file_lines):
+    def _load_results (self, file_lines : list[str]):
         """ Parse file_lines and create new design objects lines of the file freshly red into 
 
         Arguments:
@@ -637,6 +637,24 @@ class Reader_OpPoints (Reader_Abstract):
         n_new = 0
         idesign_old = len(self._results)
         ops_results = []
+
+        # The file is re-read completely when it grows - skip lines of designs already loaded
+        # before doing any csv parsing (design number is always the first column 'No') 
+        header_line = None
+        first_new = len(file_lines)
+        for i, line in enumerate(file_lines):
+            first = line.partition(';')[0].strip()
+            if first.isdigit():
+                if int(first) >= idesign_old:
+                    first_new = i
+                    break
+            elif header_line is None and first == 'No':
+                header_line = line                                  # needed to know the columns
+
+        if header_line is not None:
+            file_lines = [header_line] + file_lines[first_new:]
+        else:
+            file_lines = file_lines[first_new:]
 
         rows = csv.reader(file_lines, delimiter=';', skipinitialspace=True)
         header_idx = None
