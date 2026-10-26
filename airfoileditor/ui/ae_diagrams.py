@@ -1014,7 +1014,7 @@ class Item_Airfoil (Diagram_Item):
     def setup_viewRange (self):
         """ define view range of this plotItem"""
 
-        self.viewBox.setDefaultPadding(0.05)
+        self.viewBox.setDefaultPadding(0.07)
 
         if self.stretch_y:
             self.viewBox.setAspectLocked(ratio= (1 / self.stretch_y_factor))
@@ -1028,8 +1028,6 @@ class Item_Airfoil (Diagram_Item):
             # self.viewBox.setXRange(-0.4, 1)
         else:
             self.viewBox.setXRange( 0, 1)           # then set x-Range
-
-        # self.viewBox.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
 
         self.showGrid(x=True, y=True)
 
@@ -1317,38 +1315,6 @@ Try out the functionality with this example or <strong><span style="color: silve
 #-------------------------------------------------------------------------------
 
 
-class ViewBox_Fixed (pg.ViewBox):
-    """
-    This subclass replaces the pyqtgraph ViewBox to allow skipping the first drag event
-    after a context menu interaction. This prevents sudden jumps in the view when the user
-    interacts with the context menu and pan/drags the view immediately after.
-    """
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self._skip_next_drag_start = False
-    
-    @override
-    def mouseDragEvent(self, ev, axis=None):
-        """ Skip the first drag start after menu closes to prevent jump """
-
-        if self.state['mouseMode'] == pg.ViewBox.PanMode:
-            if self._skip_next_drag_start and ev.isStart():
-                ev.accept()
-                self._skip_next_drag_start = False
-                return
-        
-        # Normal processing
-        super().mouseDragEvent(ev, axis)
-
-
-    def set_skip_next_drag(self, skip: bool):
-        """ Set whether to skip the next drag start event """
-        self._skip_next_drag_start = skip
-
-
-
 class Item_Polars (Diagram_Item):
     """ 
     Diagram (Plot) Item for polars 
@@ -1369,10 +1335,7 @@ class Item_Polars (Diagram_Item):
         self._popup_menu  = None                        # popup menu for variable selection
         self._popup_menu_is_open = False
 
-        # Create custom ViewBox - see ViewBox_Fixed class for infos
-        custom_viewbox = ViewBox_Fixed(enableMenu=False)   # parent=self, 
-
-        super().__init__(*args, viewBox=custom_viewbox, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # connect to model signals
 

@@ -933,7 +933,7 @@ class Artist(QObject):
 
     name = "Abstract Artist" 
 
-    SIZE_HEADER         = 14                            # size in pt 
+    SIZE_HEADER         = 13                            # size in pt 
     SIZE_HEADER_SMALL   = 11                            
     SIZE_NORMAL         = 10 
 

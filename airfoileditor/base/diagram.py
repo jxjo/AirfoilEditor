@@ -452,6 +452,51 @@ class Diagram (QWidget):
 # -----------------------------------------------------------------------------------
 
 
+class ViewBox_Fixed (pg.ViewBox):
+    """
+    pyqtgraph ViewBox with fixes for sudden jumps of the view range while zooming and panning:
+
+    - the view transform (pixel -> data) is updated lazily on the next paint. A wheel or drag 
+      event arriving before that paint would use the outdated transform of the previous zoom step.
+      Therefore the transform is brought up to date before handling these events.
+    - allows skipping the first drag event after a context menu interaction, when the user 
+      pans the view immediately after.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._skip_next_drag_start = False
+
+
+    @override
+    def wheelEvent(self, ev, axis=None):
+        """ ensure up-to-date view transform before zooming """
+
+        self.updateMatrix()
+        super().wheelEvent(ev, axis)
+
+    
+    @override
+    def mouseDragEvent(self, ev, axis=None):
+        """ ensure up-to-date view transform before panning, skip first drag start after menu closes """
+
+        if self.state['mouseMode'] == pg.ViewBox.PanMode:
+            if self._skip_next_drag_start and ev.isStart():
+                ev.accept()
+                self._skip_next_drag_start = False
+                return
+
+        self.updateMatrix()
+        super().mouseDragEvent(ev, axis)
+
+
+    def set_skip_next_drag(self, skip: bool):
+        """ Set whether to skip the next drag start event """
+        self._skip_next_drag_start = skip
+
+
+
 class Diagram_Item (pg.PlotItem):
     """ 
     Abstract PlotItem  
@@ -481,6 +526,9 @@ class Diagram_Item (pg.PlotItem):
                  dataObject = None, 
                  show = True,                           # show initially 
                  **kwargs):
+
+        if kwargs.get ('viewBox') is None:
+            kwargs['viewBox'] = ViewBox_Fixed (enableMenu=False)
 
         super().__init__(name=self.name,                # to link view boxes 
                          **kwargs)
