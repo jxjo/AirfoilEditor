@@ -9,7 +9,7 @@ All abstract diagram items to build a complete diagram view
 
 import logging
 from time               import monotonic
-from typing             import override, Type
+from typing             import override, Type, Hashable
 
 from PyQt6.QtCore       import QMargins, pyqtSignal, QTimer
 from PyQt6.QtWidgets    import QVBoxLayout, QHBoxLayout, QGraphicsGridLayout
@@ -19,7 +19,7 @@ from PyQt6.QtGui        import QColor
 import pyqtgraph as pg                          # import PyQtGraph after PyQt6
 
 from .common_utils      import *
-from .panels            import Edit_Panel, Container_Panel
+from .panels            import Edit_Panel, Container_Panel, add_section_caption
 from .widgets           import Widget
 from .artist            import Artist, Text_Button
 
@@ -346,6 +346,9 @@ class Diagram (QWidget):
         # build side view panel with the section panels 
 
         l = QVBoxLayout()
+
+        add_section_caption (l, "Diagrams")
+
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
         for item in self.diagram_items:
             if item.section_panel is not None: 
@@ -506,8 +509,8 @@ class Diagram_Item (pg.PlotItem):
     """
 
     name        = "Abstract Diagram_Item"               # used for link and section header
-    title       = "The Title"                           # title of diagram item
-    subtitle    = "my subtitle"                         # optional subtitle 
+    title       = "name"                                # ... will use name as title if None    
+    subtitle    = None                                  # optional subtitle 
 
     min_width   = 300                                   # min size needed - see below 
     min_height  = 150 
@@ -515,6 +518,10 @@ class Diagram_Item (pg.PlotItem):
     show_buttons = True                                 # show reset buttons
     show_coords  = True                                 # show mouse coordinates
     help_message_min_show_time = 2.0                    # seconds before repeated signal may hide message
+
+    # kinds (classes) of message sources whose help message was shown at least once - 
+    #   class wide, so a message is shown only once even if there are several items (e.g. two polar diagrams)
+    _help_messages_shown : set = set()
 
     # Signals 
 
@@ -548,7 +555,7 @@ class Diagram_Item (pg.PlotItem):
 
         self._help_messages         = {}                # current help messages which are shown
         self._help_messages_since   = {}                # timestamp when help message became visible
-        self._help_messages_shown   = set()             # artists whose help message was shown at least once
+        self._help_messages_anchor  = {}                # optional individual anchor of a help message
         self._help_message_items    = {}
 
         # Replace PlotItem auto icon button with our own Text_Button
@@ -649,14 +656,21 @@ class Diagram_Item (pg.PlotItem):
             artist.set_show (show, refresh=refresh)            
 
 
-    def _on_help_message (self, aArtist :Artist | None, aMessage: str | None):
+    def _on_help_message (self, aArtist : Hashable | None, aMessage: str | None, anchor : dict | None = None):
         """Handle help-message signal updates and refresh help labels.
 
+        The source of a message is normally an Artist - but could be any hashable like self 
+        (e.g. for a message about a button of the item which is not an artist).
+
         Behavior is intentionally strict:
-        - First non-empty message from an artist is shown.
-        - Next non-empty message from the same artist hides the message.
-        - Once an artist has shown a message, later non-empty signals do not re-show
+        - First non-empty message from a source is shown.
+        - Next non-empty message from the same source hides the message.
+        - Once a source has shown a message, later non-empty signals do not re-show
           it unless history is explicitly reset.
+
+        Args:
+            anchor: optional position of the message instead of the default stack position 
+                    like {'parentPos': (0,0), 'itemPos': (0,0), 'offset': (60,35)}
         """
 
         # if aArtist:
@@ -664,11 +678,24 @@ class Diagram_Item (pg.PlotItem):
         # else:
         #     logger.warning (f"{self} on_help  -> refresh ")
 
-        self._update_help_message_state (aArtist, aMessage)
+        self._update_help_message_state (aArtist, aMessage, anchor)
         self._render_help_messages ()
 
 
-    def _update_help_message_state (self, aArtist : Artist | None, aMessage: str | None):
+    def help_message_was_shown (self, aSource : Hashable) -> bool:
+        """ was a help message of this kind of source (its class) already shown - by any item """
+        return type(aSource) in Diagram_Item._help_messages_shown
+
+
+    def _drop_help_message (self, aArtist):
+        """Remove the message of a source from the internal state."""
+
+        self._help_messages.pop (aArtist, None)
+        self._help_messages_since.pop (aArtist, None)
+        self._help_messages_anchor.pop (aArtist, None)
+
+
+    def _update_help_message_state (self, aArtist : Hashable | None, aMessage: str | None, anchor : dict | None = None):
         """Apply one help-message signal to the internal message state."""
 
         # Could be called without artist -> refresh only.
@@ -676,21 +703,21 @@ class Diagram_Item (pg.PlotItem):
             return
 
         if not aMessage:
-            self._help_messages.pop (aArtist, None)
-            self._help_messages_since.pop (aArtist, None)
+            self._drop_help_message (aArtist)
             return
 
-        if aArtist in self._help_messages_shown:
+        if self.help_message_was_shown (aArtist):
             t0 = self._help_messages_since.get (aArtist, 0.0)
             if aArtist in self._help_messages and monotonic() - t0 < self.help_message_min_show_time:
                 return
-            self._help_messages.pop (aArtist, None)
-            self._help_messages_since.pop (aArtist, None)
+            self._drop_help_message (aArtist)
             return
 
         self._help_messages[aArtist] = aMessage
         self._help_messages_since[aArtist] = monotonic()
-        self._help_messages_shown.add (aArtist)
+        Diagram_Item._help_messages_shown.add (type(aArtist))
+        if anchor:
+            self._help_messages_anchor[aArtist] = anchor
 
 
     def _clear_help_message_items (self):
@@ -708,18 +735,25 @@ class Diagram_Item (pg.PlotItem):
 
         i = 0
         for artist, message in self._help_messages.items():
-            parentPos = (0.3,0.03)                                      # parent x starts at PlotItem (including axis)
-            itemPos   = (0.0,0.0)
-            y_offset  = i * 20
 
-            p1 = pg.LabelItem(f"- {message}", color=Artist.COLOR_HELP, size=f"{Artist.SIZE_NORMAL}pt")
+            anchor : dict = self._help_messages_anchor.get (artist)
+            if anchor:
+                parentPos = anchor.get ('parentPos', (0.0,0.0))
+                itemPos   = anchor.get ('itemPos',   (0.0,0.0))
+                offset    = anchor.get ('offset',    (0,0))
+            else:
+                parentPos = (0.4,0.03)                                  # parent x starts at PlotItem (including axis)
+                itemPos   = (0.0,0.0)
+                offset    = (0, i * 20)                                 # stack messages without own anchor
+                i += 1
+
+            p1 = pg.LabelItem(f"{message}", color=Artist.COLOR_HELP, size=f"{Artist.SIZE_SMALL}pt")
 
             p1.setParentItem(self)                                      # add to self (Diagram Item) for absolute position
-            p1.anchor(itemPos=itemPos, parentPos=parentPos, offset=(0,y_offset))
+            p1.anchor(itemPos=itemPos, parentPos=parentPos, offset=offset)
             p1.setZValue(5)
 
             self._help_message_items[artist] = p1
-            i += 1
 
 
     def _remove_help_messages (self, reset_history: bool = True):
@@ -732,9 +766,10 @@ class Diagram_Item (pg.PlotItem):
         self._clear_help_message_items ()
         self._help_messages = {}
         self._help_messages_since = {}
+        self._help_messages_anchor = {}
 
         if reset_history:
-            self._help_messages_shown = set()
+            Diagram_Item._help_messages_shown.clear ()
 
 
     def set_desired_xLink_name (self, aName : str | None):
@@ -1075,8 +1110,12 @@ class Diagram_Item (pg.PlotItem):
         """
 
         if title is None:
-            if not self.title: return                       # show no title  
-            title = self.title
+            if self.title == "name":
+                title = self.name
+            elif self.title is not None:
+                title = self.title
+            else: 
+                return
 
         if title_size is None:
             title_size = Artist.SIZE_HEADER  

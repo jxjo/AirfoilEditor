@@ -5,7 +5,6 @@
 Helper classes, dialogs, functions for an App
 """
 import os
-import requests
 
 from packaging.version      import Version                                  # has to be installed
 
@@ -131,6 +130,8 @@ class Update_Checker:
     - Inform User
     """
 
+    REQUEST_TIMEOUT = 3                         # seconds to wait for PyPI - startup must not hang when offline
+
     def __init__ (self, parent : QWidget, app_name : str, package_name : str, current_version : str):
 
         self._app_name = app_name
@@ -157,8 +158,11 @@ class Update_Checker:
         """
         latest_version = ""
 
+        # imported here: only needed once a day - saves startup time when version info is already cached
+        import requests
+
         try: 
-            response = requests.get(f'https://pypi.org/pypi/{package_name}/json')
+            response = requests.get(f'https://pypi.org/pypi/{package_name}/json', timeout=self.REQUEST_TIMEOUT)
 
             if response.status_code == 200:             # http     
                 latest_version = response.json()['info']['version']
@@ -173,8 +177,14 @@ class Update_Checker:
             self._settings.set("update_latest_version", latest_version)
             self._settings.save()
 
-        except: 
-            pass
+        except Exception as e: 
+
+            # e.g. no internet connection: keep the last known version but remember the attempt - 
+            #   otherwise every start would wait for the timeout again
+            logger.debug (f"Version check on PyPI failed: {type(e).__name__}")
+            latest_version = self._settings.get ("update_latest_version", "") or ""
+            self._settings.set("update_last_check", str(date.today()))
+            self._settings.save()
 
         return latest_version
 

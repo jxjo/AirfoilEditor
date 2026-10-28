@@ -419,6 +419,17 @@ class Panel_Abstract (QWidget):
 
 #-------------------------------------------
 
+def add_section_caption (layout : QVBoxLayout, text : str) -> Label:
+    """ 
+    Add a small caption between the panels of a view panel layout, e.g. "DIAGRAMS" 
+    to separate common panels (above) from panels of the individual diagrams 
+    """
+
+    caption = Label (layout, get=text.upper(), fontSize=size.SMALL)
+    caption.setContentsMargins (10, 0, 0, 0)
+    return caption
+
+
 class Container_Panel (Panel_Abstract):
     """ 
     Panel as container for other (Edit) panels  
@@ -570,9 +581,9 @@ class Edit_Panel (Panel_Abstract):
         # set background color depending light/dark mode
 
         if Widget.light_mode:
-            self.set_background_color (darker_factor = 90)   #104              # make it darker 
+            self.set_background_color (darker_factor = 90)              # make it darker 
         else: 
-            self.set_background_color (darker_factor = 80)                  # make it lighter 
+            self.set_background_color (darker_factor = 70)              # make it lighter 
 
         # title layout - with optional on/off switch 
 

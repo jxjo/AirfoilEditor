@@ -149,7 +149,7 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
         l_head.addStretch(1)
         if Xoptfoil2.ready:
             Label  (l_head, get=f"{Xoptfoil2.NAME} {Xoptfoil2.version}", 
-                    style=style.COMMENT, fontSize=size.SMALL, align=Qt.AlignmentFlag.AlignBottom)
+                    fontSize=size.SMALL, align=Qt.AlignmentFlag.AlignBottom)
         ToolButton   (l_head, icon=Icon.EXPAND, set=self.sig_toggle_panel_size.emit,
                       toolTip='Minimize lower panel -<br>Alternatively, you can double click on the lower panels')
 
@@ -171,7 +171,7 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
         Button      (l,r,c+2, width=80, text="New ...", set=self.sig_new.emit,
                         toolTip="Create a new input file")
         r += 1
-        Button      (l,r,c, width=100, text="&Run Xoptfoil2", button_style = button_style.PRIMARY,
+        Button      (l,r,c, width=100, text="&Run ...", button_style = button_style.PRIMARY,
                         set=self._open_run_dialog, toolTip="Run Optimizer Xoptfoil2")        
         r += 1
         l.setRowStretch (r,2)
@@ -240,7 +240,7 @@ class Panel_Xo2_File_Small (Panel_Xo2_File):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Button      (l,r,c, width=100, text="&Run Xoptfoil2", button_style = button_style.PRIMARY,
+        Button      (l,r,c, width=100, text="&Run ...", button_style = button_style.PRIMARY,
                         set=self._open_run_dialog, toolTip="Run Optimizer Xoptfoil2")        
         ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
                         toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')

@@ -936,11 +936,12 @@ class Artist(QObject):
     SIZE_HEADER         = 13                            # size in pt 
     SIZE_HEADER_SMALL   = 11                            
     SIZE_NORMAL         = 10 
+    SIZE_SMALL          = 8
 
     COLOR_HEADER        = "whitesmoke"
     COLOR_NORMAL        = "silver"
     COLOR_LEGEND        = "darkgray"
-    COLOR_HELP          = QColor ('deepskyblue').darker(120)
+    COLOR_HELP          = QColor ("#1B73CB")          # darker dodgerblue
 
     show_mouse_helper_default   = True                  # global setting to show mouse helper points
 

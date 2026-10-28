@@ -51,18 +51,19 @@ class style (Enum):
 
                   #  light dark
     NORMAL        = (None, None)
-    COMMENT       = ("dimgray","gray")  
+    COMMENT       = ("#505050","#909090")  
     ERROR         = ('red', 'red')
-    HINT          = ("dodgerblue", "dodgerblue")
+    HINT          = ("#1768B9", "#1768B9")          # darker dodgerblue
     WARNING       = ('orange','orange')
     GOOD          = ('mediumspringgreen','mediumspringgreen')
+    HEADER        = ("#404040", "#D0D0D0")
 
 
 class size (Enum):
-    HEADER         = (10, QFont.Weight.Bold)
-    HEADER_SMALL   = (10, QFont.Weight.DemiBold)
-    NORMAL         = ( 9, QFont.Weight.Normal) 
-    SMALL          = ( 7, QFont.Weight.Normal) 
+    HEADER         = (10, QFont.Weight.Bold,     style.HEADER)
+    HEADER_SMALL   = ( 9, QFont.Weight.Bold,     style.HEADER)
+    NORMAL         = ( 9, QFont.Weight.Normal,   style.NORMAL) 
+    SMALL          = ( 7, QFont.Weight.Normal,   style.COMMENT) 
 
 ALIGN_RIGHT         = Qt.AlignmentFlag.AlignRight
 ALIGN_LEFT          = Qt.AlignmentFlag.AlignLeft
@@ -268,7 +269,7 @@ class Widget:
                  id = None,
                  disable = None, 
                  hide = None,                           
-                 style = style.NORMAL,                  # color style 
+                 style = None,                          # color style - default is style of fontSize 
                  styleRole = QPalette.ColorRole.Base,   # default apply style to background
                  fontSize = size.NORMAL,
                  toolTip = None,
@@ -350,10 +351,10 @@ class Widget:
 
         # style of widget 
 
-        self._style_getter = style 
+        self._font = fontSize
+        self._style_getter = style if style is not None else fontSize.value[2]      # default style of the size enum
         self._style = None 
         self._style_role = styleRole                        # apply to background or text 
-        self._font = fontSize
 
         self._palette_normal = self._initial_palette()      # will be copy of palette - for style reset  
 
@@ -823,6 +824,29 @@ class Widget:
 
             self._update_palette (palette, autoFill=autoFill)                     
 
+        elif aStyle == style.HEADER:
+
+            # text color of the size enum - independent of the color role (which is for background styles)
+
+            index = self.LIGHT_INDEX if self.light_mode else self.DARK_INDEX
+
+            color          = QColor (aStyle.value[index])
+            color_disabled = QColor (color)
+            color_disabled.setAlphaF (0.5)
+
+            if self._palette_normal is None: 
+                palette =  self._initial_palette ()
+                self._palette_normal = palette if palette else self.palette()
+
+            palette =  QPalette (self._palette_normal)          # copy normal palette 
+            # not ColorRole.Text: Fusion draws the check mark of a checkbox with it (darkened) - would dim the tick
+            for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText):
+                palette.setColor(QPalette.ColorGroup.Active,   role, color)
+                palette.setColor(QPalette.ColorGroup.Inactive, role, color)
+                palette.setColor(QPalette.ColorGroup.Disabled, role, color_disabled)
+
+            self._update_palette (palette, autoFill=False)                     
+
         elif aStyle == style.NORMAL :
 
             self._reset_palette ()
@@ -1023,9 +1047,7 @@ class Label (Widget, QLabel):
         """ returns initial normal palette of self"""
 
         palette =  self.palette()
-        if self._font == size.HEADER and self.light_mode:
-            palette.setColor(QPalette.ColorRole.WindowText, QColor("#303030"))
-        elif not self.light_mode:                           # dark mode: make labels a little darker (not white)
+        if not self.light_mode:                             # dark mode: make labels a little darker (not white)
             color = palette.color(QPalette.ColorRole.WindowText).darker (150)
             palette.setColor(QPalette.ColorRole.WindowText,color)
         return palette
@@ -1547,7 +1569,7 @@ class Button (Widget, QPushButton):
         palette =  self.palette()
         if not self.light_mode:                             # dark mode: make labels a little darker (not white)   
             palette =  self.palette()
-            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (110)
             palette.setColor(QPalette.ColorRole.ButtonText,color)
         return palette
 
@@ -1622,6 +1644,17 @@ class ToolButton (Widget, QToolButton):
         # get a nice print string 
         text = f" '{str(self._icon_name)}'" if self._icon_name is not None else ''
         return f"<{type(self).__name__}{text}>"
+
+
+    @override
+    def _initial_palette(self) -> QPalette | None:
+        """ returns initial normal palette of self"""
+
+        palette =  self.palette()
+        if not self.light_mode:                             # dark mode: make text a little darker (not white) - like Button
+            for role in (QPalette.ColorRole.ButtonText, QPalette.ColorRole.WindowText):
+                palette.setColor(role, palette.color(role).darker (110))
+        return palette
 
 
     @override
@@ -1873,10 +1906,12 @@ class ComboBox (Field_With_Label, QComboBox):
         """ returns initial normal palette of self"""
 
         palette =  self.palette()
-        if not self.light_mode:                             # dark mode: make text a little darker (not white)   
+        if not self.light_mode:                             # dark mode: make text and background a little darker 
             palette =  self.palette()
             color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
             palette.setColor(QPalette.ColorRole.ButtonText,color)
+            color = palette.color(QPalette.ColorRole.Button).darker (130)
+            palette.setColor(QPalette.ColorRole.Button,color)
         return palette
 
 
@@ -1966,10 +2001,12 @@ class ComboSpinBox (Field_With_Label, QComboBox):
         """ returns initial normal palette of self"""
 
         palette =  self.palette()
-        if not self.light_mode:                             # dark mode: make text a little darker (not white)   
+        if not self.light_mode:                             # dark mode: make text and background a little darker 
             palette =  self.palette()
             color = palette.color(QPalette.ColorRole.ButtonText).darker (120)
             palette.setColor(QPalette.ColorRole.ButtonText,color)
+            color = palette.color(QPalette.ColorRole.Button).darker (130)
+            palette.setColor(QPalette.ColorRole.Button,color)
         return palette
 
 

@@ -112,7 +112,7 @@ class Diagram_Item_Design_Radius (Diagram_Item):
 
     @override
     def plot_title(self):
-        super().plot_title (title=self.title, title_size=8, title_color=Artist.COLOR_LEGEND,offset= (10,-10))
+        super().plot_title (title=self.title, title_size=Artist.SIZE_SMALL, title_color=Artist.COLOR_LEGEND,offset= (10,-10))
 
 
     @override
@@ -159,7 +159,7 @@ class Diagram_Item_Improvement (Diagram_Item):
 
     @override
     def plot_title(self):
-        super().plot_title (title=self.title, title_size=8, title_color=Artist.COLOR_LEGEND,offset= (10,-10))
+        super().plot_title (title=self.title, title_size=Artist.SIZE_SMALL, title_color=Artist.COLOR_LEGEND,offset= (10,-10))
 
 
     @override
