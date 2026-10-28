@@ -8,13 +8,13 @@ Handle export of a single airfoil to external file formats.
 """
 
 import logging
-import os
 import shutil
+from pathlib import Path
 
 from typing import override
 
 from airfoileditor.base.dxf_artist          import *
-from airfoileditor.base.common_utils        import PathHandler, fromDict, toDict
+from airfoileditor.base.common_utils        import relative_path, absolute_path, fromDict, toDict
 from airfoileditor.model.airfoil            import Airfoil, Flap_Definition
 from airfoileditor.model.geometry_curve     import Geometry_Curve
 
@@ -206,7 +206,7 @@ class Export_Abstract:
 
 
     def set_export_dir(self, newStr: str):
-        export_dir = PathHandler(workingDir=self._working_dir).relFilePath(newStr)
+        export_dir = relative_path(newStr, self._working_dir)
         if export_dir != self.export_dir_default:
             self._export_dir = export_dir
         else:
@@ -215,7 +215,7 @@ class Export_Abstract:
 
     @property
     def export_dir_abs(self) -> str:
-        return PathHandler(workingDir=self._working_dir).fullFilePath(self.export_dir)
+        return absolute_path(self.export_dir, self._working_dir)
 
 
     @property
@@ -229,17 +229,18 @@ class Export_Abstract:
 
     def _as_dict(self) -> dict:
         d = {}
-        export_dir = self._export_dir.replace(os.sep, "/") if self._export_dir else None
+        export_dir = Path(self._export_dir).as_posix() if self._export_dir else None
         toDict(d, "export_dir", export_dir)
         return d
 
 
     def _ensure_export_dir(self):
-        if self.clear_export_dir and os.path.isdir(self.export_dir_abs):
-            shutil.rmtree(self.export_dir_abs, ignore_errors=True)
+        export_dir_abs = Path(self.export_dir_abs)
 
-        if not os.path.exists(self.export_dir_abs):
-            os.makedirs(self.export_dir_abs)
+        if self.clear_export_dir and export_dir_abs.is_dir():
+            shutil.rmtree(export_dir_abs, ignore_errors=True)
+
+        export_dir_abs.mkdir(parents=True, exist_ok=True)
 
 
 
@@ -332,7 +333,7 @@ class Export_Airfoil_Dxf (Export_Abstract):
 
     @property
     def export_pathFileName_abs(self) -> str:
-        return os.path.join(self.export_dir_abs, self.export_fileName)
+        return str(Path(self.export_dir_abs) / self.export_fileName)
 
 
     def do_it(self, drawing = None) -> str:

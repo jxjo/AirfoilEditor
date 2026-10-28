@@ -8,7 +8,6 @@
 
 import pytest
 import numpy as np 
-import os
 
 # -> pyproject.toml
 # pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
@@ -20,7 +19,7 @@ from airfoileditor.model.geometry_spline  import Geometry_Splined, Curvature_of_
 from airfoileditor.model.geometry_bezier  import Geometry_Bezier
 from airfoileditor.model.geometry_curve   import Curvature_of_Curve
 from airfoileditor.model.xo2_driver       import Worker
-from airfoileditor.base.common_utils      import PathHandler
+from airfoileditor.base.common_utils      import relative_path
 
 
 # temp_dir will be injected by pytest in the arguments of test functions
@@ -281,12 +280,12 @@ class Test_Airfoil:
 
         # test abs and rel path 
 
-        absPathFileName = os.path.abspath(newPathFileName)
+        absPathFileName = str(Path(newPathFileName).absolute())
         new_airfoil = Airfoil (pathFileName=absPathFileName)
         new_airfoil.load()
 
         workingDir = Path.cwd()
-        relPath    = PathHandler(workingDir=workingDir).relFilePath (absPathFileName)
+        relPath    = relative_path (absPathFileName, workingDir)
         new_airfoil = Airfoil (workingDir=workingDir, pathFileName=relPath)
         new_airfoil.load()
 

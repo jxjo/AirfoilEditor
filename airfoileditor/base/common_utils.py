@@ -274,7 +274,7 @@ class Parameters (dict):
     def delete_file (self):
         """ deletes the parameter file of self """
         try:
-            os.remove (self.pathFileName)
+            Path (self.pathFileName).unlink()
             self.clear()
             logger.debug (f"Parameter file '{self.pathFileName}' deleted")
         except Exception as e:
@@ -286,94 +286,28 @@ class Parameters (dict):
 # File, Path handling 
 #------------------------------------------------------------------------------
 
-class PathHandler(): 
-    """ handles relative Path of actual files to a workingDir """
-
-    def __init__ (self, workingDir=None, onFile=None): 
-        """  PathHandler for working directory either from 'workingDir' directly or based 'onFile' """
-        self._workingDir = None
-
-        if workingDir is not None: 
-           self.workingDir = workingDir 
-        elif onFile is not None:
-           self.set_workingDirFromFile (onFile)
-
-    @classmethod
-    def relPath(cls, pathFilename, start = None):
-        """Return a relative version of a path - like os.path.relpath - but checks for same drive
-
-        Args:
-            :start: start dir - default: cwd (current working Dir)
-        """
-        if start is None: start = os.getcwd()
-
-        if Path(pathFilename).anchor == Path(start).anchor: 
-            relPath = os.path.relpath(pathFilename, start = start)
-        else: 
-            relPath = pathFilename
-        return relPath  
-
-
-    @property 
-    def workingDir (self):
-        return self._workingDir if (not self._workingDir is None) else ''
+def relative_path (path : str | Path | None, start : str | Path | None = None) -> str | None:
+    """ 
+    Returns 'path' relative to 'start' (default: cwd) as string. 
+    Returns 'path' unchanged if it's on a different drive or if the relative path would be longer.
+    """
+    if path is None: 
+        return None
     
-    @property 
-    def workingDir_name (self): 
-        """ the directory name of workingDir """
-        return os.path.basename(os.path.normpath(self.workingDir))
+    abs_path = Path(path).absolute()
+    abs_start = Path(start).absolute() if start else Path.cwd()
+
+    try: 
+        rel = str(abs_path.relative_to (abs_start, walk_up=True))
+    except ValueError:                                  # different drive
+        return str(path)
     
-    @workingDir.setter
-    def workingDir (self, newDir):
+    return str(path) if len(rel) > len(str(path)) else rel
 
-        if newDir is None: 
-            self._workingDir = os.getcwd ()      # if no directory set, take current working Dir 
-        elif not newDir: 
-            self._workingDir = os.getcwd ()      # if no directory set, take current working Dir 
-        elif not os.path.isdir(newDir): 
-            os.makedirs(newDir)  
-            self._workingDir = os.path.normpath(newDir)    
-        else: 
-            self._workingDir = os.path.normpath(newDir) 
 
-    def set_workingDirFromFile (self, aFilePath):
-
-        if aFilePath is None: 
-            self.workingDir = None
-        elif not aFilePath: 
-            self.workingDir = os.getcwd ()      # if no directory set, take current working Dir 
-        else: 
-            self.workingDir = os.path.dirname(aFilePath) 
-            if not os.path.isdir(self.workingDir):
-                os.makedirs(self.workingDir)
-
-    def relFilePath (self, aFilePath):
-        """ returns the relative path of aFilePath to the workingDir of self"""
-        if aFilePath is None: 
-            return None
-        else: 
-            try: 
-                relPath =  os.path.normpath(os.path.relpath(aFilePath, start = self.workingDir))
-                if len(relPath) > len(aFilePath): 
-                    return aFilePath                # relPath would be more complicated
-                else: 
-                    return relPath 
-            except:                                 # aFilePath is on different drive 
-                return aFilePath 
-    
-    def fullFilePath (self, aRelPath):
-        """ returns the full path of relative aRelPath and the workingDir of self"""
-
-        if aRelPath is None: 
-            return self.workingDir
-        else: 
-            if os.path.isabs (aRelPath): 
-                # maybe we can make a rel path out of it? 
-                newPath = self.relFilePath (aRelPath)
-                if os.path.isabs (newPath):
-                    return aRelPath                 # we surrender - it's absolute
-                else: 
-                    aRelPath = newPath              # now we have a real rel path 
-            return os.path.normpath(os.path.join (self.workingDir, aRelPath))
+def absolute_path (path : str | Path, start : str | Path | None = None) -> str:
+    """ Returns 'path' as normalized absolute path. A relative 'path' is based on 'start' (default: cwd) """
+    base = Path(start) if start else Path.cwd()
+    return os.path.normpath (base / path)           # pathlib can't collapse '..' lexically
 
 

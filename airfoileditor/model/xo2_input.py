@@ -10,7 +10,6 @@
                                           
 """
 
-import os
 from numbers                import Real
 from operator               import attrgetter
 from pathlib                import Path
@@ -49,12 +48,12 @@ class Input_File:
         All .inp and .xo2 files are collected 
         """
 
-        if workingDir is None or not os.path.isdir (workingDir): return []
+        if workingDir is None or not Path (workingDir).is_dir(): return []
 
         input_files = []
 
-        for file in os.listdir(workingDir):
-            extension = os.path.splitext(file)[1]
+        for file in (p.name for p in Path (workingDir).iterdir()):
+            extension = Path(file).suffix
             if not extension.lower() in Input_File.INPUT_FILE_EXT:
                 continue
             if file.startswith("tmp~") :                         # ignore temporary polar generation files
@@ -71,10 +70,10 @@ class Input_File:
 
         if not pathFileName_abs: return False
 
-        fileName_ext = os.path.splitext(pathFileName_abs)[1]
+        fileName_ext = Path(pathFileName_abs).suffix
         for ext in Input_File.INPUT_FILE_EXT:
             if ext.lower() == fileName_ext.lower():
-                return os.path.isfile (pathFileName_abs)
+                return Path (pathFileName_abs).is_file()
         return False
 
 
@@ -83,8 +82,8 @@ class Input_File:
         """ returns fileName of xo2 input file belonging to airfoil - or None if not existing"""
 
         for extension in Input_File.INPUT_FILE_EXT:
-            pathFileName = os.path.join (airfoil.pathName_abs, airfoil.fileName_stem + extension)
-            if os.path.isfile (pathFileName):
+            pathFileName = Path (airfoil.pathName_abs) / (airfoil.fileName_stem + extension)
+            if pathFileName.is_file():
                 return airfoil.fileName_stem + extension
         return None 
 
@@ -100,10 +99,10 @@ class Input_File:
 
         new_fileName = None 
 
-        if os.path.isfile (os.path.join (workingDir, input_fileName)):
+        if (Path (workingDir) / input_fileName).is_file():
 
             fileName_stem = Path(input_fileName).stem
-            fileName_ext  = os.path.splitext(input_fileName)[1]
+            fileName_ext  = Path(input_fileName).suffix
 
             # already a version number appended to fileName?
             digits =""
@@ -116,7 +115,7 @@ class Input_File:
                 new_fileName = input_fileName
                 new_version  = int(digits)
                 # loop until unused version number is found 
-                while os.path.isfile (os.path.join (workingDir, new_fileName)):
+                while (Path (workingDir) / new_fileName).is_file():
                     new_version +=  1
                     new_fileName = f"{fileName_stem[:i+1]}{new_version}{fileName_ext}"
             
@@ -134,8 +133,8 @@ class Input_File:
         """
         """
         if not workingDir and fileName:                                         # ensure fileName is just basename
-            workingDir = os.path.dirname(fileName)
-            fileName   = os.path.basename(fileName)
+            workingDir = str (Path(fileName).parent)
+            fileName   = Path(fileName).name
 
         self._workingDir = workingDir                                           # working dir of optimizer
         self._fileName   = fileName
@@ -143,11 +142,11 @@ class Input_File:
         self._parse_error_text = None                                           # parse/load error text
         self._migration_warnings = []                                           # one-time migration notes for UI
 
-        if not os.path.exists (self.pathFileName) and not is_new:
+        if not Path (self.pathFileName).exists() and not is_new:
             raise ValueError (f"Input file '{self.pathFileName}' doesn't exist")
         
-        elif os.path.isfile (self.pathFileName) and is_new:
-            os.remove(self.pathFileName)                                        # there could be an old 'corpse'
+        elif Path (self.pathFileName).is_file() and is_new:
+            Path (self.pathFileName).unlink()                                   # there could be an old 'corpse'
 
         # read all the namelist group from nml_file
          
@@ -232,7 +231,7 @@ class Input_File:
     @property
     def airfoil_final_pathFileName (self) -> str:  
         """ fileName of the the final airfoil created by Xo2"""
-        return os.path.join (self.workingDir, self.airfoil_final_fileName)
+        return str (Path (self.workingDir) / self.airfoil_final_fileName)
 
     @property
     def fileName(self) -> str:  
@@ -243,7 +242,7 @@ class Input_File:
     @property
     def pathFileName (self) -> str: 
         """returns the path of the input file rebuild from name """
-        return os.path.join (self.workingDir, self.fileName)
+        return str (Path (self.workingDir) / self.fileName)
     
 
     @property
@@ -251,7 +250,7 @@ class Input_File:
         """ self as f90nml namelist object (dict) """
 
         if self._nml_file_dict is None: 
-            if os.path.isfile (self.pathFileName): 
+            if Path (self.pathFileName).is_file(): 
                 parser = f90nml.Parser()
                 parser.global_start_index = 1
                 try: 
@@ -448,8 +447,7 @@ class Input_File:
         scales = []
         for airfoil in self.airfoils_ref: 
             # ensure relative path to working dir 
-            rel_path = PathHandler (self.workingDir).relFilePath (airfoil.pathFileName_abs)
-            pathFileNames.append (rel_path)
+            pathFileNames.append (relative_path (airfoil.pathFileName_abs, self.workingDir))
             scales.append (airfoil.scale_factor)    
         self.nml_info.set_ref_airfoils_pathFileName (pathFileNames)
         self.nml_info.set_ref_airfoils_scale (scales)
@@ -474,7 +472,7 @@ class Input_File:
         "returns the content of input file as text string"
 
         text = ""
-        if os.path.isfile (self.pathFileName): 
+        if Path (self.pathFileName).is_file(): 
             with open(self.pathFileName,'r') as f:
                 text = f.read()
         return text
@@ -502,13 +500,13 @@ class Input_File:
 
         # create a temporary input file to check with Worker 
         tmpFile = self.fileName + '.tmp'
-        tmpFilePath = os.path.join (self.workingDir, tmpFile)
+        tmpFilePath = str (Path (self.workingDir) / tmpFile)
         self.text_save (text, pathFileName=tmpFilePath)
 
         # run Worker in 'check-input' mode 
         returncode,error_text = Worker().check_inputFile (inputFile = tmpFilePath)
 
-        os.remove (tmpFilePath)
+        Path (tmpFilePath).unlink()
 
         return returncode,error_text
 
@@ -2211,7 +2209,7 @@ class Nml_optimization_options (Nml_Abstract):
     @property
     def airfoil_file (self) -> str:             return self._get ('airfoil_file', default=None) 
     def set_airfoil_file (self, aStr : str):    
-        self._set ('airfoil_file', PathHandler.relPath (aStr, self._input_file.workingDir)) 
+        self._set ('airfoil_file', relative_path (aStr, self._input_file.workingDir)) 
 
     @property 
     def show_details (self) -> bool:            return self._get ('show_details', default=True)

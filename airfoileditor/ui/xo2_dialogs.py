@@ -8,6 +8,7 @@ Extra dialogs to optimize airfoil
 """
 
 from copy                   import copy 
+from pathlib                import Path
 from shutil                 import copyfile, copytree, rmtree
 
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
@@ -193,9 +194,7 @@ class Xo2_Select_Dialog (Dialog_Modal):
         pathFileName, *_ = QFileDialog.getOpenFileName(self, caption=caption, filter=filters, directory=self.workingDir)
 
         if pathFileName:                         # user pressed open
-            pathHandler = PathHandler (onFile=pathFileName)
-            self._input_fileName = pathHandler.relFilePath (pathFileName)
-            self._workingDir     = pathHandler.workingDir
+            self._set_input_file (pathFileName)
             self.accept ()
 
 
@@ -216,7 +215,7 @@ class Xo2_Select_Dialog (Dialog_Modal):
         new_fileName = Input_File.new_fileName_version (self.input_fileName, self.workingDir)
 
         if new_fileName:
-            copyfile (os.path.join (self.workingDir,self.input_fileName), os.path.join (self.workingDir,new_fileName))
+            copyfile (Path (self.workingDir) / self.input_fileName, Path (self.workingDir) / new_fileName)
             self._input_fileName = new_fileName
             self.accept ()
         else: 
@@ -227,10 +226,15 @@ class Xo2_Select_Dialog (Dialog_Modal):
     def _open_example_case (self, pathFileName): 
         """ open existing case self.input_file"""
 
-        pathHandler = PathHandler (onFile=pathFileName)
-        self._input_fileName = pathHandler.relFilePath (pathFileName)
-        self._workingDir     = pathHandler.workingDir
+        self._set_input_file (pathFileName)
         self.accept ()
+
+
+    def _set_input_file (self, pathFileName : str): 
+        """ set input file name and working dir (= directory of the file) from 'pathFileName' """
+        path = Path (pathFileName).absolute()
+        self._input_fileName = path.name
+        self._workingDir     = str(path.parent)
 
 
 
@@ -482,7 +486,7 @@ class Xo2_New_Dialog (Dialog_Modal):
 
         new_dir = QFileDialog.getExistingDirectory(self, directory=self.workingDir, caption="Select or create working directory")
 
-        if new_dir and (os.path.abspath (new_dir) != os.path.abspath (self.workingDir)):
+        if new_dir and (Path (new_dir).absolute() != Path (self.workingDir).absolute()):
 
             seed_ok = self._ask_copy_airfoil_seed (new_dir)                 # ensure seed airfoil is copied 
 
@@ -514,7 +518,7 @@ class Xo2_New_Dialog (Dialog_Modal):
         """
 
         # check if seed is already in new_dir 
-        if os.path.isfile (os.path.join (new_dir, self.airfoil_seed.fileName)): 
+        if (Path (new_dir) / self.airfoil_seed.fileName).is_file(): 
             self.airfoil_seed.set_pathFileName (self.airfoil_seed.fileName)
             self.airfoil_seed.set_workingDir (new_dir)
             return True 
@@ -597,7 +601,7 @@ class Xo2_New_Dialog (Dialog_Modal):
         if not (self.input_file.outName and self.opPoint_defs): return 
 
         # check file already exists 
-        if os.path.isfile (self.input_file.pathFileName):
+        if Path (self.input_file.pathFileName).is_file():
             text   = f"Input file <b>{self.input_file.fileName}</b> already exists.<br><br>The file will be overwritten."
             button = MessageBox.confirm (self, title="Create Input file", text=text)
             if button == QMessageBox.StandardButton.Cancel:
@@ -795,14 +799,14 @@ class Xo2_Run_Dialog (Dialog_Modeless):
             Label  (l,r,c,   get="Iterations / Designs")
             Label  (l,r,c+1, get=lambda: f" {self.xo2.nSteps}/{self.xo2.nDesigns} ", fontSize=size.HEADER)
             Label  (l,r,c+2, get=lambda: f"xfoil calculations {self.nxfoil_calcs}", 
-                             style=style.COMMENT, fontSize=size.SMALL)
+                             fontSize=size.SMALL)
             r += 1
             Label  (l,r,c,   get="Time elapsed")
             Label  (l,r,c+1, get=lambda: f" {self.xo2.time_running()} ", fontSize=size.HEADER)
             r += 1
             Label  (l,r,c,   get="Improvement")
             Label  (l,r,c+1, get=lambda: f" {self.xo2.improvement:.5%} ", fontSize=size.HEADER,
-                             style=lambda: style.GOOD if self._improved else style.NORMAL, 
+                             style=lambda: style.GOOD if self._improved else style.HEADER, 
                              styleRole=QPalette.ColorRole.Window) # background
             r += 1
             l.setRowStretch (r,1)
@@ -906,7 +910,7 @@ class Xo2_Run_Dialog (Dialog_Modeless):
             Label  (l,r,c,   get="Iterations / Designs")
             Label  (l,r,c+1, get=lambda: f" {self.results.nSteps}/{self.results.nDesigns} ", fontSize=size.HEADER)
             Label  (l,r,c+2, get=lambda: f"xfoil calculations {self.nxfoil_calcs}", 
-                             style=style.COMMENT, fontSize=size.SMALL)
+                             fontSize=size.SMALL)
             r += 1
             Label  (l,r,c,   get="Time elapsed")
             Label  (l,r,c+1, get=lambda: f" {self.results.time_elapsed()} ", fontSize=size.HEADER)
@@ -920,7 +924,7 @@ class Xo2_Run_Dialog (Dialog_Modeless):
             l.setColumnMinimumWidth (1,60)
             l.setColumnStretch (2,2)
 
-            self._panel_finished = Edit_Panel (title="Finished - Final Results", layout=l, height=(None,None),
+            self._panel_finished = Edit_Panel (title="Finished - Results", layout=l, height=(None,None),
                         hide=lambda: self.panels_state != "finished") 
             self._panel_finished.set_background_color (**mode_color.OPTIMIZE)
 
