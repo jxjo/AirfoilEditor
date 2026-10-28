@@ -15,7 +15,7 @@ import pyqtgraph as pg
 
 from ..base.widgets         import * 
 from ..base.diagram         import * 
-from ..base.panels          import Edit_Panel, Toaster
+from ..base.panels          import Edit_Panel, Toaster, add_section_caption
 
 from ..model.airfoil        import Airfoil
 from ..model.polar_set      import *
@@ -405,7 +405,7 @@ class Panel_Polar_Defs (Edit_Panel):
             r += 1
 
         if len (self.polar_defs) < Polar_Definition.MAX_POLAR_DEFS: #  and (not self.mode_optimize):
-            ToolButton (l,r,c+1, icon=Icon.ADD,  
+            ToolButton (l,r,c+1, icon=Icon.ADD, height=20,
                             toolTip="Add a new polar definition",  
                             set=self.add_polar_def)
 
@@ -600,7 +600,7 @@ class Item_Airfoil (Diagram_Item):
     Diagram (Plot) Item for airfoils shape 
     """
 
-    name = "View Airfoil"                               # used for link and section header 
+    name = "Airfoil"                                    # used for link and section header 
 
     sig_geometry_changed         = pyqtSignal()         # airfoil data changed in a diagram 
 
@@ -888,7 +888,7 @@ class Item_Airfoil (Diagram_Item):
         airfoil = self.airfoils[0] if self.airfoils else None
 
         # check enough height in diagram item to show info
-        enough_height = self.viewBox.boundingRect().height() >= 300
+        enough_height = self.viewBox.boundingRect().height() >= 350
 
         if not enough_height or airfoil is None:
             if self._geo_info_item is not None:
@@ -907,7 +907,7 @@ class Item_Airfoil (Diagram_Item):
 
             p = pg.LabelItem(self._geo_info_as_html (airfoil), color=QColor(Artist.COLOR_LEGEND), size=f"{Artist.SIZE_NORMAL}pt")    
             p.setParentItem(self)                                   # add to self (Diagram Item) for absolute position 
-            p.anchor(itemPos=(0,1), parentPos=(0.0,0.95), offset=(50,-30))
+            p.anchor(itemPos=(0,1), parentPos=(0.0,1.0), offset=(50,-40))
             p.setZValue(5)
             self._geo_info_item = p 
 
@@ -1025,7 +1025,6 @@ class Item_Airfoil (Diagram_Item):
 
         if self._show_curvature_comb:
             pass
-            # self.viewBox.setXRange(-0.4, 1)
         else:
             self.viewBox.setXRange( 0, 1)           # then set x-Range
 
@@ -1113,8 +1112,7 @@ class Item_Curvature (Diagram_Item):
     Diagram (Plot) Item for airfoils curvature 
     """
 
-    name        = "View Curvature"
-    title       = "Curvature"                 
+    name        = "Curvature"
     subtitle    = None                                 # will be set dynamically 
 
     def __init__(self, *args, **kwargs):
@@ -1156,7 +1154,7 @@ class Item_Curvature (Diagram_Item):
     def setup_viewRange (self):
         """ define view range of this plotItem"""
 
-        self.viewBox.setDefaultPadding(0.05)
+        self.viewBox.setDefaultPadding(0.07)
 
         self.viewBox.autoRange ()               # first ensure best range x,y 
         self.viewBox.setXRange( 0, 1)           # then set x-Range
@@ -1208,7 +1206,6 @@ class Item_Welcome (Diagram_Item):
     """ Item with Welcome message  """
 
     title       = ""                                # has it's own title 
-    subtitle    = None
 
     show_buttons = False                            # no buttons
     show_coords  = False                            # no coordinates
@@ -1265,8 +1262,8 @@ Try out the functionality with this example or <strong><span style="color: silve
         {example} 
         <p>
         You can view the properties of an airfoil like thickness distribution,<br> 
-        analyze the upper and lower surface with <strong><span style="color: silver;">View Curvature</span></strong>, or <br>
-        examine the polars created by XFOIL with <strong><span style="color: silver;">View Polar</span></strong>. 
+        analyze the upper and lower surface with <strong><span style="color: silver;">Curvature</span></strong>, or <br>
+                examine the polars created by XFOIL with <strong><span style="color: silver;">Polars</span></strong>. 
         </p> 
         <p>
         <strong><span style="color: silver;">Modify</span></strong> lets you change the geometry of the airfoil,<br> 
@@ -1320,9 +1317,7 @@ class Item_Polars (Diagram_Item):
     Diagram (Plot) Item for polars 
     """
 
-    name        = "View Polars"                          # used for link and section header 
-    title       = None 
-    subtitle    = None                                  # optional subtitle 
+    name        = "Polars"                              # used for link and section header 
 
     def __init__(self, *args, **kwargs):
 
@@ -1480,9 +1475,19 @@ class Item_Polars (Diagram_Item):
         p.clicked.connect (lambda pos: self._btn_var_clicked("x",pos))            
         self._title_item2 = p
 
+        # hint for the user - placed below the y-axis button, shown once and until the button is used 
+        #   (plot_title is also called while self is hidden e.g. when settings are applied)
+        #   history of help messages is class wide - so only the first of the two polar items shows it
+        if self.isVisible_effective() and not self.help_message_was_shown (self):
+            self._on_help_message (self, "Click to change",
+                                   anchor={'parentPos': (0,0), 'itemPos': (0,0), 'offset': (52,38)})
+
 
     def _btn_var_clicked (self, axis, pos : QPoint):
         """ slot - polar var button in diagram clicked - show menu list of variables"""
+
+        self._on_help_message (self, None)                          # user knows now - remove hint 
+
         menu = QMenu()
        
         # Build popup menu 
@@ -1981,13 +1986,17 @@ class Diagram_Airfoil_Polar (Diagram):
         l.setContentsMargins (QMargins(0, 0, 0, 0)) 
 
         # airfoils panel 
+        add_section_caption (l, "Common")
         l.addWidget (self.section_panel,stretch=0)
 
         # optimization panel 
         if Worker.ready and Xoptfoil2.ready:
             l.addWidget (self.panel_optimization,stretch=0)
 
-        # diagram items panel
+        # diagrams 
+        add_section_caption (l, "Diagrams")
+
+        # items panels 
         for item in self.diagram_items:
             if item.section_panel is not None: 
                 l.addWidget (item.section_panel,stretch=0)
@@ -2160,14 +2169,14 @@ class Diagram_Airfoil_Polar (Diagram):
 
             if Worker.ready or Neuralfoil_Evaluator.ready:
 
-                Label (l,r,c, colSpan=2, get="Polar definitions") 
+                Label (l,r,c, colSpan=2, get="Definitions") 
                 drivers = []
                 if Worker.ready:
                     drivers.append("Xfoil")
                 if Neuralfoil_Evaluator.ready:
                     drivers.append(Neuralfoil_Evaluator.NAME)
                 text = ", ".join(drivers) + "  "
-                Label  (l, r, c, colSpan=2, get=text, style=style.COMMENT, fontSize=size.SMALL,
+                Label  (l, r, c, colSpan=2, get=text, fontSize=size.SMALL,
                         align=Qt.AlignmentFlag.AlignRight)
                 r += 1
 
@@ -2181,9 +2190,6 @@ class Diagram_Airfoil_Polar (Diagram):
 
                 # polar diagrams variables setting 
 
-                r += 1
-                Label (l,r,c, colSpan=2, style=style.COMMENT, height=40,
-                       get="To change polar variables, <br>click the axis labels in the diagram.")
                 r += 1
                 CheckBox (l,r,c, text="Polar points", colSpan=2,
                             get=lambda: self.show_polar_points, set=self.set_show_polar_points,
@@ -2208,7 +2214,7 @@ class Diagram_Airfoil_Polar (Diagram):
             else: 
                 SpaceR (l,r, height=10, stretch=0) 
                 r += 1
-                Label (l,r,c, colSpan=2, get="No polars available", fontSize=size.HEADER_SMALL, style=style.COMMENT) 
+                Label (l,r,c, colSpan=2, get="No polars available", fontSize=size.HEADER_SMALL) 
                 r += 1
                 SpaceR (l,r, height=10, stretch=0) 
                 r += 1
