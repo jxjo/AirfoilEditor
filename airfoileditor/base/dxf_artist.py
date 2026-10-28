@@ -3,19 +3,36 @@
 
 """Reusable DXF artist and CAD entity helpers."""
 
-from abc            import ABC, abstractmethod
-from typing         import Callable, override
+# ezdxf is imported lazily (only when a DXF is really created) - importing it takes about a second at startup 
+from __future__ import annotations
 
-import ezdxf
-from ezdxf          import enums, units
-from ezdxf.layouts  import Modelspace
-from ezdxf.document import Drawing
+from abc            import ABC, abstractmethod
+from enum           import Enum
+from typing         import Callable, override, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ezdxf.layouts  import Modelspace
+    from ezdxf.document import Drawing
 
 from .spline        import Bezier, BSpline
 
 import logging
 
-TextAlign = enums.TextEntityAlignment
+
+class TextAlign (Enum):
+    """ text alignment of a Cad_Text - mapped to ezdxf.enums.TextEntityAlignment when added to the DXF"""
+    LEFT          = "LEFT"
+    CENTER        = "CENTER"
+    RIGHT         = "RIGHT"
+    TOP_LEFT      = "TOP_LEFT"
+    TOP_CENTER    = "TOP_CENTER"
+    TOP_RIGHT     = "TOP_RIGHT"
+    MIDDLE_LEFT   = "MIDDLE_LEFT"
+    MIDDLE_CENTER = "MIDDLE_CENTER"
+    MIDDLE_RIGHT  = "MIDDLE_RIGHT"
+    BOTTOM_LEFT   = "BOTTOM_LEFT"
+    BOTTOM_CENTER = "BOTTOM_CENTER"
+    BOTTOM_RIGHT  = "BOTTOM_RIGHT"
 
 
 ezdxf_logger = logging.getLogger("ezdxf")
@@ -230,8 +247,11 @@ class Cad_Text(Cad_Entity):
     @override
     def add_to(self, msp: Modelspace):
         """Add the CAD text to the modelspace."""
+        from ezdxf.enums import TextEntityAlignment
+
+        align = TextEntityAlignment[self.align.name] if isinstance(self.align, TextAlign) else self.align
         text_entity = msp.add_text(self.text, height=self.height, rotation=self.rotation)
-        text_entity.set_placement(self.insert, align=self.align)
+        text_entity.set_placement(self.insert, align=align)
 
 
 
@@ -239,6 +259,10 @@ class Dxf_Artist(ABC):
     """Abstract, model-agnostic DXF artist."""
 
     def __init__(self, drawing : Drawing|None = None):
+
+        import ezdxf
+        from ezdxf          import units
+        from ezdxf.document import Drawing
 
         if isinstance(drawing, Drawing):
             self.drawing = drawing
