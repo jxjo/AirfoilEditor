@@ -1263,7 +1263,7 @@ Try out the functionality with this example or <strong><span style="color: silve
         <p>
         You can view the properties of an airfoil like thickness distribution,<br> 
         analyze the upper and lower surface with <strong><span style="color: silver;">Curvature</span></strong>, or <br>
-                examine the polars created by XFOIL with <strong><span style="color: silver;">Polars</span></strong>. 
+                examine the polars created by Xfoil with <strong><span style="color: silver;">Polars</span></strong>. 
         </p> 
         <p>
         <strong><span style="color: silver;">Modify</span></strong> lets you change the geometry of the airfoil,<br> 

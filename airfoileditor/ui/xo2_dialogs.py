@@ -7,13 +7,14 @@ Extra dialogs to optimize airfoil
 
 """
 
+import re
 from copy                   import copy 
 from pathlib                import Path
 from shutil                 import copyfile, copytree, rmtree
 
 from PyQt6.QtWidgets        import QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox
 from PyQt6.QtWidgets        import QWidget, QTextEdit, QDialog, QFileDialog, QMessageBox
-from PyQt6.QtGui            import QFontMetrics
+from PyQt6.QtGui            import QFontMetrics, QTextCursor, QTextFormat, QColor, QTextCursor, QTextFormat, QColor
 
 from ..base.widgets         import * 
 from ..base.panels          import Dialog_Modeless, Dialog_Modal, Edit_Panel, MessageBox, Panel_Abstract
@@ -798,7 +799,7 @@ class Xo2_Run_Dialog (Dialog_Modeless):
             r,c = 0, 0 
             Label  (l,r,c,   get="Iterations / Designs")
             Label  (l,r,c+1, get=lambda: f" {self.xo2.nSteps}/{self.xo2.nDesigns} ", fontSize=size.HEADER)
-            Label  (l,r,c+2, get=lambda: f"xfoil calculations {self.nxfoil_calcs}", 
+            Label  (l,r,c+2, get=lambda: f"Xfoil calculations {self.nxfoil_calcs}", 
                              fontSize=size.SMALL)
             r += 1
             Label  (l,r,c,   get="Time elapsed")
@@ -909,7 +910,7 @@ class Xo2_Run_Dialog (Dialog_Modeless):
             r,c = 0, 0 
             Label  (l,r,c,   get="Iterations / Designs")
             Label  (l,r,c+1, get=lambda: f" {self.results.nSteps}/{self.results.nDesigns} ", fontSize=size.HEADER)
-            Label  (l,r,c+2, get=lambda: f"xfoil calculations {self.nxfoil_calcs}", 
+            Label  (l,r,c+2, get=lambda: f"Xfoil calculations {self.nxfoil_calcs}", 
                              fontSize=size.SMALL)
             r += 1
             Label  (l,r,c,   get="Time elapsed")
@@ -1134,6 +1135,7 @@ class Xo2_Input_File_Dialog (Dialog_Modal):
         self._qtextEdit.setPlaceholderText ("Enter text ...")  
         self._qtextEdit.setPlainText (self._input_file.as_text())  
         self._qtextEdit.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap) 
+        self._qtextEdit.textChanged.connect (lambda: self._qtextEdit.setExtraSelections ([]))   # remove error mark
 
         tabStop = 4
         metrics = QFontMetrics (self._qtextEdit.currentFont())
@@ -1146,17 +1148,52 @@ class Xo2_Input_File_Dialog (Dialog_Modal):
 
         return l
 
+    def _find_error_line (self, error_text : str) -> QTextCursor | None:
+        """ cursor at the line of the namelist or variable named in error_text - or None """
+
+        words = re.findall (r'[A-Za-z_]\w*', error_text or '')
+        lower = [w.lower() for w in words]
+        document = self._qtextEdit.document()
+
+        # error text like "... namelist xyz ..." - find the '&xyz' line
+        if "namelist" in lower and lower.index("namelist") + 1 < len(words):
+            cursor = document.find ("&" + words [lower.index("namelist") + 1], 0)   # case insensitive
+            if not cursor.isNull():
+                return cursor
+
+        # error text like "max_speed should be between ..." - find the line '  max_speed = ...'
+        text = self._qtextEdit.toPlainText()
+        for word in dict.fromkeys (words):
+            match = re.search (rf'^[ \t]*{re.escape(word)}[ \t]*=', text, re.MULTILINE | re.IGNORECASE)
+            if match:
+                cursor = QTextCursor (document)
+                cursor.setPosition (match.start())
+                return cursor
+
+        return None
+
+
     def _highlight_error (self, error_text : str):
-        """ highlight e.g. namelist of the error"""
+        """ mark and scroll to the line of the error - mark stays visible without focus """
 
-        words = error_text.split() 
+        cursor = self._find_error_line (error_text)
 
-        if "namelist" in words:
-            namelist_name = "&" + words [words.index ("namelist") + 1]
+        if cursor is None:
+            self._qtextEdit.setExtraSelections ([])
+            return
 
-            document = self._qtextEdit.document()
-            cursor = document.find (namelist_name, position=0)                      # cursor will have start-end
-            self._qtextEdit.setTextCursor (cursor)                                  # select the text
+        cursor.select (QTextCursor.SelectionType.LineUnderCursor)
+
+        selection = QTextEdit.ExtraSelection()
+        selection.cursor = cursor
+        selection.format.setBackground (QColor (255, 80, 80, 90))
+        selection.format.setProperty (QTextFormat.Property.FullWidthSelection, True)
+        self._qtextEdit.setExtraSelections ([selection])
+
+        cursor.clearSelection ()
+        cursor.movePosition (QTextCursor.MoveOperation.StartOfLine)
+        self._qtextEdit.setTextCursor (cursor)
+        self._qtextEdit.ensureCursorVisible ()
 
 
     @override

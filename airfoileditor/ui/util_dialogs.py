@@ -256,8 +256,8 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         r,c = 0,0 
 
         Label  (l,r,c, get="Polar driver")
-        tip = "Select the polar driver (XFOIL or NeuralFoil) for this polar." \
-                    if not self._xfoil_fixed else "Only XFOIL supported."
+        tip = "Select the polar driver (Xfoil or NeuralFoil) for this polar." \
+                    if not self._xfoil_fixed else "Only Xfoil supported."
         ComboBox (l,r,c+1,  width=90, options=self.drivers, colSpan=2, 
                         get=lambda: self.driver, set=self.set_driver, 
                         disable=self._xfoil_fixed or len(self.drivers) == 1,
@@ -292,7 +292,7 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         c += 1
         SpaceC  (l,c, width=10)
         c += 1
-        _tip = lambda: "Mach number is always 0.0 for NeuralFoil polars" if self.polar_def.is_neuralfoil else "Mach number for XFOIL polars"
+        _tip = lambda: "Mach number is always 0.0 for NeuralFoil polars" if self.polar_def.is_neuralfoil else "Mach number for Xfoil polars"
         FieldF (l,r,c, lab="Mach", width=60, step=0.1, lim=(0, 1.0), dec=2,
                         obj=self.polar_def, prop=Polar_Definition.ma,
                         disable=lambda: self.polar_def.is_neuralfoil,
@@ -470,7 +470,7 @@ class Airfoil_Scale_Dialog (Dialog_Modeless):
 class Calc_Reynolds_Dialog (Dialog_Modeless):
     """ Little dialog to calculate Reynolds from velocity and chord"""
 
-    _width  = 180
+    _width  = 220
 
     name = "Calculate Re"
 
@@ -546,7 +546,7 @@ class Calc_Reynolds_Dialog (Dialog_Modeless):
 class Calc_Re_Sqrt_Cl_Dialog (Dialog_Modeless):
     """ Little dialog to calculate Re.sqrt(Cl) from wing load and chord"""
 
-    _width  = 180
+    _width  = 200
 
     name = "Calculate Re·√Cl"
 

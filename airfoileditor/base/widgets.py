@@ -908,6 +908,37 @@ class Field_With_Label (Widget):
         In this case, only QGridLayout is supported    
     """
 
+    DISABLED_BASE_ALPHA = 0.5                       # opacity of the background of a disabled entry field 
+
+    # dark mode: Fusion derives the outline of a field from its Window color (darker (140)) - 
+    # these values result in the outlines #494949 (enabled) and #303030 (disabled) 
+    DARK_OUTLINE_WINDOW          = "#666666"
+    DARK_OUTLINE_WINDOW_DISABLED = "#434343"
+    DARK_BASE_LIGHTER            = 120                  # enabled fields a bit brighter than the panel (QColor.lighter)
+
+    @classmethod
+    def _with_disabled_base (cls, palette : QPalette, alpha : float | None = None) -> QPalette:
+        """ returns palette with a translucent background for disabled state - lighter than the Qt default """
+
+        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base)
+        color.setAlphaF (cls.DISABLED_BASE_ALPHA if alpha is None else alpha)
+        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, color)
+        return palette
+
+    @classmethod
+    def _with_dark_look (cls, palette : QPalette) -> QPalette:
+        """ returns palette with a softer outline and a brighter background of an enabled field in dark mode 
+        (Fusion default is a nearly black outline and a background hardly different from the panel) """
+
+        if not Widget.light_mode:
+            for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+                palette.setColor (group, QPalette.ColorRole.Window, QColor (cls.DARK_OUTLINE_WINDOW))
+                base = palette.color (group, QPalette.ColorRole.Base)
+                palette.setColor (group, QPalette.ColorRole.Base, base.lighter (cls.DARK_BASE_LIGHTER))
+            palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Window, 
+                              QColor (cls.DARK_OUTLINE_WINDOW_DISABLED))
+        return palette
+
     def __init__(self, *args, 
                  lab : str | None = None,                   # label of field 
                  disable : Callable | bool | None = None,
@@ -1116,11 +1147,7 @@ class Field (Field_With_Label, QLineEdit):
     def _initial_palette(self):
         """ returns initial normal palette of self"""
 
-        palette =  self.palette()
-
-        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base)
-        color.setAlphaF (0.3)
-        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, color)
+        palette =  self._with_dark_look (self._with_disabled_base (self.palette()))
 
         if self.light_mode:
             color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
@@ -1201,7 +1228,6 @@ class FieldI (Field_With_Label, QSpinBox):
         super()._set_Qwidget_static ()
 
         self.setRange (-999999999, 999999999)                  # Qt default is 0.0 and 99
-
         if self._unit: 
             self.setSuffix (" " + self._unit)
         if self._spin:
@@ -1219,12 +1245,17 @@ class FieldI (Field_With_Label, QSpinBox):
             """
         self.setStyleSheet(style)
 
+        # the frame is painted by the style with the palette of the spin box (the line edit gets a transparent
+        # background via _initial_palette) - this is only picked up if the widget is polished before
+        self.ensurePolished()
+        self.setPalette (self._with_dark_look (self._with_disabled_base (self.palette())))
+
 
     @override
     def _initial_palette(self):
         """ returns initial normal palette of self"""
 
-        palette =  self.palette()
+        palette =  self._with_dark_look (self._with_disabled_base (self.palette(), alpha=0.0))     # frame of the spin box paints the background
 
         if self.light_mode:
             color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
@@ -1351,13 +1382,17 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
             }
             """
         self.setStyleSheet(style)
+
+        # the frame is painted by the style with the palette of the spin box - the line edit gets a transparent
+        # background via _initial_palette
+        self.setPalette (self._with_dark_look (self._with_disabled_base (self.palette())))
          
 
     @override
     def _initial_palette(self):
         """ returns initial normal palette of self"""
 
-        palette =  self.palette()
+        palette =  self._with_dark_look (self._with_disabled_base (self.palette(), alpha=0.0))     # frame of the spin box paints the background
 
         if self.light_mode:
             color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
@@ -1569,7 +1604,7 @@ class Button (Widget, QPushButton):
         palette =  self.palette()
         if not self.light_mode:                             # dark mode: make labels a little darker (not white)   
             palette =  self.palette()
-            color = palette.color(QPalette.ColorRole.ButtonText).darker (110)
+            color = palette.color(QPalette.ColorRole.ButtonText).darker (120)       # same as ComboBox
             palette.setColor(QPalette.ColorRole.ButtonText,color)
         return palette
 

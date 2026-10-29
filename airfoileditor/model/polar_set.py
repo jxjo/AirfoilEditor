@@ -292,7 +292,7 @@ class Polar_Definition:
     VAL_RANGE_CL_T2 = [0.05, 1.5, 0.05]
 
 
-    POLAR_XFOIL      = 'XFOIL'                  # driver of polar calculation 
+    POLAR_XFOIL      = 'Xfoil'                  # driver of polar calculation 
     POLAR_NEURALFOIL = 'NeuralFoil'
 
 
@@ -527,6 +527,10 @@ class Polar_Definition:
                 raise ValueError(f"{aType} is not a valid polar type")
 
         if isinstance (aType, polarType) and self._type != aType: 
+            # when switching an existing T1 to T2, Re number should be limited
+            if self.type == polarType.T1 and aType == polarType.T2 and self.re is not None:
+                self._re = min (self.re, 200000)
+
             self._type = aType 
             # set specification variable depending on polar type 
             if self.type == polarType.T1:
@@ -622,7 +626,9 @@ class Polar_Definition:
     def name (self): 
         """ returns polar name as a label  """
 
-        text  = f"{self.type} Re{int(self.re/1000)}k"
+        # driver first - a trailing tag gets cut off in narrow fields if the name is long
+        text  = "NF: " if self.is_neuralfoil else "XF: "
+        text += f"{self.type} Re{int(self.re/1000)}k"
         text += f" N{self.ncrit:.2f}".rstrip('0').rstrip('.')
         text += f" M{self.ma:.2f}".rstrip('0').rstrip('.') if self.ma else ""
         text += f" Trt{self._xtript:.0%}" if self._xtript is not None else ""
@@ -633,7 +639,6 @@ class Polar_Definition:
             text += f" F{flap_def.flap_angle:.1f}".rstrip('0').rstrip('.') +"°" if flap_def else ""
             text += f" H{flap_def.x_flap:.0%}" if flap_def.x_flap != 0.75 else ""
 
-        text += " - NF" if self.is_neuralfoil else " - XF"
         text += " VLM" if self.is_VLM_polar else ""
         return text
 
