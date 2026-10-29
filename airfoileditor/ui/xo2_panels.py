@@ -324,11 +324,11 @@ class Panel_Xo2_Case (Panel_Xo2_Abstract):
         if self.optimization_options.shape_functions == Nml_optimization_options.BEZIER:
 
             diag = Xo2_Bezier_Dialog (self, getter=self.input_file.nml_bezier_options, 
-                                      live_update=False, parentPos=(1,0.4), dialogPos=(0,1))
+                                      is_live_update=False, parentPos=(1,0.4), dialogPos=(0,1))
         elif self.optimization_options.shape_functions == Nml_optimization_options.HICKS_HENNE:
 
             diag = Xo2_Hicks_Henne_Dialog (self, getter=self.input_file.nml_hicks_henne_options, 
-                                         live_update=False, parentPos=(1,0.4), dialogPos=(0,1))
+                                         is_live_update=False, parentPos=(1,0.4), dialogPos=(0,1))
 
         if diag:
             diag.sig_final_changed.connect (self.refresh_and_notify)         

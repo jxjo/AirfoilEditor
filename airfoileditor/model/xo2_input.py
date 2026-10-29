@@ -528,7 +528,10 @@ class Input_File:
 
     def save_nml (self) -> bool:
         """ save current namelist to file - return False if no changes, no save"""
-  
+
+        # the namelist is empty after a parse error - never overwrite the user's (broken) file
+        if self.has_parse_error: return False
+   
         self.update_nml ()                                              # ensure namelist dict is up to date
 
         if not self.is_changed: return False                             # no changes - no save
