@@ -775,9 +775,6 @@ class OpPoint_Definition:
         return val
 
 
-
-
-
     @property
     def specVar (self): return self._specVar
     def set_specVar (self, aVal): 
@@ -1080,7 +1077,7 @@ class OpPoint_Definition:
     def specValue_limits (self) -> tuple:
         """ 
         returns tuple of lower and upper limits of specValue defined by neighbour opPoints
-            If there is no neighbour with same specVar return None 
+            If there is no neighbour with same specVar and optVarreturn None 
         """
 
         lower_limit = None 
@@ -1102,11 +1099,13 @@ class OpPoint_Definition:
         opPoint_before  = opPoints_same_polar [index-1] if index > 0 else None
         opPoint_after   = opPoints_same_polar [index+1] if index < (n-1) else None
 
-        if opPoint_before and opPoint_before.specVar == self.specVar:          
-            lower_limit = opPoint_before.specValue * 1.02
+        if opPoint_before:
+            if opPoint_before.optVar == self.optVar and opPoint_before.specVar == self.specVar:          
+                lower_limit = opPoint_before.specValue * 1.02
 
-        if opPoint_after and opPoint_after.specVar == self.specVar:
-            upper_limit = opPoint_after.specValue * 0.98
+        if opPoint_after:
+            if opPoint_after.optVar == self.optVar and opPoint_after.specVar == self.specVar:
+                upper_limit = opPoint_after.specValue * 0.98
 
         return (lower_limit, upper_limit)
 
@@ -2552,6 +2551,10 @@ class Nml_particle_swarm_options (Nml_Abstract):
     @property
     def init_attempts (self) -> int:            return self._get('init_attempts', default=1000) 
     def set_init_attempts (self, aVal : int):   self._set('init_attempts', clip (int(aVal), 0, 9999))
+
+    @property
+    def random_seed (self) -> int:              return self._get('random_seed', default=0) 
+    def set_random_seed (self, aVal : int):     self._set('random_seed', clip (int(aVal), 0, 9999))
 
     @property
     def convergence_profile (self) -> str:

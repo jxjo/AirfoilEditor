@@ -1564,27 +1564,32 @@ class Xo2_Particle_Swarm_Dialog (Xo2_Abstract_Options_Dialog):
         r += 1
         FieldI      (l,r,c, lab="Population", width=70, lim=(5,100), step=5,
                     obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.pop,
-                    toolTip="swarm population - number of particles") 
+                    toolTip="Swarm population - number of particles. 20-30 is a good range.") 
         r += 1
         FieldI      (l,r,c, lab="Max. Iterations", width=70, lim=(1,9999), step=100,
                     obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.max_iterations, 
-                    toolTip="max number of iterations") 
+                    toolTip="Max number of iterations for the swarm to converge.") 
         r += 1
         FieldI      (l,r,c, lab="Max. Retries", width=70, lim=(0,5), step=1,
                     obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.max_retries, 
-                    toolTip="number of retries of a particle when it violates the geometry") 
+                    toolTip="Number of retries of a particle when it violates the geometry.") 
+        r += 1
+        FieldI      (l,r,c, lab="Random Seed", width=70, lim=(0,9999), step=1,
+                    obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.random_seed, 
+                    toolTip="Random seed for optimization." + 
+                    "\nUse 0 for a random seed; a positive seed makes optimization results reproducible.") 
         r += 1
         FieldI      (l,r,c, lab="Init. Attempts", width=70, lim=(10,9999), step=1000,
                     obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.init_attempts, 
-                    toolTip="number of trials to get an initial, valid design") 
+                    toolTip="Number of trials to get an initial, valid design.") 
         r += 1
         FieldF      (l,r,c, lab="Min. Radius", width=70, dec=4, lim=(0.00001,0.1), step=0.01,
                     obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.min_radius, 
-                    toolTip="design radius when optimization shall be finished") 
+                    toolTip="Design radius when optimization shall be finished.") 
         r += 1
         FieldF      (l,r,c, lab="Max. Speed", width=70, dec=2, lim=(0.01,0.7), step=0.1,
                     obj=self.particle_swarm_options, prop=Nml_particle_swarm_options.max_speed, 
-                    toolTip="max speed of a particle in solution space 0..1") 
+                    toolTip="Max speed of a particle in solution space 0..1.") 
 
         r += 1
         l.setRowStretch (r,5)
@@ -1773,7 +1778,17 @@ class Xo2_Bezier_Dialog (Xo2_Abstract_Options_Dialog):
 
         return l
 
+    @override
+    def set_default_values (self):
+        """ reset self to default values"""
 
+        if self.input_file.airfoil_seed and self.input_file.airfoil_seed.isBezierBased:
+            MessageBox.info (self, "Bezier Based Airfoil", "Control points are defined by seed airfoil.")
+            return
+        else: 
+            super().set_default_values()
+
+ 
 
 class Xo2_Constraints_Dialog (Xo2_Abstract_Options_Dialog):
     """ Dialog to edit namelist constraints"""
@@ -2040,4 +2055,3 @@ class Xo2_Flap_Definition_Dialog (Xo2_Abstract_Options_Dialog):
         l.setColumnStretch (3,2)   
 
         return l
-
