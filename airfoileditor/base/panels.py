@@ -1218,7 +1218,7 @@ class Toaster (QFrame):
                     margin =          QMargins(10,10,10,10), 
                     contentsMargins = QMargins(30, 7,30, 7),
                     toast_style = style.HINT,
-                    duration = 2000,
+                    duration = 1500,
                     alpha :int = 255,
                     parentWindow = False):
         """

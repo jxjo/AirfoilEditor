@@ -667,16 +667,25 @@ class Diagram_Item (pg.PlotItem):
         - Next non-empty message from the same source hides the message.
         - Once a source has shown a message, later non-empty signals do not re-show
           it unless history is explicitly reset.
+        - Explicit dismissal removes messages of the source's class from all items
+          in the parent diagram, without resetting history.
 
         Args:
             anchor: optional position of the message instead of the default stack position 
                     like {'parentPos': (0,0), 'itemPos': (0,0), 'offset': (60,35)}
         """
 
-        # if aArtist:
-        #     logger.warning (f"{self} on_help of {aArtist} of item: {aArtist._pi} with message: {aMessage}")
-        # else:
-        #     logger.warning (f"{self} on_help  -> refresh ")
+        if aArtist is not None and not aMessage:
+            items = [self]
+            if self._parent is not None:
+                items.extend (item for item in self._parent.diagram_items if item is not self)
+            for item in items:
+                sources = [source for source in item._help_messages if type(source) is type(aArtist)]
+                for source in sources:
+                    item._drop_help_message (source)
+                if sources:
+                    item._render_help_messages ()
+            return
 
         self._update_help_message_state (aArtist, aMessage, anchor)
         self._render_help_messages ()

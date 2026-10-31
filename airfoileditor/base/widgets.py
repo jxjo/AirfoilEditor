@@ -46,16 +46,15 @@ class button_style (Enum):
 
 
 class style (Enum):
-    """ enums for style getter  - tuple for light and dark theme """
-    # color see https://www.w3.org/TR/SVG11/types.html#ColorKeywords
+    """ enums for style getter  - tuple for light and dark theme: text color, background color """
 
-                  #  light dark
+                  #  text:    light      dark         background:  light     dark
     NORMAL        = (None, None)
-    COMMENT       = ("#505050","#909090")  
-    ERROR         = ('red', 'red')
-    HINT          = ("#1768B9", "#1768B9")          # darker dodgerblue
-    WARNING       = ('orange','orange')
-    GOOD          = ('mediumspringgreen','mediumspringgreen')
+    COMMENT       = ("#505050", "#909090",                         "#b0b0b0","#b0b0b0")  
+    ERROR         = ("#ff0000", "#da2222",                         "#ff9191","#bd2727")      
+    HINT          = ("#1768B9", "#1A79D8",                         "#56b8ff","#33aaff")     
+    WARNING       = ("#d38500", "#e59501",                         "#f49e00","#ba7900")       
+    GOOD          = ("#01ae6c", "#0ec881",                         "#00ca7b","#00b06d")       
     HEADER        = ("#404040", "#D0D0D0")
 
 
@@ -247,6 +246,7 @@ class Widget:
 
     LIGHT_INDEX = 0                                     # = Qt color index 
     DARK_INDEX  = 1 
+    BG_INDEX_OFFSET = 2                                 # background colors follow the text colors in style tuples
 
     light_mode = True                                   # common setting of light/dark mode 
                                        
@@ -774,6 +774,9 @@ class Widget:
                 widget.setVisible(not self._hidden)
 
 
+    STYLE_BG_ALPHA          = 0.3                       # alpha of a style color used as background 
+    STYLE_BG_ALPHA_DISABLED = 0.15
+
     def _set_Qwidget_style (self): 
         """ set (color) style of QWidget based on self._style"""
 
@@ -796,17 +799,17 @@ class Widget:
 
             index = self.LIGHT_INDEX if self.light_mode else self.DARK_INDEX
 
+            # if it's background color use the background color of the style - the text color would be too dark
+            is_background = color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]
+            if is_background:
+                index += self.BG_INDEX_OFFSET
+
             color          = QColor (aStyle.value[index])
             color_disabled = QColor (color)
 
-            # if it's background color apply alpha
-            if color_role in [QPalette.ColorRole.Base, QPalette.ColorRole.Window, QPalette.ColorRole.Button]:
-                if aStyle == style.GOOD or aStyle == style.HINT:
-                    color.setAlphaF (0.3) 
-                    color_disabled.setAlphaF (0.15)
-                else:
-                    color.setAlphaF (0.15)
-                    color_disabled.setAlphaF (0.1)
+            if is_background:
+                color.setAlphaF          (self.STYLE_BG_ALPHA)
+                color_disabled.setAlphaF (self.STYLE_BG_ALPHA_DISABLED)
                 autoFill = True                                         # apply background 
             elif color_role in [QPalette.ColorRole.WindowText, QPalette.ColorRole.Text]:
                 pass
@@ -2315,7 +2318,18 @@ class Test_Widgets (QMainWindow):
         ToolButton (l_tools, icon=Icon.AE, set=self.toggle_disabled)
         l_tools.addStretch(2)
         l.addLayout (l_tools,r,1, 1, 2)
-
+        r += 1
+        Label  (l,r,0,get="Styles", fontSize=size.HEADER)
+        Label  (l,r,1,get="as text", style=style.COMMENT)
+        Label  (l,r,2,get="as background", style=style.COMMENT)
+        Label  (l,r,3,get="background disabled", style=style.COMMENT)
+        for aStyle in (style.NORMAL, style.COMMENT, style.HINT, style.WARNING, style.GOOD, style.ERROR):
+            r += 1
+            Label  (l,r,0,get=aStyle.name)
+            Label  (l,r,1,get=f"Text {aStyle.name.lower()}", style=aStyle)
+            Field  (l,r,2,get=f"Field {aStyle.name.lower()}", set=self.set_str, style=aStyle, 
+                    styleRole=QPalette.ColorRole.Base)
+            Field  (l,r,3,get=f"Field {aStyle.name.lower()}", style=aStyle, styleRole=QPalette.ColorRole.Base, disable=True)
         l.setColumnStretch (0,1)
         l.setColumnStretch (1,1)
         l.setColumnStretch (2,2)
@@ -2376,11 +2390,12 @@ if __name__ == "__main__":
  
     app = QApplication([])
     app.setStyle('fusion')
-    # Strange: Without setStyleSheet, reset Widget.setPalette doesn't work .. !?
-    # Segoe UI is the font of 'fusion' sttyle 
-    # font = QFont ()
-    # print (font.defaultFamily(), font.family(), font.families())
-    app.setStyleSheet ("QWidget { font-family: 'Segoe UI' }")
+
+    mode = "Dark"
+
+    if mode == "Dark":                                  
+        app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+        Widget.light_mode = False
 
     Test_Widgets().show()
     

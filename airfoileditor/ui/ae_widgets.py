@@ -338,16 +338,20 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     def no_files_here (self) -> bool:
         """ True if no files to select in combo """
 
+        no = False
+
         if self._no_files_here is None: 
             n = len (self.airfoil_fileNames_sameDir())
-            if n== 1:
+
+            if n == 0:
+                no = True
+            elif n== 1:
                 # there can be a blank or example entry as the first item 
                 fileName_first = self.airfoil_fileNames_sameDir()[0]
-                no =  fileName_first == ""
-            elif n == 0: 
-                no =  True
-            else: 
-                no = False
+                if fileName_first.lower().startswith("example"):
+                    no = True
+                else:
+                    no =  fileName_first == ""
             self._no_files_here = no 
         return self._no_files_here
 
