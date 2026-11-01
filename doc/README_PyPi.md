@@ -1,7 +1,8 @@
 ![AE](https://github.com/jxjo/AirfoilEditor/blob/main/images/AirfoilEditor_logo.png?raw=true)
 
-### Version 4.3.2
-
+[![PyPI version](https://img.shields.io/pypi/v/airfoileditor)](https://pypi.org/project/airfoileditor/)
+[![Latest release](https://img.shields.io/github/v/release/jxjo/AirfoilEditor)](https://github.com/jxjo/AirfoilEditor/releases/latest)
+[![License](https://img.shields.io/github/license/jxjo/AirfoilEditor)](https://github.com/jxjo/AirfoilEditor/blob/main/LICENSE)
 ---
 
 The **AirfoilEditor** is a fast airfoil viewer, analyzer, and advanced geometry editor with integrated Xoptfoil2-based optimization. The app provides three operating modes:
@@ -9,7 +10,7 @@ The **AirfoilEditor** is a fast airfoil viewer, analyzer, and advanced geometry 
 #### View
 * Browse and view airfoils in subdirectories
 * Analyze curvature of airfoil surface
-* Show polars generated using XFOIL
+* Generate polars using XFOIL or fast predictions using [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil)
 * Export airfoils to DXF format
 
 #### Modify
@@ -17,18 +18,19 @@ The **AirfoilEditor** is a fast airfoil viewer, analyzer, and advanced geometry 
 * Adjust thickness, camber, high points, and trailing edge gap
 * Blend two airfoils
 * Set flap
-* Generate airfoil replicas using Bezier or B-Spline curves
+* Generate airfoil replicas using Bezier, B-Spline or CST-Kulfan representations
 
 #### Optimize
 * User Interface of [Xoptfoil2](https://github.com/jxjo/Xoptfoil2)
 * Graphical definition of polar-based objectives
 * View results while optimizing
 
+![AirfoilEditor application](https://raw.githubusercontent.com/jxjo/AirfoilEditor/main/images/AirfoilEditor_App_dark.png)
 
-Install with `pip install airfoileditor`, then run `airfoileditor`.
+Requires Python 3.12 or newer. Install with `pip install airfoileditor`, then run `airfoileditor`.
 
-The app, developed in Python with the Qt UI framework, runs on Windows, Linux, and MacOS. 
-On Linux and macOS, View and Modify mode work after package installation. Polars and Optimize mode additionally require compiled `worker` and `xoptfoil2` binaries from the [Xoptfoil2](https://github.com/jxjo/Xoptfoil2) project.
+The app uses the Qt UI framework and runs on Windows, Linux, and macOS.
+View and Modify modes, including NeuralFoil polar prediction, work after package installation without additional binaries. XFOIL-based polar generation requires `worker`; optimization additionally requires `xoptfoil2`, both from the [Xoptfoil2](https://github.com/jxjo/Xoptfoil2) project.
 
 Find more information about the **AirfoilEditor** on [GitHub](https://github.com/jxjo/AirfoilEditor).
 

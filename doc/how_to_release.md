@@ -32,7 +32,6 @@ A short guide for developers how to create a new release
 ### Finishing Development
 
 - Check still any `logger.setLevel(logging.DEBUG)` active (not commented out)
-- Last look on 'Spell Checker' output to fix typos
 - Final pytest run
 
 ### Preparing Sources

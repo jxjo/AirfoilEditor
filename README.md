@@ -1,6 +1,9 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
-### Version 5.0 beta 1
+[![Latest release](https://img.shields.io/github/v/release/jxjo/AirfoilEditor)](https://github.com/jxjo/AirfoilEditor/releases/latest)
+[![License](https://img.shields.io/github/license/jxjo/AirfoilEditor)](LICENSE)
+
+### Version 5
 
 This release adds CST-Kulfan-based airfoil support and integrates [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation. For details, see [About Version 5.0](doc/ABOUT_5.0.md).
 
@@ -305,19 +308,15 @@ If there is warning message like "Failed to create wl_display" when starting the
 
 ### Cloning from GitHub
 
-If you want to clone the AirfoilEditor repository from GitHub for local development, install the following packages in your Python environment: 
+For local development, clone the repository and use Python 3.12 or newer, preferably in a virtual environment. From the repository root, run:
 
+```sh
+python -m pip install -e .
 ```
-pip install  "numpy~=2.2.0"
-pip install  "packaging>=24.0"
-pip install  "requests"
-pip install  "pyqt6>=6.11.0"
-pip install  "pyqtgraph>=0.14.0"
-pip install  "f90nml>=1.4.4"
-pip install  "termcolor>=2.3.0"
-pip install  "platformdirs>=4.3.0"
-pip install  "ezdxf>=1.4.0"
-```
+
+This installs AirfoilEditor in editable mode along with its required dependencies. Changes to the Python source take effect without reinstalling.
+
+Start the application with `airfoileditor`.
 
 ### Changelog
 

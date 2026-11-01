@@ -13,10 +13,10 @@ description = "View, Modify, Optimize Airfoils"
 readme = "doc/README_PyPi.md"
 requires-python = ">=3.12"
 dependencies = [
-  "numpy~=2.2.0",
+  "numpy>=2.2,<3",
   "packaging>=24.0",
   "requests",
-  "pyqt6>=6.11.0",
+  "pyqt6>=6.11.0, <6.14",
   "pyqtgraph>=0.14.0",
   "f90nml>=1.4.4",
   "termcolor>=2.3.0",
