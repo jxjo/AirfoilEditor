@@ -853,7 +853,7 @@ class Item_Airfoil (Diagram_Item):
 
     def _geo_info_as_html (self, airfoil : Airfoil) -> str:
         """
-        geometry info of airfoil as html string - colored for xo2 geometry targets
+        geometry info as html - colored for xo2 targets, with translucent black background
         """
 
         thickness_color = None
@@ -879,7 +879,16 @@ class Item_Airfoil (Diagram_Item):
                 elif geoTarget.optVar == "Camber":
                     camber_color = result_color
                     
-        return airfoil.info_short_as_html (thickness_color=thickness_color, camber_color=camber_color)
+        info = airfoil.info_short_as_html (thickness_color=thickness_color, camber_color=camber_color)
+        return f"""
+                <table cellspacing="0" cellpadding="4">
+                <tr>
+                    <td style="background-color: rgba(0, 0, 0, 0.3);">
+                    {info}
+                    </td>
+                </tr>
+                </table>
+                """
 
 
     def _plot_geo_info (self, refresh_airfoil = False):
@@ -1205,7 +1214,7 @@ class Item_Curvature (Diagram_Item):
 class Item_Welcome (Diagram_Item):
     """ Item with Welcome message  """
 
-    title       = ""                                # has it's own title 
+    title        = None                             # has it's own title 
 
     show_buttons = False                            # no buttons
     show_coords  = False                            # no coordinates

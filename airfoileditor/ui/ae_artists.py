@@ -1802,7 +1802,8 @@ class Curvature_Comb_Artist (Artist):
         max_xy = (xe[imax], ye[imax])
         text   = f"{values[imax]:.0f}"
         color  = QColor (color).darker (130)
-        textFill=QColor("black").setAlphaF(0.5)
+        textFill=QColor("black")
+        textFill.setAlphaF(0.7)
 
         self._plot_point (max_xy, color=color, text=text, anchor=(-0.2,0.5), zValue=zValue,
                           textColor=color, textFill=textFill)
