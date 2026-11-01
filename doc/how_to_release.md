@@ -14,7 +14,7 @@ A short guide for developers how to create a new release
     ```
     python -m venv .venv
     .venv\scripts\activate
-    pip install --force-reinstall /github/airfoileditor/dist/airfoileditor-4.3.0-py3-none-any.whl
+    pip install --force-reinstall /github/airfoileditor/dist/airfoileditor-5.0.0-py3-none-any.whl
     .venv\scripts\deactivate
     ```
 
