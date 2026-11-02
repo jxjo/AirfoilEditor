@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## 5.0.1
+
+### Fixed
+
+- Fixed startup crash when loading saved T2 polar settings if the XFOIL Worker is unavailable or fails the version check
+- Fixed blank and clipped numeric fields with Qt 6.12.0
+
+
+## 5.0.0
+
+### Added
+
+- Support for CST (Kulfan)-based airfoils
+- Integrated [NeuralFoil](https://github.com/peterdsharpe/NeuralFoil) as a fast alternative to XFOIL-based polar generation supporting T1 and T2 polars
+- Flap deflection is now handled internally instead of through the XFOIL routine, so changing flap geometry no longer requires the `Worker` executable
+
+### Changed
+
+- Numerous minor improvements
+- Extensive refactoring
+
+### Fixed
+
+- Various bug fixes
+
+
 ## 5.0b2
 
 ### Added
