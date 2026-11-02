@@ -1239,15 +1239,6 @@ class FieldI (Field_With_Label, QSpinBox):
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
-        # QT Bug: adjust margin so inner widgets occupy full height
-        style = """
-            QSpinBox {
-                margin-top: -1px;
-                margin-bottom: -1px;
-            }
-            """
-        self.setStyleSheet(style)
-
         # the frame is painted by the style with the palette of the spin box (the line edit gets a transparent
         # background via _initial_palette) - this is only picked up if the widget is polished before
         self.ensurePolished()
@@ -1376,15 +1367,6 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
             if self._specialText:
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
-
-        # QT Bug: adjust margin so inner widgets occupy full height
-        style = """
-            QDoubleSpinBox {
-                margin-top: -1px;
-                margin-bottom: -1px;
-            }
-            """
-        self.setStyleSheet(style)
 
         # the frame is painted by the style with the palette of the spin box - the line edit gets a transparent
         # background via _initial_palette
