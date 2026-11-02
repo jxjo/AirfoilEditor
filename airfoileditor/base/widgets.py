@@ -25,7 +25,7 @@ from PyQt6.QtWidgets    import (QApplication, QWidget, QPushButton, QMenu,
                                 QMainWindow, QLineEdit, QSpinBox, QDoubleSpinBox,
                                 QLabel, QToolButton, QCheckBox,
                                 QSpinBox, QComboBox, QSlider, QListWidget, QListWidgetItem,
-                                QSizePolicy)
+                                QSizePolicy, QStyle, QStyleOptionSpinBox, QStylePainter)
 from PyQt6.QtGui        import QColor, QPalette, QFont, QIcon, QAction
 
 
@@ -247,6 +247,12 @@ class Widget:
     LIGHT_INDEX = 0                                     # = Qt color index 
     DARK_INDEX  = 1 
     BG_INDEX_OFFSET = 2                                 # background colors follow the text colors in style tuples
+
+    # Background tint strength and final field opacity are separate.
+    # Disabled colored fields blend the tint first, then retain the disabled Base opacity.
+    STYLE_BG_ALPHA          = 0.3                       # enabled style tint strength
+    STYLE_BG_ALPHA_DISABLED = 0.25                      # disabled style tint strength
+    DISABLED_BASE_ALPHA     = 0.5                       # disabled field background opacity against its panel
 
     light_mode = True                                   # common setting of light/dark mode 
                                        
@@ -774,9 +780,6 @@ class Widget:
                 widget.setVisible(not self._hidden)
 
 
-    STYLE_BG_ALPHA          = 0.3                       # alpha of a style color used as background 
-    STYLE_BG_ALPHA_DISABLED = 0.15
-
     def _set_Qwidget_style (self): 
         """ set (color) style of QWidget based on self._style"""
 
@@ -910,8 +913,6 @@ class Field_With_Label (Widget):
 
         In this case, only QGridLayout is supported    
     """
-
-    DISABLED_BASE_ALPHA = 0.5                       # opacity of the background of a disabled entry field 
 
     # dark mode: Fusion derives the outline of a field from its Window color (darker (140)) - 
     # these values result in the outlines #494949 (enabled) and #303030 (disabled) 
@@ -1087,6 +1088,14 @@ class Label (Widget, QLabel):
         return palette
 
 
+    @override
+    def _update_palette (self, palette : QPalette, autoFill=False):
+        if autoFill and self._palette_normal is not None:
+            palette = _blend_field_background(palette, self._palette_normal,
+                                               QPalette.ColorRole.Window)
+        super()._update_palette(palette, autoFill=autoFill)
+
+
     def _set_Qwidget (self, **kwargs):
         """ set value and properties of self Qwidget"""
 
@@ -1165,6 +1174,102 @@ class Field (Field_With_Label, QLineEdit):
       self._set_value (self.text())
 
 
+    @override
+    def _update_palette (self, palette : QPalette, autoFill=False):
+        if autoFill and self._palette_normal is not None:
+            palette = _blend_field_background(palette, self._palette_normal)
+        super()._update_palette(palette, autoFill=False)
+
+
+def _blend_field_background (palette : QPalette, base_palette : QPalette,
+                             role : QPalette.ColorRole = QPalette.ColorRole.Base) -> QPalette:
+    """Resolve the style tint against the untinted background before painting.
+
+    Translucent palette brushes may be painted repeatedly by Qt's background
+    and control painting, producing a stronger tint than intended. Resolve
+    enabled and disabled tints once so labels, text fields and spin boxes
+    have consistent colors. Always blend against the saved normal palette,
+    not a previously tinted palette, so refreshes do not accumulate color.
+    Retain the normal brush's opacity: disabled field backgrounds must remain
+    translucent to their panel. This resolves an RGB tint, not a general
+    source-over composition of two translucent layers.
+    """
+    result = QPalette(palette)
+    for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive,
+                  QPalette.ColorGroup.Disabled):
+        tint = palette.color(group, role)
+        base = base_palette.color(group, role)
+        alpha = tint.alphaF()
+        color = QColor(
+            round(tint.red() * alpha + base.red() * (1 - alpha)),
+            round(tint.green() * alpha + base.green() * (1 - alpha)),
+            round(tint.blue() * alpha + base.blue() * (1 - alpha)),
+            base.alpha(),
+        )
+        result.setColor(group, role, color)
+    return result
+
+
+def _paint_spinbox_full_height (widget : QSpinBox | QDoubleSpinBox):
+    """Restore Fusion's visible field height without changing layout geometry.
+
+    Fusion draws the spin-box frame one pixel inside the top and bottom of
+    its painting rectangle. Expand only that rectangle to align the frame
+    with text fields and buttons; the widget height, internal editor geometry
+    and grid row sizes remain unchanged. The widget clips painting at its edges.
+
+    Do not restore the former negative-margin stylesheet: Qt 6.12.0's
+    stylesheet spin-box geometry calculation collapses the editor width when
+    buttons are hidden (QTBUG-151308). Call this helper only for Fusion;
+    other styles have different frame insets and retain their native painting.
+    """
+    option = QStyleOptionSpinBox()
+    widget.initStyleOption(option)
+    # Fusion insets the painted frame vertically by one pixel on each side.
+    option.rect.adjust(0, -1, 0, 1)
+    painter = QStylePainter(widget)
+    painter.drawComplexControl(QStyle.ComplexControl.CC_SpinBox, option)
+
+
+def _update_spinbox_palette (widget : 'FieldI | FieldF', palette : QPalette, autoFill : bool) -> None:
+    """Separate spin-box frame/background painting from editor text painting.
+
+    The outer spin box owns the background and outline; its embedded QLineEdit
+    owns text, selection and cursor colors. Keep the editor Base transparent
+    and disable its background autofill, otherwise a colored rectangle inside
+    the editor leaves an untinted strip around the enlarged outer frame.
+
+    autoFill here identifies a background-style update, not a request to
+    enable editor autofill. Blend that tint once into the saved outer Base
+    colors while retaining the outer Window colors used by Fusion's outline.
+    A normal/text-only update restores the untinted outer palette.
+    """
+    if widget._palette_normal is None:
+        return
+
+    frame_palette = QPalette(widget._spinbox_base_palette)
+    if autoFill:
+        blended_palette = _blend_field_background(palette, frame_palette)
+        for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive,
+                      QPalette.ColorGroup.Disabled):
+            frame_palette.setColor(group, QPalette.ColorRole.Base,
+                                   blended_palette.color(group, QPalette.ColorRole.Base))
+    editor_palette = QPalette(palette)
+    for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive,
+                  QPalette.ColorGroup.Disabled):
+        editor_palette.setColor(group, QPalette.ColorRole.Base, QColor(0, 0, 0, 0))
+
+    frame_changed = widget.palette() != frame_palette
+    if frame_changed:
+        widget.setPalette(frame_palette)
+    editor = widget.lineEdit()
+    # Autofill is independent of palette equality (e.g. after a caller enables it).
+    if editor.autoFillBackground():
+        editor.setAutoFillBackground(False)
+    Widget._update_palette(widget, editor_palette, qwidget=editor, autoFill=False)
+    if frame_changed:
+        widget.update()
+
 
 class FieldI (Field_With_Label, QSpinBox):
     """
@@ -1195,6 +1300,14 @@ class FieldI (Field_With_Label, QSpinBox):
 
         # connect signals 
         self.editingFinished.connect (self._on_finished)
+
+
+    @override
+    def paintEvent (self, event):
+        if self.style().objectName().lower() == 'fusion':
+            _paint_spinbox_full_height(self)
+        else:
+            super().paintEvent(event)
 
 
     def _get_properties (self): 
@@ -1239,10 +1352,13 @@ class FieldI (Field_With_Label, QSpinBox):
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
-        # the frame is painted by the style with the palette of the spin box (the line edit gets a transparent
-        # background via _initial_palette) - this is only picked up if the widget is polished before
+        # Capture the style's outer palette before installing the transparent editor palette.
+        # Polishing first ensures Fusion's frame colors are initialized.
         self.ensurePolished()
         self.setPalette (self._with_dark_look (self._with_disabled_base (self.palette())))
+        self._spinbox_base_palette = QPalette(self.palette())
+        self._palette_normal = self._initial_palette()
+        _update_spinbox_palette(self, self._palette_normal, False)
 
 
     @override
@@ -1262,9 +1378,7 @@ class FieldI (Field_With_Label, QSpinBox):
     @override
     def _update_palette (self, palette: QPalette, autoFill=False):
         """ set new QPalette for self"""
-        # for QSpinbox LineEdit is the relevant qwidget 
-        # super()._update_palette (palette)
-        super()._update_palette (palette, qwidget=self.lineEdit(), autoFill=autoFill) 
+        _update_spinbox_palette(self, palette, autoFill)
 
 
     def stepBy (self, step):
@@ -1321,6 +1435,14 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
 
 
     @override
+    def paintEvent (self, event):
+        if self.style().objectName().lower() == 'fusion':
+            _paint_spinbox_full_height(self)
+        else:
+            super().paintEvent(event)
+
+
+    @override
     def _get_properties (self): 
         super()._get_properties () 
         self._lim = self._get_value (self._lim_getter)
@@ -1368,9 +1490,11 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
                 self.setSpecialValueText (self._specialText)
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
-        # the frame is painted by the style with the palette of the spin box - the line edit gets a transparent
-        # background via _initial_palette
+        # Keep the outer frame palette separate from the transparent editor palette.
         self.setPalette (self._with_dark_look (self._with_disabled_base (self.palette())))
+        self._spinbox_base_palette = QPalette(self.palette())
+        self._palette_normal = self._initial_palette()
+        _update_spinbox_palette(self, self._palette_normal, False)
          
 
     @override
@@ -1391,9 +1515,7 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
     def _update_palette (self, palette: QPalette, autoFill=False):
         """ set new QPalette for self"""
 
-        # for QDoubleSpinbox LineEdit is the relevant qwidget 
-        # super()._update_palette (palette)
-        super()._update_palette (palette, qwidget=self.lineEdit(), autoFill=autoFill) 
+        _update_spinbox_palette(self, palette, autoFill)
 
 
     def stepBy (self, step):
@@ -2375,9 +2497,9 @@ if __name__ == "__main__":
 
     mode = "Dark"
 
-    if mode == "Dark":                                  
-        app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
-        Widget.light_mode = False
+    # if mode == "Dark":                                  
+    #     app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+    #     Widget.light_mode = False
 
     Test_Widgets().show()
     
