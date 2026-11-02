@@ -183,6 +183,10 @@ def test_text_and_numeric_field_backgrounds_match(qapp, monkeypatch, color_style
         backgrounds = [field.grab().toImage().pixelColor(10, 12) for field in fields]
         assert backgrounds[0] == backgrounds[1] == backgrounds[2]
         for field in fields:
+            for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive,
+                          QPalette.ColorGroup.Disabled):
+                assert field.palette().color(group, QPalette.ColorRole.Base).alpha() == 255
+        for field in fields:
             field.refresh()
         assert [field.grab().toImage().pixelColor(10, 12) for field in fields] == backgrounds
     finally:

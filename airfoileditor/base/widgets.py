@@ -248,11 +248,9 @@ class Widget:
     DARK_INDEX  = 1 
     BG_INDEX_OFFSET = 2                                 # background colors follow the text colors in style tuples
 
-    # Background tint strength and final field opacity are separate.
-    # Disabled colored fields blend the tint first, then retain the disabled Base opacity.
+    # Style tints are blended once against Qt's normal field background colors.
     STYLE_BG_ALPHA          = 0.3                       # enabled style tint strength
-    STYLE_BG_ALPHA_DISABLED = 0.25                      # disabled style tint strength
-    DISABLED_BASE_ALPHA     = 0.5                       # disabled field background opacity against its panel
+    STYLE_BG_ALPHA_DISABLED = 0.2                       # disabled style tint strength
 
     light_mode = True                                   # common setting of light/dark mode 
                                        
@@ -921,15 +919,6 @@ class Field_With_Label (Widget):
     DARK_BASE_LIGHTER            = 120                  # enabled fields a bit brighter than the panel (QColor.lighter)
 
     @classmethod
-    def _with_disabled_base (cls, palette : QPalette, alpha : float | None = None) -> QPalette:
-        """ returns palette with a translucent background for disabled state - lighter than the Qt default """
-
-        color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base)
-        color.setAlphaF (cls.DISABLED_BASE_ALPHA if alpha is None else alpha)
-        palette.setColor (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, color)
-        return palette
-
-    @classmethod
     def _with_dark_look (cls, palette : QPalette) -> QPalette:
         """ returns palette with a softer outline and a brighter background of an enabled field in dark mode 
         (Fusion default is a nearly black outline and a background hardly different from the panel) """
@@ -1159,7 +1148,7 @@ class Field (Field_With_Label, QLineEdit):
     def _initial_palette(self):
         """ returns initial normal palette of self"""
 
-        palette =  self._with_dark_look (self._with_disabled_base (self.palette()))
+        palette =  self._with_dark_look (self.palette())
 
         if self.light_mode:
             color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
@@ -1190,9 +1179,7 @@ def _blend_field_background (palette : QPalette, base_palette : QPalette,
     enabled and disabled tints once so labels, text fields and spin boxes
     have consistent colors. Always blend against the saved normal palette,
     not a previously tinted palette, so refreshes do not accumulate color.
-    Retain the normal brush's opacity: disabled field backgrounds must remain
-    translucent to their panel. This resolves an RGB tint, not a general
-    source-over composition of two translucent layers.
+    Retain Qt's normal background opacity; only the tint strength is customized.
     """
     result = QPalette(palette)
     for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive,
@@ -1355,7 +1342,7 @@ class FieldI (Field_With_Label, QSpinBox):
         # Capture the style's outer palette before installing the transparent editor palette.
         # Polishing first ensures Fusion's frame colors are initialized.
         self.ensurePolished()
-        self.setPalette (self._with_dark_look (self._with_disabled_base (self.palette())))
+        self.setPalette (self._with_dark_look (self.palette()))
         self._spinbox_base_palette = QPalette(self.palette())
         self._palette_normal = self._initial_palette()
         _update_spinbox_palette(self, self._palette_normal, False)
@@ -1365,7 +1352,7 @@ class FieldI (Field_With_Label, QSpinBox):
     def _initial_palette(self):
         """ returns initial normal palette of self"""
 
-        palette =  self._with_dark_look (self._with_disabled_base (self.palette(), alpha=0.0))     # frame of the spin box paints the background
+        palette =  self._with_dark_look (self.palette())
 
         if self.light_mode:
             color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
@@ -1491,7 +1478,7 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         self.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         # Keep the outer frame palette separate from the transparent editor palette.
-        self.setPalette (self._with_dark_look (self._with_disabled_base (self.palette())))
+        self.setPalette (self._with_dark_look (self.palette()))
         self._spinbox_base_palette = QPalette(self.palette())
         self._palette_normal = self._initial_palette()
         _update_spinbox_palette(self, self._palette_normal, False)
@@ -1501,7 +1488,7 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
     def _initial_palette(self):
         """ returns initial normal palette of self"""
 
-        palette =  self._with_dark_look (self._with_disabled_base (self.palette(), alpha=0.0))     # frame of the spin box paints the background
+        palette =  self._with_dark_look (self.palette())
 
         if self.light_mode:
             color = palette.color (QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
