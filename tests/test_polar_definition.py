@@ -1,6 +1,36 @@
+import pytest
+
 from airfoileditor.base.common_utils import fromDict
 from airfoileditor.model.nf_driver import Neuralfoil_Evaluator
 from airfoileditor.model.polar_set import Polar, Polar_Definition, Polar_Set
+
+
+@pytest.mark.parametrize("worker_ready", [False, True])
+@pytest.mark.parametrize("polar_type", ["T1", "T2"])
+@pytest.mark.parametrize("reynolds", [150000, 450000])
+def test_loading_saved_xfoil_definition_preserves_reynolds(
+        monkeypatch, worker_ready, polar_type, reynolds):
+    monkeypatch.setattr("airfoileditor.model.polar_set.Worker.ready", worker_ready)
+    monkeypatch.setattr(Neuralfoil_Evaluator, "ready", True)
+    monkeypatch.setattr(Neuralfoil_Evaluator, "available_model_sizes",
+                        staticmethod(lambda: [Neuralfoil_Evaluator.MODEL_SIZE_DEFAULT]))
+
+    definition = Polar_Definition({"type": polar_type, "re": reynolds})
+
+    assert definition.type == polar_type
+    assert definition.re == reynolds
+    assert definition.is_neuralfoil == (not worker_ready)
+    assert definition.specVar == ("cl" if polar_type == "T2" else "alpha")
+    assert definition.as_copy().re == reynolds
+
+
+def test_switching_existing_T1_to_T2_still_limits_reynolds(monkeypatch):
+    monkeypatch.setattr("airfoileditor.model.polar_set.Worker.ready", True)
+    definition = Polar_Definition({"type": "T1", "re": 450000})
+
+    definition.set_type("T2")
+
+    assert definition.re == 200000
 
 
 def _make_neuralfoil_polar_set(monkeypatch):

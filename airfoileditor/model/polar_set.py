@@ -314,14 +314,6 @@ class Polar_Definition:
         self._specVar       = None
         self._type          = None
 
-        # sanity check for xfoil and neuralfoil availability
-        if self.is_neuralfoil and not Neuralfoil_Evaluator.ready:
-            self.set_is_xfoil(True)
-            logger.warning (f"NeuralFoil is not available, switching to Xfoil polar")
-        elif self.is_xfoil and not Worker.ready:
-            self.set_is_neuralfoil(True)
-            logger.info (f"Worker (Xfoil) is not available, switching to NeuralFoil polar")
-
         # init instance variables from dataDict or defaults
 
         self._autoRange = True   # deactivated fromDict (dataDict, "autoRange",True)
@@ -345,6 +337,14 @@ class Polar_Definition:
         self._active    = fromDict (dataDict, "active",   True)             # a polar definition can be in-active
 
         self._is_mandatory = False                                          #  polar needed e.g. for xo2
+
+        # Driver setters require the fully initialized polar definition.
+        if self.is_neuralfoil and not Neuralfoil_Evaluator.ready:
+            self.set_is_xfoil(True)
+            logger.warning (f"NeuralFoil is not available, switching to Xfoil polar")
+        elif self.is_xfoil and not Worker.ready:
+            self.set_is_neuralfoil(True)
+            logger.info (f"Worker (Xfoil) is not available, switching to NeuralFoil polar")
 
 
     def __repr__(self) -> str:
@@ -2161,5 +2161,4 @@ class Polar_Task:
                     nLoaded += 1           
 
         return nLoaded
-
 
