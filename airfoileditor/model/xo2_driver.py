@@ -333,6 +333,7 @@ class X_Program:
         # extract version and check version
         if returncode == 0 :
             for line in self._pipe_out_lines: 
+                line = re.sub(r'\x1b\[[0-9;]*m', '', line)  # ANSI colors may also appear in captured output.
                 words = line.split()
 
                 # first word is program name 

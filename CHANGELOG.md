@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 5.0.2
+
+### Fixed
+
+- #28: Fixed Worker and Xoptfoil2 version detection when help output contains ANSI color codes
+
+
 ## 5.0.1
 
 ### Fixed
