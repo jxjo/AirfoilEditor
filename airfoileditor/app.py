@@ -214,10 +214,22 @@ class Main (QMainWindow):
         # set dark or light mode
 
         scheme_name = Settings().get('color_scheme', Qt.ColorScheme.Unknown.name)   # either unknown (from System), Dark, Light
-        QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme[scheme_name])    # set scheme of QT
+        if scheme_name.lower() == 'unknown':
+            scheme_name = Qt.ColorScheme.Unknown.name
+        elif scheme_name.lower() == 'dark':
+            scheme_name = Qt.ColorScheme.Dark.name
+        elif scheme_name.lower() == 'light':
+            scheme_name = Qt.ColorScheme.Light.name
+        else:
+            scheme_name = Qt.ColorScheme.Unknown.name
+            
+        scheme = Qt.ColorScheme[scheme_name]
+        hints = QGuiApplication.styleHints()
+        hints.setColorScheme(scheme)
 
-        # set mode for Widgets
-        Widget.light_mode = not (scheme_name == Qt.ColorScheme.Dark.name)          
+        # Unknown means follow the system, not necessarily light mode.
+        effective_scheme = hints.colorScheme() if scheme == Qt.ColorScheme.Unknown else scheme
+        Widget.light_mode = effective_scheme != Qt.ColorScheme.Dark
 
 
     def _set_win_geometry (self):
