@@ -371,7 +371,7 @@ class Repanel_Airfoil_Dialog (Dialog_Modeless):
         r += 1
         SpaceR (l, r, stretch=0, height=5) 
         r += 1 
-        Label  (l,r,1, get="Panels", align=Qt.AlignmentFlag.AlignRight)
+        Label  (l,r,1, get="Panels ", align=Qt.AlignmentFlag.AlignRight)
         FieldI (l,r,2, width=60, step=10, lim=(40, 400),
                         obj=self.geo.paneling, prop=Paneling_Spline.nPanels,
                         style=self._le_bunch_style)
@@ -395,7 +395,6 @@ class Repanel_Airfoil_Dialog (Dialog_Modeless):
                         obj=self.geo.paneling, prop=Paneling_Spline.te_bunch)
         r += 1
         Label  (l,r,0, colSpan=5, get=self._le_bunch_message, style=style.COMMENT)        
-        SpaceC (l,5, width=5)
 
         return l
 
