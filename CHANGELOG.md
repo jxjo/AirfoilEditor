@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - #28: Fixed Worker and Xoptfoil2 version detection when help output contains ANSI color codes
 - Restored numeric field border height with Fusion without changing layout spacing
 - Matched colored backgrounds of text and numeric fields
+- Avoided native message-box crashes reported on macOS 27 with Qt 6.12
 
 
 ## 5.0.1

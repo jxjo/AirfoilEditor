@@ -8,6 +8,7 @@ Higher level ui components / widgets like Edit_Panel, Diagram
 """
 
 import os
+import sys
 import traceback
 
 from copy               import copy
@@ -941,6 +942,11 @@ class MessageBox (QMessageBox):
                  min_width=None,                            # width of text widget 
                  min_height=None):                          # height of text widget 
         super().__init__(parent)
+
+        # macOS 27 / Qt 6.12 native NSAlert icon rendering can abort the process.
+        # Use Qt's widget dialog, which also honors our custom icon and layout.
+        if sys.platform == 'darwin':
+            self.setOption(QMessageBox.Option.DontUseNativeDialog, True)
 
         # set properties 
 
