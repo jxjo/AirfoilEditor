@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "5.0.2"                   # hatch "version dynamic" - PEP440 compliant version string
+__version__      = "5.0.3"                   # hatch "version dynamic" - PEP440 compliant version string
 
 CHANGE_TEXT      = "- Represent airfoils with CST-Kulfan parameters<br>" + \
                    "- Fast polar prediction with integrated NeuralFoil<br>" + \
@@ -226,6 +226,8 @@ class Main (QMainWindow):
         scheme = Qt.ColorScheme[scheme_name]
         hints = QGuiApplication.styleHints()
         hints.setColorScheme(scheme)
+        # Settle Qt's palette before panels copy it and the native frame is shown.
+        QApplication.processEvents()
 
         # Unknown means follow the system, not necessarily light mode.
         effective_scheme = hints.colorScheme() if scheme == Qt.ColorScheme.Unknown else scheme
