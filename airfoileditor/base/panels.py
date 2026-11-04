@@ -200,13 +200,15 @@ class Disabled_Overlay(QWidget):
         l_main.setContentsMargins(QMargins(0, 0, 0, 0))
         l_main.addWidget(self._label, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        parent.installEventFilter(self)
         self.raise_()                               # Ensure it's on top
         self.show()
 
     @override
-    def resizeEvent(self, event):
-        # Keep overlay covering the entire parent window
-        self.resize(self.parent().size())
+    def eventFilter(self, source, event):
+        if source is self.parentWidget() and event.type() == QEvent.Type.Resize:
+            self.setGeometry(source.rect())
+        return super().eventFilter(source, event)
 
 
     @override
