@@ -164,11 +164,20 @@ class Xo2_Select_Dialog (Dialog_Modal):
             l.setColumnMinimumWidth (1,120)
 
             self._info_panel = Edit_Panel (title="Info and Examples", layout=l, height=(100,None), 
-                                              switchable=True, switched_on=False, on_switched=lambda x: self.adjustSize())
+                                              switchable=True, switched_on=False, on_switched=self._resize_for_info_panel)
             
             self._info_panel.set_background_color (**mode_color.OPTIMIZE)
 
         return self._info_panel 
+
+
+    def _resize_for_info_panel (self, _switched_on: bool):
+        # Propagate the changed size hint through the nested panels before adjusting the dialog.
+        widget: QWidget | None = self.info_panel
+        while widget is not None and widget is not self:
+            widget.updateGeometry()
+            widget = widget.parentWidget()
+        self.adjustSize()
 
 
     @override
