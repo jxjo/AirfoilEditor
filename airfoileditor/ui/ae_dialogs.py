@@ -210,6 +210,107 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
         return buttonBox
 
 
+
+class Blend_Chord_Dialog (Dialog_Modeless):
+    """ Calculate a live blend factor from three chord lengths in the same unit. """
+
+    name = "Blend by Chord"
+
+    def __init__ (self, parent, **kwargs):
+
+        self._chords    = [200.0, 100.0]
+        self._chord_m   = 150.0
+        self._airfoil_a = ""
+        self._airfoil_b = ""
+
+        super().__init__ (parent=parent, close_on_click_outside=True, **kwargs)
+
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+
+
+    def set_chords (self, chords: list[float]):
+        self._chords = chords
+        self._chord_m = float(np.clip(self._chord_m, min(chords), max(chords)))
+
+    def set_blend_by (self, blend_by: float):
+        self._chord_m = self._chords[0] + blend_by * (self._chords[1] - self._chords[0])
+
+    def set_airfoil_a (self, airfoil_a: str):
+        self._airfoil_a = airfoil_a
+
+    def set_airfoil_b (self, airfoil_b: str):
+        self._airfoil_b = airfoil_b
+
+
+    @override
+    def showEvent (self, event):
+        # The modeless base removes the parent lifecycle filter when the dialog finishes.
+        self.parentWidget().installEventFilter(self)
+        self._changes = False
+        super().showEvent(event)
+
+        # Refresh the dialog layout and adjust its size after showing
+        self.refresh_and_adjust()
+        if self._field_chord_m.isEnabled():
+            self._field_chord_m.setFocus()
+            self._field_chord_m.selectAll()
+
+
+    @property
+    def dataObject (self) -> float | None:
+        a, b = self._chords
+        return (self._chord_m - a) / (b - a) if a != b else None
+
+    def _set_chord (self, value: float, id: int):
+        self._chords[id] = value
+        self._chord_m = float(np.clip(self._chord_m, min(self._chords), max(self._chords)))
+
+    def _set_chord_m (self, value: float):
+        self._chord_m = value
+
+
+    def _init_layout (self) -> QLayout:
+
+        l = QGridLayout()
+
+        r = 0
+        Label (l,r,0, get=lambda: self._airfoil_a)
+        Label (l,r,2, get=lambda: "Blended", fontSize=size.HEADER_SMALL)
+        Label (l,r,4, get=lambda: self._airfoil_b)
+        r += 1
+        Label (l,r,0, get="at chord", style=style.COMMENT)
+        Label (l,r,2, get="at chord", style=style.COMMENT)
+        Label (l,r,4, get="at chord", style=style.COMMENT)
+
+        SpaceC (l,1, 20, stretch=1)
+        SpaceC (l,3, 20, stretch=1)
+
+        FieldF (l,2,0, width=80, dec=1, step=1, lim=(0.1, 999999),
+                get=lambda id: self._chords[id], set=self._set_chord, id=0)
+        self._field_chord_m = FieldF (l,2,2, width=80, dec=1, step=1,
+                lim=lambda: (min(self._chords), max(self._chords)),
+                get=lambda: self._chord_m, set=self._set_chord_m,
+                disable=lambda: self._chords[0] == self._chords[1],
+                toolTip="Enter the intermediate chord to update the blend live")
+        FieldF (l,2,4, width=80, dec=1, step=1, lim=(0.1, 999999),
+                get=lambda id: self._chords[id], set=self._set_chord, id=1)
+        SpaceR (l,3, height=10, stretch=0)
+        Label  (l,4,0, colSpan=5,
+                get=lambda: ("The endpoint chords must differ to calculate a blend."
+                             if self.dataObject is None else "Use the same unit for all chord lengths."),
+                style=lambda: style.ERROR if self.dataObject is None else style.COMMENT)
+        return l
+
+
+    @override
+    def _on_widget_changed (self, widget):
+        if self.dataObject is None:
+            self.refresh()
+        else:
+            super()._on_widget_changed(widget)
+
+
+
 class Blend_Airfoil_Dialog (Dialog_Modeless):
     """ Dialog to blend two airfoils into a new one"""
 
@@ -226,6 +327,8 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
         self._airfoil2_copy = None
         
         self._blendBy  = 0.5                            # initial blend value 
+        self._blend_chords = [200.0, 100.0]
+        self._dialog_chord: Blend_Chord_Dialog | None = None
 
         # init layout etc 
         super().__init__ (parent=parent, **kwargs)
@@ -305,7 +408,9 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
                        set=self.set_blendBy, disable=lambda: self.airfoil_2 is None)
         FieldF (l,r,4, width=60,  lim=(0, 100),get=lambda: self.blendBy, step=1, unit="%", dec=0,
                        set=self.set_blendBy, disable=lambda: self.airfoil_2 is None)
-        SpaceC (l,5, width=10, stretch=0)
+        ToolButton (l,r,5, icon=Icon.EDIT, set=self._edit_blend_chords, signal=False,
+                    toolTip="Calculate blending from chord lengths",
+                    disable=lambda: self.airfoil_2 is None)
         Airfoil_Select_Open_Widget (l,r,6, withOpen=True, signal=True, width=180, widthOpen=80,
                                     get=lambda: self.airfoil_2, set=self.set_airfoil_2,
                                     addEmpty=True,                                  # do not show first airfoil in directory
@@ -314,6 +419,29 @@ class Blend_Airfoil_Dialog (Dialog_Modeless):
         SpaceR (l, r,stretch=0) 
 
         return l
+
+
+    def _edit_blend_chords (self):
+        """ open or prepare the blend chord dialog """
+
+        if self._dialog_chord is None:
+            self._dialog_chord = Blend_Chord_Dialog (
+                self, parentPos=(0.75, 0.2), dialogPos=(0,1))
+            self._dialog_chord.sig_changed.connect(self._set_blend_from_chord)
+
+        if not self._dialog_chord.isVisible():
+            self._dialog_chord.set_chords(self._blend_chords)
+            self._dialog_chord.set_blend_by(self.blendBy)
+            self._dialog_chord.set_airfoil_a(self.airfoil_seed.fileName)
+            self._dialog_chord.set_airfoil_b(self.airfoil_2.fileName)
+
+        self._dialog_chord.show()
+        self._dialog_chord.raise_()
+        self._dialog_chord.activateWindow()
+
+    def _set_blend_from_chord (self, blend_by: float):
+        self.set_blendBy(blend_by)
+        self._on_widget_changed(None)
 
 
     def done(self, result: int) -> None:
@@ -1196,6 +1324,3 @@ class CST_Fit_Dialog (Dialog_Modeless):
         l.setColumnStretch (4,3)
         l.setColumnMinimumWidth (0,80)
         return l
-
-
-

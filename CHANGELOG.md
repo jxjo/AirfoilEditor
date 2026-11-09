@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 5.0.3
+
+### Added
+
+- Calculate airfoil blending from two section chords and an intermediate chord
+
+### Fixed
+
+- Modify: handling of symmetric airfoils
+- Optimize: Info and examples didn't show
+
 ## 5.0.2
 
 ### Fixed

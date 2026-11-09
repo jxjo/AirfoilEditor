@@ -756,6 +756,19 @@ class Edit_Panel (Panel_Abstract):
 
 
 
+    def activate_layout (self):
+        """ propagate pending layout changes up to the containing window """
+
+        widget: QWidget | None = self._panel
+        while widget is not None:
+            layout = widget.layout()
+            if layout is not None:
+                layout.activate()
+            if widget.isWindow():
+                break
+            widget = widget.parentWidget()
+
+
     def refresh_header (self):
         """ refresh all header widgets of self """
 
@@ -1523,6 +1536,14 @@ class Dialog_Modal (QDialog):
         for w in self.widgets:
             w.refresh(disable=disable)
         logger.debug (f"{self} - refresh")
+
+
+    def refresh_and_adjust (self):
+        """ refresh content and resize to its updated size hint """
+
+        self.refresh()
+        self._panel.activate_layout()
+        self.adjustSize()
 
 
     def _toast_message(self,
