@@ -141,12 +141,14 @@ class Movable_Highpoint (Movable_Point):
                   color : QColor|str, 
                   **kwargs):
 
-        # symmetrical and camber? 
-        if line.type == Line.Type.CAMBER and geo.isSymmetrical: 
-            movable = False 
         # Bezier and BSpline is changed via control points 
-        elif geo.isCurve:
+        if geo.isCurve:
             movable = False 
+
+        # symmetrical? - only thickness allowed 
+        elif geo.isSymmetrical: 
+            if line.type in ( Line.Type.CAMBER, Line.Type.UPPER, Line.Type.LOWER):
+                movable = False 
 
         self.name = 'max '+ line.name
         self._geo = geo
@@ -1848,7 +1850,7 @@ class Airfoil_Line_Artist (Artist, QObject):
                     style = None
 
                 if airfoil.usedAsDesign:
-                    zValue = 5                                  # plot design on top 
+                    zValue = 6                                  # plot design on top 
                 else:
                     zValue = 4 
 
@@ -1870,6 +1872,7 @@ class Airfoil_Line_Artist (Artist, QObject):
                                             movable=airfoil.isEdited, color=color,
                                             on_changed=self.sig_changed.emit,
                                             on_move=self.sig_moving.emit)
+                ph.setZValue(zValue+1)
                 self._add (ph) 
 
 

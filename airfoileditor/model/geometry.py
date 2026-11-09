@@ -2560,6 +2560,14 @@ class Geometry ():
               and camber is just the mean value y_upper(x) and y_lower(x)
         """
 
+        # handle special case symmetric airfoil
+
+        if self.isSymmetrical:
+            thickness_y = np.round (self.upper.y * 2.0, 10)  
+            self._thickness = self.line_class (self.upper.x, thickness_y, linetype=Line.Type.THICKNESS)
+            self._camber    = self.line_class (self.upper.x, np.zeros_like(self.upper.x), linetype=Line.Type.CAMBER)
+            return
+
         # evaluate the corresponding y-values on lower side 
 
         # handle not normalized airfoil - without changing self
@@ -2596,7 +2604,7 @@ class Geometry ():
 
         # for symmetric airfoil with unclean data set camber line to 0 
         
-        if np.max(camber_y) < 0.00001: 
+        if np.max(np.abs(camber_y)) < 0.00001: 
             camber_y = np.zeros (len(camber_y))
 
         self._thickness = self.line_class (upper.x, thickness_y, 
