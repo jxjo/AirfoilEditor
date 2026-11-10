@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import override
 
 from airfoileditor.base.dxf_artist          import *
-from airfoileditor.base.common_utils        import relative_path, absolute_path, fromDict, toDict
+from airfoileditor.base.common_utils        import relative_path, absolute_path, fromDict, toDict, validated_filename
 from airfoileditor.model.airfoil            import Airfoil, Flap_Definition
 from airfoileditor.model.geometry_curve     import Geometry_Curve
 
@@ -331,14 +331,14 @@ class Export_Airfoil_Dxf (Export_Abstract):
         return self.airfoil.fileName_stem + ".dxf"
 
 
-    @property
-    def export_pathFileName_abs(self) -> str:
-        return str(Path(self.export_dir_abs) / self.export_fileName)
 
-
-    def do_it(self, drawing = None) -> str:
+    def do_it (self, drawing = None, filename: str | None = None) -> str | None:
         """ Export the airfoil to a DXF file and return the path to the exported file.
-        If a drawing is provided, it will be used; otherwise, a new drawing will be created. """
+        filename overrides the default basename within the export directory; .dxf is appended if needed.
+        If a drawing is provided, only plot into it, ignore filename and return None. """
+
+        if drawing is None:
+            filename = validated_filename(filename, ".dxf") if filename is not None else self.export_fileName
 
         artist = Dxf_Airfoil_Artist(self._airfoil, 
                                     drawing=drawing,
@@ -348,12 +348,16 @@ class Export_Airfoil_Dxf (Export_Abstract):
                                     always_as_cubic_fit=self.always_as_cubic_fit)
         artist.plot()
 
-        if not drawing:
+        if drawing is None:
             # Ensure the export directory exists and is cleared if needed
             self._ensure_export_dir()
-            artist.save(self.export_pathFileName_abs)
-            logger.info(f"Airfoil exported to '{self.export_pathFileName_abs}'")
-            return self.export_pathFileName_abs
+
+            export_pathFilename = Path(self.export_dir_abs) / filename
+
+            artist.save(export_pathFilename)
+
+            logger.info(f"Airfoil exported to '{export_pathFilename}'")
+            return str(export_pathFilename)
         else:
             logger.info("Airfoil plotted to provided drawing.")
             return None

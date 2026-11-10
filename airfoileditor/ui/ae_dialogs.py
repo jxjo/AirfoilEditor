@@ -13,6 +13,7 @@ from PyQt6.QtCore               import Qt, QCoreApplication
 from PyQt6.QtGui                import QCursor
 from PyQt6.QtWidgets            import QWidget, QLayout, QDialogButtonBox, QPushButton, QDialogButtonBox, QFileDialog
 
+from ..base.common_utils        import validated_filename
 from ..base.widgets             import * 
 from ..base.panels              import Dialog_Modal, Dialog_Modeless, MessageBox
 
@@ -47,6 +48,9 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
         self._app_model = app_model
         self._export_btn: QPushButton = None
         self._cancel_btn: QPushButton = None
+
+        self._export_filename = None
+
         super().__init__(parent=parent, **kwargs)
 
         self._cancel_btn.clicked.connect(self.close)
@@ -67,6 +71,13 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
     def exporter_airfoil(self) -> Export_Airfoil_Dxf:
         return self.app_model.exporter_airfoil
 
+    @property
+    def export_filename(self) -> str | None:
+        return self._export_filename if self._export_filename else self.exporter_airfoil.export_fileName
+
+    def set_export_filename(self, filename: str):
+        self._export_filename = filename
+    
 
     def _init_layout(self) -> QLayout:
 
@@ -77,7 +88,8 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
         r += 1
         SpaceR   (l, r, stretch=0, height=5)
         r += 1
-        Field    (l, r, 0, lab="File Name", width=250, get=lambda: self.exporter_airfoil.export_fileName)
+        Field    (l, r, 0, lab="Filename", width=250, 
+                  get=lambda: self.export_filename, set=self.set_export_filename)
         r += 1
         Field    (l, r, 0, width=250, lab="To Directory", get=lambda: self.exporter_airfoil.export_dir)
         ToolButton(l, r,2, icon=Icon.OPEN, set=self._select_directory)
@@ -183,8 +195,15 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
 
 
     def _export_dxf(self, *_):
+
         try:
-            pathFileName = self.exporter_airfoil.do_it()
+            self._export_filename = validated_filename (self.export_filename, ".dxf")
+        except ValueError as e:
+            MessageBox.error(self, "Export Airfoil as DXF", f"Invalid export filename.\n\n{e}", min_height=80)
+            return
+
+        try:
+            pathFileName = self.exporter_airfoil.do_it(filename=self._export_filename)
         except Exception as e:
             MessageBox.error(self, "Export Airfoil as DXF", f"DXF export failed.\n\n{e}", min_height=80)
             return
@@ -194,7 +213,7 @@ class Airfoil_Export_DXF_Dialog (Dialog_Modal):
 
 
     @override
-    def _on_widget_changed(self):
+    def _on_widget_changed(self, *_):
         self.refresh()
 
 

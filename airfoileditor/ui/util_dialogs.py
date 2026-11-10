@@ -7,12 +7,14 @@ Samller Utility dialogs not depending on app model
 
 """
 
-from PyQt6.QtCore                       import pyqtSignal
-from PyQt6.QtWidgets                    import QLayout, QDialogButtonBox, QDialogButtonBox
-from PyQt6.QtWidgets                    import QFileDialog, QWidget
+from pathlib                            import Path
+
+from PyQt6.QtWidgets                    import QLayout
+from PyQt6.QtWidgets                    import QFileDialog
 
 from ..base.widgets                     import * 
-from ..base.panels                      import Dialog_Modeless, Dialog_Modal
+from ..base.panels                      import Dialog_Modeless, Dialog_Modal, MessageBox
+from ..base.common_utils                import validated_filename
 
 from ..model.airfoil                    import Airfoil, Flap_Definition
 from ..model.polar_set                  import *
@@ -30,6 +32,8 @@ class Airfoil_Save_Dialog (Dialog_Modal):
         - select directory
         - remove temp files 
 
+    Validates the filename before applying changes or saving, preserving the airfoil extension.
+
     When user successfully selected an airfoil file, 'set' is called with 
     the new <Airfoil> as argument 
     """
@@ -43,6 +47,7 @@ class Airfoil_Save_Dialog (Dialog_Modal):
 
         self._rename_mode    = rename_mode
         self._remove_designs = remove_designs
+        self._filename: str | None = None
 
         if rename_mode:
             self.name = "Rename Airfoil"
@@ -62,6 +67,19 @@ class Airfoil_Save_Dialog (Dialog_Modal):
     def set_remove_designs (self, aBool : bool):
         self._remove_designs = aBool
 
+    @property
+    def filename (self) -> str:
+        return self.airfoil.fileName if self._filename is None else self._filename
+
+    def set_filename (self, filename: str):
+        self._filename = filename
+
+    def _use_filename (self):
+        self.airfoil.set_name(Path(self.filename).stem)
+
+    def _use_name (self):
+        self.set_filename(self.airfoil.name + self.airfoil.fileName_ext)
+
 
     def _init_layout(self) -> QLayout:
 
@@ -78,16 +96,16 @@ class Airfoil_Save_Dialog (Dialog_Modal):
         r += 1
         Field  (l,r,0, lab="Name", obj= self.airfoil, prop=Airfoil.name, width=(150,None),
                        style=self._style_names, signal=True)
-        Button (l,r,2, text="Use Filename", set=self.airfoil.set_name_from_fileName, width=90,
+        Button (l,r,2, text="Use Filename", set=self._use_filename, width=90,
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use filename as airfoil name")
         r += 1
         Label  (l,r,1, colSpan=4, get=self._messageText, style=style.COMMENT, height=20,
                        hide= lambda: not self._messageText())
         r += 1
-        Field  (l,r,0, lab="Filename", obj=self.airfoil, prop=Airfoil.fileName, width=(150,None),
+        Field  (l,r,0, lab="Filename", get=lambda: self.filename, set=self.set_filename, width=(150,None),
                 signal=True)
-        Button (l,r,2, text="Use Name", set=self.airfoil.set_fileName_from_name, width=90,
+        Button (l,r,2, text="Use Name", set=self._use_name, width=90,
                        hide=self._names_are_equal, signal=True,
                        toolTip="Use airfoil name as filename")
         r += 1
@@ -124,7 +142,7 @@ class Airfoil_Save_Dialog (Dialog_Modal):
 
     def _names_are_equal (self) -> bool: 
         """ is airfoil name different from filename?"""
-        fileName_without = os.path.splitext(self.airfoil.fileName)[0]
+        fileName_without = Path(self.filename).stem
         return fileName_without == self.airfoil.name
 
 
@@ -160,6 +178,13 @@ class Airfoil_Save_Dialog (Dialog_Modal):
         airfoil : Airfoil = self.dataObject 
         airfoil_copy : Airfoil = self.dataObject_copy
 
+        try:
+            filename = validated_filename(self.filename, airfoil.fileName_ext)
+        except ValueError as e:
+            MessageBox.error(self, self.name, f"Invalid filename.\n\n{e}", min_height=80)
+            return
+
+        airfoil_copy.set_fileName(filename)
         airfoil.set_name (airfoil_copy.name)
         airfoil.set_pathFileName (airfoil_copy.pathFileName, noCheck=True)
 

@@ -6,6 +6,7 @@ Common Utility functions for convenience - no dependencies from other modules
 """
 
 import os
+import re
 import json
 from enum                   import StrEnum
 from pathlib                import Path
@@ -310,4 +311,33 @@ def absolute_path (path : str | Path, start : str | Path | None = None) -> str:
     base = Path(start) if start else Path.cwd()
     return os.path.normpath (base / path)           # pathlib can't collapse '..' lexically
 
+
+
+def validated_filename(filename: str, extension: str | None = None) -> str:
+    """
+    Validate a portable filename and append its extension when needed.
+
+    Raises:
+        ValueError: If the filename is empty, contains invalid characters, ends with a space or period,
+                    or is a reserved name on Windows. The exception message will provide details.
+    """
+
+    filename = filename.strip()
+    if not filename:
+        raise ValueError("Please enter a filename.")
+    
+    if any(ord(char) < 32 or char in '<>:"/\\|?*' for char in filename):
+        raise ValueError("Filename must not contain path separators or invalid filename characters.")
+    
+    if filename.endswith((".", " ")):
+        raise ValueError("Filename must not end with a space or period.")
+
+    filename_stem = filename.split(".", maxsplit=1)[0]
+    if re.fullmatch(r"(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])", filename_stem, re.IGNORECASE):
+        raise ValueError(f"'{filename}' is reserved on Windows and cannot be used as a cross-platform filename.")
+
+    if extension and not filename.lower().endswith(extension.lower()):
+        filename += extension
+        
+    return filename
 
