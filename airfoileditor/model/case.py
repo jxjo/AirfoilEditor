@@ -186,10 +186,11 @@ class Case_Direct_Design (Case_Abstract):
     """
 
     @staticmethod
-    def remove_design_dir (airfoil_pathFileName : str):
-        """ remove the design dir of airfoil_pathFileName"""
+    def remove_design_dir (airfoil_pathFileName : str | Path):
+        """ remove the design dir of an airfoil given as a string or Path """
 
-        design_dir = f"{os.path.splitext(airfoil_pathFileName)[0]}{Case_Abstract.DESIGN_DIR_EXT}"
+        airfoil_path = Path(airfoil_pathFileName)
+        design_dir = airfoil_path.with_name(airfoil_path.stem + Case_Abstract.DESIGN_DIR_EXT)
         shutil.rmtree (design_dir, ignore_errors=True)
 
 

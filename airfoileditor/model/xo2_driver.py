@@ -21,7 +21,6 @@ import time
 import shutil
 import logging
 import datetime 
-import fnmatch
 
 from subprocess             import Popen, run, PIPE
 if os.name == 'nt':                                 # startupinfo only available in windows environment  
@@ -724,12 +723,13 @@ class Xoptfoil2 (X_Program):
     RESULT_DIR_POSTFIX = '_temp'                            # result directory of Xoptfoil2 postfix of 'outname'
 
     @staticmethod
-    def remove_resultDir (airfoil_pathFileName : str, only_if_older = False):
+    def remove_resultDir (airfoil_pathFileName : str | Path, only_if_older = False):
         """ 
-        deletes the Xoptfoil2 result directory 
+        deletes the Xoptfoil2 result directory for an airfoil path given as str or Path
         """ 
 
-        resultDir = str(Path(airfoil_pathFileName).with_suffix('')) + Xoptfoil2.RESULT_DIR_POSTFIX
+        airfoil_path = Path(airfoil_pathFileName)
+        resultDir = airfoil_path.with_name(airfoil_path.stem + Xoptfoil2.RESULT_DIR_POSTFIX)
         shutil.rmtree(resultDir, ignore_errors=True)
 
 
@@ -851,34 +851,36 @@ class Worker (X_Program):
 
 
     @staticmethod
-    def polarDir (airfoil_pathFileName : str) -> str:
-        """ returns polar directory of airfoil having airfoil_pathFileName"""
+    def polarDir (airfoil_pathFileName : str | Path) -> Path:
+        """ returns the polar directory as a Path for the given airfoil path """
 
-        return str(Path(airfoil_pathFileName).with_suffix('')) + '_polars'
+        airfoil_path = Path(airfoil_pathFileName)
+        return airfoil_path.with_name(airfoil_path.stem + '_polars')
 
 
     @staticmethod
-    def remove_polarDir (airfoil_pathFileName : str, only_if_older = False):
+    def remove_polarDir (airfoil_pathFileName : str | Path, only_if_older = False):
         """ 
-        deletes polar directory 
+        deletes polar directory for an airfoil path given as str or Path
         If only_if_older the directory is not removed if it is younger than of airfoilPathFileName
         """ 
 
-        polarDir = Worker.polarDir (airfoil_pathFileName) if airfoil_pathFileName else None
+        airfoil_path = Path(airfoil_pathFileName)
+        polarDir = Worker.polarDir(airfoil_path)
 
         # sanity check 
-        if not os.path.isdir(polarDir): return 
+        if not polarDir.is_dir(): return
 
         remove = True 
 
         if only_if_older:
-            if os.path.isfile(airfoil_pathFileName):
+            if airfoil_path.is_file():
 
                 # compare datetime of airfoil file and polar dir 
-                ts = os.path.getmtime(polarDir)                 # file modification timestamp of a file
+                ts = polarDir.stat().st_mtime                 # file modification timestamp of a file
                 polarDir_dt = datetime.datetime.fromtimestamp(ts)        # convert timestamp into DateTime object
 
-                ts = os.path.getmtime(airfoil_pathFileName)              # file modification timestamp of a file
+                ts = airfoil_path.stat().st_mtime              # file modification timestamp of a file
                 airfoil_dt = datetime.datetime.fromtimestamp(ts)         # convert timestamp into DateTime object
 
                 # add safety seconds (async stuff?) 
@@ -892,13 +894,13 @@ class Worker (X_Program):
 
 
     @staticmethod
-    def get_existingPolarFile (airfoil_pathFileName, 
+    def get_existingPolarFile (airfoil_pathFileName : str | Path,
                                polarType : str, re : float, ma : float, ncrit : float,
                                xtript : float = None, xtripb : float = None,
                                flap_angle : float = 0.0, x_flap : float = 0.75,
-                               y_flap : float = 0.0, y_flap_spec : str = 'y/t') -> str:
+                               y_flap : float = 0.0, y_flap_spec : str = 'y/t') -> str | None:
         """ 
-        Get pathFileName of polar file if it exists 
+        Find a polar file using Path operations; return its path as str, or None if absent.
         """      
 
         def parm_is_ok (id:str, val : float|None, decimals, args :list[str]) -> bool:
@@ -928,12 +930,10 @@ class Worker (X_Program):
 
         # build name of polar dir from airfoil file 
         polarDir = Worker.polarDir (airfoil_pathFileName)
-        if os.path.isdir (polarDir):         
+        if polarDir.is_dir():
+            for polar_file in polarDir.glob('*.txt'):
 
-            fileNames = fnmatch.filter(os.listdir(polarDir), '*.txt')
-            for fileName in fileNames:
-
-                args = Path(fileName).stem.split('_')
+                args = polar_file.stem.split('_')
 
                 ok = True 
 
@@ -965,8 +965,7 @@ class Worker (X_Program):
                 ok = ok and parm_is_ok ("yspec", y_flap_spec_arg, None, args)
 
                 if ok:
-                    # logger.debug (f"<class Worker> found polar file {fileName} in {polarDir}")
-                    return os.path.join (polarDir, fileName)        # return pathFileName
+                    return str(polar_file)
 
         logger.debug (f"<class Worker> No polar file in {polarDir}")
         return None

@@ -7,6 +7,7 @@
 import pytest
 import os
 import shutil
+from pathlib import Path
 
 # -> pyproject.toml
 # pythonpath = ["airfoileditor"]          # add project root to sys.path to find airfoileditor moduls
@@ -201,7 +202,8 @@ class Test_Case_Direct_Design:
         # Cleanup
         shutil.rmtree(design_dir, ignore_errors=True)
 
-    def test_static_remove_design_dir(self, temp_dir, seed_airfoil):
+    @pytest.mark.parametrize("path_type", [str, Path])
+    def test_static_remove_design_dir(self, temp_dir, seed_airfoil, path_type):
         """Test static method to remove design directory"""
         case = Case_Direct_Design(seed_airfoil)
         case.initial_airfoil_design()
@@ -211,7 +213,7 @@ class Test_Case_Direct_Design:
         
         assert os.path.isdir(design_dir)
         
-        Case_Direct_Design.remove_design_dir(pathFileName)
+        Case_Direct_Design.remove_design_dir(path_type(pathFileName))
         
         assert not os.path.isdir(design_dir)
 

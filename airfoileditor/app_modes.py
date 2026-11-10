@@ -393,7 +393,11 @@ class Mode_View (Mode_Abstract):
                 old_path = os.path.normcase (os.path.abspath (old_pathFileName))
                 new_path = os.path.normcase (os.path.abspath (new_pathFileName))
                 if old_path != new_path and os.path.isfile (old_pathFileName):
+
                     os.remove (old_pathFileName)
+
+                    if dlg.remove_designs:
+                        self._delete_temp_files (Path(old_pathFileName), silent=True)
 
             # a copy with new name was created 
             self._app_model.set_airfoil (airfoil)
@@ -439,24 +443,32 @@ class Mode_View (Mode_Abstract):
     def delete_temp_files (self, silent=False): 
         """ delete all temp files and directories of current airfoil ..."""
 
-        airfoil = self._app_model.airfoil
-        if not os.path.isfile (airfoil.pathFileName_abs): return 
+        airfoil_path = Path(self._app_model.airfoil.pathFileName_abs)
+        if not airfoil_path.is_file():
+            return
+
+        self._delete_temp_files (airfoil_path, silent=silent)
+
+
+    def _delete_temp_files (self, airfoil_path: Path, silent=False):
+        """ delete all temp files and directories of given airfoil path ..."""
+
 
         delete = True 
-
         if not silent: 
-            text = f"All temporary files and directories of Airfoil <b>{airfoil.fileName}</b> will be deleted."
-            button = MessageBox.warning (self.stacked_panel, "Delete airfoil", text)
+            text = f"All temporary files and directories of Airfoil <b>{airfoil_path.name}</b> will be deleted."
+            button = MessageBox.warning (self.stacked_panel, "Delete temp files", text)
             if button != QMessageBox.StandardButton.Ok:
                 delete = False
         
         if delete: 
-            Case_Direct_Design.remove_design_dir (airfoil.pathFileName_abs)    # remove temp design files and dir 
-            Worker.remove_polarDir (airfoil.pathFileName_abs)                  # remove polar dir 
-            Xoptfoil2.remove_resultDir (airfoil.pathFileName_abs)              # remove Xoptfoil result dir 
+            Case_Direct_Design.remove_design_dir (airfoil_path)    # remove temp design files and dir 
+            Worker.remove_polarDir (airfoil_path)                  # remove polar dir 
+            Xoptfoil2.remove_resultDir (airfoil_path)              # remove Xoptfoil result dir 
 
             if not silent:
-                self._toast_message (f"Temporary files of Airfoil {airfoil.fileName} deleted", toast_style=style.GOOD)
+                self._toast_message (f"Temporary files of Airfoil {airfoil_path.name} deleted", toast_style=style.GOOD)
+
 
 
     def exit (self):
