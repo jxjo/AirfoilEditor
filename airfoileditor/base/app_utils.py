@@ -5,6 +5,7 @@
 Helper classes, dialogs, functions for an App
 """
 import os
+from pathlib                import Path
 
 from packaging.version      import Version                                  # has to be installed
 
@@ -99,6 +100,90 @@ class Settings (Parameters):
         cls._pathFileName = os.path.join(settings_dir, fileName)
 
         logger.debug (f"Reading settings from {cls._pathFileName}")
+
+
+
+class Recent_Files:
+    """Persist a most-recent-first history, independent of file type and application.
+
+    Each operation reads fresh settings so separate history instances share updates.
+    A missing history key is seeded from legacy_key; an empty list means explicitly cleared.
+    """
+
+    def __init__(self, key: str = "recent_files", limit: int = 10,
+                 legacy_key: str | None = "last_opened"):
+        """Configure the settings key, history limit and optional legacy migration key."""
+
+        if limit < 1:
+            raise ValueError("Recent file limit must be positive.")
+        self._key = key
+        self._limit = limit
+        self._legacy_key = legacy_key
+
+
+    def _read(self, settings: Settings) -> list[Path]:
+        if self._key not in settings:
+            legacy = settings.get(self._legacy_key) if self._legacy_key else None
+            entries = [legacy] if isinstance(legacy, str) and Path(legacy).is_file() else []
+        else:
+            entries = settings.get(self._key)
+        if not isinstance(entries, list):
+            logger.error("Invalid recent file list in setting '%s'", self._key)
+            return []
+
+        paths: list[Path] = []
+        for entry in entries:
+            if not isinstance(entry, str) or not entry.strip():
+                logger.warning("Ignoring invalid recent file entry in '%s': %r", self._key, entry)
+                continue
+            path = Path(entry).resolve()
+            if path not in paths:
+                paths.append(path)
+        return paths[:self._limit]
+
+
+    @property
+    def paths(self) -> list[Path]:
+        """Return recent paths, newest first, migrating legacy history if needed."""
+
+        settings = Settings()
+        paths = self._read(settings)
+        if self._key not in settings:
+            self._save(settings, paths)
+        return paths
+
+
+    def _save(self, settings: Settings, paths: list[Path]):
+        # Parameters.set() removes empty lists; retain this one to prevent legacy re-migration.
+        settings[self._key] = [str(path) for path in paths]
+        settings.save()
+
+
+    def add(self, filename: str | Path):
+        """Move an existing file to the front of the history and persist it."""
+
+        path = Path(filename).resolve()
+        if not path.is_file():
+            logger.warning("Not adding missing file to recent files: %s", path)
+            return
+        settings = Settings()
+        paths = [entry for entry in self._read(settings) if entry != path]
+        self._save(settings, [path, *paths][:self._limit])
+
+
+    def remove(self, filename: str | Path):
+        """Remove a file from the history and persist the remaining entries."""
+
+        path = Path(filename).resolve()
+        settings = Settings()
+        self._save(settings, [entry for entry in self._read(settings) if entry != path])
+
+
+    def clear(self):
+        """Persist an empty history without enabling legacy migration again."""
+
+        self._save(Settings(), [])
+
 
 
 class Run_Checker:
@@ -232,8 +317,9 @@ class Update_Checker:
             dialog.exec()
 
             if dialog.dont_ask_version:
-                self._settings.set("update_dont_ask_for_version", self._latest_version)
-                self._settings.save()
+                settings = Settings()
+                settings.set("update_dont_ask_for_version", self._latest_version)
+                settings.save()
 
 
 

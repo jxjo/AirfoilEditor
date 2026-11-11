@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Recent airfoils in the Open button's drop-down menu, shared by normal and compact View panels
+- View: labeled Open split button below the file selector; Optimize is available in More...
 - Calculate airfoil blending from two section chords and an intermediate chord
 
 ### Fixed

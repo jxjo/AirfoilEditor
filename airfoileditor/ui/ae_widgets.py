@@ -9,15 +9,18 @@ Handle Airfoil UI operations like Open and Select
 
 import os
 import fnmatch        
+from pathlib                    import Path
+from html                       import escape
 
 from typing                     import override, Callable    
 
 from PyQt6.QtCore               import QMargins, QTimer
 from PyQt6.QtWidgets            import QHBoxLayout
-from PyQt6.QtWidgets            import QFileDialog, QWidget
+from PyQt6.QtWidgets            import QFileDialog, QWidget, QMenu, QToolButton
 
 from ..base.widgets             import * 
 from ..base.panels              import MessageBox
+from ..base.app_utils           import Recent_Files
 
 from ..model.airfoil            import Airfoil, Airfoil_Bezier, Airfoil_BSpline, Airfoil_CST
 from ..model.airfoil            import GEO_BASIC
@@ -27,6 +30,9 @@ from ..model.airfoil_examples   import Example
 import logging
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.WARNING)
+
+MODE_BUTTON_WIDTH = 100
+MODE_SECONDARY_BUTTON_WIDTH = 80
 
 # ------ colors of modes ----------------------------------
 
@@ -172,7 +178,8 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
     """ 
     Compound widget to either select or open new airfoil 
         - ComboBox (optional with spin) with files in same directory
-        - optional Open button to select new airfoil 
+        - optional Open button beside or below the combo box
+        - openBelow keeps the text button visible, with or without files
         - optional Delete button to delete current   
 
     When user successfully selected an airfoil file, 'set' is called with 
@@ -188,70 +195,79 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                  set : callable= None,                      # callback: will set new airfoil
                  set_open : Callable | None = None,         # alternate callback when opened via button 
                  addEmpty = False,                          # add empty entry to file list 
-                 asSpin = False,                            # ComboBox with spin buttons 
                  withOpen = True,                           # include open button 
+                 openBelow = False,                         # show text Open button below the combo box
                  textOpen = "Open",                         # text for Open button 
                  widthOpen = 100,                           # width of open text button 
                  initialDir : Airfoil | str | None = None,  # either an airfoil or a pathString 
                  dialog_parent : QWidget | None = None,     # alternate, explicit parent for QFileDialog if self is transient
+                 recent_files : Recent_Files | None = None, # optional main-airfoil history and split Open menu
                  **kwargs):
+        if openBelow:
+            self._height = (None, None)
         super().__init__(*args, get=get, set=set, **kwargs)
 
-        self._set_open = set_open if callable(set_open) else None
+        self._set_open      = set_open if callable(set_open) else None
+        self._recent_files  = recent_files
+        self._open_below    = openBelow
+        self._dialog_parent = dialog_parent
 
         self._combo_widget  = None 
         self._button_widget = None 
         self._icon_widget   = None 
+        self._recent_menu : QMenu | None = None
 
         self._no_files_here = None
-        self._addEmpty = addEmpty is True 
+        self._addEmpty      = addEmpty is True 
+
         if isinstance (initialDir, Airfoil):
             airfoil : Airfoil = initialDir
             self._initial_dir = airfoil.pathName_abs
         else:
             self._initial_dir = initialDir
 
-        self._dialog_parent = dialog_parent
-
         # get initial properties  (cur airfoil) 
         self._get_properties ()
 
-        # build local HBox layout with the guest widget
+        # build local layout with the guest widgets
 
-        l = QHBoxLayout(self)
+        l = QVBoxLayout(self) if openBelow else QHBoxLayout(self)
         l.setContentsMargins (QMargins(0, 0, 0, 0))
-        if asSpin: 
-            self._combo_widget = ComboSpinBox (l, get=self.airfoil_fileName, 
-                                                set=self.set_airfoil_by_fileName, 
-                                                options=self.airfoil_fileNames_sameDir,
-                                                hide=self.no_files_here,
-                                                toolTip=None,               # is set separately 
-                                                signal=False)
-        else:             
-            self._combo_widget = ComboBox      (l, get=self.airfoil_fileName, 
-                                                set=self.set_airfoil_by_fileName, 
-                                                options=self.airfoil_fileNames_sameDir,
-                                                hide=self.no_files_here, 
-                                                toolTip=None,               # is set separately 
-                                                signal=False)
+        self._combo_widget = ComboBox      (l, get=self.airfoil_fileName, 
+                                            set=self.set_airfoil_by_fileName, 
+                                            options=self.airfoil_fileNames_sameDir,
+                                            hide=self.no_files_here, 
+                                            toolTip=None,               # is set separately 
+                                            signal=False)
         if withOpen:
 
             # either text button if nothing is there
-            self._button_widget = Button (l, text=textOpen, set=self._open_airfoil, 
+            self._button_widget = (Button if recent_files is None else ToolButton) (
+                                                l, text=textOpen, set=self._open_airfoil,
                                                 signal=False, width = widthOpen,
-                                                hide=lambda: not self.no_files_here() ) 
+                                                align=Qt.AlignmentFlag.AlignLeft if openBelow else None,
+                                                hide=lambda: not self._open_below and not self.no_files_here() )
             # ... or icon button together with combo box 
-            self._icon_widget =   ToolButton (l, icon=Icon.OPEN, set=self._open_airfoil, signal=False,
+            if not openBelow:
+                self._icon_widget = ToolButton (l, icon=Icon.OPEN, set=self._open_airfoil, signal=False,
                                                 hide=self.no_files_here,
                                                 toolTip="Select an airfoil in a different directory")
-            l.insertStretch (-1)
+            if recent_files is not None:
+                if isinstance(self._button_widget, ToolButton):
+                    self._button_widget.setAutoRaise(False)
+                    self._set_recent_menu(self._button_widget)
+                if self._icon_widget is not None:
+                    self._icon_widget.setFixedWidth(38)
+                    self._set_recent_menu(self._icon_widget)
+            if not openBelow:
+                l.insertStretch (-1)
 
         l.setContentsMargins (QMargins(0, 0, 0, 0))
 
-        if self.no_files_here():                                # show only open button
+        if openBelow:
+            l.setSpacing(4)
+        elif self.no_files_here():                              # show only open button
             l.setSpacing (0)
-            # l.setStretch (0,0)
-            # l.setStretch (2,2)
         else:                                                   # combobox with open 
             l.setSpacing (1)
             l.setStretch (0,2)
@@ -269,6 +285,19 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         self._set_comboBox_tooltip ()
 
 
+    def _set_recent_menu(self, button: ToolButton):
+        """Attach the shared recent-files menu as a split-button menu."""
+
+        if self._recent_menu is None:
+            self._recent_menu = QMenu(self)
+            self._recent_menu.setToolTipsVisible(True)
+            self._recent_menu.aboutToShow.connect(self._fill_recent_menu)
+
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        button.setMenu(self._recent_menu)
+        button.setToolTip("Open an airfoil; use the arrow for recent airfoils")
+
+
     @override
     def refresh (self, disable=None):
 
@@ -283,8 +312,10 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
         if self._icon_widget is not None:
             self._icon_widget.refresh (disable) 
 
-        l : QHBoxLayout = self.layout()
-        if self.no_files_here():                                # show only open button
+        l = self.layout()
+        if self._open_below:
+            l.setSpacing(4)
+        elif self.no_files_here():                              # show only open button
             l.setSpacing (0)
             l.setStretch (0,0)
             l.setStretch (2,2)
@@ -309,7 +340,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             directory = Airfoil_Select_Open_Widget._last_dir
         
         # Validate directory, ensure caption - QFileDialog tends to crash with native WIndows Dialog
-        if not (directory and os.path.isdir(directory)):
+        if not (directory and Path(directory).is_dir()):
             directory = ""
 
         # get parent for dialog
@@ -323,16 +354,56 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                                                          caption="Select Airfoil File to Open")
 
         if newPathFilename:                         # user pressed open
-            airfoil = create_airfoil_from_path (self, newPathFilename)
-            if airfoil is not None: 
-
-                if self._set_open is not None:
-                    self._set_open (airfoil)                     # call alternate callback
-                else:
-                    self.set_airfoil (airfoil)
+            self._load_open_airfoil(newPathFilename)
 
             # set last dir for next time
-            Airfoil_Select_Open_Widget._last_dir = os.path.dirname (newPathFilename)
+            Airfoil_Select_Open_Widget._last_dir = str(Path(newPathFilename).parent)
+
+
+    def _load_open_airfoil(self, filename: str | Path):
+        airfoil = create_airfoil_from_path(self._dialog_parent or self, str(filename))
+        if airfoil is not None:
+            if self._set_open is not None:
+                self._set_open(airfoil)
+                self._remember_airfoil(airfoil)
+            else:
+                self.set_airfoil(airfoil)
+
+
+    def _remember_airfoil(self, airfoil: Airfoil | None):
+
+        if self._recent_files is not None and airfoil is not None and not airfoil.isExample:
+            self._recent_files.add(airfoil.pathFileName_abs)
+
+
+    def _fill_recent_menu(self):
+
+        self._recent_menu.clear()
+        paths = self._recent_files.paths
+        if self.airfoil is not None and not self.airfoil.isExample:
+            current_path = Path(self.airfoil.pathFileName_abs).resolve()
+            paths = [path for path in paths if path != current_path]
+        if not paths:
+            self._recent_menu.addAction("No other recent airfoils").setEnabled(False)
+            return
+        for path in paths:
+            label = path.name.replace("&", "&&")
+            action = self._recent_menu.addAction(label)
+            action.setToolTip(str(path))
+            action.triggered.connect(lambda _checked=False, path=path: self._open_recent(path))
+
+
+    def _open_recent(self, path: Path):
+
+        if not path.is_file():
+            logger.warning("Recent airfoil no longer exists: %s", path)
+            self._recent_files.remove(path)
+            MessageBox.error(self._dialog_parent or self, "Open Recent Airfoil",
+                             f"File not found:<br>{escape(str(path))}<br><br>"
+                             "The entry has been removed from recent files.")
+            return
+        self._load_open_airfoil(path)
+        Airfoil_Select_Open_Widget._last_dir = str(path.parent)
 
 
     def no_files_here (self) -> bool:
@@ -366,6 +437,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             self._initial_dir = anAirfoil.pathFileName_abs
 
         self._set_value (anAirfoil)
+        self._remember_airfoil(anAirfoil)
 
         # refresh the sub widgets -> hide / show 
         w : Widget

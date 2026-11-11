@@ -1898,8 +1898,11 @@ class MenuAction (QAction):
 
         # tooltip 
 
-        if toolTip: 
-            self.setToolTip (toolTip)
+        if toolTip:
+            if callable(toolTip):
+                self.setToolTip (toolTip())
+            else:
+                self.setToolTip (toolTip)
 
 
 

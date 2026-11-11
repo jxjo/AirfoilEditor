@@ -43,7 +43,7 @@ from .model.case             import Case_Optimize, Case_Direct_Design
 
 from .base.panels            import Win_Util
 from .base.widgets           import Icon, Widget
-from .base.app_utils         import Settings, Update_Checker, Run_Checker, check_or_get_initial_file
+from .base.app_utils         import Settings, Update_Checker, Run_Checker, Recent_Files, check_or_get_initial_file
 
 from .ui.ae_widgets          import create_airfoil_from_path
 from .ui.ae_diagrams         import Diagram_Airfoil_Polar
@@ -109,6 +109,8 @@ class Main (QMainWindow):
             mode_to_start = Mode_Id.OPTIMIZE
         else:
             airfoil = create_airfoil_from_path (self, initial_file, example_if_none=True, message_delayed=True)
+            if not airfoil.isExample:
+                Recent_Files().add(airfoil.pathFileName_abs)
             initial = airfoil
             mode_to_start = Mode_Id.VIEW
 

@@ -19,6 +19,7 @@ from ..model.xo2_driver     import Xoptfoil2
 
 from .util_dialogs          import Polar_Definition_Dialog
 from .ae_widgets            import Airfoil_Select_Open_Widget, mode_color
+from .ae_widgets            import MODE_BUTTON_WIDTH, MODE_SECONDARY_BUTTON_WIDTH
 from .xo2_dialogs           import *
 
 from ..app_model            import App_Model
@@ -100,6 +101,8 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
 
     name = 'Optimize Mode'
 
+    _main_margins = Panel_Xo2_Abstract.MAIN_MARGINS_FILE
+
     sig_finish      = pyqtSignal()                              # wants to finish optimize mode - ok / cancel
     sig_open_next   = pyqtSignal(str)                           # wants to open next xo2 input file
     sig_new         = pyqtSignal()                              # wants to create new xo2 input file
@@ -160,27 +163,27 @@ class Panel_Xo2_File (Panel_Xo2_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ComboBox    (l,r,c, colSpan=3,  
+        ComboBox    (l,r,c, colSpan=4,
                         get=lambda:self._input_fileName, set=self._set_input_fileName,
                         options= lambda: Input_File.files_in_dir (self.workingDir),
                         toolTip="The Xoptfoil2 input file")
-        ToolButton  (l,r,c+3, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
+        ToolButton  (l,r,c+4, icon=Icon.OPEN, set=self._open_input_file, toolTip="Select a Xoptfoil2 input file")
         r += 1
-        Button      (l,r,c, width=100, text="New Version", set=self.sig_new_version.emit,
+        Button      (l,r,c, width=MODE_BUTTON_WIDTH, text="New Version", set=self.sig_new_version.emit,
                         toolTip="Create a new version of the existing input file")
-        Button      (l,r,c+2, width=80, text="New ...", set=self.sig_new.emit,
+        Button      (l,r,c+2, width=MODE_SECONDARY_BUTTON_WIDTH, text="New ...", set=self.sig_new.emit,
                         toolTip="Create a new input file")
         r += 1
-        Button      (l,r,c, width=100, text="&Run ...", button_style = button_style.PRIMARY,
+        Button      (l,r,c, width=MODE_BUTTON_WIDTH, text="&Run ...", button_style = button_style.PRIMARY,
                         set=self._open_run_dialog, toolTip="Run Optimizer Xoptfoil2")        
         r += 1
         l.setRowStretch (r,2)
         r += 1
-        Button      (l,r,c,  text="&Finish",  width=100,
+        Button      (l,r,c,  text="&Finish",  width=MODE_BUTTON_WIDTH,
                         set=self.sig_finish.emit, toolTip="Leave optimization mode")
 
-        l.setColumnMinimumWidth (1,12)
-        l.setColumnStretch (1,2)
+        l.setColumnMinimumWidth (1,6)
+        l.setColumnStretch (3,2)
         return l
 
 
@@ -240,12 +243,12 @@ class Panel_Xo2_File_Small (Panel_Xo2_File):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Button      (l,r,c, width=100, text="&Run ...", button_style = button_style.PRIMARY,
+        Button      (l,r,c, width=MODE_BUTTON_WIDTH, text="&Run ...", button_style = button_style.PRIMARY,
                         set=self._open_run_dialog, toolTip="Run Optimizer Xoptfoil2")        
         ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
                         toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
         r += 1
-        Button      (l,r,c,  text="&Finish",  width=100, 
+        Button      (l,r,c,  text="&Finish",  width=MODE_BUTTON_WIDTH,
                         set=self.sig_finish.emit, toolTip="Leave optimization mode")
 
         l.setColumnStretch (2,2)

@@ -16,6 +16,7 @@ from PyQt6.QtCore               import QUrl
 
 from ..base.widgets             import * 
 from ..base.panels              import Edit_Panel
+from ..base.app_utils           import Recent_Files
 
 from ..model.airfoil            import Airfoil
 from ..model.geometry           import Geometry, Curvature_Abstract, Line 
@@ -158,29 +159,27 @@ class Panel_File_View (Panel_Airfoil_Abstract):
 
         l = QGridLayout()
         r,c = 0, 0 
-        w =Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
-                                    textOpen="&Open", widthOpen=100, 
+        w =Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False,
+                                    openBelow=True,
+                                    recent_files=Recent_Files(),
+                                    textOpen="&Open", widthOpen=MODE_BUTTON_WIDTH,
                                     get=lambda: self.airfoil, 
                                     set=     lambda airfoil: self.app_model.set_airfoil(airfoil),
                                     set_open=lambda airfoil: self.app_model.set_airfoil(airfoil, load_settings=True))
 
         r += 1
-        Button (l,r,c, text="&Modify", width=100, 
+        Button (l,r,c, text="&Modify", width=MODE_BUTTON_WIDTH,
                 set=self.sig_modify.emit, toolTip="Modify geometry, Normalize, Repanel, Set Flap",
                 button_style=button_style.PRIMARY)
-        MenuButton (l,r,c+2, text="More...", width=80, 
+        MenuButton (l,r,c+2, text="More...", width=MODE_SECONDARY_BUTTON_WIDTH, align=Qt.AlignmentFlag.AlignRight,
                 menu=self._more_menu(), 
                 toolTip="Choose further actions for this airfoil")
         r += 1
-        Button (l,r,c, text="&Optimize...", width=100, 
-                set=self.sig_optimize.emit, toolTip=self._tooltip_optimize,
-                disable=lambda: not Xoptfoil2.ready)
-        r += 1
         l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c, text="&Exit", width=100, set=self.sig_exit.emit)
-        l.setColumnStretch (2,2)
-        l.setColumnMinimumWidth (1,12)
+        Button (l,r,c, text="&Exit", width=MODE_BUTTON_WIDTH, set=self.sig_exit.emit)
+        l.setColumnStretch (3,2)
+        l.setColumnMinimumWidth (1,10)
 
         return l 
  
@@ -199,6 +198,10 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menu.addAction (MenuAction ("As CST based", self, set=self.sig_new_as_cst, 
                                      # disable=lambda: self.airfoil.isCSTBased,
                                      toolTip="Create new CST based airfoil of current airfoil"))
+        menu.addSeparator ()
+        menu.addAction (MenuAction ("Optimize...", self, set=self.sig_optimize.emit,
+                                     disable=lambda: not Xoptfoil2.ready,
+                                     toolTip=self._tooltip_optimize))
         menu.addSeparator ()
         menu.addAction (MenuAction ("Save as...", self, set=self.sig_save_as.emit,
                                      toolTip="Create a copy of the current airfoil with new name and filename"))
@@ -252,21 +255,22 @@ class Panel_File_View_Small (Panel_File_View):
 
         l = QGridLayout()
         r,c = 0, 0 
-        Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False, 
-                                    textOpen="&Open", widthOpen=100, 
+        Airfoil_Select_Open_Widget (l,r,c, colSpan=5, signal=False, 
+                                    recent_files=Recent_Files(),
+                                    textOpen="&Open", widthOpen=MODE_BUTTON_WIDTH,
                                     get=lambda: self.airfoil, 
                                     set=     lambda airfoil: self.app_model.set_airfoil(airfoil),
                                     set_open=lambda airfoil: self.app_model.set_airfoil(airfoil, load_settings=True))
         r += 1
-        Button      (l,r,c, text="&Exit", width=100, set=self.sig_exit.emit)
-        MenuButton  (l,r,c+2, text="More...", width=80, 
+        Button      (l,r,c, text="&Exit", width=MODE_BUTTON_WIDTH, set=self.sig_exit.emit)
+        MenuButton  (l,r,c+2, text="More...", width=MODE_SECONDARY_BUTTON_WIDTH, align=Qt.AlignmentFlag.AlignRight,
                         menu=self._more_menu(), 
                         toolTip="Choose further actions for this airfoil")
-        ToolButton  (l,r,c+3, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
+        ToolButton  (l,r,c+4, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
                         toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
 
-        l.setColumnMinimumWidth (1,12)
-        l.setColumnStretch (2,2)
+        l.setColumnMinimumWidth (1,10)
+        l.setColumnStretch (3,3)
         return l 
  
 
@@ -344,13 +348,13 @@ class Panel_File_Modify (Panel_Airfoil_Abstract):
         r += 1
         l.setRowStretch (r,2)
         r += 1
-        Button (l,r,c,  text="&Finish ...", width=100, set=self.sig_finish.emit, 
+        Button (l,r,c,  text="&Finish ...", width=MODE_BUTTON_WIDTH, set=self.sig_finish.emit,
                         toolTip="Save current airfoil, optionally modify name and leave edit mode")
         r += 1
-        Button (l,r,c,  text="&Cancel",  width=100, 
+        Button (l,r,c,  text="&Cancel",  width=MODE_BUTTON_WIDTH,
                         set=self.sig_cancel.emit,
                         toolTip="Cancel modifications of airfoil and leave edit mode")
-        l.setColumnMinimumWidth (1,12)
+        l.setColumnMinimumWidth (1,10)
         l.setColumnStretch (4,2)
 
         return l
@@ -389,23 +393,23 @@ class Panel_File_Modify_Small (Panel_File_Modify):
 
         l = QGridLayout()
         r,c = 0, 0 
-        ComboSpinBox (l,r,c, colSpan=3, width=146, get=self.airfoil_fileName, 
+        ComboSpinBox (l,r,c, colSpan=3, width=136, get=self.airfoil_fileName, 
                         set=self.set_airfoil_by_fileName,
                         options=self.airfoil_fileNames, signal=False,
                         toolTip="Select current design airfoil to modify")
         ToolButton   (l,r,c+3, icon=Icon.DELETE, set=self.app_model.remove_current_design,
                         hide=lambda: self.case.get_iDesign (self.airfoil) == 0,
                         toolTip="Remove current design airfoil")  
-        ToolButton  (l,r,c+5, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
+        ToolButton  (l,r,c+4, icon=Icon.COLLAPSE, set=self.sig_toggle_panel_size.emit,
                         toolTip='Maximize lower panel -<br>Alternatively, you can double click on the lower panels')
         r += 1
-        Button (l,r,c,  text="&Finish ...", width=100, set=self.sig_finish.emit, 
+        Button (l,r,c,  text="&Finish ...", width=MODE_BUTTON_WIDTH, set=self.sig_finish.emit,
                         toolTip="Save current airfoil, optionally modify name and leave edit mode")
-        Button (l,r,c+2,text="&Cancel",  width=80, colSpan=3,
+        Button (l,r,c+2,text="&Cancel",  width=MODE_SECONDARY_BUTTON_WIDTH, colSpan=3,
                         set=self.sig_cancel.emit,
                         toolTip="Cancel modifications of airfoil and leave edit mode")
-        l.setColumnMinimumWidth (1,12)
-        l.setColumnStretch (4,2)
+        l.setColumnMinimumWidth (1,10)
+        l.setColumnStretch (3,2)
         return l
 
 

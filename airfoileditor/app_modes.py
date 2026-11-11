@@ -13,7 +13,7 @@ from PyQt6.QtCore            import Qt, pyqtSignal, QObject, QTimer, QMargins
 from PyQt6.QtWidgets         import QHBoxLayout, QMessageBox, QStackedWidget, QDialog
 
 from .base.panels            import Container_Panel, Toaster        
-from .base.app_utils         import Settings
+from .base.app_utils         import Settings, Recent_Files
 
 from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.case             import Case_Direct_Design, Case_Match_Target
@@ -236,6 +236,7 @@ class Mode_Abstract (QObject):
             dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
             ok = dlg.exec()
             if not ok: return                                       # save was cancelled - stay in mode 
+            Recent_Files().add(new_airfoil.pathFileName_abs)
 
             # set final airfoil in case - rest will be done in on_leave
             self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
@@ -368,6 +369,7 @@ class Mode_View (Mode_Abstract):
         ok_save = dlg.exec()
 
         if ok_save: 
+            Recent_Files().add(airfoil.pathFileName_abs)
             self._app_model.set_airfoil (airfoil)                         # refresh with new
 
             self._toast_message (f"New airfoil {airfoil.fileName} saved", toast_style=style.GOOD)
@@ -390,16 +392,17 @@ class Mode_View (Mode_Abstract):
 
             # delete old one only if the dialog changed the actual path
             if old_pathFileName and new_pathFileName:
-                old_path = os.path.normcase (os.path.abspath (old_pathFileName))
-                new_path = os.path.normcase (os.path.abspath (new_pathFileName))
-                if old_path != new_path and os.path.isfile (old_pathFileName):
-
-                    os.remove (old_pathFileName)
-
-                    if dlg.remove_designs:
-                        self._delete_temp_files (Path(old_pathFileName), silent=True)
+                old_path = Path(old_pathFileName).resolve()
+                new_path = Path(new_pathFileName).resolve()
+                if old_path != new_path:
+                    if old_path.is_file():
+                        old_path.unlink()
+                        if dlg.remove_designs:
+                            self._delete_temp_files(old_path, silent=True)
+                    Recent_Files().remove(old_path)
 
             # a copy with new name was created 
+            Recent_Files().add(new_pathFileName)
             self._app_model.set_airfoil (airfoil)
 
             self._toast_message (f"Airfoil renamed to {airfoil.fileName}", toast_style=style.GOOD)
@@ -419,7 +422,8 @@ class Mode_View (Mode_Abstract):
 
         airfoil = self._app_model.airfoil
 
-        if not os.path.isfile (airfoil.pathFileName_abs): return 
+        path = Path(airfoil.pathFileName_abs)
+        if not path.is_file(): return
 
         text = f"Airfoil <b>{airfoil.fileName}</b> including temporary files will be deleted."
         button = MessageBox.warning (self.stacked_panel, "Delete airfoil", text)
@@ -427,13 +431,16 @@ class Mode_View (Mode_Abstract):
         if button == QMessageBox.StandardButton.Ok:
 
             self.delete_temp_files (silent=True)
-            os.remove (airfoil.pathFileName_abs)                               # remove airfoil
+            path.unlink()                                                     # remove airfoil
+            Recent_Files().remove(path)
 
             self._toast_message (f"Airfoil {airfoil.fileName} deleted", toast_style=style.GOOD)
             logger.info (f"Airfoil {airfoil.fileName} deleted")
 
             next_airfoil = get_next_airfoil_in_dir (airfoil, example_if_none=True)
             self._app_model.set_airfoil (next_airfoil)                           # try to set on next airfoil
+            if not next_airfoil.isExample:
+                Recent_Files().add(next_airfoil.pathFileName_abs)
 
             if next_airfoil.isExample:
                button = MessageBox.info (self.stacked_panel, "Delete airfoil", "This was the last airfoil in the directory.<br>" + \
@@ -1232,5 +1239,3 @@ class Modes_Manager (QObject):
 
             # adjust new min with of data panel
             self._set_min_width()        
-
-
