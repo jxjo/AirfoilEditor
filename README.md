@@ -1,5 +1,6 @@
 ![AE](images/AirfoilEditor_logo.png "Screenshot of the AirfoilEditor ")
 
+[![PyPI version](https://img.shields.io/pypi/v/airfoileditor)](https://pypi.org/project/airfoileditor/)
 [![Latest release](https://img.shields.io/github/v/release/jxjo/AirfoilEditor)](https://github.com/jxjo/AirfoilEditor/releases/latest)
 [![License](https://img.shields.io/github/license/jxjo/AirfoilEditor)](LICENSE)
 

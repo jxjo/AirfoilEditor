@@ -11,6 +11,7 @@ dynamic = ["version"]
 authors = [{ name="Jochen Guenzel", email="jochen@jxjo.de" }]
 description = "View, Modify, Optimize Airfoils"
 readme = "doc/README_PyPi.md"
+keywords = ["airfoil", "aerodynamics", "xfoil", "neuralfoil", "xoptfoil2", "bezier", "cst", "airfoil optimization"]
 requires-python = ">=3.12"
 dependencies = [
   "numpy>=2.2,<3",
@@ -25,16 +26,23 @@ dependencies = [
   "ezdxf>=1.4.0"
 ]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Intended Audience :: End Users/Desktop"
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics"
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 
 [project.urls]
 Homepage = "https://github.com/jxjo/AirfoilEditor"
+Documentation = "https://github.com/jxjo/AirfoilEditor#readme"
+Changelog = "https://github.com/jxjo/AirfoilEditor/blob/main/CHANGELOG.md"
+Releases = "https://github.com/jxjo/AirfoilEditor/releases"
 Issues = "https://github.com/jxjo/AirfoilEditor/issues"
 
 [project.gui-scripts]                       # run without console window on Windows
