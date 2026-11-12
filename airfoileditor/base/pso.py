@@ -22,7 +22,7 @@ import logging
 import numpy as np
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+# logger.setLevel(logging.INFO)
 
 try:
 	from .math_util import enforce_bounds
