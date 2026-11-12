@@ -16,7 +16,6 @@ from PyQt6.QtCore               import QUrl
 
 from ..base.widgets             import * 
 from ..base.panels              import Edit_Panel
-from ..base.app_utils           import Recent_Files
 
 from ..model.airfoil            import Airfoil
 from ..model.geometry           import Geometry, Curvature_Abstract, Line 
@@ -161,11 +160,11 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         r,c = 0, 0 
         w =Airfoil_Select_Open_Widget (l,r,c, colSpan=4, signal=False,
                                     openBelow=True,
-                                    recent_files=Recent_Files(),
+                                    recent_files=self.app_model.recent_files,
                                     textOpen="&Open", widthOpen=MODE_BUTTON_WIDTH,
                                     get=lambda: self.airfoil, 
-                                    set=     lambda airfoil: self.app_model.set_airfoil(airfoil),
-                                    set_open=lambda airfoil: self.app_model.set_airfoil(airfoil, load_settings=True))
+                                    set=     lambda airfoil: self.app_model.open_airfoil(airfoil),
+                                    set_open=lambda airfoil: self.app_model.open_airfoil(airfoil, load_settings=True))
 
         r += 1
         Button (l,r,c, text="&Modify", width=MODE_BUTTON_WIDTH,
@@ -214,14 +213,26 @@ class Panel_File_View (Panel_Airfoil_Abstract):
         menu.addAction (MenuAction ("Delete temp files", self, set=self.sig_delete_temp_files.emit,
                                      toolTip="Delete all temporary files created by the AirfoilEditor just to have a clean directory again"))
         menu.addSeparator ()
-        menu.addAction (MenuAction ("Readme on Github", self, set=self._open_AE_url,
-                                     toolTip="Open the Github README file of the AirfoilEditor in a browser"))
-        menu.addAction (MenuAction ("Releases on Github", self, set= self._open_releases_url,
-                                     toolTip="Open the Github page with the actual release of the AirfoilEditor"))
+
+        help_menu = menu.addMenu ("Help on Github")
+        help_menu.addAction (MenuAction ("Readme", self, set=self._open_AE_url,
+                                          toolTip="Open the Github README file of the AirfoilEditor in a browser"))
+        help_menu.addAction (MenuAction ("About Version 5.0", self, set=self._open_about_url,
+                                          toolTip="Open the Github page with the details of version 5.0 of the AirfoilEditor"))
+        help_menu.addAction (MenuAction ("Releases", self, set=self._open_releases_url,
+                                          toolTip="Open the Github page with the actual release of the AirfoilEditor"))
+        help_menu.setToolTipsVisible(True)
 
         menu.setToolTipsVisible(True)
 
         return menu
+
+
+    def _open_about_url (self):
+        """ open Github page about version 5.0 in Browser"""
+
+        link = "https://github.com/jxjo/AirfoilEditor/blob/main/doc/ABOUT_5.0.md"
+        QDesktopServices.openUrl(QUrl(link))
 
 
     def _open_releases_url (self):
@@ -256,11 +267,11 @@ class Panel_File_View_Small (Panel_File_View):
         l = QGridLayout()
         r,c = 0, 0 
         Airfoil_Select_Open_Widget (l,r,c, colSpan=5, signal=False, 
-                                    recent_files=Recent_Files(),
+                                    recent_files=self.app_model.recent_files,
                                     textOpen="&Open", widthOpen=MODE_BUTTON_WIDTH,
                                     get=lambda: self.airfoil, 
-                                    set=     lambda airfoil: self.app_model.set_airfoil(airfoil),
-                                    set_open=lambda airfoil: self.app_model.set_airfoil(airfoil, load_settings=True))
+                                    set=     lambda airfoil: self.app_model.open_airfoil(airfoil),
+                                    set_open=lambda airfoil: self.app_model.open_airfoil(airfoil, load_settings=True))
         r += 1
         Button      (l,r,c, text="&Exit", width=MODE_BUTTON_WIDTH, set=self.sig_exit.emit)
         MenuButton  (l,r,c+2, text="More...", width=MODE_SECONDARY_BUTTON_WIDTH, align=Qt.AlignmentFlag.AlignRight,
@@ -278,10 +289,8 @@ class Panel_File_View_Small (Panel_File_View):
         """ create and return sub menu for 'more' actions"""
 
         menu = super()._more_menu ()
-        menu.insertAction (menu.actions()[0], MenuAction ("&Optimize", self, set=self.sig_optimize.emit,   
-                                    toolTip="Modify geometry, Normalize, Repanel, Set Flap"))
         menu.insertAction (menu.actions()[0], MenuAction ("&Modify", self, set=self.sig_modify.emit,   
-                                    toolTip=self._tooltip_optimize(), disable=lambda: not Xoptfoil2.ready))
+                                    toolTip="Modify geometry, Normalize, Repanel, Set Flap"))
         return menu
 
 

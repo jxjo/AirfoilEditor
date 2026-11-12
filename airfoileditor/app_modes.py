@@ -13,7 +13,7 @@ from PyQt6.QtCore            import Qt, pyqtSignal, QObject, QTimer, QMargins
 from PyQt6.QtWidgets         import QHBoxLayout, QMessageBox, QStackedWidget, QDialog
 
 from .base.panels            import Container_Panel, Toaster        
-from .base.app_utils         import Settings, Recent_Files
+from .base.app_utils         import Settings
 
 from .model.xo2_driver       import Worker, Xoptfoil2
 from .model.case             import Case_Direct_Design, Case_Match_Target
@@ -152,10 +152,7 @@ class Mode_Abstract (QObject):
         
         # if in a case mode, finalize the airfoil before leaving
         if self._app_model.case is not None:
-            if self._app_model.case.airfoil_final:
-                next_airfoil = self._app_model.case.airfoil_final       # final airfoil created in finish
-            else:
-                next_airfoil = self._app_model.case.airfoil_seed
+            next_airfoil = self._app_model.airfoil_after_case           # final airfoil created in finish or seed
             
             # restore airfoil display properties
             next_airfoil.set_usedAs (usedAs.NORMAL)                     # normal AE color 
@@ -168,11 +165,15 @@ class Mode_Abstract (QObject):
         logger.debug(f"Exiting {self.__class__.__name__}")
 
 
-    def prepare_check_enter(self, on_arg=None) -> object:
-        """ Check if the mode can be entered. Prepare and Return initial object. """
-        # Default: return current airfoil if available
-        if self._app_model.airfoil:
-            return self._app_model.airfoil
+    def prepare_check_enter(self, on_arg=None) -> object | None:
+        """
+        Check if the mode can be entered. Prepare and Return initial object or None if it can't be entered.
+            Called before the current mode is left - so it must not depend on the leave being done.
+        """
+        # Default: return the airfoil the app will continue with if available
+        airfoil = self._app_model.airfoil_after_case
+        if airfoil:
+            return airfoil
         return on_arg
     
     @property
@@ -236,7 +237,7 @@ class Mode_Abstract (QObject):
             dlg = Airfoil_Save_Dialog (parent=self.stacked_panel, getter=new_airfoil)
             ok = dlg.exec()
             if not ok: return                                       # save was cancelled - stay in mode 
-            Recent_Files().add(new_airfoil.pathFileName_abs)
+            self._app_model.remember_airfoil (new_airfoil)
 
             # set final airfoil in case - rest will be done in on_leave
             self._app_model.case.set_remove_designs_on_close (dlg.remove_designs)
@@ -336,7 +337,7 @@ class Mode_View (Mode_Abstract):
         if isinstance (initial_airfoil, Airfoil):
             return initial_airfoil
         else:
-            return self._app_model.airfoil
+            return self._app_model.airfoil_after_case
 
 
     def on_enter(self, airfoil: Airfoil):
@@ -369,8 +370,7 @@ class Mode_View (Mode_Abstract):
         ok_save = dlg.exec()
 
         if ok_save: 
-            Recent_Files().add(airfoil.pathFileName_abs)
-            self._app_model.set_airfoil (airfoil)                         # refresh with new
+            self._app_model.open_airfoil (airfoil)                        # refresh with new
 
             self._toast_message (f"New airfoil {airfoil.fileName} saved", toast_style=style.GOOD)
             logger.info (f"Airfoil saved as {airfoil.fileName}")
@@ -399,11 +399,10 @@ class Mode_View (Mode_Abstract):
                         old_path.unlink()
                         if dlg.remove_designs:
                             self._delete_temp_files(old_path, silent=True)
-                    Recent_Files().remove(old_path)
+                    self._app_model.forget_airfoil_file (old_path)
 
             # a copy with new name was created 
-            Recent_Files().add(new_pathFileName)
-            self._app_model.set_airfoil (airfoil)
+            self._app_model.open_airfoil (airfoil)
 
             self._toast_message (f"Airfoil renamed to {airfoil.fileName}", toast_style=style.GOOD)
             logger.info (f"Airfoil renamed to {airfoil.fileName}")
@@ -432,15 +431,13 @@ class Mode_View (Mode_Abstract):
 
             self.delete_temp_files (silent=True)
             path.unlink()                                                     # remove airfoil
-            Recent_Files().remove(path)
+            self._app_model.forget_airfoil_file (path)
 
             self._toast_message (f"Airfoil {airfoil.fileName} deleted", toast_style=style.GOOD)
             logger.info (f"Airfoil {airfoil.fileName} deleted")
 
             next_airfoil = get_next_airfoil_in_dir (airfoil, example_if_none=True)
-            self._app_model.set_airfoil (next_airfoil)                           # try to set on next airfoil
-            if not next_airfoil.isExample:
-                Recent_Files().add(next_airfoil.pathFileName_abs)
+            self._app_model.open_airfoil (next_airfoil)                          # try to set on next airfoil
 
             if next_airfoil.isExample:
                button = MessageBox.info (self.stacked_panel, "Delete airfoil", "This was the last airfoil in the directory.<br>" + \
@@ -513,15 +510,17 @@ class Mode_Modify (Mode_Abstract):
     def prepare_check_enter(self, on_arg = None ) -> Airfoil | None:
         """ Check if the mode can be entered. Override in subclasses if needed. """
 
+        airfoil = self._app_model.airfoil_after_case
+
         # info if airfoil is flapped 
-        if self._app_model.airfoil.geo.isProbablyFlapped:
+        if airfoil.geo.isProbablyFlapped:
 
             text = "The airfoil is probably flapped and will be normalized.\n\n" + \
                    "Modifying the geometry can lead to strange results."
             button = MessageBox.confirm (self.stacked_panel, "Modify Airfoil", text)
             if button == QMessageBox.StandardButton.Cancel:
                 return None
-        return self._app_model.airfoil
+        return airfoil
 
 
     def on_enter(self, airfoil: Airfoil):
@@ -854,10 +853,10 @@ class Mode_Optimize (Mode_Abstract):
         super().on_enter()
 
 
-    def prepare_check_enter(self, on_arg=None) -> str:
+    def prepare_check_enter(self, on_arg=None) -> str | None:
         """ Check / prepare if the mode can be entered. Get/Create input file for xo2 """
 
-        if not Xoptfoil2.ready : return False
+        if not Xoptfoil2.ready : return None
 
         # an input file is already set - check existence
 
@@ -879,11 +878,11 @@ class Mode_Optimize (Mode_Abstract):
                 return os.path.join(diag.workingDir, diag.input_fileName)
             else: 
                 # create new xo2 file based on current airfoil
-                seed_airfoil = self._app_model.airfoil
+                seed_airfoil = self._app_model.airfoil_after_case
                 workingDir   = seed_airfoil.pathName_abs
 
                 diag = Xo2_New_Dialog (self.stacked_panel, workingDir, seed_airfoil, 
-                                       watchdog=self._app_model._watchdog, 
+                                       watchdog=self._app_model.watchdog,
                                        parentPos=(0.5,0.0), dialogPos=(0,1.1))
                 rc = diag.exec()
 
@@ -1013,7 +1012,7 @@ class Mode_Optimize (Mode_Abstract):
         workingDir   = self._app_model.workingDir
 
         diag = Xo2_New_Dialog (self.stacked_panel, workingDir, seed_airfoil, 
-                               watchdog=self._app_model._watchdog,
+                               watchdog=self._app_model.watchdog,
                                parentPos=(0.5,0.0), dialogPos=(0.5,1.1))
         rc = diag.exec()
 
@@ -1124,24 +1123,28 @@ class Modes_Manager (QObject):
             mode.sig_toggle_minimized.connect       (self.toggle_minimized)
 
 
-    def set_mode (self, mode_id: Mode_Id, on_arg=None):
-        """ set initial mode """
+    def set_mode (self, mode_id: Mode_Id, on_arg=None) -> bool:
+        """ set initial mode - returns False if the mode couldn't be entered """
 
         if not mode_id in self._modes_dict:
             logger.error(f"Mode {mode_id} not registered in Mode_Manager.")
-            return
+            return False
 
         if self._app_model.mode_id is not None:
             logger.error("Initial mode already set in App_Model.")
-            return
+            return False
 
         mode : Mode_Abstract = self._modes_dict [mode_id]
 
         # prepare new mode and argument to work on
         arg =  mode.prepare_check_enter (on_arg)
+        if arg is None:
+            logger.error(f"Cannot enter initial mode {mode_id}.")
+            return False
 
         mode.on_enter(arg)                                              # set mode
         mode.set_current_panel (self._is_minimized)                     # select the right panels small or not
+        return True
 
 
 
@@ -1166,7 +1169,11 @@ class Modes_Manager (QObject):
 
 
     def switch_mode (self, new_mode_id: Mode_Id, on_arg=None):
-        """ switch to given mode """
+        """
+        switch to given mode
+            The new mode is asked first - if it can't be entered (returns None)
+            nothing is changed and the current mode stays active.
+        """
 
         if not new_mode_id in self._modes_dict:
             logger.error(f"Mode {new_mode_id} not registered in Mode_Manager.")
@@ -1176,13 +1183,13 @@ class Modes_Manager (QObject):
             logger.error("Cannot switch modes: No initial mode set")
             return
 
-        # leave current mode
-        self.current_mode.on_leave()
-
-        # prepare new mode and argument to work on
+        # prepare new mode and argument to work on - may ask the user
         new_mode   : Mode_Abstract = self._modes_dict [new_mode_id]
         new_arg =  new_mode.prepare_check_enter (on_arg)
-        if new_arg is None:  return                                         # cannot enter mode         
+        if new_arg is None:  return                                         # cannot enter mode - stay in current mode
+
+        # leave current mode
+        self.current_mode.on_leave()
         
         # enter new mode, switch data panels
         new_mode.on_enter(new_arg)                                          # prepare enter new mode
@@ -1197,7 +1204,16 @@ class Modes_Manager (QObject):
 
 
     def exit(self):
-        """ exit mode and close app if in view mode """
+        """ request close of the app - the current mode is left in shutdown() when the app closes """
+
+        self.sig_close_requested.emit()
+
+
+    def shutdown(self):
+        """
+        Leave the current mode and save the state of the modes - called once when the app is closing,
+        however the close was triggered (Exit button or window close). Safe to call more than once.
+        """
 
         if self.current_mode is not None:
             self.current_mode.on_leave()
@@ -1205,8 +1221,6 @@ class Modes_Manager (QObject):
         s = Settings()
         s.set('lower_panel_minimized', self._is_minimized)
         s.save()
-
-        self.sig_close_requested.emit()             # close app if view mode finished
 
 
     def set_height (self, height: int, minimized: int|None = None):

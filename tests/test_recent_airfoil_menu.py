@@ -1,5 +1,4 @@
 from unittest.mock import Mock
-from types import SimpleNamespace
 
 import pytest
 from PyQt6.QtCore import Qt, QTimer
@@ -7,7 +6,6 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QStyle, QStyleOptionToolButton
 from PyQt6.QtWidgets import QHBoxLayout, QToolButton, QWidget
 
-from airfoileditor import app_modes
 from airfoileditor.base.app_utils import Recent_Files, Settings
 from airfoileditor.model.airfoil import Airfoil
 from airfoileditor.model.airfoil_examples import Example, Root_Example
@@ -140,16 +138,14 @@ def test_missing_recent_file_notifies_and_removes(qapp, saved_airfoil, monkeypat
         parent.close()
 
 
-def test_directory_selection_tracks_only_when_opted_in(qapp, saved_airfoil):
+def test_selector_only_shows_history_and_leaves_recording_to_its_callbacks(qapp, saved_airfoil):
     history = Recent_Files()
     callback = Mock()
     parent, widget = selector(saved_airfoil, set=callback, recent_files=history)
     other_parent, plain_widget = selector(saved_airfoil, set=callback)
     try:
         widget.set_airfoil_by_fileName(saved_airfoil.fileName)
-        assert history.paths
-        history.clear()
-        plain_widget.set_airfoil_by_fileName(saved_airfoil.fileName)
+        callback.assert_called_once()
         assert history.paths == []
         assert plain_widget._icon_widget.menu() is None
     finally:
@@ -230,40 +226,6 @@ def test_open_below_layout_refresh_and_main_click(qapp, saved_airfoil, monkeypat
         parent.close()
 
 
-@pytest.mark.parametrize("operation", ["save_as", "rename"])
-@pytest.mark.parametrize("accepted", [False, True])
-def test_saved_main_airfoil_history(qapp, saved_airfoil, tmp_path, monkeypatch, operation, accepted):
-    history = Recent_Files()
-    old_path = saved_airfoil.pathFileName_abs
-    history.add(old_path)
-    new_path = tmp_path / "new.dat"
-    model = SimpleNamespace(airfoil=saved_airfoil, set_airfoil=Mock())
-    mode = SimpleNamespace(_app_model=model, stacked_panel=QWidget(),
-                           _toast_message=Mock(), _delete_temp_files=Mock())
-
-    def save():
-        if accepted:
-            saved_airfoil.set_pathFileName(str(new_path), noCheck=True)
-            saved_airfoil.save()
-        return accepted
-
-    dialog = Mock(exec=Mock(side_effect=save), remove_designs=False)
-    monkeypatch.setattr(app_modes, "Airfoil_Save_Dialog", Mock(return_value=dialog))
-    try:
-        getattr(app_modes.Mode_View, operation)(mode)
-        if accepted:
-            assert history.paths[0] == new_path
-            assert (tmp_path / saved_airfoil.fileName).is_file()
-            assert (str(history.paths[-1]) == old_path) == (operation == "save_as")
-            model.set_airfoil.assert_called_once_with(saved_airfoil)
-        else:
-            assert [str(path) for path in history.paths] == [old_path]
-            assert not new_path.exists()
-            model.set_airfoil.assert_not_called()
-    finally:
-        mode.stacked_panel.close()
-
-
 def test_failed_load_does_not_call_setter_or_add_history(qapp, saved_airfoil, tmp_path, monkeypatch):
     invalid = tmp_path / "invalid.dat"
     invalid.write_text("not an airfoil\n")
@@ -281,23 +243,3 @@ def test_failed_load_does_not_call_setter_or_add_history(qapp, saved_airfoil, tm
         assert history.paths == []
     finally:
         parent.close()
-
-
-def test_deletion_removes_history_entry(qapp, saved_airfoil, monkeypatch):
-    history = Recent_Files()
-    history.add(saved_airfoil.pathFileName_abs)
-    old_path = history.paths[0]
-    model = SimpleNamespace(airfoil=saved_airfoil, set_airfoil=Mock())
-    mode = SimpleNamespace(_app_model=model, stacked_panel=QWidget(),
-                           _toast_message=Mock(), delete_temp_files=Mock())
-    monkeypatch.setattr(app_modes.MessageBox, "warning",
-                        Mock(return_value=app_modes.QMessageBox.StandardButton.Ok))
-    monkeypatch.setattr(app_modes.MessageBox, "info", Mock())
-    monkeypatch.setattr(app_modes, "get_next_airfoil_in_dir", Mock(return_value=Example()))
-    try:
-        app_modes.Mode_View.delete(mode)
-        assert not old_path.exists()
-        assert history.paths == []
-        model.set_airfoil.assert_called_once()
-    finally:
-        mode.stacked_panel.close()

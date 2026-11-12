@@ -201,7 +201,7 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
                  widthOpen = 100,                           # width of open text button 
                  initialDir : Airfoil | str | None = None,  # either an airfoil or a pathString 
                  dialog_parent : QWidget | None = None,     # alternate, explicit parent for QFileDialog if self is transient
-                 recent_files : Recent_Files | None = None, # optional main-airfoil history and split Open menu
+                 recent_files : Recent_Files | None = None, # optional history shown in a split Open menu - recording is up to the callbacks
                  **kwargs):
         if openBelow:
             self._height = (None, None)
@@ -361,19 +361,14 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
 
 
     def _load_open_airfoil(self, filename: str | Path):
+        """ load airfoil from filename and hand it to the 'set_open' or 'set' callback """
+
         airfoil = create_airfoil_from_path(self._dialog_parent or self, str(filename))
         if airfoil is not None:
             if self._set_open is not None:
                 self._set_open(airfoil)
-                self._remember_airfoil(airfoil)
             else:
                 self.set_airfoil(airfoil)
-
-
-    def _remember_airfoil(self, airfoil: Airfoil | None):
-
-        if self._recent_files is not None and airfoil is not None and not airfoil.isExample:
-            self._recent_files.add(airfoil.pathFileName_abs)
 
 
     def _fill_recent_menu(self):
@@ -437,7 +432,6 @@ class Airfoil_Select_Open_Widget (Widget, QWidget):
             self._initial_dir = anAirfoil.pathFileName_abs
 
         self._set_value (anAirfoil)
-        self._remember_airfoil(anAirfoil)
 
         # refresh the sub widgets -> hide / show 
         w : Widget

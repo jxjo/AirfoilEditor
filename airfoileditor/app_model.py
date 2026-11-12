@@ -16,6 +16,7 @@ The App Model is needed as the 'real' model is QObject agnostic and stateless.
 """
 
 import os
+from pathlib                 import Path
 from enum                    import Enum, auto
 from typing                  import override
 from shutil                  import copytree, rmtree
@@ -23,16 +24,15 @@ from PyQt6.QtCore            import QCoreApplication, pyqtSignal, QObject, QThre
 
 from .resources              import get_assets_dir, get_xo2_examples_dir, XO2_EXAMPLE_DIR
 from .base.common_utils      import Parameters, clip
-from .base.app_utils         import Settings
+from .base.app_utils         import Settings, Recent_Files
+
+from .app_model_settings     import *
 
 # --- the real model imports
 from .model.airfoil          import Airfoil, usedAs
 from .model.airfoil_examples import Example
 from .model.geometry         import Line
 from .model.geometry_curve   import Geometry_Curve, Side_Airfoil_Curve, LE_Mode
-from .model.geometry_spline  import Paneling_Spline
-from .model.geometry_bezier  import Paneling_Bezier
-from .model.geometry_bspline import Paneling_BSpline
 from .model.geometry_cst     import Geometry_CST
 from .model.polar_set        import Polar_Definition, Polar_Set, Polar_Task
 from .model.xo2_driver       import Worker, Xoptfoil2
@@ -57,48 +57,6 @@ class Mode_Id(Enum):
     AS_BEZIER  = auto()
     AS_BSPLINE = auto()
     AS_CST     = auto()
-
-
-# -----------------------------------------------------------------------------
-
-
-class Airfoil_Settings (Parameters):
-    """ 
-    Settings for an airfoil which are stored with the airfoil
-    in an individual settings file with airfoil fileName + '.ae'
-    """
-
-    FILE_EXTENSION = ".ae"
-
-    @classmethod
-    def settings_pathFileName (cls, airfoil : Airfoil) -> str:
-        """ get settings file pathFileName for airfoil """
-        return os.path.join (airfoil.pathName_abs, airfoil.fileName_stem + cls.FILE_EXTENSION)
-
-
-    @classmethod
-    def exists_for (cls, airfoil : Airfoil) -> bool:
-        """ check if settings file exists for airfoil """
-
-        if isinstance (airfoil, Airfoil):
-            return os.path.isfile (cls.settings_pathFileName(airfoil))
-        return False
-
-
-    def __init__ (self, airfoil : Airfoil):
-
-        if not isinstance (airfoil, Airfoil):
-            raise ValueError (f"Airfoil_Settings: airfoil must be of type Airfoil")
-        
-        self._airfoil = airfoil
-        
-        super().__init__(self.settings_pathFileName (airfoil))
-
-
-    def __repr__ (self) -> str:
-        """ nice representation of self """
-        return f"<{type(self).__name__} for Airfoil '{self._airfoil}'>"
-
 
 
 # -----------------------------------------------------------------------------
@@ -173,11 +131,13 @@ class App_Model (QObject):
 
         self._polar_definitions = []                    # current polar definitions  
 
+        self._recent_files      = Recent_Files()        # history of recently used main airfoils
         self._settings = {}                             # actual loaded settings dict
         self._airfoil_settings_loaded = False           # have settings been loaded for current airfoil
         self._is_lower_minimized= False                 # is lower panel minimized
         
         self._watchdog = None                           # watchdog thread (may not be started)
+        self._matcher  = None                           # matcher thread while a match is running
 
         self._xo2_iopPoint_def  = 0                     # current xo2 opPoint definition index
         self._xo2_run_started   = False                 # has xo2 run started
@@ -208,6 +168,12 @@ class App_Model (QObject):
         else:
             on_str = f" on {self.airfoil}" if self.airfoil else ""
         return f"<App_Model{on_str}>"
+
+
+    @property
+    def watchdog (self) -> 'Watchdog | None':
+        """ thread watching new polars and Xoptfoil2 state changes - None if it isn't started """
+        return self._watchdog
 
 
     def _init_watchdog (self):
@@ -471,6 +437,17 @@ class App_Model (QObject):
 
 
     @property
+    def airfoil_after_case (self) -> Airfoil | None:
+        """ airfoil the app continues with when the current case is closed
+            (the final airfoil if it exists, else the seed airfoil) - without a case the current airfoil """
+
+        case = self.case
+        if case is None:
+            return self.airfoil
+        return case.airfoil_final if case.airfoil_final else case.airfoil_seed
+
+
+    @property
     def exporter_airfoil(self):
         """stateful exporter for the current airfoil"""
         from .model.airfoil_exports import Export_Airfoil_Dxf
@@ -524,6 +501,38 @@ class App_Model (QObject):
 
         if not silent: 
             self.sig_new_airfoil.emit()
+
+
+    @property
+    def recent_files (self) -> Recent_Files:
+        """ history of recently used main airfoils - only for showing and clearing, record via remember_airfoil """
+        return self._recent_files
+
+
+    def remember_airfoil (self, airfoil : Airfoil | None):
+        """
+        Put airfoil at the top of the recently used airfoils
+            Only saved airfoils the user works on count - not examples and not None
+        """
+
+        if airfoil is not None and not airfoil.isExample:
+            self._recent_files.add (airfoil.pathFileName_abs)
+
+
+    def forget_airfoil_file (self, pathFileName : str | Path):
+        """ remove an airfoil file, e.g. a deleted or renamed one, from the recently used airfoils """
+
+        self._recent_files.remove (pathFileName)
+
+
+    def open_airfoil (self, airfoil : Airfoil | None, load_settings: bool = False):
+        """
+        User opened, selected or saved a main airfoil file: set it as current airfoil and remember it
+            Use set_airfoil for all other (internal) airfoil changes like designs.
+        """
+
+        self.set_airfoil (airfoil, load_settings=load_settings)
+        self.remember_airfoil (airfoil)
 
 
     def notify_geo_changing (self, source = None):
@@ -992,57 +1001,33 @@ class App_Model (QObject):
 
         airfoil = self.airfoil
 
-        if self.airfoil_settings_exist:
-            s = Airfoil_Settings (airfoil)
+        s = settings_for (airfoil)
 
+        if isinstance (s, Airfoil_Settings):
             self._airfoil_settings_loaded = True
             logger.info (f"{self} Individual settings loaded: {s.pathFileName}")
-
         else:
-            s = Settings()
             self._airfoil_settings_loaded = False
             logger.info (f"{self} Settings loaded: {s.pathFileName}")
 
         # paneling 
 
-        Paneling_Spline.from_dict(s)
-        Paneling_Bezier.from_dict(s)
-        Paneling_BSpline.from_dict(s)
+        read_paneling (s)
 
         # polar definitions 
 
-        self._polar_definitions : list [Polar_Definition] = []
-        for def_dict in s.get('polar_definitions', []):
-            self._polar_definitions.append(Polar_Definition(dataDict=def_dict))
-        self._polar_definitions.sort (key=lambda aDef : aDef.re)
+        self._polar_definitions : list [Polar_Definition] = read_polar_definitions (s)
 
         # reference airfoils including initial re scale 
 
         self._airfoils_ref : list [Airfoil] = []
 
-        ref_entries = s.get('reference_airfoils', [])
-
-        for ref_entry in ref_entries:
-            if isinstance (ref_entry, str):                             # compatible with older version
-                pathFileName = ref_entry
-                show = True
-                scale = None
-            elif isinstance (ref_entry, dict):                          # mini dict with show boolean 
-                pathFileName = ref_entry.get ("path", None)
-                show         = ref_entry.get ("show", True)
-                scale        = ref_entry.get ("scale", None)
-            else:
-                pathFileName = None 
-
-            if pathFileName is not None: 
-                try: 
-                    airfoil = Airfoil.onFileType (pathFileName=pathFileName)
-                    airfoil.load ()
-                    airfoil.set_property ("show", show)
-                    airfoil.set_scale_factor (scale)
-                    self.set_airfoil_ref (None, airfoil, silent=True)
-                except Exception as e: 
-                    logger.warning (f"{self} Reference airfoil {pathFileName} could not be loaded: {e}")
+        for ref_entry in read_reference_entries (s):
+            try:
+                airfoil = load_reference_airfoil (ref_entry)
+                self.set_airfoil_ref (None, airfoil, silent=True)
+            except Exception as e:
+                logger.warning (f"{self} Reference airfoil {ref_entry.path} could not be loaded: {e}")
 
         # update polar sets of airfoils
         self._refresh_polar_sets (silent=True)
@@ -1080,28 +1065,13 @@ class App_Model (QObject):
             s.clear()                                       # new rebuild of settings
 
         # save paneling values 
-        Paneling_Spline.to_dict(s)
-        Paneling_Bezier.to_dict(s)
-        Paneling_BSpline.to_dict(s)
-
+        write_paneling (s)
 
         # add reference airfoils 
-        ref_list = []
-        for airfoil in self.airfoils_ref:
-            ref_entry = {}
-            ref_entry ["path"]  = airfoil.pathFileName_abs
-            if not airfoil.get_property ("show", True):             # avoid default True
-                ref_entry ["show"]  = airfoil.get_property ("show", True)
-            if airfoil.isScaled:                                    # avoid default 1.0
-                ref_entry ["scale"] = airfoil.scale_factor
-            ref_list.append (ref_entry)
-        s.set ('reference_airfoils', ref_list)
+        write_reference_airfoils (s, self.airfoils_ref)
 
         # add polar definitions 
-        def_list = []
-        for polar_def in self.polar_definitions:
-            def_list.append (polar_def._as_dict())
-        s.set ('polar_definitions', def_list)
+        write_polar_definitions (s, self.polar_definitions)
 
         # add export dxf settings
         s.set ('export_dxf', self.exporter_airfoil._as_dict())

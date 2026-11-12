@@ -6,14 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Recent airfoils in the Open button's drop-down menu, shared by normal and compact View panels
-- View: labeled Open split button below the file selector; Optimize is available in More...
+- Recent airfoils in the Open button's drop-down menu
 - Calculate airfoil blending from two section chords and an intermediate chord
 
 ### Fixed
 
 - Modify: handling of symmetric airfoils
 - Optimize: Info and examples didn't show
+- Closing the window now cleans up and saves settings 
 
 ## 5.0.2
 

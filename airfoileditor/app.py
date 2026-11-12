@@ -6,7 +6,7 @@
     Object model overview (a little simplified) 
 
     App                                         - Main 
-        |-- App_Mode                            - different UI modes like View, Modify, Optimize 
+        |-- Mode_*                              - different UI modes like View, Modify, Optimize - see Modes_Manager
             |-- Data_Panel                      - UI lower data panel for mode 
                 |-- Panel_Geometry              - UI single panel with fields 
 
@@ -25,7 +25,7 @@ import os
 import sys
 import argparse
 
-from PyQt6.QtCore           import pyqtSignal, QMargins, Qt
+from PyQt6.QtCore           import QMargins, Qt
 from PyQt6.QtWidgets        import QApplication, QMainWindow, QWidget 
 from PyQt6.QtWidgets        import QGridLayout
 from PyQt6.QtGui            import QCloseEvent, QGuiApplication
@@ -43,7 +43,7 @@ from .model.case             import Case_Optimize, Case_Direct_Design
 
 from .base.panels            import Win_Util
 from .base.widgets           import Icon, Widget
-from .base.app_utils         import Settings, Update_Checker, Run_Checker, Recent_Files, check_or_get_initial_file
+from .base.app_utils         import Settings, Update_Checker, Run_Checker, check_or_get_initial_file
 
 from .ui.ae_widgets          import create_airfoil_from_path
 from .ui.ae_diagrams         import Diagram_Airfoil_Polar
@@ -73,11 +73,6 @@ class Main (QMainWindow):
     '''
         App - Main Window 
     '''
-
-    # Qt Signals 
-
-    sig_xo2_about_to_run        = pyqtSignal()          # short before optimization starts
-    sig_xo2_new_state           = pyqtSignal()          # Xoptfoil2 new info/state
 
 
     def __init__(self, initial_file):
@@ -109,8 +104,7 @@ class Main (QMainWindow):
             mode_to_start = Mode_Id.OPTIMIZE
         else:
             airfoil = create_airfoil_from_path (self, initial_file, example_if_none=True, message_delayed=True)
-            if not airfoil.isExample:
-                Recent_Files().add(airfoil.pathFileName_abs)
+            app_model.remember_airfoil (airfoil)
             initial = airfoil
             mode_to_start = Mode_Id.VIEW
 
@@ -144,7 +138,10 @@ class Main (QMainWindow):
         modes_manager.add_mode (Mode_As_BSpline (app_model))
         modes_manager.add_mode (Mode_As_CST     (app_model))
 
-        modes_manager.set_mode (mode_to_start, initial)                     # set initial object in app_model
+        if not modes_manager.set_mode (mode_to_start, initial):             # set initial object in app_model
+            logger.error (f"Cannot start in mode {mode_to_start.name} - starting in View mode")
+            example = create_airfoil_from_path (self, None, example_if_none=True)
+            modes_manager.set_mode (Mode_Id.VIEW, example)
         modes_manager.sig_close_requested.connect (self.close)              # app close requested from mode view
 
         self._modes_manager = modes_manager                                 # keep as it hosts slots
@@ -261,8 +258,6 @@ class Main (QMainWindow):
 
         airfoil = self._app_model.airfoil
         if airfoil and not airfoil.isExample: 
-            if airfoil.usedAsDesign:                    # user closed during design case
-                airfoil = self._app_model.case.airfoil_seed
             s.set ('last_opened', airfoil.pathFileName_abs)
         else:
             s.set ('last_opened', None)
@@ -273,6 +268,10 @@ class Main (QMainWindow):
     @override
     def closeEvent  (self, event : QCloseEvent):
         """ main window is closed """
+
+        # leave the current mode first (closes a case) so the app is saved in the same state
+        # for every way of closing - this makes the current airfoil the one to continue with
+        self._modes_manager.shutdown()
 
         # save airfoil settings in app settings
         self._app_model.save_settings (to_app_settings=True,
