@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 APP_NAME         = "AirfoilEditor"
 PACKAGE_NAME     = "airfoileditor"
-__version__      = "5.0.3"                   # hatch "version dynamic" - PEP440 compliant version string
+__version__      = "5.0.4"                   # hatch "version dynamic" - PEP440 compliant version string
 
 CHANGE_TEXT      = "- Represent airfoils with CST-Kulfan parameters<br>" + \
                    "- Fast polar prediction with integrated NeuralFoil<br>" + \

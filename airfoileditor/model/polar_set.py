@@ -1266,6 +1266,124 @@ class Polar_Point:
 #------------------------------------------------------------------------------
 
 
+class Polar_Comparison:
+    """Aligned samples from a current polar and its interpolated reference polar."""
+
+    def __init__ (self, current_polar: 'Polar', ref_polar: 'Polar | None'):
+
+        self._current_polar = current_polar
+        self._ref_polar     = ref_polar
+
+
+    def deviation (self, base_var: var, value_var: var) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return base, current, and interpolated reference samples in alpha order."""
+
+        current_alpha   = self._current_polar._ofVar (var.ALPHA)
+        current_base    = self._current_polar._ofVar (base_var)
+        current_values  = self._current_polar._ofVar (value_var)
+
+        n_current = min (len (current_alpha), len (current_base), len (current_values))
+        current_alpha   = current_alpha[:n_current]
+        current_base    = current_base[:n_current]
+        current_values  = current_values[:n_current]
+
+        order = np.argsort (current_alpha, kind="stable")
+        current_alpha   = current_alpha[order]
+        current_base    = current_base[order]
+        current_values  = current_values[order]
+
+        if n_current == 0:
+            return current_base, current_values, np.full (n_current, np.nan)
+
+        if self._ref_polar is None:
+            reference_values = np.full (n_current, np.nan)
+        else:
+            ref_alpha   = self._ref_polar._ofVar (var.ALPHA)
+            ref_base    = self._ref_polar._ofVar (base_var)
+            ref_values  = self._ref_polar._ofVar (value_var)
+
+            # cl is only unique up to cl_max - cut the reference behind its cl_max
+            if base_var == var.CL:
+                keep = self._up_to_base_max (ref_alpha, ref_base, ref_values)
+                ref_alpha, ref_base, ref_values = ref_alpha[keep], ref_base[keep], ref_values[keep]
+
+            reference_values = self._interpolate_reference (ref_alpha, ref_base, ref_values, current_base)
+
+            # ... and also cut self behind its cl_max - so the delta ends at min (cl_max, cl_max_ref)
+            if base_var == var.CL:
+                reference_values[~self._up_to_base_max (current_alpha, current_base, current_values)] = np.nan
+
+        reference_values[~np.isfinite (current_values)] = np.nan
+
+        return current_base, current_values, reference_values
+
+
+    @staticmethod
+    def _up_to_base_max (alpha: np.ndarray, base: np.ndarray, values: np.ndarray) -> np.ndarray:
+        """Boolean mask of the main branch of base (in alpha order): from its minimum up to its maximum - e.g. cl_min .. cl_max."""
+
+        n_samples = min (len (alpha), len (base), len (values))
+        mask = np.zeros (len (alpha), dtype=bool)
+        mask[:n_samples] = True
+
+        if n_samples == 0 or not np.any (np.isfinite (base[:n_samples])):
+            return mask
+
+        alpha_order = np.argsort (alpha[:n_samples], kind="stable")
+        base_sorted = base[:n_samples][alpha_order]
+
+        i_max = int (np.argmax (np.where (np.isfinite (base_sorted), base_sorted, -np.inf)))
+        i_min = int (np.argmin (np.where (np.isfinite (base_sorted[:i_max + 1]), base_sorted[:i_max + 1], np.inf)))
+
+        mask[alpha_order[i_max + 1:]] = False
+        mask[alpha_order[:i_min]]     = False
+        return mask
+
+
+    @staticmethod
+    def _interpolate_reference (alpha: np.ndarray, base: np.ndarray, values: np.ndarray,
+                                base_values: np.ndarray) -> np.ndarray:
+        """Interpolate finite reference samples, rejecting out-of-range or ambiguous values."""
+
+        n_samples = min (len (alpha), len (base), len (values))
+
+        # trim arrays to the same length
+        alpha  = np.asarray (alpha[:n_samples], dtype=float)
+        base   = np.asarray (base[:n_samples], dtype=float)
+        values = np.asarray (values[:n_samples], dtype=float)
+
+        # keep only finite samples for interpolation
+        valid  = np.isfinite (alpha) & np.isfinite (base) & np.isfinite (values)
+        order  = np.argsort (alpha[valid], kind="stable")
+
+        base   = base[valid][order]
+        values = values[valid][order]
+
+        base_values  = np.asarray (base_values, dtype=float)
+        interpolated = np.full (base_values.shape, np.nan)
+
+        # a base value reached more than once with different results (e.g. cl behind cl_max) is ambiguous
+        for index, base_value in np.ndenumerate (base_values):
+            if not np.isfinite (base_value):
+                continue
+
+            candidates = list (values[base == base_value])
+            for i in range (len (base) - 1):
+                base_start, base_end = base[i], base[i + 1]
+                if base_start == base_end == base_value:
+                    candidates.extend ((values[i], values[i + 1]))
+                elif min (base_start, base_end) <= base_value <= max (base_start, base_end) \
+                        and base_start != base_end:
+                    fraction = (base_value - base_start) / (base_end - base_start)
+                    candidates.append (values[i] + fraction * (values[i + 1] - values[i]))
+
+            if candidates and np.allclose (candidates, candidates[0], rtol=1e-9, atol=1e-12):
+                interpolated[index] = candidates[0]
+
+        return interpolated
+
+
+
 class Polar (Polar_Definition):
     """ 
     A single polar of an airfoil created by Worker
@@ -1633,6 +1751,55 @@ class Polar (Polar_Definition):
         else:
             x, y = np.array([]), np.array([])
         return x,y 
+
+
+    DELTA_MIN_FRACTION = 0.1                    # relative glide / sink deviation only above this fraction of the max 
+
+    def deviation_from (self, ref_polar: 'Polar', 
+                        delta_vars: Tuple[var, var] | None) -> tuple[np.ndarray, np.ndarray, bool]:
+        """
+        Return deviation of self to a reference polar.
+
+        Args:
+            ref_polar: The reference polar to compare against.
+            delta_vars: Tuple containing the base variable and the comparison variable.
+
+        Returns:
+            (base, deviation, is_relative), with a boolean identifying relative values.
+            CD, CDP, CDF, glide and sink use (current - reference) / reference;
+            other quantities use current - reference in their original units.
+            Relative samples with near-zero references are returned as NaN - for glide and sink 
+            this is everything below DELTA_MIN_FRACTION of the maximum reference value.
+            Missing delta_vars returns empty arrays and is_relative=False.
+        """
+
+        if delta_vars is None:
+            return np.array([]), np.array([]), False
+
+        base_var, value_var = delta_vars
+        base, current, reference = Polar_Comparison (self, ref_polar).deviation (base_var, value_var)
+
+        reference_min = {
+            var.CD:    1e-8,
+            var.CDP:   1e-8,
+            var.CDF:   1e-8,
+            var.GLIDE: 0.05,
+            var.SINK:  0.05,
+        }.get (value_var)
+
+        if reference_min is None:
+            return base, current - reference, False
+
+        valid = np.isfinite (current) & np.isfinite (reference)
+        valid &= reference > reference_min
+
+        # glide and sink run through zero - relative deviation only where the reference is significant
+        if value_var in (var.GLIDE, var.SINK) and np.any (valid):
+            valid &= reference >= self.DELTA_MIN_FRACTION * np.max (reference[valid])
+
+        relative = np.full (current.shape, np.nan)
+        np.divide (current - reference, reference, out=relative, where=valid)
+        return base, relative, True
 
 
     def _ofVar (self, polar_var: var) -> np.ndarray:

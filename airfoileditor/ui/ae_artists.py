@@ -7,6 +7,7 @@ The "Artists" to plot a airfoil object on a pg.PlotItem
 
 """
 import html 
+from typing                     import NamedTuple, Callable
 
 from ..base.math_util           import derivative1
 from ..base.artist              import *
@@ -2264,3 +2265,118 @@ class Polar_Artist (Artist):
             x = [x,x]
             y = list(bubble)  
         self._plot_dataItem  (x, y, name=name, pen = pen_line, zValue=5)
+
+
+
+class Polar_Delta (NamedTuple):
+    """ delta of a polar to a reference polar - or a message why there is no delta """
+
+    x           : np.ndarray = np.array([])         # base values 
+    delta       : np.ndarray = np.array([])         # deviation to reference 
+    is_relative : bool       = False                # delta is relative (percent) or absolute
+    message     : str | None = None                 # reason why there is no delta data
+    ref_name    : str | None = None                 # name of the reference airfoil
+
+
+
+class Polar_Delta_Artist (Artist):
+    """
+    Plot the delta between a polar and a reference polar.
+    """
+
+    # variables where a higher / lower value is better - all others are neutral
+    VARS_POSITIVE_IS_BETTER = (var.CL, var.GLIDE, var.SINK, var.XTRT, var.XTRB, var.XTR)    # later transition is better
+    VARS_NEGATIVE_IS_BETTER = (var.CD, var.CDP, var.CDF)
+    COLOR_NEUTRAL           = QColor ("dodgerblue")
+
+
+    def __init__ (self, *args, 
+                  delta_vars_fn : Callable = None, 
+                  **kwargs):
+        """
+        Args:
+            delta_vars_fn: bound method returning the tuple (base_var, value_var) 
+            getter:        bound method returning the Polar_Delta to plot
+        """
+
+        self._delta_vars_fn = delta_vars_fn
+
+        super().__init__(*args, **kwargs)
+
+
+    @property
+    def delta_vars (self) -> tuple[var, var] | None:
+        return self._delta_vars_fn() if callable(self._delta_vars_fn) else None
+
+
+    def _plot_message (self, text : str):
+        """ plot a hint text in the middle of the diagram """
+        self._plot_text (text, color="dimgray", fontSize=self.SIZE_NORMAL, itemPos=(0.5, 1))
+
+
+    def _plot (self):
+
+        delta_data : Polar_Delta = self.data_object
+
+        if self.delta_vars is None:
+            self._plot_message ("Delta plot requires cl or alpha as an axis")
+            return
+
+        if delta_data.message:
+            self._plot_message (delta_data.message)
+            return
+
+        base_var, value_var = self.delta_vars
+        x, delta, is_relative = delta_data.x, delta_data.delta, delta_data.is_relative
+
+        valid = np.isfinite (x) & np.isfinite (delta)
+
+        # relative glide / sink deviations are only valid where the reference is significant (see model)
+        if value_var in (var.GLIDE, var.SINK) and is_relative:
+            self._plot_text (f"Only range with {value_var.value} above {Polar.DELTA_MIN_FRACTION:.0%} of max shown", 
+                             parentPos=(0,1.0), itemPos=(0,1), 
+                             offset=(55,-35), color="dimgray", fontSize=self.SIZE_SMALL)
+
+        if not np.any (valid):
+            self._plot_message ("No comparable delta samples")
+            return
+
+        x     = np.where (valid, x, np.nan)
+        delta = np.where (valid, delta, np.nan)
+
+        # plot sections with good/bad deviations
+
+        if value_var in self.VARS_POSITIVE_IS_BETTER:
+            color_positive, color_negative = COLOR_GOOD, COLOR_ERROR
+        elif value_var in self.VARS_NEGATIVE_IS_BETTER:
+            color_positive, color_negative = COLOR_ERROR, COLOR_GOOD
+        else:
+            color_positive = color_negative = self.COLOR_NEUTRAL
+
+        for values, color in ((np.maximum (delta, 0.0), color_positive),
+                              (np.minimum (delta, 0.0), color_negative)):
+            if not np.any (values[valid]): continue
+
+            brush = QColor (color).darker (150)
+            brush.setAlphaF (0.8)
+            self._plot_dataItem (x, values, pen=None, fillLevel=0.0,
+                                 fillBrush=pg.mkBrush (brush), connect="finite", zValue=1)
+
+        pen = pg.mkPen (QColor(self.COLOR_NORMAL).darker(100), width=1.0)
+        self._plot_dataItem (x, delta, connect="finite", antialias=False, zValue=2, pen=pen)
+
+        # plot min/max values above/below the deviation high points
+
+        i_max = np.nanargmax (delta)
+        i_min = np.nanargmin (delta)
+        x_min, x_max = x[i_min], x[i_max]
+        y_min, y_max = delta[i_min], delta[i_max]
+        delta_format = "+.1%" if is_relative else "+.3f"
+
+        if y_max > 0.0:
+            self._plot_point (x_max, y_max, color=color_positive, symbol='s', size=7, anchor=(0.4, 1.1), zValue=3,
+                              text=f"{y_max:{delta_format}}", textColor=color_positive)
+
+        if y_min < 0.0:
+            self._plot_point (x_min, y_min, color=color_negative, symbol='s', size=7, anchor=(0.4, -0.1), zValue=3,
+                              text=f"{y_min:{delta_format}}", textColor=color_negative)

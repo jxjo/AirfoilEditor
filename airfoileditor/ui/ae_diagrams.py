@@ -8,6 +8,7 @@ Diagram (items) for airfoil
 """
 
 from copy                   import deepcopy 
+from typing                 import Callable
 
 from PyQt6.QtCore           import Qt, QTimer, QMargins, pyqtSignal
 from PyQt6.QtGui            import QColor
@@ -17,7 +18,7 @@ from ..base.widgets         import *
 from ..base.diagram         import * 
 from ..base.panels          import Edit_Panel, Toaster, add_section_caption
 
-from ..model.airfoil        import Airfoil
+from ..model.airfoil        import Airfoil, usedAs
 from ..model.polar_set      import *
 from ..model.case           import Case_Abstract, Case_Optimize
 from ..model.xo2_driver     import Worker, Xoptfoil2
@@ -25,6 +26,7 @@ from ..model.xo2_results    import OpPoint_Result, GeoTarget_Result
 from ..model.nf_driver      import Neuralfoil_Evaluator
 
 from .ae_artists            import *
+from .ae_artists            import _label_airfoil
 from .ae_widgets            import Airfoil_Select_Open_Widget
 from .xo2_artists           import *
 from .util_dialogs          import Polar_Definition_Dialog, Airfoil_Scale_Dialog
@@ -1328,6 +1330,8 @@ class Item_Polars (Diagram_Item):
 
     name        = "Polars"                              # used for link and section header 
 
+    sig_xyVars_changed = pyqtSignal()                   # x,y variables changed - for slave delta item
+
     def __init__(self, *args, **kwargs):
 
         self._xyVars    = None
@@ -1651,6 +1655,14 @@ class Item_Polars (Diagram_Item):
 
         self.plot_title()
 
+        self.sig_xyVars_changed.emit()                          # notify slave delta item
+
+
+    @property
+    def xyVars (self) -> tuple[var, var] | None:
+        """ current x,y variables of the diagram"""
+        return self._xyVars
+
 
     @property
     def xVar (self) -> var:
@@ -1798,6 +1810,320 @@ class Item_Polars (Diagram_Item):
 
 
 
+class Item_Polars_Delta (Diagram_Item):
+    """ 
+    Diagram Item for the delta of a polar to a reference polar.
+    This item is a slave of a parent Item_Polars and shows the same xyVars.
+
+    Compares the polar of the main airfoil with the polar of another shown airfoil.
+    Only one active polar per airfoil is supported.
+    """
+
+    name        = "Polar Delta"                         # used for link and section header 
+
+    MSG_ONLY_ONE    = "Delta supports only one active polar per airfoil"
+
+    # minimum y range (+/-) of an absolute delta - differences below are hardly relevant 
+    DELTA_MIN_RANGE = {var.ALPHA: 0.5,   var.CL: 0.05,  var.CM: 0.01,  var.CP_MIN: 0.1,
+                       var.XTRT: 0.1,   var.XTRB: 0.1, var.XTR: 0.1,  var.NF_CONFIDENCE: 0.05,
+                       var.RE_CALC: 10000}
+    DELTA_MIN_RANGE_DEFAULT = 0.05
+
+    def __init__(self, *args, parent_item : 'Item_Polars' = None, airfoil_pair_fn : Callable = None, **kwargs):
+
+        self._parent_item = parent_item
+        self._airfoil_pair_fn = airfoil_pair_fn         # bound method returning (airfoil, ref_airfoil, message)
+        self._x_axis_label_item = None
+        self._range_link_key = None                     # state of the current link of the cl or alpha range
+        self._range_bridge_active = False               # guard against endless range updates
+        self._range_bridge = None                       # (signal, slot) pairs of the y-to-x bridge
+
+        super().__init__(*args, **kwargs)
+
+        self.setContentsMargins ( 0,15,10,10)
+
+        # connect to model signals - new airfoil etc. is handled in Diagram
+
+        self.app_model.sig_new_polars.connect           (self.refresh)
+        self.app_model.sig_polar_set_changed.connect    (self.refresh)
+        self.app_model.sig_geo_changing.connect         (lambda *_: self.refresh())
+        self.app_model.sig_xo2_new_design.connect       (self.refresh)
+
+
+    @property
+    def app_model (self) -> App_Model:
+        """ the app model"""
+        return self._dataObject
+
+
+    @override
+    def _settings (self) -> dict:
+        """ return dictionary of self settings"""
+        return {}                                       # no settings for this item
+
+
+    @override
+    def _set_settings (self, d : dict):
+        """ set settings of self from dict """
+        pass                                            # do not set show
+
+
+    @override
+    def refresh (self):
+        """ refresh the item """
+        self._viewRange_set = False                     # new y range and labels 
+        super().refresh()
+
+
+    @override
+    @property 
+    def has_reset_button (self) -> bool:
+        """ reset view button in the lower left corner"""
+        return False 
+
+
+    @override
+    def plot_title (self, **kwargs):
+        """ plot title with the variable and the reference airfoil """
+
+        if self.delta_vars:
+            _, value_var = self.delta_vars
+            _, ref_airfoil, _ = self.get_airfoil_pair ()
+            ref_name = ref_airfoil.name_to_show if ref_airfoil else "Reference"
+            title = f"Δ{value_var.value} vs. {ref_name}"
+        else:
+            title = "Polar delta"
+        return super().plot_title (title=title, title_size=Artist.SIZE_NORMAL, **kwargs)
+
+
+    @property
+    def delta_vars (self) -> tuple[var, var] | None:
+        """ return tuple of base_var and value_var to plot """
+
+        xyVars = self._parent_item.xyVars if self._parent_item is not None else None
+
+        if not isinstance (xyVars, tuple) or len (xyVars) != 2 or xyVars[0] == xyVars[1]:
+            return None
+
+        if var.ALPHA in xyVars:
+            base_var = var.ALPHA
+        elif var.CL in xyVars:
+            base_var = var.CL
+        else:
+            return None
+
+        value_var = xyVars[1] if xyVars[0] == base_var else xyVars[0]
+        return base_var, value_var
+
+
+    def get_airfoil_pair (self) -> tuple[Airfoil|None, Airfoil|None, str|None]:
+        """ 
+        Returns the airfoil and the airfoil to compare with - or a message why this isn't possible.
+        The pair is chosen in the diagram (see Diagram_Airfoil_Polar.delta_airfoil_pair)
+        """
+
+        if callable (self._airfoil_pair_fn):
+            return self._airfoil_pair_fn ()
+        return None, None, "No airfoils to compare"
+
+
+    def _get_polar (self, airfoil: Airfoil) -> tuple[Polar|None, str|None]:
+        """ the single active polar of airfoil - or a message why there is none"""
+
+        polars = [p for p in airfoil.polarSet.polars_normal if p.active] if airfoil.polarSet else []
+
+        if not polars:
+            return None, f"No active polar for {airfoil.name_to_show}"
+        if len (polars) > 1:
+            return None, self.MSG_ONLY_ONE
+
+        polar = polars[0]
+        if polar.error_occurred:
+            return None, f"{airfoil.name_to_show} - {polar.name}: {polar.error_reason}"
+        if not polar.isLoaded:
+            return None, "Generating polar"
+
+        return polar, None
+
+
+    def get_delta_data (self) -> Polar_Delta:
+        """ returns the delta of the polars of the airfoil pair or a message why there is no delta """
+
+        delta_vars = self.delta_vars
+        if delta_vars is None: 
+            return Polar_Delta()
+
+        airfoil, ref_airfoil, message = self.get_airfoil_pair ()
+        if message: 
+            return Polar_Delta (message=message)
+
+        polar, message = self._get_polar (airfoil)
+        if message: 
+            return Polar_Delta (message=message)
+        ref_polar, message = self._get_polar (ref_airfoil)
+        if message: 
+            return Polar_Delta (message=message)
+
+        x, delta, is_relative = polar.deviation_from (ref_polar, delta_vars)
+
+        if not x.size:
+            return Polar_Delta (message="No delta data available")
+
+        return Polar_Delta (x, delta, is_relative, None, ref_airfoil.name_to_show)
+
+
+    @override
+    def setup_artists (self):
+        """ create and setup the artists of self"""
+
+        a = Polar_Delta_Artist  (self, lambda: self.get_delta_data(), 
+                                 delta_vars_fn=lambda: self.delta_vars,
+                                 show=True)
+        self._add_artist(a)
+
+
+    def _update_range_link (self):
+        """ 
+        Link the range of the base variable (cl or alpha) of self to the range of the parent item.
+            - base variable on the x-axis of parent: x-axes are linked 
+            - base variable on the y-axis of parent: y-axis of parent and x-axis of self are bridged
+        """
+
+        parent = self._parent_item
+        delta_vars = self.delta_vars
+
+        axis = "none"
+        if parent is not None and delta_vars is not None:
+            if parent.xVar == delta_vars[0]:
+                axis = "x"
+            elif parent.yVar == delta_vars[0]:
+                axis = "y"
+
+        if axis == self._range_link_key:
+            return                                          # unchanged
+
+        # remove existing link 
+
+        if self._range_link_key in ("x", "y"):
+            self.viewBox.setXLink (None)
+            for signal, slot in self._range_bridge or []:
+                signal.disconnect (slot)
+            self._range_bridge = None
+            self.viewBox.enableAutoRange (axis=pg.ViewBox.XAxis, enable=True)    # x range of data again
+
+        self._range_link_key = axis
+
+        # set new link 
+
+        if axis == "x":
+            self.viewBox.setXLink (parent.viewBox)
+
+        elif axis == "y":
+            parent_vb : pg.ViewBox = parent.viewBox
+            own_vb    : pg.ViewBox = self.viewBox
+
+            slot_to_own    = lambda vb, rng: self._bridge_range (own_vb, "x", rng)
+            slot_to_parent = lambda vb, rng: self._bridge_range (parent_vb, "y", rng)
+            parent_vb.sigYRangeChanged.connect (slot_to_own)
+            own_vb.sigXRangeChanged.connect    (slot_to_parent)
+            self._range_bridge = [(parent_vb.sigYRangeChanged, slot_to_own),
+                                  (own_vb.sigXRangeChanged,    slot_to_parent)]
+
+            self._bridge_range (own_vb, "x", parent_vb.viewRange()[1])           # initial sync
+
+
+    def _bridge_range (self, target_vb : pg.ViewBox, axis : str, rng):
+        """ set range of axis of target_vb - guarded against endless updates between both view boxes"""
+
+        if self._range_bridge_active:
+            return
+
+        self._range_bridge_active = True
+        try:
+            if axis == "x":
+                target_vb.setXRange (rng[0], rng[1], padding=0)
+            else:
+                target_vb.setYRange (rng[0], rng[1], padding=0)
+        finally:
+            self._range_bridge_active = False
+
+
+    @override
+    def setup_viewRange (self):
+        """ define view range of this plotItem"""
+
+        self._update_range_link ()
+
+        def range_limit (value, default, step):
+            """Return a default bound or round outward; the step sign selects upper/lower."""
+
+            within_default = value < default if step > 0 else value > default
+            if within_default or value == default == 0:
+                return default
+
+            whole_steps = int (value / step)
+            return (whole_steps + 1) * step
+
+        self.viewBox.setDefaultPadding(0.05)
+
+        # relative or absolute delta
+        delta_data = self.get_delta_data()
+        is_relative = delta_data.is_relative
+        has_data = delta_data.message is None and bool (np.any (np.isfinite (delta_data.delta)))
+
+        # set y range 
+        rect = self.viewBox.childrenBoundingRect()
+        min_val, max_val = sorted((rect.top(), rect.bottom()))
+
+        if not has_data:
+            range_max, range_min = 0.05, -0.05
+        elif is_relative:
+            range_max = range_limit (max_val, default= 0.05, step= 0.05)
+            range_min = range_limit (min_val, default=-0.05, step=-0.05)
+        else: 
+            # absolute delta - a minimum range depending on the variable avoids zooming into noise
+            _, value_var = self.delta_vars
+            min_range = self.DELTA_MIN_RANGE.get (value_var, self.DELTA_MIN_RANGE_DEFAULT)
+            range_max = max (max(abs(min_val), abs(max_val)) * 1.5, min_range)
+            range_min = -range_max
+
+        self.viewBox.setYRange (range_min, range_max)
+
+        # axis label 
+        y_units = ""
+        y_scale = 1
+        if self.delta_vars:
+            base_var, _ = self.delta_vars
+            x_label = f"{base_var.value}"
+            if is_relative:
+                y_units = "%"
+                y_scale = 100
+        else:
+            x_label = "Base Variable"
+
+        y_axis : pg.AxisItem = self.getAxis("left")
+        y_axis.setLabel("", units=y_units)
+        y_axis.setScale(y_scale)
+        # After regeneration, setScale can leave a stale SI prefix (m%).
+        # Suppress prefixes for percentages and explicitly refresh the cached prefix.
+        y_axis.setSIPrefixEnableRanges (() if is_relative else None)
+        y_axis.updateAutoSIPrefix ()
+        x_axis : pg.AxisItem = self.getAxis("bottom")
+        x_axis.setLabel("")
+
+        if self._x_axis_label_item is None:
+            self._x_axis_label_item = pg.LabelItem(
+                x_label, color=Artist.COLOR_LEGEND, size=f"{Artist.SIZE_NORMAL}pt")
+            self._x_axis_label_item.setParentItem(self)
+            self._x_axis_label_item.anchor(
+                itemPos=(1, 1), parentPos=(0.98, 1), offset=(0, -30))
+
+        self._x_axis_label_item.setText(x_label)
+
+        self.showGrid(x=True, y=True)
+
+
+
 #-------------------------------------------------------------------------------
 # Diagrams   
 #-------------------------------------------------------------------------------
@@ -1827,7 +2153,7 @@ class Diagram_Airfoil_Polar (Diagram):
         self._show_polar_points     = False                         # show polars data points 
         self._show_bubbles          = False                         # show bubbles in polars 
         self._show_VLM_polars       = False                         # show VLM polars also
-
+        self._delta_ref_airfoil     = None                          # airfoil chosen to compare with in polar delta
         super().__init__(*args, **kwargs)
 
         # load initial settings
@@ -1882,7 +2208,8 @@ class Diagram_Airfoil_Polar (Diagram):
 
         show = s.get(self.panel_polar.name, False)     
         self._set_show_item (Item_Polars, show, silent=True)        # silent set
-
+        if show is False:
+            self._set_show_item (Item_Polars_Delta, False, silent=True)
         if show:
             # as Item_Polars have a common panel_polar (and no section panel) 
             # it has to be refreshed to show switched on/off state
@@ -1980,6 +2307,13 @@ class Diagram_Airfoil_Polar (Diagram):
                 item.name = f"{Item_Polars.name}_{iItem+1}"                 # set unique name as there a multiple items
                 item._set_settings (default_settings[iItem])                        # set default settings first
                 self._add_item (item, r, iItem, rowStretch=4)
+
+                # slave item showing the delta to a reference polar - same xyVars as its parent
+                item_delta = Item_Polars_Delta (self, self.app_model, show=False,
+                                                parent_item=item, airfoil_pair_fn=self.delta_airfoil_pair)
+                item_delta.name = f"{Item_Polars_Delta.name}_{iItem+1}"
+                self._add_item (item_delta, r+1, iItem, rowStretch=2)
+                item.sig_xyVars_changed.connect (item_delta.refresh)
  
 
     @override
@@ -2086,6 +2420,121 @@ class Diagram_Airfoil_Polar (Diagram):
 
     def set_show_polars (self, aBool : bool, silent=False):
         self._set_show_item (Item_Polars, aBool, silent=silent)
+        if not aBool:
+            self._set_show_item (Item_Polars_Delta, False, silent=silent)
+
+
+    @property
+    def show_polars_delta (self) -> bool:
+        """ show polar delta diagrams """
+        return self._show_item (Item_Polars_Delta) and self.show_polars
+
+    def set_show_polars_delta (self, aBool : bool, silent=False):
+        aBool = aBool and self.show_polars
+        self._set_show_item (Item_Polars_Delta, aBool, silent=silent)
+
+
+    @property
+    def polars_delta_possible (self) -> bool:
+        """ is there another shown airfoil to compare with """
+        return len (self.app_model.airfoils_to_show) >= 2
+
+
+    @property
+    def delta_main_airfoil (self) -> Airfoil | None:
+        """ the airfoil which is compared in polar delta - the design (or final) airfoil or the current airfoil"""
+
+        airfoils = self.app_model.airfoils_to_show
+
+        if self.app_model.case:
+            return next ((a for a in airfoils if a.usedAsDesign), None) \
+                   or next ((a for a in airfoils if a.usedAs == usedAs.FINAL), None)
+        else:
+            return self.app_model.airfoil if self.app_model.airfoil in airfoils else None
+
+
+    def _delta_ref_candidates (self) -> dict [str, Airfoil]:
+        """ airfoils to compare with as dict label -> airfoil - all shown airfoils beside the main airfoil"""
+
+        airfoils = self.app_model.airfoils_to_show
+        main     = self.delta_main_airfoil
+
+        candidates = {}
+        for airfoil in airfoils:
+            if airfoil is main: continue
+            label = _label_airfoil (airfoils, airfoil)
+            if label in candidates:                                     # ensure unique labels 
+                label = f"{label} ({len(candidates)+1})"
+            candidates[label] = airfoil
+        return candidates
+
+
+    @property
+    def delta_ref_airfoil (self) -> Airfoil | None:
+        """ airfoil to compare with - the chosen one or by default the seed (original) or first reference airfoil"""
+
+        candidates = list (self._delta_ref_candidates().values())
+
+        if self._delta_ref_airfoil in candidates:
+            return self._delta_ref_airfoil
+
+        if self.app_model.case:
+            preferred = [a for a in candidates if a is self.app_model.airfoil_seed]
+        else:
+            preferred = [a for a in candidates if a.usedAs == usedAs.REF]
+
+        return (preferred or candidates or [None])[0]
+
+
+    def set_delta_ref_airfoil (self, airfoil : Airfoil | None):
+        """ choose the airfoil to compare with in polar delta"""
+
+        self._delta_ref_airfoil = airfoil
+        for item in self._get_items (Item_Polars_Delta):
+            item.refresh()
+
+
+    @property
+    def delta_ref_label (self) -> str | None:
+        """ label of the airfoil to compare with - for combobox"""
+
+        ref = self.delta_ref_airfoil
+        for label, airfoil in self._delta_ref_candidates().items():
+            if airfoil is ref: return label
+
+
+    @property
+    def delta_ref_labels (self) -> list [str]:
+        """ labels of airfoils to compare with - for combobox"""
+        return list (self._delta_ref_candidates().keys())
+
+
+    def set_delta_ref_label (self, label : str):
+        """ choose the airfoil to compare with by its label"""
+        self.set_delta_ref_airfoil (self._delta_ref_candidates().get (label))
+
+
+    def delta_airfoil_pair (self) -> tuple[Airfoil|None, Airfoil|None, str|None]:
+        """ returns the airfoil and the airfoil to compare with - or a message why this isn't possible"""
+
+        airfoil = self.delta_main_airfoil
+        if airfoil is None:
+            return None, None, "Delta needs a shown design airfoil" if self.app_model.case \
+                               else "Delta needs the current airfoil to be shown"
+
+        ref_airfoil = self.delta_ref_airfoil
+        if ref_airfoil is None:
+            return airfoil, None, "Delta needs a second airfoil to be shown"
+
+        return airfoil, ref_airfoil, None
+
+
+    def _on_polars_delta_switched (self, aBool : bool):
+        """ slot - delta checkbox clicked - refresh panel for text and combobox"""
+
+        self.set_show_polars_delta (aBool)
+        self.panel_polar.refresh()
+
 
     @property 
     def show_polar_points (self) -> bool:
@@ -2216,6 +2665,34 @@ class Diagram_Airfoil_Polar (Diagram):
                             get=lambda: self.show_VLM_polars, set=self.set_show_VLM_polars,
                             toolTip=f"Include polars with forced transition at {Polar_Definition.XTRIP_VLM:.0%} chord.<br>" + \
                                     "These simplified polars are used by VLM wing calculation to evaluate alpha0 and Cl_max.")
+                r += 1
+
+                # delta: checkbox with text and (when switched on) combobox to choose the airfoil to compare with
+
+                r += 1
+                Label (l,r,c, get="", height=5, hide=lambda: not self.polars_delta_possible)
+                r += 1
+                helper = QWidget()                                  # helper widget - panel refreshes widgets of its layout 
+                h = QHBoxLayout (helper)
+                h.setContentsMargins (0,0,5,0)
+                h.setSpacing(0)
+                check = CheckBox (h, fontSize=size.HEADER_SMALL, text="Delta to",
+                            get=lambda: self.show_polars_delta, set=self._on_polars_delta_switched,
+                            hide=lambda: not self.polars_delta_possible,
+                            toolTip="Show the difference of the polar to the polar of another airfoil.<br>" + \
+                                    "Only one active polar per airfoil is supported.")
+                label = Label (h, get="another airfoil", fontSize=size.HEADER_SMALL,
+                            hide=lambda: self.show_polars_delta or not self.polars_delta_possible)
+                combo = ComboBox (h, width=(60,None),
+                            get=lambda: self.delta_ref_label, set=self.set_delta_ref_label,
+                            options=lambda: self.delta_ref_labels,
+                            hide=lambda: not (self.show_polars_delta and self.polars_delta_possible),
+                            toolTip="Select the airfoil to compare with.<br>" + \
+                                    "By default the original airfoil in Modify and Optimize mode, otherwise the reference airfoil.")
+                h.setStretchFactor (check, 0)
+                h.setStretchFactor (label, 1)                       # label and combobox are never shown together
+                h.setStretchFactor (combo, 1)
+                l.addWidget (helper, r, c, 1, 2)
                 
                 l.setColumnMinimumWidth (0,18)
                 l.setColumnStretch (1,1)
@@ -2257,6 +2734,10 @@ class Diagram_Airfoil_Polar (Diagram):
         if not self.is_mode_optimize and self.show_xo2_opPoint_def:
             self.set_show_xo2_opPoint_def (False) 
 
+        # switch off polar delta if there is nothing to compare with
+        if self.show_polars_delta and not self.polars_delta_possible:
+            self.set_show_polars_delta (False)
+
         super().refresh(also_viewRange=also_viewRange) 
 
 
@@ -2297,10 +2778,14 @@ class Diagram_Airfoil_Polar (Diagram):
         logger.debug (f"{str(self)} on show airfoil switched")
 
         # list of airfoils will be dependent of property "show" in app_model
+        if self.show_polars_delta and not self.polars_delta_possible:
+            self.set_show_polars_delta (False)
+
         for item in self.diagram_items:
             if item.show: 
                 item.refresh()
 
+        self.panel_polar.refresh()                                  # options of polar delta combobox
 
     def _on_opPoint_def_changed (self):
         """ slot to handle change of xo2 opPoint definition in diagram """
