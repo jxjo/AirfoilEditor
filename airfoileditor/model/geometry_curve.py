@@ -660,7 +660,7 @@ class Geometry_Curve (Geometry):
             xBlend_change =  self.te_gap_xBlend != xBlend
             self._te_gap_xBlend = xBlend
 
-        new_gap = clip (new_gap, 0.0, 0.1)
+        new_gap = clip (new_gap, 0.0, Geometry.TE_GAP_MAX)
 
         if self.te_gap != new_gap or xBlend_change:
             self.upper.set_te_gap (new_gap * 0.5, self.te_gap_xBlend, moving=moving)

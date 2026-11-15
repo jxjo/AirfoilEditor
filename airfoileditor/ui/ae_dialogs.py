@@ -777,10 +777,10 @@ class TE_Gap_Dialog (Dialog_Modeless):
         r += 1
         SpaceR  (l, r, stretch=1, height=10) 
         r += 1
-        FieldF  (l,r,c, lab="TE gap", width=75, unit="%", step=0.1, lim=(0.0, 10),
+        FieldF  (l,r,c, lab="TE gap", width=75, unit="%", step=0.1, lim=(0.0, 50),
                         obj=self, prop=TE_Gap_Dialog.te_gap)
 
-        Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.0, 0.1), step=0.001, dec=3, 
+        Slider  (l,r,c+3, colSpan=2, width=100, lim=(0.0, 0.5), step=0.001, dec=3, 
                         obj=self, prop=TE_Gap_Dialog.te_gap)
 
         l.setColumnMinimumWidth (0,90)

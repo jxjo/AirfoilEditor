@@ -287,14 +287,10 @@ class Side_Airfoil_Bezier (Side_Airfoil_Curve):
             else:
                 y_lim = (-1,0) 
 
-            if i == 0 :                                         # first fixed 
+            if i == 0 :                                         # le fixed 
                 jpoint.set_fixed (True)
-            elif i == (nPoints-1):                              # te vertical move
-                if self.isUpper: 
-                    jpoint.set_x_limits ((1,1))
-                    jpoint.set_y_limits (y_lim)
-                else: 
-                    jpoint.set_fixed (True)
+            elif i == (nPoints-1):                              # te fixed (change with te_gap)
+                jpoint.set_fixed (True)
             elif i == 1 :                                       # le tangent vertical move
                 jpoint.set_x_limits ((0,0))
                 jpoint.set_y_limits (y_lim)

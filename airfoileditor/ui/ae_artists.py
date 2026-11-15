@@ -224,7 +224,7 @@ class Movable_TE_Point (Movable_Point):
         self._show_label_static_with_value = show_label_static_with_value
 
         xy = 1.0, te_gap / 2.0
-        jpoint = JPoint (xy, y_limits=(0.0, 0.05))
+        jpoint = JPoint (xy, y_limits=(0.0, Geometry.TE_GAP_MAX / 2.0))
 
         super().__init__(jpoint, movable=movable, show_label_static=movable, **kwargs)
 

@@ -329,7 +329,8 @@ class Geometry_CST(Geometry_Curve):
 
     @override
     def set_te_gap(self, new_gap: float, xBlend=None, moving=False):
-        new_gap = clip(new_gap, 0.0, 0.1)
+        
+        new_gap = clip(new_gap, 0.0, Geometry.TE_GAP_MAX)
 
         if abs(new_gap - self.te_gap) < 1e-10:
             return

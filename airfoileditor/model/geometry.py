@@ -1502,9 +1502,10 @@ class Geometry ():
     MOD_BLEND           = "blend"
     MOD_FLAP            = "flap"
 
-    # default values of modifications
+    # default/max values of modifications
 
     TE_GAP_XBLEND       = 0.8                       # default x position from TE where te gap blending starts
+    TE_GAP_MAX          = 0.5                       # max TE gap value
     LE_RADIUS_XBLEND    = 0.1                       # default x position from LE where le radius blending ends
 
     EPSILON_LE_CLOSE    = 1e-6                      # max norm2 distance of le_real 
@@ -2072,7 +2073,7 @@ class Geometry ():
 
 
         try: 
-            new_gap = clip (new_gap, 0.0, 0.1)
+            new_gap = clip (new_gap, 0.0, Geometry.TE_GAP_MAX)
 
             # clear xy to reset upper and lower side objects
             self._clear_xy()

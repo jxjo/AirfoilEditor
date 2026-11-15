@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 - Polar delta diagram: compares the polar of the current airfoil with any other shown airfoil, selectable in the Polars panel
 
+### Fixed
+
+- Te gap now up to 50% (needed for tip airfoil) 
 
 ## 5.0.3
 
