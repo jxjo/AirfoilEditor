@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 - Te gap now up to 50% (needed for tip airfoil) 
 
+### Updated
+
+- Worker v 2.0.2 with minor improvements 
+
 ## 5.0.3
 
 ### Added
