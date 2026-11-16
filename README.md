@@ -146,6 +146,18 @@ This allows comparison of wing airfoils using a single polar definition for the 
 ![AE](images/polars_scaled.png "Scaled polars")
 
 
+### Polars Delta View
+
+The delta view shows how the polar of an airfoil differs from the polar of another shown airfoil. Switch on 'Delta to another airfoil' in the polar panel and choose the airfoil to compare with. A delta diagram appears below each polar diagram, using its axes and zoom - for example Δcd over cl.
+
+Drag, glide and sink are shown as relative difference in percent, other variables as absolute difference. Green marks the better, red the worse polar. In gray left and right regions the polars are not compared, for example where `cl` is no longer a reliable base because of stall.
+
+
+![AE](images/polars_delta_view.png "Delta View")
+
+
+
+
 # 1. View Mode
 
 Upon launch, AirfoilEditor opens in 'View Mode', which serves as the app’s default mode.

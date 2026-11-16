@@ -1001,64 +1001,89 @@ class Polar_Set:
         """ 
         Either loads or (if not already exist) generate polars of myAirfoil 
             for normal and/or VVLM polars of self.
+        For a list of airfoils use the static load_or_generate
         """
-        # select polars to be loaded/generated
 
-        polars : list['Polar'] = []
-        for polar in self.polars:
-            if polar.is_VLM_polar:
-                include_polar = VLM
-            elif polar.is_neuralfoil:
-                include_polar = normal
+        Polar_Set._generate_polars (self._load_polars (normal, VLM, only_polars))
+
+
+    @staticmethod
+    def load_or_generate (airfoils : list[Airfoil], normal=True, VLM=False):
+        """ 
+        Either loads or (if not already exist) generate polars of all airfoils 
+            for normal and/or VVLM polars - single entry point for a list of airfoils
+        VLM: the VLM polars (forced transition) are added to the polar sets - or removed if False 
+        """
+
+        polars_not_loaded : list['Polar'] = []
+
+        for airfoil in airfoils:
+
+            polar_set : Polar_Set = airfoil.polarSet
+            if not polar_set:
+                logger.debug (f"{airfoil} has no polarSet to load or generate")
+                continue
+
+            if VLM:
+                polar_set.ensure_polars_VLM ()
             else:
-                include_polar = normal
+                polar_set.remove_polars_VLM ()
 
-            if only_polars is not None:
-                include_polar = include_polar and polar in only_polars
+            polars_not_loaded.extend (polar_set._load_polars (normal, VLM))
 
-            if include_polar:
-                polars.append (polar)
+        Polar_Set._generate_polars (polars_not_loaded)
 
-        # load already existing polar file (xfoil) or generate and load polar (Neuralfoil)
+
+    def _load_polars (self, normal, VLM, only_polars: list['Polar'] | None = None) -> list['Polar']:
+        """ 
+        Loads existing polar files (xfoil) or evaluates polars (Neuralfoil) of self.
+        Returns the xfoil polars which still have to be generated 
+        """
 
         polars_not_loaded = []
 
-        for polar in polars: 
-            if not polar.isLoaded:
+        for polar in self.polars:
 
-                polar.load_polar ()
+            if only_polars is not None and polar not in only_polars: continue
+            if not (VLM if polar.is_VLM_polar else normal): continue
+            if polar.isLoaded: continue
 
-                if polar.is_xfoil and not polar.isLoaded:
-                    polars_not_loaded.append(polar)                         # lazy load failed - has to be generated
+            polar.load_polar ()
 
-        # polars missing - if not already done, create polar_task for Worker to generate polar 
+            if polar.is_xfoil and not polar.isLoaded:
+                polars_not_loaded.append(polar)                             # lazy load failed - has to be generated
 
-        if polars_not_loaded:
+        return polars_not_loaded
 
-            self.airfoil_ensure_being_saved ()                                  # a real airfoil file needed
 
-            all_polars_of_tasks = Polar_Task.get_polars_of_tasks ()
-    
-            # build polar tasks bundled for same ncrit, type, ... 
+    @staticmethod
+    def _generate_polars (polars_not_loaded : list['Polar']):
+        """ 
+        Generate the polars of the Worker - if not already done, create polar_tasks for it 
+        """
 
-            new_tasks : list [Polar_Task] = []
+        if not polars_not_loaded: return 
 
-            for polar in polars_not_loaded: 
+        for polar_set in {polar.polar_set for polar in polars_not_loaded}:
+            polar_set.airfoil_ensure_being_saved ()                         # a real airfoil file needed
 
-                if not polar in all_polars_of_tasks:                            # ensure polar isn't already in any task 
-                    taken_over = False
-                    for task in new_tasks:
-                        taken_over =  task.add_polar (polar)                    # try to add to existing task (same ncrit etc) 
-                        if taken_over: break
-                    if not taken_over:                                          # new task needed 
-                        new_tasks.append(Polar_Task(polar))   
+        all_polars_of_tasks = Polar_Task.get_polars_of_tasks ()
 
-            # run all worker tasks - class Polar_Task and WatchDog will take care 
+        # build polar tasks bundled for same airfoil, ncrit, type, ... 
 
-            for task in new_tasks:
-                task.run ()
+        new_tasks : list [Polar_Task] = []
 
-        return 
+        for polar in polars_not_loaded: 
+
+            if polar in all_polars_of_tasks: continue                       # polar is already in a task 
+
+            if not any (task.add_polar (polar) for task in new_tasks):      # try to add to existing task 
+                new_tasks.append (Polar_Task (polar))                       # new task needed 
+
+        # run all worker tasks - class Polar_Task and WatchDog will take care 
+
+        for task in new_tasks:
+            task.run ()
 
 #------------------------------------------------------------------------------
 
@@ -1269,10 +1294,17 @@ class Polar_Point:
 class Polar_Comparison:
     """Aligned samples from a current polar and its interpolated reference polar."""
 
+    MIN_SLOPE_FRACTION = 0.6                    # cl is compared where dcl/dalpha is above this fraction of its median 
+
     def __init__ (self, current_polar: 'Polar', ref_polar: 'Polar | None'):
 
         self._current_polar = current_polar
         self._ref_polar     = ref_polar
+
+        # cl is only unique up to cl_max and gets very sensitive when rounding off to stall -
+        #   the valid range is the same for all deviations with cl as base
+        self._current_range = self._valid_cl_range (current_polar)
+        self._ref_range     = self._valid_cl_range (ref_polar) if ref_polar is not None else None
 
 
     def deviation (self, base_var: var, value_var: var) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1286,11 +1318,13 @@ class Polar_Comparison:
         current_alpha   = current_alpha[:n_current]
         current_base    = current_base[:n_current]
         current_values  = current_values[:n_current]
+        current_range   = self._current_range[:n_current]
 
         order = np.argsort (current_alpha, kind="stable")
         current_alpha   = current_alpha[order]
         current_base    = current_base[order]
         current_values  = current_values[order]
+        current_range   = current_range[order]
 
         if n_current == 0:
             return current_base, current_values, np.full (n_current, np.nan)
@@ -1302,41 +1336,65 @@ class Polar_Comparison:
             ref_base    = self._ref_polar._ofVar (base_var)
             ref_values  = self._ref_polar._ofVar (value_var)
 
-            # cl is only unique up to cl_max - cut the reference behind its cl_max
             if base_var == var.CL:
-                keep = self._up_to_base_max (ref_alpha, ref_base, ref_values)
+                keep = self._ref_range
                 ref_alpha, ref_base, ref_values = ref_alpha[keep], ref_base[keep], ref_values[keep]
 
             reference_values = self._interpolate_reference (ref_alpha, ref_base, ref_values, current_base)
 
-            # ... and also cut self behind its cl_max - so the delta ends at min (cl_max, cl_max_ref)
+            # ... and cut self too - so the delta ends at the lower of both stall ranges 
             if base_var == var.CL:
-                reference_values[~self._up_to_base_max (current_alpha, current_base, current_values)] = np.nan
+                reference_values[~current_range] = np.nan
 
         reference_values[~np.isfinite (current_values)] = np.nan
 
         return current_base, current_values, reference_values
 
 
-    @staticmethod
-    def _up_to_base_max (alpha: np.ndarray, base: np.ndarray, values: np.ndarray) -> np.ndarray:
-        """Boolean mask of the main branch of base (in alpha order): from its minimum up to its maximum - e.g. cl_min .. cl_max."""
+    @classmethod
+    def _valid_cl_range (cls, polar: 'Polar') -> np.ndarray:
+        """
+        Boolean mask (in order of the samples of polar) of the range where cl is unique and 
+        meaningful to compare: from cl_min to cl_max without the rounding off to stall, 
+        where the lift slope dcl/dalpha is below MIN_SLOPE_FRACTION of its median.
+        """
 
-        n_samples = min (len (alpha), len (base), len (values))
+        alpha = polar._ofVar (var.ALPHA)
+        cl    = polar._ofVar (var.CL)
+
+        n = min (len (alpha), len (cl))
         mask = np.zeros (len (alpha), dtype=bool)
-        mask[:n_samples] = True
+        mask[:n] = True
 
-        if n_samples == 0 or not np.any (np.isfinite (base[:n_samples])):
-            return mask
+        if n < 3 or not np.any (np.isfinite (cl[:n])):
+            return mask                                                 # too few samples to judge 
 
-        alpha_order = np.argsort (alpha[:n_samples], kind="stable")
-        base_sorted = base[:n_samples][alpha_order]
+        order = np.argsort (alpha[:n], kind="stable")
+        a = alpha[:n][order]
+        c = cl[:n][order]
 
-        i_max = int (np.argmax (np.where (np.isfinite (base_sorted), base_sorted, -np.inf)))
-        i_min = int (np.argmin (np.where (np.isfinite (base_sorted[:i_max + 1]), base_sorted[:i_max + 1], np.inf)))
+        # main branch from cl_min up to cl_max
+        i_max = int (np.argmax (np.where (np.isfinite (c), c, -np.inf)))
+        i_min = int (np.argmin (np.where (np.isfinite (c[:i_max + 1]), c[:i_max + 1], np.inf)))
 
-        mask[alpha_order[i_max + 1:]] = False
-        mask[alpha_order[:i_min]]     = False
+        # lift slope - cut the ends of the branch where the slope has become small compared to the 
+        #   typical slope. The median is robust against local steep spots - the maximum isn't
+        with np.errstate (all="ignore"):
+            slope = np.gradient (c, a)
+        slope = np.where (np.isfinite (slope), slope, -np.inf)[i_min:i_max + 1]
+
+        if np.any (np.isfinite (slope)):
+            steep = np.flatnonzero (slope >= cls.MIN_SLOPE_FRACTION * np.median (slope[np.isfinite (slope)]))
+        else:
+            steep = np.array ([], dtype=int)
+
+        if steep.size:
+            i_lo, i_hi = i_min + steep[0], i_min + steep[-1]
+        else:
+            i_lo, i_hi = i_min, i_max
+
+        mask[:] = False
+        mask[order[i_lo:i_hi + 1]] = True
         return mask
 
 
@@ -1770,6 +1828,8 @@ class Polar (Polar_Definition):
             other quantities use current - reference in their original units.
             Relative samples with near-zero references are returned as NaN - for glide and sink 
             this is everything below DELTA_MIN_FRACTION of the maximum reference value.
+            With cl as base only the range of both polars up to stall is compared, 
+            see Polar_Comparison.MIN_SLOPE_FRACTION - samples outside are NaN.
             Missing delta_vars returns empty arrays and is_relative=False.
         """
 
@@ -2193,7 +2253,7 @@ class Polar_Task:
 
     def add_polar (self, polar : Polar) -> bool:
         """
-        add (another) polar which fits for self (polar type, ncrit, ... are the same)
+        add (another) polar which fits for self (airfoil, polar type, ncrit, ... are the same)
         Returns True if polar is taken over by self
         """    
 
@@ -2224,9 +2284,10 @@ class Polar_Task:
             self._polars     = [polar]
             self._airfoil_pathFileName_abs = polar.polar_set.airfoil_pathFileName_abs
 
-        # collect all polars with same type, ncrit, xtript, xtripb, specVar, valRange 
+        # collect all polars of the same airfoil with same type, ncrit, xtript, xtripb, specVar, valRange 
         # to allow Worker multi-threading 
-        elif  self._type==polar.type and self._ncrit == polar.ncrit and \
+        elif  self._airfoil_pathFileName_abs == polar.polar_set.airfoil_pathFileName_abs and \
+              self._type==polar.type and self._ncrit == polar.ncrit and \
               self._xtript == polar._xtript and self._xtripb == polar._xtripb and \
               self._autoRange == polar.autoRange and \
               self._specVar == polar.specVar and self._valRange == polar.valRange and \

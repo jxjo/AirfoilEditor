@@ -2676,21 +2676,19 @@ class Diagram_Airfoil_Polar (Diagram):
                 h = QHBoxLayout (helper)
                 h.setContentsMargins (0,0,5,0)
                 h.setSpacing(0)
-                check = CheckBox (h, fontSize=size.HEADER_SMALL, text="Delta to",
+                check = CheckBox (h, fontSize=size.HEADER_SMALL,
+                            text=lambda: "Delta to" if self.show_polars_delta else "Delta to another airfoil",
                             get=lambda: self.show_polars_delta, set=self._on_polars_delta_switched,
                             hide=lambda: not self.polars_delta_possible,
                             toolTip="Show the difference of the polar to the polar of another airfoil.<br>" + \
                                     "Only one active polar per airfoil is supported.")
-                label = Label (h, get="another airfoil", fontSize=size.HEADER_SMALL,
-                            hide=lambda: self.show_polars_delta or not self.polars_delta_possible)
                 combo = ComboBox (h, width=(60,None),
                             get=lambda: self.delta_ref_label, set=self.set_delta_ref_label,
                             options=lambda: self.delta_ref_labels,
                             hide=lambda: not (self.show_polars_delta and self.polars_delta_possible),
                             toolTip="Select the airfoil to compare with.<br>" + \
                                     "By default the original airfoil in Modify and Optimize mode, otherwise the reference airfoil.")
-                h.setStretchFactor (check, 0)
-                h.setStretchFactor (label, 1)                       # label and combobox are never shown together
+                h.setStretchFactor (check, 0)                       # the checkbox keeps its text - the combobox takes the rest 
                 h.setStretchFactor (combo, 1)
                 l.addWidget (helper, r, c, 1, 2)
                 

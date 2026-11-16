@@ -24,7 +24,7 @@ from ..model.geometry_hicks_henne import Side_Airfoil_HicksHenne
 from ..model.geometry_cst       import Geometry_CST, Side_Airfoil_CST
 from ..model.polar_set          import * 
 
-from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath, QCursor
+from PyQt6.QtGui                import QColor, QBrush, QPen, QTransform, QPainterPath, QCursor, QFont
 from PyQt6.QtCore               import pyqtSignal, QObject, QTimer
 from PyQt6.QtWidgets            import QToolTip
 
@@ -1127,7 +1127,7 @@ class TE_Gap_Artist (Artist):
 
         # plot blending range
 
-        pen = pg.mkPen("dimgray", width=1)
+        pen = pg.mkPen(Artist.COLOR_HINT, width=1)
         lr  = pg.LinearRegionItem (values=[1.0-self.geo.te_gap_xBlend, 1.0], pen=pen, movable=False, span=(0.2, 0.8))
 
         lr.lines[0].setMovable(movable_range)
@@ -1245,7 +1245,7 @@ class LE_Radius_Artist (Artist):
 
         # plot blending range
 
-        pen = pg.mkPen("dimgray", width=1)
+        pen = pg.mkPen(Artist.COLOR_HINT, width=1)
         lr  = pg.LinearRegionItem (values=[0, self.geo.le_radius_xBlend], pen=pen, movable=False, span=(0.15, 0.85))
         lr.lines[0].setMovable(False)
         lr.lines[1].setMovable(movable)
@@ -1972,21 +1972,9 @@ class Polar_Artist (Artist):
 
         # load or generate polars which are not loaded up to now
 
-        is_moving_design_mode = False
+        Polar_Set.load_or_generate (airfoils, VLM=self.show_VLM_also)
 
-        for airfoil in airfoils: 
-            polarSet = airfoil.polarSet
-            if polarSet:
-                if self.show_VLM_also:
-                    polarSet.ensure_polars_VLM()
-                    polarSet.load_or_generate_polars (VLM=True)
-                else:
-                    polarSet.remove_polars_VLM()
-                    polarSet.load_or_generate_polars (VLM=False)
-            else:
-                logger.debug (f"{airfoil} has no polarSet to plot")
-            if airfoil.usedAsDesign and airfoil.geo.is_moving:
-                is_moving_design_mode = True
+        is_moving_design_mode = any (a.usedAsDesign and a.geo.is_moving for a in airfoils)
 
         # plot polars of airfoils
 
@@ -2049,7 +2037,7 @@ class Polar_Artist (Artist):
             text = f"No live polar: no NeuralFoil polar defined."
 
         if text:
-            self._plot_text (text, color= "dimgray", fontSize=self.SIZE_HEADER, 
+            self._plot_text (text, color= self.COLOR_HINT, fontSize=self.SIZE_HEADER, 
                              parentPos=(0.5, 0.7), itemPos=(0.5, 1))
 
         # show help message 
@@ -2279,6 +2267,16 @@ class Polar_Delta (NamedTuple):
 
 
 
+class _Region_Out_Of_Range (pg.LinearRegionItem):
+    """ shaded region which doesn't take part in the auto range of the view box """
+
+    def dataBounds (self, axis, frac=1.0, orthoRange=None):
+        # a region extending 'to infinity' would be part of the auto range (button Fit) and zoom the view
+        #   - and the linked polar diagram - out to its extent. The stock item returns its region here
+        return None
+
+
+
 class Polar_Delta_Artist (Artist):
     """
     Plot the delta between a polar and a reference polar.
@@ -2288,6 +2286,8 @@ class Polar_Delta_Artist (Artist):
     VARS_POSITIVE_IS_BETTER = (var.CL, var.GLIDE, var.SINK, var.XTRT, var.XTRB, var.XTR)    # later transition is better
     VARS_NEGATIVE_IS_BETTER = (var.CD, var.CDP, var.CDF)
     COLOR_NEUTRAL           = QColor ("dodgerblue")
+
+    OUT_OF_VIEW             = 1e6                   # 'infinite' extent of a shaded region 
 
 
     def __init__ (self, *args, 
@@ -2309,10 +2309,6 @@ class Polar_Delta_Artist (Artist):
         return self._delta_vars_fn() if callable(self._delta_vars_fn) else None
 
 
-    def _plot_message (self, text : str):
-        """ plot a hint text in the middle of the diagram """
-        self._plot_text (text, color="dimgray", fontSize=self.SIZE_NORMAL, itemPos=(0.5, 1))
-
 
     def _plot (self):
 
@@ -2331,15 +2327,11 @@ class Polar_Delta_Artist (Artist):
 
         valid = np.isfinite (x) & np.isfinite (delta)
 
-        # relative glide / sink deviations are only valid where the reference is significant (see model)
-        if value_var in (var.GLIDE, var.SINK) and is_relative:
-            self._plot_text (f"Only range with {value_var.value} above {Polar.DELTA_MIN_FRACTION:.0%} of max shown", 
-                             parentPos=(0,1.0), itemPos=(0,1), 
-                             offset=(55,-35), color="dimgray", fontSize=self.SIZE_SMALL)
-
         if not np.any (valid):
             self._plot_message ("No comparable delta samples")
             return
+
+        self._plot_cut_regions (x, valid)
 
         x     = np.where (valid, x, np.nan)
         delta = np.where (valid, delta, np.nan)
@@ -2380,3 +2372,48 @@ class Polar_Delta_Artist (Artist):
         if y_min < 0.0:
             self._plot_point (x_min, y_min, color=color_negative, symbol='s', size=7, anchor=(0.4, -0.1), zValue=3,
                               text=f"{y_min:{delta_format}}", textColor=color_negative)
+
+
+
+    def _plot_message (self, text : str):
+        """ plot a hint text in the middle of the diagram """
+        self._plot_text (text, color=self.COLOR_HINT, fontSize=self.SIZE_NORMAL, itemPos=(0.5, 1))
+
+
+    def _plot_cut_regions (self, x : np.ndarray, valid : np.ndarray):
+        """ shade the regions beyond the range which is compared - with a line and a label """
+
+        # get limits 
+
+        if not np.any (valid): 
+            return None, None
+
+        lower, upper = x[valid].min (), x[valid].max ()
+        x_all = x[np.isfinite (x)]
+
+        lower = lower if x_all.min () < lower else None
+        upper = upper if x_all.max () > upper else None
+
+
+        brush = QColor ("gray")
+        brush.setAlphaF (0.2)
+        pen   = pg.mkPen (self.COLOR_HINT, width=1, style=Qt.PenStyle.DashLine)
+        font  = QFont ()
+        font.setPointSize (self.SIZE_SMALL)
+
+        # the label is placed outside of the compared range - next to the line
+        for limit, region, anchor in ((lower, (-self.OUT_OF_VIEW, lower), (1.1, 0.5)),
+                                      (upper, (upper, self.OUT_OF_VIEW),  (-0.1, 0.5))):
+            if limit is None: continue
+
+            shade = _Region_Out_Of_Range (values=region, orientation="vertical", movable=False, 
+                                          brush=brush, pen=pg.mkPen (None))
+            shade.setZValue (0)
+            self._add (shade)
+
+            line = pg.InfiniteLine (pos=limit, angle=90, pen=pen, label="stall or N/A", 
+                                    labelOpts={'position': 0.9, 'color': self.COLOR_HINT, 
+                                               'anchors': [anchor, anchor]})
+            line.label.setFont (font)
+            line.setZValue (1)
+            self._add (line)

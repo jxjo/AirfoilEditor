@@ -942,6 +942,7 @@ class Artist(QObject):
     COLOR_NORMAL        = "silver"
     COLOR_LEGEND        = "darkgray"
     COLOR_HELP          = QColor ("#1B73CB")          # darker dodgerblue
+    COLOR_HINT          = "dimgray"         
 
     show_mouse_helper_default   = True                  # global setting to show mouse helper points
 
