@@ -971,7 +971,7 @@ class Airfoil_Artist (Artist):
             y = airfoil.geo.upper.yFn (x) 
             self._plot_point ((x,y), size=0, text="Reflexed", anchor=(0.5,2.0), textColor=textColor) 
 
-        elif airfoil.isRearLoaded: 
+        if airfoil.isRearLoaded: 
             x = 0.8
             y = airfoil.geo.lower.yFn (x) 
             self._plot_point ((x,y), size=0, text="Rearloaded", anchor=(0.5,-1.0), textColor=textColor)
