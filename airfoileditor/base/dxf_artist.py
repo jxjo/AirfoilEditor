@@ -38,6 +38,21 @@ class TextAlign (Enum):
 ezdxf_logger = logging.getLogger("ezdxf")
 ezdxf_logger.setLevel(logging.WARNING)
 
+DASHED_LINETYPE = "DASHED_MM"                       # pattern in mm - scaled per entity by ltscale (see Cad_Entity)
+
+
+def _line_attribs (msp: Modelspace, dashed: bool, ltscale: float) -> dict:
+    """ dxf attributes for the line style of an entity - ensures the dashed linetype exists """
+
+    if not dashed:
+        return {}
+
+    linetypes = msp.doc.linetypes
+    if DASHED_LINETYPE not in linetypes:
+        linetypes.add (DASHED_LINETYPE, pattern=[4.0, 3.0, -1.0], description="Dashed")    # total, dash, gap
+
+    return {"linetype": DASHED_LINETYPE, "ltscale": ltscale}
+
 # ------------------------------------------------------------------------------
 
 class Cad_Entity(ABC):
@@ -97,12 +112,20 @@ class Cad_PolyLine(Cad_Entity):
 class Cad_FitSpline (Cad_Entity):
     """CAD fit-point spline segment in planform coordinates."""
 
-    def __init__(self, fit_points: list[tuple[float, float]]):
+    def __init__(self, fit_points: list[tuple[float, float]], 
+                 dashed: bool = False, ltscale: float = 1.0):
+        """
+        Args:
+            dashed:  draw the spline with a dashed line
+            ltscale: scale of the dash pattern (pattern is defined in mm)
+        """
 
         if len(fit_points) < 2:
             raise ValueError("A CAD fit spline must have at least two points.")
 
         self.fit_points = fit_points
+        self.dashed     = dashed
+        self.ltscale    = ltscale
 
 
     @staticmethod
@@ -125,18 +148,20 @@ class Cad_FitSpline (Cad_Entity):
     @classmethod
     def from_x_y (cls, x: list[float], y: list[float], 
                   point_transform: Callable[[float, float], tuple[float, float]] | None = None,
+                  dashed: bool = False, ltscale: float = 1.0,
                   ) -> "Cad_FitSpline":
         """Build a CAD fit-point spline from x and y coordinates."""
 
         points = cls._build_points(x, y, point_transform=point_transform)
-        return cls(points)
+        return cls(points, dashed=dashed, ltscale=ltscale)
 
 
     @override
     def add_to(self, msp: Modelspace):
         """Add the CAD fit-point spline to the modelspace."""
 
-        msp.add_cad_spline_control_frame(fit_points=self.fit_points)
+        msp.add_cad_spline_control_frame(fit_points=self.fit_points,
+                                         dxfattribs=_line_attribs (msp, self.dashed, self.ltscale))
 
 
 
@@ -147,12 +172,21 @@ class Cad_Spline(Cad_Entity):
                   control_points: list[tuple[float, float]],
                   degree: int,
                   knots: list[float] | None = None,
-                  weights: list[float] | None = None ):
+                  weights: list[float] | None = None,
+                  dashed: bool = False, 
+                  ltscale: float = 1.0):
+        """
+        Args:
+            dashed:  draw the spline with a dashed line
+            ltscale: scale of the dash pattern (pattern is defined in mm)
+        """
         
         self.control_points = control_points
         self.degree = degree
         self._knots = knots
         self.weights = weights
+        self.dashed  = dashed
+        self.ltscale = ltscale
 
 
     @staticmethod
@@ -175,21 +209,24 @@ class Cad_Spline(Cad_Entity):
     @classmethod
     def from_bezier (cls, bezier: Bezier,
                      point_transform: Callable[[float, float], tuple[float, float]] | None = None,
+                     dashed: bool = False, ltscale: float = 1.0,
                     ) -> "Cad_Spline":
         """Build a CAD spline from a Bezier curve control polygon."""
 
         points = cls._build_points(bezier.cpoints, point_transform=point_transform)
-        return cls(points, degree=bezier.ncp - 1)
+        return cls(points, degree=bezier.ncp - 1, dashed=dashed, ltscale=ltscale)
 
 
     @classmethod
     def from_bspline (cls, bspline: BSpline,
                       point_transform: Callable[[float, float], tuple[float, float]] | None = None,
+                      dashed: bool = False, ltscale: float = 1.0,
                       ) -> "Cad_Spline":
         """Build a CAD spline from a B-spline curve control polygon."""
 
         points = cls._build_points(bspline.cpoints, point_transform=point_transform)
-        return cls(points, degree=bspline.degree, knots=list(bspline.knots()))
+        return cls(points, degree=bspline.degree, knots=list(bspline.knots()), 
+                   dashed=dashed, ltscale=ltscale)
 
 
     @property
@@ -210,6 +247,7 @@ class Cad_Spline(Cad_Entity):
         """Add the CAD spline to the modelspace."""
 
         control_points = [(x, y, 0.0) for x, y in self.control_points]
+        attribs = _line_attribs (msp, self.dashed, self.ltscale)
 
         if self.is_rational:
             msp.add_rational_spline(
@@ -217,12 +255,14 @@ class Cad_Spline(Cad_Entity):
                 degree=self.degree,
                 weights=self.weights,
                 knots=self.knots,
+                dxfattribs=attribs,
             )
         else:
             msp.add_open_spline(
                 control_points=self.control_points,
                 degree=self.degree,
                 knots=self.knots,
+                dxfattribs=attribs,
             )
 
 

@@ -8,6 +8,7 @@ Handle export of a single airfoil to external file formats.
 """
 
 import logging
+import math
 import shutil
 from pathlib import Path
 
@@ -25,13 +26,24 @@ logger = logging.getLogger(__name__)
 class Dxf_Airfoil_Artist(Dxf_Artist):
     """DXF artist for a single airfoil."""
 
+    TEXT_GAP      = 0.15                                # distance of the text to the airfoil in chord lengths
+    TEXT_BLENDED  = "blended airfoil based on chord - use for control"
+
     def __init__(self, airfoil: Airfoil, 
                  nick_name: str|None = None,
                  drawing = None,
                  chord_mm: float = 1.0, 
                  te_gap_mm: float|None = None,
                  xy_pos_mm: tuple[float, float] = (0.0, 0.0),
-                 always_as_cubic_fit: bool = False):
+                 always_as_cubic_fit: bool = False,
+                 text_angle: float = 0.0,
+                 is_blended: bool = False):
+        """
+        Args:
+            text_angle: rotation of title and subtitle in degrees (counter-clockwise) around the
+                        start of the text - e.g. 45° to avoid overlapping texts of neighbouring airfoils
+            is_blended: airfoil is only blended based on chord - outline is dashed and a hint is added
+        """
         
         super().__init__(drawing=drawing)
 
@@ -41,6 +53,8 @@ class Dxf_Airfoil_Artist(Dxf_Artist):
         self._te_gap_mm     = te_gap_mm
         self._xy_pos_mm     = xy_pos_mm
         self._always_as_cubic_fit = always_as_cubic_fit
+        self._text_angle    = text_angle
+        self._is_blended    = is_blended
         if te_gap_mm is not None:
             self._airfoil.geo.set_te_gap(te_gap_mm / chord_mm)
 
@@ -68,6 +82,15 @@ class Dxf_Airfoil_Artist(Dxf_Artist):
         self._xy_pos_mm = xy_pos_mm
 
 
+    @property
+    def text_angle(self) -> float:
+        """Rotation of title and subtitle in degrees."""
+        return self._text_angle
+
+    def set_text_angle(self, text_angle: float):
+        self._text_angle = text_angle
+
+
     def _point_transform(self):
         x0, y0 = self.xy_pos_mm
         chord_mm = self.chord_mm
@@ -81,7 +104,8 @@ class Dxf_Airfoil_Artist(Dxf_Artist):
     def _plot_dat_airfoil(self):
         """ plot .dat as cubic fit-point spline"""
         transform = self._point_transform()
-        self._plot(Cad_FitSpline.from_x_y(self.airfoil.x, self.airfoil.y, point_transform=transform))
+        self._plot(Cad_FitSpline.from_x_y(self.airfoil.x, self.airfoil.y, point_transform=transform,
+                                          dashed=self._is_blended, ltscale=self._dash_scale))
 
 
     def _plot_curve_airfoil(self):
@@ -91,12 +115,19 @@ class Dxf_Airfoil_Artist(Dxf_Artist):
         upper = geo.upper.curve
         lower = geo.lower.curve
 
+        style = dict (point_transform=transform, dashed=self._is_blended, ltscale=self._dash_scale)
+
         if self.airfoil.isBezierBased:
-            self._plot(Cad_Spline.from_bezier(upper, point_transform=transform))
-            self._plot(Cad_Spline.from_bezier(lower, point_transform=transform))
+            self._plot(Cad_Spline.from_bezier(upper, **style))
+            self._plot(Cad_Spline.from_bezier(lower, **style))
         else:
-            self._plot(Cad_Spline.from_bspline(upper, point_transform=transform))
-            self._plot(Cad_Spline.from_bspline(lower, point_transform=transform))
+            self._plot(Cad_Spline.from_bspline(upper, **style))
+            self._plot(Cad_Spline.from_bspline(lower, **style))
+
+    @property
+    def _dash_scale(self) -> float:
+        """Scale of the dash pattern of a blended airfoil - pattern is defined for a chord of 100 mm."""
+        return self.chord_mm / 100.0
 
     @property
     def is_bspline_plot(self) -> bool:
@@ -105,11 +136,10 @@ class Dxf_Airfoil_Artist(Dxf_Artist):
 
 
     def _plot_title (self):
-        """Add a title text to the DXF drawing."""
+        """Add title, subtitle and - for a blended airfoil - a hint text above the airfoil to the DXF drawing."""
 
         xt, yt = self.xy_pos_mm
 
-        # title right above LE
         if self._nick_name:
             title = f"'{self._nick_name}'"
         else:
@@ -122,26 +152,41 @@ class Dxf_Airfoil_Artist(Dxf_Artist):
         else:
             height = 4.0
 
-        yt   += 0.1 * self.chord_mm + height
-
-        self._plot (Cad_Text(title, (xt, yt), height=height, align=TextAlign.LEFT))
-
         # subtitle with chord and te_gap info
         subtitles = []
         if self.chord_mm > 1.0:
-            subtitles.append(f"Chord: {self.chord_mm:.1f} mm")
+            subtitles.append(f"Chord: {self.chord_mm:.2f} mm")
             if self._te_gap_mm is not None:
-                subtitles.append(f"TE gap: {self._te_gap_mm:.1f} mm")
+                subtitles.append(f"TE gap: {self._te_gap_mm:.2f} mm")
 
         if self.is_bspline_plot:
             subtitles.append("uniform B-Spline")
         else:
             subtitles.append("cubic fit-point spline")
 
-        subtitle = ", ".join(subtitles)
-        yt    -= height
-        height = height * 0.6
-        self._plot (Cad_Text(subtitle, (xt, yt), height=height, align=TextAlign.LEFT))    
+        # text lines from bottom to top 
+        lines = []
+        if self._is_blended:
+            lines.append ((self.TEXT_BLENDED, height * 0.6))
+        lines.append ((", ".join(subtitles), height * 0.6))
+        lines.append ((title, height))
+
+        # all lines share angle and start point - each line is shifted along the normal of the text line
+        angle  = math.radians (self.text_angle)
+        nx, ny = -math.sin (angle), math.cos (angle)
+
+        x = xt
+        y = yt + self.TEXT_GAP * self.chord_mm              # distance of the lowest line to the airfoil
+        last_height = None
+
+        for text, line_height in lines:
+            if last_height is not None:
+                # baseline distance: height of the lower line plus room for the descenders of the upper line
+                spacing = last_height + 0.6 * line_height
+                x, y = x + nx * spacing, y + ny * spacing
+            self._plot (Cad_Text(text, (x, y), height=line_height, 
+                                 align=TextAlign.LEFT, rotation=self.text_angle))
+            last_height = line_height
 
 
     @override

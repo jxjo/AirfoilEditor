@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import math
+
 import ezdxf
 import pytest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from airfoileditor.base.dxf_artist import DASHED_LINETYPE
 from airfoileditor.model.airfoil import Airfoil_BSpline, Airfoil_Bezier, GEO_BASIC
 from airfoileditor.model.airfoil_examples import Root_Example
-from airfoileditor.model.airfoil_exports import Export_Airfoil_Dxf
+from airfoileditor.model.airfoil_exports import Dxf_Airfoil_Artist, Export_Airfoil_Dxf
 
 
 def _export_entity_types(airfoil, tmp_path, export_name: str) -> list[str]:
@@ -77,6 +80,50 @@ def test_export_into_existing_drawing_does_not_save(tmp_path):
     assert exporter.do_it(drawing=drawing, filename="ignored") is None
     assert drawing.modelspace().query("SPLINE")
     assert not (tmp_path / "unused").exists()
+
+
+def _artist_texts(**kwargs) -> tuple[list, list]:
+    """ plot a 200 mm airfoil at (10, 20) and return its TEXT and SPLINE entities - texts from bottom to top"""
+
+    artist = Dxf_Airfoil_Artist(Root_Example(geometry=GEO_BASIC), chord_mm=200.0, xy_pos_mm=(10.0, 20.0), **kwargs)
+    artist.plot()
+    return list(artist.msp.query("TEXT")), list(artist.msp.query("SPLINE"))
+
+
+def test_blended_airfoil_is_dashed_with_third_text_line():
+    texts, splines = _artist_texts(is_blended=True)
+
+    assert len(texts) == 3
+    assert texts[0].dxf.text == Dxf_Airfoil_Artist.TEXT_BLENDED
+    assert splines and all(s.dxf.linetype == DASHED_LINETYPE for s in splines)
+    assert all(s.dxf.ltscale == pytest.approx(2.0) for s in splines)            # chord 200 mm / 100 mm
+
+
+def test_normal_airfoil_is_solid_with_two_text_lines():
+    texts, splines = _artist_texts()
+
+    assert len(texts) == 2
+    assert all(s.dxf.linetype != DASHED_LINETYPE for s in splines)
+
+
+def test_text_keeps_gap_to_airfoil():
+    texts, _ = _artist_texts()
+
+    assert texts[0].dxf.insert.x == pytest.approx(10.0)
+    assert texts[0].dxf.insert.y == pytest.approx(20.0 + Dxf_Airfoil_Artist.TEXT_GAP * 200.0)
+
+
+@pytest.mark.parametrize("angle", [0.0, 30.0, 45.0])
+def test_text_lines_stay_aligned_when_rotated(angle):
+    texts, _ = _artist_texts(is_blended=True, text_angle=angle)
+    a = math.radians(angle)
+
+    along  = [t.dxf.insert.x * math.cos(a) + t.dxf.insert.y * math.sin(a) for t in texts]
+    across = [-t.dxf.insert.x * math.sin(a) + t.dxf.insert.y * math.cos(a) for t in texts]
+
+    assert along == pytest.approx([along[0]] * 3, abs=1e-6)                     # all lines start at the same position
+    assert across == sorted(across) and len(set(across)) == 3                   # stacked perpendicular to the text
+    assert all(t.dxf.rotation == pytest.approx(angle) for t in texts)
 
 
 def test_export_dialog_passes_alternate_filename():

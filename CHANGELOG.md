@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 5.0.5
+
+
+### Fixed
+
+- Export DXF: Improved airfoil description text 
+
+
 ## 5.0.4
 
 ### Added

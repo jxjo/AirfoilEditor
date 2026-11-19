@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 from airfoileditor.base.dxf_artist import (
+    Cad_FitSpline,
     Cad_Line,
     Cad_PolyLine,
     Cad_Spline,
     Cad_Text,
+    DASHED_LINETYPE,
     Dxf_Artist,
 )
 from airfoileditor.base.spline import Bezier
@@ -57,3 +59,19 @@ def test_artist_save_writes_file(tmp_path: Path):
 
     assert out_file.exists()
     assert out_file.stat().st_size > 0
+
+
+def test_dashed_splines_use_scaled_linetype():
+    artist = Dummy_Artist()
+    bezier = Bezier([0.0, 5.0, 10.0], [0.0, 3.0, 0.0])
+
+    Cad_Spline.from_bezier(bezier).add_to(artist.msp)
+    Cad_Spline.from_bezier(bezier, dashed=True, ltscale=2.0).add_to(artist.msp)
+    Cad_FitSpline.from_x_y([0.0, 5.0, 10.0], [0.0, 3.0, 0.0], dashed=True, ltscale=0.5).add_to(artist.msp)
+
+    solid, dashed, fit = list(artist.msp.query("SPLINE"))
+
+    assert solid.dxf.linetype == "BYLAYER"
+    assert dashed.dxf.linetype == DASHED_LINETYPE and dashed.dxf.ltscale == 2.0
+    assert fit.dxf.linetype == DASHED_LINETYPE and fit.dxf.ltscale == 0.5
+    assert DASHED_LINETYPE in artist.drawing.linetypes
