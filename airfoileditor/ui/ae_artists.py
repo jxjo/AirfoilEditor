@@ -2336,6 +2336,9 @@ class Polar_Delta_Artist (Artist):
         x     = np.where (valid, x, np.nan)
         delta = np.where (valid, delta, np.nan)
 
+        x, delta = self._insert_zero_crossings (x, delta)        # fill and line meet at the zero crossing
+        valid    = np.isfinite (delta)                           # new length - mask must be recalculated
+
         # plot sections with good/bad deviations
 
         if value_var in self.VARS_POSITIVE_IS_BETTER:
@@ -2373,6 +2376,24 @@ class Polar_Delta_Artist (Artist):
             self._plot_point (x_min, y_min, color=color_negative, symbol='s', size=7, anchor=(0.4, -0.1), zValue=3,
                               text=f"{y_min:{delta_format}}", textColor=color_negative)
 
+
+
+    @staticmethod
+    def _insert_zero_crossings (x : np.ndarray, delta : np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """ returns x, delta with an additional sample (delta = 0) where delta changes its sign between two samples """
+
+        d0, d1 = delta[:-1], delta[1:]
+
+        # NaN gaps never compare as True - so there is no crossing across a gap
+        with np.errstate (invalid="ignore"):
+            cross = np.flatnonzero (d0 * d1 < 0.0)
+
+        if not cross.size:
+            return x, delta
+
+        x_zero = x[cross] + (x[cross + 1] - x[cross]) * d0[cross] / (d0[cross] - d1[cross])
+
+        return np.insert (x, cross + 1, x_zero), np.insert (delta, cross + 1, 0.0)
 
 
     def _plot_message (self, text : str):
