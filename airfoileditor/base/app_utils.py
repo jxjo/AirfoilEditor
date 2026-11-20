@@ -110,7 +110,7 @@ class Recent_Files:
     A missing history key is seeded from legacy_key; an empty list means explicitly cleared.
     """
 
-    def __init__(self, key: str = "recent_files", limit: int = 10,
+    def __init__(self, key: str = "recent_files", limit: int = 15,
                  legacy_key: str | None = "last_opened"):
         """Configure the settings key, history limit and optional legacy migration key."""
 
