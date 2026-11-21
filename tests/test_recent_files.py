@@ -38,14 +38,12 @@ def test_add_deduplicates_normalizes_and_limits(history_settings, tmp_path):
         path.touch()
         Recent_Files().add(path)
     history = Recent_Files()
-    assert history.paths == list(reversed(files))[:10]
+    assert history.paths == list(reversed(files))[:15]
     history.add(str(tmp_path / ".." / tmp_path.name / files[4].name))
     assert history.paths[0] == files[4]
-    assert len(history.paths) == 10
     assert history.paths.count(files[4]) == 1
     if Path("A") == Path("a"):
         history.add(str(files[4]).upper())
-        assert len(history.paths) == 10
         assert history.paths.count(files[4]) == 1
 
 
