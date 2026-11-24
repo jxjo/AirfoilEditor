@@ -115,15 +115,48 @@ class polarType (StrEnum_Extended):
     T1      = "T1"
     T2      = "T2"
 
-
 SPEC_ALLOWED = [var.ALPHA, var.CL]
-
+SPEC_ALLOWED = [var.ALPHA, var.CL]
+MA_SCALE_ROUND_DEC = 2
 MA_SCALE_ROUND_DEC = 2
 
 
 def re_scale_round_to (re: float) -> int:
     """Reynolds grid step for a scaled polar, finer below Re 50k."""
     return 1000 if re < 50000 else 2000
+
+
+# Coarse, fixed Re grid used to bracket-interpolate a polar between precomputed
+# T1 polars at discrete Re levels (see Polar_Interpolated, Polar_Set.ensure_re_values).
+# Below 200k, one extra point (lower*1.4) is inserted into each original gap, since a 2x
+# bracket there was measured to cost ~2-4% cd/cm error from the curvature of ln(cd) vs
+# ln(Re) - the added points cut that to ~0.5%. Above 200k, steps stay coarse (doubling)
+# to limit the number of Xfoil/NeuralFoil runs - provisional, to be optimized further
+# once more real usage data exists.
+RE_GRID_T2 = [10_000, 14_000, 20_000, 32_000, 50_000, 70_000, 100_000, 140_000,
+              200_000, 400_000, 800_000, 1_600_000, 3_200_000, 6_400_000]
+
+
+def re_grid_values (re_min: float, re_max: float, grid: list[float] = RE_GRID_T2) -> list[float]:
+    """
+    Return the grid Re values needed to bracket-interpolate anywhere in [re_min, re_max]:
+    every grid point inside the range, plus the nearest grid point just below re_min and
+    just above re_max so the range's own edges can still be bracketed.
+    """
+    if re_min > re_max:
+        re_min, re_max = re_max, re_min
+
+    inside = [re for re in grid if re_min <= re <= re_max]
+
+    below = [re for re in grid if re < re_min]
+    if below:
+        inside.insert (0, below[-1])
+
+    above = [re for re in grid if re > re_max]
+    if above:
+        inside.append (above[0])
+
+    return inside
 
 
 #--- Aero constants ---------------------------------------------------------------------------
@@ -271,6 +304,31 @@ def load_from_re_sqrt (re_sqrt_cl : float, chord : float, round_dec = None) -> f
     return load 
 
 
+def q_dyn_from_load (load : float, cl : float) -> float | None:
+    """ 
+    calc dynamic pressure q_dyn [N/m²] for a level-flight (T2) condition at a given
+    wing load and the lift coefficient achieved at that condition (Lift = Weight)
+
+    Args:
+        load: wing load in kg/m² = 10 * g/dm²
+        cl: lift coefficient of the wing at this level-flight condition
+    """
+
+    if not cl or not np.isfinite (cl):
+        return None
+
+    return 9.81 * load / cl
+
+
+def vtas_from_q_dyn (q_dyn : float) -> float | None:
+    """ calc true air speed v [m/s] from dynamic pressure q_dyn [N/m²] """
+
+    if q_dyn is None or not np.isfinite (q_dyn) or q_dyn < 0.0:
+        return None
+
+    return np.sqrt (2 * q_dyn / AIR_RHO)
+
+
 #------------------------------------------------------------------------------
 
 
@@ -291,7 +349,7 @@ class Polar_Definition:
 
     VAL_RANGE_ALPHA = [-4.0, 13.0, 0.3]         # default value range for alpha polar
     VAL_RANGE_CL    = [-0.2, 1.2, 0.05]
-    VAL_RANGE_CL_T2 = [0.05, 1.5, 0.05]
+    VAL_RANGE_CL_T2 = [0.02, 1.5, 0.05]
 
 
     POLAR_XFOIL      = 'Xfoil'                  # driver of polar calculation 
@@ -650,10 +708,18 @@ class Polar_Definition:
         """ returns polar extended name self represents """
         return f"{self.name}  {self.specVar}: {self.valRange_string}"    
 
-    def name_with_v (self, chord : float):
-        """ returns polar name with velocity for given chord """
-        v = self.calc_v_for_chord(chord)
-        return f"{self.name} | {v:.1f}m/s" if v is not None else self.name
+
+    def name_with_base (self, chord : float) -> str:
+        """ returns polar name with either velocity (T1)[m/s] or wing load (T2)[g/dm²] for given chord """
+
+        if self.type == polarType.T1:
+            v    = v_from_re (self.re, chord / 1000, round_dec=1) 
+            return f"{self.name} | {v:.1f}m/s" if v is not None else self.name
+        elif self.type == polarType.T2:
+            load = load_from_re_sqrt (self.re, chord / 1000) * 10.0 
+            return f"{self.name} | {load:.1f}g/dm²" if load is not None else self.name
+        else:
+            return self.name
 
 
     def is_equal_to (self, aDef: 'Polar_Definition', 
@@ -772,21 +838,7 @@ class Polar_Definition:
 
     def set_is_xfoil (self, aBool : bool):
         self.set_is_neuralfoil (not aBool)
-
-
-    def calc_v_for_chord (self, chord : float) -> float | None:
-        """ 
-        calc velocity for given chord length in mm based on Re
-            - only for Type 1 polars 
-            - rounded to 1 decimal place
-        """
-
-        if chord and self.type == polarType.T1:
-            v = v_from_re (self.re, chord / 1000, round_dec=1) 
-            return v 
-        else:
-            return None
-        
+       
 
 #------------------------------------------------------------------------------
 
@@ -914,6 +966,49 @@ class Polar_Set:
         return True 
 
 
+    def update_polar_defs (self, polar_defs: 'list[Polar_Definition] | Polar_Definition',
+                          re_scale: float | None = None):
+        """
+        Sync self's polars to represent polar_defs in place - keeping any that already
+        exist unchanged (preserving their loaded state), replacing ones whose settings
+        changed, adding missing ones, and removing active polars no longer represented.
+
+        Any other polar not represented in polar_defs - e.g. an inactive Re-grid bracket
+        "helper" polar added on demand by ensure_re_values, such as for T2 interpolation -
+        is left completely untouched. 
+        """
+
+        re_scale = re_scale if re_scale is not None else self._re_scale
+        self._re_scale = clip (re_scale, 0.001, 100)
+
+        polar_def_list = polar_defs if isinstance (polar_defs, list) else [polar_defs]
+
+        kept_polars = []
+        new_defs    = []
+        for polar_def in polar_def_list:
+            # compare against a properly re_scale'd candidate - polar_def itself is
+            # unscaled, while existing self.polars entries have re_scale already baked
+            # into their own .re (see Polar.__init__), so comparing raw would mismatch
+            candidate = Polar (self, polar_def, re_scale=self._re_scale)
+            existing  = next ((p for p in self.polars if p.is_equal_to (candidate, ignore_active=True)), None)
+            if existing is not None:
+                existing.set_active (polar_def.active)
+                kept_polars.append (existing)
+            else:
+                new_defs.append (polar_def)
+
+        if new_defs:
+            self._add_polar_defs (new_defs, re_scale=self._re_scale, only_active=False)
+            kept_polars.extend (self.polars[-len (new_defs):])
+
+        # drop active polars no longer represented by polar_defs - a helper polar is
+        # never matched/kept above, so it is never a candidate for removal here
+        for polar in self.polars[:]:
+            if polar.active and polar not in kept_polars:
+                polar.polar_set_detach ()
+                self.polars.remove (polar)
+
+
     def ensure_polars_VLM (self):
         """Ensure every normal polar has a separate VLM sister."""
 
@@ -930,6 +1025,35 @@ class Polar_Set:
 
                 # add VLM polar 
                 self._add_polar_defs (vlm_polar_def, only_active=False)
+
+
+    def ensure_re_values (self, polar_def_template: 'Polar_Definition', re_values: list[float]) -> list['Polar']:
+        """
+        Ensure self has a polar for each of the given re_values, based on polar_def_template
+        (same type, ncrit, ma, xtrip, flap etc. - only re differs).
+
+        Existing matching polars are reused as-is (including their active state); newly
+        added polars are created inactive so they stay out of the normal 'active polar'
+        display and definitions list - use load_or_generate_polars to actually generate them.
+
+        Returns the polars in the same order as re_values.
+        """
+        result = []
+
+        for re_value in re_values:
+            polar_def_target = polar_def_template.as_copy ()
+            polar_def_target.set_re (re_value)
+
+            polar = next ((p for p in self.polars if p.is_equal_to (polar_def_target, ignore_active=True)), None)
+
+            if polar is None:
+                polar_def_target.set_active (False)
+                self._add_polar_defs (polar_def_target, only_active=False)
+                polar = self.polars[-1]
+
+            result.append (polar)
+
+        return result
 
 
     #---------------------------------------------------------------
@@ -1476,6 +1600,7 @@ class Polar (Polar_Definition):
         self._error_reason      = None                      # if error occurred during polar generation 
 
         self._values : dict[var, np.ndarray] = {}           # cached polar values: var → array
+        self._pre_stall_branch_cache = None                 # lazy, see _pre_stall_branch property
 
         if polar_def: 
             self.set_active     (polar_def.active)
@@ -1594,6 +1719,19 @@ class Polar (Polar_Definition):
 
     @property
     def alpha (self) -> np.ndarray:     return self._ofVar (var.ALPHA)
+
+    @property
+    def _pre_stall_branch (self) -> np.ndarray:
+        """
+        alpha of self's pre-stall lift branch (cl_min to cl_max) - cached since self's
+        alpha/cl never change once loaded. The same grid polar is typically the left or
+        right bracket side of many different Polar_Interpolated constructions (e.g.
+        across opPoints/viscous-loop iterations of a T2 polar), so this avoids redoing
+        the branch search for each of them.
+        """
+        if self._pre_stall_branch_cache is None:
+            self._pre_stall_branch_cache = _compute_pre_stall_branch (self)
+        return self._pre_stall_branch_cache
 
     @property
     def cl (self) -> np.ndarray:        return self._ofVar (var.CL)
@@ -2105,6 +2243,32 @@ class Polar (Polar_Definition):
 
 
 
+def _compute_pre_stall_branch (polar) -> np.ndarray:
+    """
+    polar's pre-stall lift branch (alpha from cl_min to cl_max) - the expensive part of
+    Polar_Interpolated._build_alpha_mapping (argmin/argmax branch search). Shared by
+    Polar._pre_stall_branch and Polar_Interpolated._pre_stall_branch, each caching their
+    own result since a polar's alpha/cl never change once loaded.
+    """
+    alpha, cl = np.asarray (polar.alpha), np.asarray (polar.cl)
+    if not alpha.size:
+        raise ValueError ("Cannot interpolate an empty polar")
+
+    # cl_min of the pre-stall branch is searched only *before* cl_max - a real polar
+    # extending into deep stall commonly has cl crashing below its low-alpha cl at high
+    # alpha (post-stall), which would otherwise be mis-picked as the global argmin and
+    # put index_min after index_max
+    index_max = int (np.argmax (cl))
+    index_min = int (np.argmin (cl[:index_max + 1])) if index_max > 0 else 0
+
+    if index_min >= index_max:
+        raise ValueError (
+            f"{polar}: no pre-stall branch from cl_min to cl_max "
+            f"(alpha {alpha[0]:.1f}..{alpha[-1]:.1f}°, cl {cl.min():.3f}..{cl.max():.3f})")
+
+    return alpha[index_min:index_max + 1]
+
+
 #------------------------------------------------------------------------------
 
 
@@ -2124,10 +2288,21 @@ class Polar_Interpolated:
     """
 
     def __init__ (self, polar_left: 'Polar', polar_right: 'Polar',
-                  value_left: float, value_right: float, value_target: float):
+                  value_left: float, value_right: float, value_target: float,
+                  clamped: bool = False):
+
+        # sanity - a NaN bracket value here always originates further upstream (e.g. a
+        # NaN cl feeding a Re-from-cl calculation) - fail fast with a clear, actionable
+        # message instead of silently propagating NaN into alpha/cl and failing deep
+        # inside _build_alpha_mapping with a confusing, hard to trace error
+        if not (np.isfinite (value_left) and np.isfinite (value_right) and np.isfinite (value_target)):
+            raise ValueError (
+                f"Cannot interpolate between {polar_left} and {polar_right}: "
+                f"non-finite bracket value (left={value_left}, right={value_right}, target={value_target})")
 
         self._polar_left  = polar_left
         self._polar_right = polar_right
+        self._clamped     = clamped
 
         dv = value_right - value_left
         is_valid_log = value_left > 0.0 and value_right > 0.0 and value_target > 0.0 and dv != 0.0
@@ -2147,7 +2322,8 @@ class Polar_Interpolated:
         self._cp_min = None
         self._xtrt   = None
         self._xtrb   = None
-        self._branch_mask_cache = None
+
+        self._pre_stall_branch_cache = None                 # lazy, see Polar._pre_stall_branch
 
         # sanity - polars must be loaded
         if not polar_left.isLoaded or not polar_right.isLoaded:
@@ -2164,27 +2340,104 @@ class Polar_Interpolated:
         return f"<{type(self).__name__} at {self._fraction:.2f} >"
 
 
+    @classmethod
+    def from_grid (cls, grid_polars: list['Polar'], re_target: float) -> 'Polar_Interpolated':
+        """
+        Build a Polar_Interpolated for re_target from a (not necessarily sorted) list of
+        grid polars, each defining its own Re (T1) or Re*sqrt(cl) (T2) via .re.
+
+        If re_target falls outside the grid's covered range, it is clamped to the nearest
+        covered edge polar - see the clamped property to detect this.
+        """
+
+        if len (grid_polars) < 2:
+            raise ValueError ("from_grid needs at least two grid polars to bracket")
+
+        re_min, re_max = grid_polars[0].re, grid_polars[-1].re
+        clamped_target = min (max (re_target, re_min), re_max)
+
+        # find the bracketing pair - last polar (before the final one) whose re is <= clamped_target
+        index = 0
+        for i, polar in enumerate (grid_polars[:-1]):
+            if polar.re <= clamped_target:
+                index = i
+            else:
+                break
+
+        polar_left, polar_right = grid_polars[index], grid_polars[index + 1]
+
+        return cls (polar_left, polar_right, polar_left.re, polar_right.re, clamped_target,
+                    clamped=(clamped_target != re_target))
+
+
+    @property
+    def isLoaded (self) -> bool:
+        """Always True - a successfully constructed instance is always fully resolved,
+        so self can itself be used as a Polar-like input to another Polar_Interpolated
+        (e.g. Re-bracket-interpolated per section, then chord-interpolated across sections)."""
+        return True
+
+
+    @property
+    def error_occurred (self) -> bool:
+        """Always False - construction raises instead of producing a failed instance."""
+        return False
+
+
+    @property
+    def error_reason (self) -> str | None:
+        return None
+
+
+    @property
+    def clamped (self) -> bool:
+        """True if the requested value_target had to be clamped to the nearest covered grid edge."""
+        return self._clamped
+
+
+    @property
+    def polar_left (self) -> 'Polar':
+        """The lower-bracket source polar."""
+        return self._polar_left
+
+
+    @property
+    def polar_right (self) -> 'Polar':
+        """The upper-bracket source polar."""
+        return self._polar_right
+
+
     def _build_alpha_mapping (self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Align pre-stall alpha ranges from cl_min (0) to cl_max (1)."""
 
-        branches = []
-        for polar in (self._polar_left, self._polar_right):
-            alpha, cl = np.asarray (polar.alpha), np.asarray (polar.cl)
-            if not alpha.size:
-                raise ValueError ("Cannot interpolate an empty polar")
+        branch_left  = self._polar_left._pre_stall_branch
+        branch_right = self._polar_right._pre_stall_branch
 
-            index_min, index_max = int (np.argmin (cl)), int (np.argmax (cl))
-            if index_min >= index_max:
-                raise ValueError ("Polar must have a pre-stall branch from cl_min to cl_max")
+        # at an exact bracket edge (fraction_log == 0 or 1 - e.g. a from_grid clamp, or
+        # the target matching a grid point exactly), the result must exactly reproduce
+        # that side's own pre-stall curve - skip interpolation entirely rather than
+        # needing both sides' native points on one shared grid just to cover this case
+        if self._fraction_log == 0.0:
+            return branch_left, branch_left, branch_left
+        if self._fraction_log == 1.0:
+            return branch_right, branch_right, branch_right
 
-            branches.append (alpha[index_min:index_max + 1])
+        normalized_left  = (branch_left  - branch_left[0])  / (branch_left[-1]  - branch_left[0])
+        normalized_right = (branch_right - branch_right[0]) / (branch_right[-1] - branch_right[0])
 
-        branch_left, branch_right = branches
-        normalized = np.union1d (
-            (branch_left  - branch_left[0])  / (branch_left[-1]  - branch_left[0]),
-            (branch_right - branch_right[0]) / (branch_right[-1] - branch_right[0]))
-        alpha_left  = np.interp (normalized, [0.0, 1.0], branch_left[[0, -1]])
-        alpha_right = np.interp (normalized, [0.0, 1.0], branch_right[[0, -1]])
+        # interpolate using each branch's own real normalized-position-to-alpha mapping,
+        # not just its two endpoints - the branch's own points are not evenly spaced in
+        # normalized position, so a 2-point linear map mis-locates alpha at the other
+        # branch's normalized positions (visible as a few tenths of a degree of alpha
+        # misalignment, which then propagates into a few percent of cd/cm error).
+        if len (branch_left) >= len (branch_right):
+            normalized  = normalized_left
+            alpha_left  = branch_left
+            alpha_right = np.interp (normalized, normalized_right, branch_right)
+        else:
+            normalized  = normalized_right
+            alpha_right = branch_right
+            alpha_left  = np.interp (normalized, normalized_left, branch_left)
 
         alpha = alpha_left + self._fraction_log * (alpha_right - alpha_left)
 
@@ -2207,6 +2460,16 @@ class Polar_Interpolated:
     @property
     def alpha (self) -> np.ndarray:
         return self._alpha
+
+    @property
+    def _pre_stall_branch (self) -> np.ndarray:
+        """alpha of self's pre-stall branch - cached, see Polar._pre_stall_branch.
+        Typically used once here (self is usually a fresh, short-lived blend), but
+        checked once and reused just the same for consistency in case self is ever
+        itself reused as a bracket source."""
+        if self._pre_stall_branch_cache is None:
+            self._pre_stall_branch_cache = _compute_pre_stall_branch (self)
+        return self._pre_stall_branch_cache
 
     @property
     def cl (self) -> np.ndarray:
@@ -2245,6 +2508,39 @@ class Polar_Interpolated:
         if self._xtrb is None:
             self._xtrb = self._interpolate_values (var.XTRB)
         return self._xtrb
+
+
+    def _ofVar (self, polar_var: var) -> np.ndarray:
+        """Return values for a polar variable - mirrors Polar._ofVar, including derived ones.
+
+        Dispatches with if/elif (not a dict) so only the requested, possibly lazily
+        computed property is evaluated - building an eager dict would force every lazy
+        property (cdp, cm, cp_min, xtrt, xtrb), which can fail for polars missing that data.
+        """
+
+        if polar_var == var.ALPHA:   return self.alpha
+        if polar_var == var.CL:      return self.cl
+        if polar_var == var.CD:      return self.cd
+        if polar_var == var.CDP:     return self.cdp
+        if polar_var == var.CM:      return self.cm
+        if polar_var == var.CP_MIN:  return self.cp_min
+        if polar_var == var.XTRT:    return self.xtrt
+        if polar_var == var.XTRB:    return self.xtrb
+
+        with np.errstate (divide='ignore', invalid='ignore'):
+            if polar_var == var.GLIDE:
+                return np.where (self.cd != 0.0, self.cl / self.cd, 0.0)
+            if polar_var == var.SINK:
+                return np.where ((self.cd > 0.0) & (self.cl >= 0.0),
+                                 np.abs (self.cl) ** 1.5 / self.cd, 0.0)
+
+        return np.array ([])
+
+
+    def ofVars (self, xyVars: tuple[var, var]) -> tuple[np.ndarray, np.ndarray]:
+        """Return x,y arrays for the tuple xyVars - mirrors Polar.ofVars."""
+        return self._ofVar (xyVars[0]), self._ofVar (xyVars[1])
+
 
     @property
     def alpha0 (self) -> float | None:
@@ -2289,21 +2585,6 @@ class Polar_Interpolated:
         xtrt = self._interpolate_at_cl (cl, self.xtrt)
         xtrb = self._interpolate_at_cl (cl, self.xtrb)
         return xtrt, xtrb
-
-
-    @property
-    def _branch_mask (self) -> np.ndarray:
-        """Mask of samples on the increasing-lift branch, strictly increasing in cl."""
-
-        if self._branch_mask_cache is None:
-            i_min, i_max = int (np.argmin (self.cl)), int (np.argmax (self.cl))
-            cl       = self.cl[i_min:i_max + 1]
-            prev_max = np.maximum.accumulate (np.r_[-np.inf, cl[:-1]])
-            increasing_cl_mask = cl > prev_max
-            branch_mask = np.zeros (self.cl.shape, dtype=bool)
-            branch_mask[i_min:i_max + 1] = increasing_cl_mask
-            self._branch_mask_cache = branch_mask
-        return self._branch_mask_cache
 
 
     def _interpolate_at_cl (self, cl: float, values: np.ndarray) -> float | None:

@@ -1925,6 +1925,8 @@ class Polar_Artist (Artist):
         self._show_points = False                       # show point marker 
         self._show_bubbles = False                      # show bubble info
         self._show_VLM_also = False                     # show VLM polars also
+        self._show_t2_grid = False                      # dev: show T2 Re grid polars
+        self._t2_test_re = None                         # dev: Re to bracket-interpolate for T2 grid
         self._xyVars = xyVars                           # definition of x,y axis
 
 
@@ -1939,6 +1941,20 @@ class Polar_Artist (Artist):
     def show_bubbles (self): return self._show_bubbles
     def set_show_bubbles (self, aBool): 
         self._show_bubbles = aBool 
+        self.refresh()
+
+
+    @property
+    def show_t2_grid (self): return self._show_t2_grid
+    def set_show_t2_grid (self, aBool):
+        self._show_t2_grid = aBool
+        self.refresh()
+
+
+    @property
+    def t2_test_re (self): return self._t2_test_re
+    def set_t2_test_re (self, aVal):
+        self._t2_test_re = aVal
         self.refresh()
 
 
@@ -2014,7 +2030,10 @@ class Polar_Artist (Artist):
 
                         if polar.is_neuralfoil:
                             also_neuralfoil = True
-                            
+
+                # dev diagnostic: T2 Re grid polars (see airfoileditor.resources.DEV_MODE)
+                if self.show_t2_grid:
+                    self._plot_t2_grid (polarSet)
 
         logger.debug (f"{self} {nPolar_plotted} polars plotted, {nPolar_generating} generating ")
         
@@ -2053,6 +2072,52 @@ class Polar_Artist (Artist):
             QTimer.singleShot (0, lambda: QToolTip.showText (
                 QCursor.pos(), p.info_as_html, msecShowTime=6000)))
         return item
+
+
+    def _plot_t2_grid (self, polarSet: Polar_Set):
+        """
+        Dev diagnostic (see airfoileditor.resources.DEV_MODE): ensure and plot the fixed
+        T2 Re grid polars (RE_GRID_T2) for polarSet's airfoil, faint and dotted so they
+        don't compete visually with the regular polars.
+        """
+
+        template = next (iter (polarSet.polars_normal), None) or next (iter (polarSet.polars), None)
+        if template is None:
+            return
+
+        grid_polars = polarSet.ensure_re_values (template, RE_GRID_T2)
+        polarSet.load_or_generate_polars (normal=True, VLM=False, only_polars=grid_polars)
+
+        loaded_grid = [p for p in grid_polars if p.isLoaded and not p.error_occurred]
+
+        pen = pg.mkPen (QColor ('gray'), width=1, style=Qt.PenStyle.DotLine)
+
+        for polar in sorted (loaded_grid, key=lambda p: p.re):
+            x, y = polar.ofVars (self.xyVars)
+            self._plot_and_connect (polar, x, y, name=f"Re grid {polar.re_asK:.0f}k",
+                                    pen=pen, antialias=True, zValue=0)
+
+        # dev: bracket-interpolate a manually entered test Re and highlight the result
+        if self.t2_test_re is not None and len (loaded_grid) >= 2:
+            try:
+                interpolated = Polar_Interpolated.from_grid (loaded_grid, self.t2_test_re)
+            except ValueError:
+                return
+
+            bracket_pen = pg.mkPen (QColor ('orange'), width=2, style=Qt.PenStyle.SolidLine)
+            for polar in (interpolated.polar_left, interpolated.polar_right):
+                x, y = polar.ofVars (self.xyVars)
+                self._plot_dataItem (x, y, name=f"Re grid {polar.re_asK:.0f}k (bracket)",
+                                     pen=bracket_pen, antialias=True, zValue=1)
+
+            interp_color = QColor ('red') if interpolated.clamped else QColor ('yellow')
+            interp_pen = pg.mkPen (interp_color, width=2, style=Qt.PenStyle.DashLine)
+            x, y   = interpolated.ofVars (self.xyVars)
+            re_asK = self.t2_test_re / 1000
+            label = f"T2 interpolated @ Re {re_asK:.0f}k"
+            if interpolated.clamped:
+                label += " (clamped)"
+            self._plot_dataItem (x, y, name=label, pen=interp_pen, antialias=True, zValue=2)
 
 
     def _plot_polar (self, airfoils: list[Airfoil], airfoil : Airfoil, polar: Polar, color : QColor): 

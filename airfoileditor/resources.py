@@ -16,6 +16,11 @@ FROZEN_RESOURCES_SUBDIR   = '_internal/airfoileditor'
 # directory for xo2 examples relative to resources directory
 XO2_EXAMPLE_DIR             = "examples_optimize"
 
+# developer-only switch for diagnostics not meant for end users (e.g. T2 VLM Re grid/
+# bracket visualization). Shared across apps since it lives in this common dependency -
+# flip to True locally; auto-detection (e.g. editable/git checkout) may replace this later.
+DEV_MODE = True
+
 
 def _is_frozen() -> bool:
     """Check if running as PyInstaller frozen executable."""

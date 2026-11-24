@@ -24,6 +24,7 @@ from ..model.case           import Case_Abstract, Case_Optimize
 from ..model.xo2_driver     import Worker, Xoptfoil2
 from ..model.xo2_results    import OpPoint_Result, GeoTarget_Result
 from ..model.nf_driver      import Neuralfoil_Evaluator
+from ..resources             import DEV_MODE
 
 from .ae_artists            import *
 from .ae_artists            import _label_airfoil
@@ -389,9 +390,9 @@ class Panel_Polar_Defs (Edit_Panel):
                             toolTip="Show/Hide this polar in diagram")  
             w.sig_changed.connect (self._on_polar_def_changed)
 
-            Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name_with_v(self.chord),
+            Field      (l,r,c+1, width=(80,None), get=lambda p=polar_def: p.name_with_base(self.chord),
                         click_disabled=lambda p=polar_def: self.edit_polar_def(polar_def=p),
-                        toolTip=lambda p=polar_def: p.name_with_v(self.chord))
+                        toolTip=lambda p=polar_def: p.name_with_base(self.chord))
 
             # either tool buttons 
             if not polar_def.is_mandatory: 
@@ -2153,6 +2154,8 @@ class Diagram_Airfoil_Polar (Diagram):
         self._show_polar_points     = False                         # show polars data points 
         self._show_bubbles          = False                         # show bubbles in polars 
         self._show_VLM_polars       = False                         # show VLM polars also
+        self._show_t2_grid          = False                         # dev: show T2 Re grid polars
+        self._t2_test_re            = 150_000.0                     # dev: Re to bracket-interpolate within the grid
         self._delta_ref_airfoil     = None                          # airfoil chosen to compare with in polar delta
         super().__init__(*args, **kwargs)
 
@@ -2573,6 +2576,32 @@ class Diagram_Airfoil_Polar (Diagram):
             artist.set_show_VLM_also (aBool) 
 
 
+    @property
+    def show_t2_grid (self) -> bool:
+        """ dev: show the fixed T2 Re grid polars """
+        return self._show_t2_grid
+    def set_show_t2_grid (self, aBool : bool):
+        self._show_t2_grid = aBool
+
+        artist : Polar_Artist
+        for artist in self._get_artist (Polar_Artist):
+            artist.set_show_t2_grid (aBool)
+
+        self.panel_polar.refresh ()            # re-evaluate hide= of the dependent 'Test Re' field
+
+
+    @property
+    def t2_test_re (self) -> float:
+        """ dev: Re to bracket-interpolate and highlight within the T2 Re grid """
+        return self._t2_test_re
+    def set_t2_test_re (self, aVal : float):
+        self._t2_test_re = aVal
+
+        artist : Polar_Artist
+        for artist in self._get_artist (Polar_Artist):
+            artist.set_t2_test_re (aVal)
+
+
     @property 
     def show_xo2_opPoint_def (self) -> bool:
         """ show opPoint definitions"""
@@ -2665,6 +2694,18 @@ class Diagram_Airfoil_Polar (Diagram):
                             get=lambda: self.show_VLM_polars, set=self.set_show_VLM_polars,
                             toolTip=f"Include polars with forced transition at {Polar_Definition.XTRIP_VLM:.0%} chord.<br>" + \
                                     "These simplified polars are used by VLM wing calculation to evaluate alpha0 and Cl_max.")
+                r += 1
+                CheckBox (l,r,c, text="T2 Re grid", colSpan=2,
+                            get=lambda: self.show_t2_grid, set=self.set_show_t2_grid,
+                            hide=lambda: not DEV_MODE,
+                            toolTip="Developer diagnostic: generate and show the fixed T2 Re grid polars "
+                                    "(see RE_GRID_T2 in airfoileditor.model.polar_set).")
+                r += 1
+                FieldF (l,r,c, lab="Test Re", width=90, step=1000, lim=(1000, 10_000_000), dec=0,
+                            get=lambda: self.t2_test_re, set=self.set_t2_test_re,
+                            hide=lambda: not (DEV_MODE and self.show_t2_grid),
+                            toolTip="Developer diagnostic: bracket-interpolate this Re within the T2 Re grid "
+                                    "and highlight the bracket polars and the resulting interpolated curve.")
                 r += 1
 
                 # delta: checkbox with text and (when switched on) combobox to choose the airfoil to compare with

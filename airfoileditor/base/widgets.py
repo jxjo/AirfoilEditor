@@ -1373,7 +1373,12 @@ class FieldI (Field_With_Label, QSpinBox):
         value = self.value()
         super().stepBy(step)
         if self.value() != value:
-            self._on_finished ()
+            # defer - a slow, synchronous _on_finished (e.g. triggering a VLM/NeuralFoil
+            # recompute) can block the event loop long enough for Qt's own click-auto-
+            # repeat timer (started at mouse-press, independent of us) to fire an extra
+            # stepBy before the pending mouse-release gets a chance to cancel it - one
+            # click would then silently turn into two increments
+            QTimer.singleShot (0, self._on_finished)
 
 
     def _on_finished(self):
@@ -1510,7 +1515,12 @@ class FieldF (Field_With_Label, QDoubleSpinBox):
         value = self.value()
         super().stepBy(step)
         if self.value() != value:
-            self._on_finished ()
+            # defer - a slow, synchronous _on_finished (e.g. triggering a VLM/NeuralFoil
+            # recompute) can block the event loop long enough for Qt's own click-auto-
+            # repeat timer (started at mouse-press, independent of us) to fire an extra
+            # stepBy before the pending mouse-release gets a chance to cancel it - one
+            # click would then silently turn into two increments
+            QTimer.singleShot (0, self._on_finished)
 
 
     def _on_finished(self):
