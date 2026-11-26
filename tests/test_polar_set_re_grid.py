@@ -7,19 +7,19 @@ from airfoileditor.model.polar_set import Polar_Definition, Polar_Set, RE_GRID_T
 class TestReGridValues:
 
     def test_returns_inside_points_plus_nearest_edge_points(self):
-        assert re_grid_values(120_000, 450_000) == [100_000, 140_000, 200_000, 400_000, 800_000]
+        assert re_grid_values(120_000, 450_000) == [100_000, 200_000, 400_000, 800_000]
 
     def test_adds_nearest_edge_points_outside_range(self):
-        assert re_grid_values(150_000, 150_000) == [140_000, 200_000]
+        assert re_grid_values(150_000, 150_000) == [100_000, 200_000]
 
     def test_handles_swapped_bounds(self):
-        assert re_grid_values(450_000, 120_000) == [100_000, 140_000, 200_000, 400_000, 800_000]
+        assert re_grid_values(450_000, 120_000) == [100_000, 200_000, 400_000, 800_000]
 
     def test_range_below_grid_returns_lowest_point_only(self):
         assert re_grid_values(100, 5_000) == [10_000]
 
     def test_range_above_grid_returns_highest_point_only(self):
-        assert re_grid_values(10_000_000, 20_000_000) == [6_400_000]
+        assert re_grid_values(10_000_000, 20_000_000) == [3_200_000]
 
     def test_grid_is_sorted_and_strictly_increasing(self):
         assert RE_GRID_T2 == sorted(RE_GRID_T2)

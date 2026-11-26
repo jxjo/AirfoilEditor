@@ -37,11 +37,12 @@ except ImportError:
 class Airfoil_As_CST:
     """CST-Kulfan airfoil representation as API DTO for NeuralFoil evaluation."""
 
-    upper_weights: np.ndarray
+    filename: str                           # just for reference
+    upper_weights: np.ndarray               # CST parms
     lower_weights: np.ndarray
     le_weight: float
     te_thickness: float
-    derotation_angle: float = 0.0  # angle airfoil was derotated to normalize in case of flapped airfoil 
+    derotation_angle: float = 0.0           # angle airfoil was derotated to normalize in case of flapped airfoil 
 
 
 
@@ -183,7 +184,7 @@ class Neuralfoil_Evaluator:
             rows = Neuralfoil_Evaluator._build_rows (predict, alpha_arr),
         )
 
-        logger.info (f"NeuralFoil '{model_size}' evaluated {len (alpha_arr)} points in {(time.perf_counter()-t0)*1000:.0f} ms")
+        logger.info (f"NeuralFoil '{model_size}': Evaluated {airfoil_as_cst.filename} (Re {int(meta.re/1000)}k) in {(time.perf_counter()-t0)*1000:.0f} ms")
 
         return result
 
@@ -313,7 +314,7 @@ class Neuralfoil_Evaluator:
         reynolds = meta.re / np.sqrt (cl_target)
 
         def fail (reason: str) -> None:
-            logger.error ("NeuralFoil T2 solve failed: %s (cl=%.4f, Re=%.0f, alpha=%.4f)",
+            logger.debug ("NeuralFoil T2 solve stopped: %s (cl=%.4f, Re=%.0f, alpha=%.4f)",
                           reason, cl_target, reynolds, alpha_current)
             return None
 
@@ -384,6 +385,8 @@ class Neuralfoil_Evaluator:
             correction = (cl_target - cl_current) / slope
             correction = float (np.clip (correction, -cls.T2_MAX_ALPHA_STEP, cls.T2_MAX_ALPHA_STEP))
             alpha_next = float (np.clip (alpha_current + correction, cls.ALPHA_AUTO_MIN, cls.ALPHA_AUTO_MAX))
+            if alpha_next == alpha_current:
+                return fail ("alpha bound reached or zero secant step")
 
             # Shift the secant pair, then evaluate only the new operating point.
             alpha_previous = alpha_current

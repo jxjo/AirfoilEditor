@@ -123,6 +123,14 @@ def test_val_range_step_change_is_detected_by_equality_check():
     assert not polar_def_a.is_equal_to(polar_def_b)
 
 
+def test_reynolds_identity_uses_rounded_k_re():
+    polar_def_a = Polar_Definition({"re": 140905})
+    polar_def_b = Polar_Definition({"re": 141000})
+
+    assert polar_def_a.re_asK == polar_def_b.re_asK == 141
+    assert polar_def_a.is_equal_to(polar_def_b)
+
+
 def test_polar_constructor_preserves_custom_val_range_from_definition():
     polar_def = Polar_Definition()
     polar_def.set_is_xfoil(True)

@@ -128,13 +128,8 @@ def re_scale_round_to (re: float) -> int:
 
 # Coarse, fixed Re grid used to bracket-interpolate a polar between precomputed
 # T1 polars at discrete Re levels (see Polar_Interpolated, Polar_Set.ensure_re_values).
-# Below 200k, one extra point (lower*1.4) is inserted into each original gap, since a 2x
-# bracket there was measured to cost ~2-4% cd/cm error from the curvature of ln(cd) vs
-# ln(Re) - the added points cut that to ~0.5%. Above 200k, steps stay coarse (doubling)
-# to limit the number of Xfoil/NeuralFoil runs - provisional, to be optimized further
-# once more real usage data exists.
-RE_GRID_T2 = [10_000, 14_000, 20_000, 32_000, 50_000, 70_000, 100_000, 140_000,
-              200_000, 400_000, 800_000, 1_600_000, 3_200_000, 6_400_000]
+RE_GRID_T2 = [10_000, 20_000, 50_000, 100_000, 
+              200_000, 400_000, 800_000, 1_600_000, 3_200_000]
 
 
 def re_grid_values (re_min: float, re_max: float, grid: list[float] = RE_GRID_T2) -> list[float]:
@@ -659,12 +654,14 @@ class Polar_Definition:
         """ Reynolds number of polar - in case of Type 2 it is the Re*sqrt(cl)"""
         return self._re
     def set_re (self, re): 
-        self._re = clip (re, 1000, 1e+8 - 1)
+        if re is not None:
+            re = round(float(re),0)
+            self._re = clip (re, 1000, 1e+8 - 1)
 
     @property
     def re_asK (self) -> int: 
         """ Reynolds number base 1000 - in case of Type 2 it is the Re*sqrt(cl)"""
-        return int (self.re/1000) if self.re is not None else 0 
+        return int (round (self.re / 1000)) if self.re is not None else 0
     def set_re_asK (self, aVal): 
         self.set_re (int(aVal) * 1000)
 
@@ -746,9 +743,10 @@ class Polar_Definition:
             self_dict = self._as_dict()
             aDef_dict = aDef._as_dict()
 
-            if re_rel_tolerance is not None:
-                self_dict.pop('re', None)
-                aDef_dict.pop('re', None)
+            if re_rel_tolerance is None and self.re_asK != aDef.re_asK:
+                return False
+            self_dict.pop ('re', None)
+            aDef_dict.pop ('re', None)
 
             if ignore_active:
                 self_dict.pop('active', None)
@@ -1055,6 +1053,22 @@ class Polar_Set:
 
         return result
 
+
+    def ensure_polar (self, polar_def: 'Polar_Definition') -> 'Polar':
+        """
+        Ensure self has a polar matching the given polar_def.
+        Existing matching polar is reused if available; otherwise a new inactive polar is added.
+
+        Returns the polar.
+        """
+        polar = next ((p for p in self.polars if p.is_equal_to (polar_def, ignore_active=True)), None)
+
+        if polar is None:
+            polar_def.set_active (False)
+            self._add_polar_defs (polar_def, only_active=False)
+            polar = self.polars[-1]
+
+        return polar
 
     #---------------------------------------------------------------
 
@@ -1667,7 +1681,8 @@ class Polar (Polar_Definition):
 
             u, l, le, te, derot = Geometry_CST.as_CST (geo, n_weights=8)
 
-            self._airfoil_as_CST = Airfoil_As_CST (upper_weights = u, lower_weights = l,
+            self._airfoil_as_CST = Airfoil_As_CST (filename = self.polar_set.airfoil.fileName_stem,
+                                                   upper_weights = u, lower_weights = l,
                                                    le_weight = le, te_thickness = te,
                                                    derotation_angle = derot)
 
@@ -2222,7 +2237,9 @@ class Polar (Polar_Definition):
         got = data_set.meta
         mismatches = []
 
-        if my.re         != got.re:          mismatches.append (f"Re {my.re} ≠ {got.re}")
+        if my.re is not None and got.re is not None and \
+                int (round (my.re / 1000)) != int (round (got.re / 1000)):
+            mismatches.append (f"Re {my.re} ≠ {got.re}")
         if my.ma         != got.ma:          mismatches.append (f"Ma {my.ma} ≠ {got.ma}")
         if my.polar_type != got.polar_type:  mismatches.append (f"type {my.polar_type} ≠ {got.polar_type}")
         if my.ncrit      != got.ncrit:       mismatches.append (f"Ncrit {my.ncrit} ≠ {got.ncrit}")
@@ -2324,6 +2341,7 @@ class Polar_Interpolated:
         self._xtrb   = None
 
         self._pre_stall_branch_cache = None                 # lazy, see Polar._pre_stall_branch
+        self._branch_mask_cache      = None                 # lazy, see _branch_mask property
 
         # sanity - polars must be loaded
         if not polar_left.isLoaded or not polar_right.isLoaded:
@@ -2585,6 +2603,21 @@ class Polar_Interpolated:
         xtrt = self._interpolate_at_cl (cl, self.xtrt)
         xtrb = self._interpolate_at_cl (cl, self.xtrb)
         return xtrt, xtrb
+
+
+    @property
+    def _branch_mask (self) -> np.ndarray:
+        """Mask of samples on the increasing-lift branch, strictly increasing in cl."""
+
+        if self._branch_mask_cache is None:
+            i_min, i_max = int (np.argmin (self.cl)), int (np.argmax (self.cl))
+            cl       = self.cl[i_min:i_max + 1]
+            prev_max = np.maximum.accumulate (np.r_[-np.inf, cl[:-1]])
+            increasing_cl_mask = cl > prev_max
+            branch_mask = np.zeros (self.cl.shape, dtype=bool)
+            branch_mask[i_min:i_max + 1] = increasing_cl_mask
+            self._branch_mask_cache = branch_mask
+        return self._branch_mask_cache
 
 
     def _interpolate_at_cl (self, cl: float, values: np.ndarray) -> float | None:
@@ -2884,4 +2917,3 @@ class Polar_Task:
                     nLoaded += 1           
 
         return nLoaded
-

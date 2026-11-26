@@ -214,6 +214,8 @@ def test_T2_explicit_upper_bound_does_not_trigger_refinement(monkeypatch):
 
 
 def test_T2_point_nonfinite_failure_logs_reason_and_operating_conditions(monkeypatch, caplog):
+    caplog.set_level("DEBUG", logger="airfoileditor.model.nf_driver")
+
     def predict(**kwargs):
         return {"CL": np.full(len(kwargs["alpha"]), np.nan)}
 
@@ -223,18 +225,35 @@ def test_T2_point_nonfinite_failure_logs_reason_and_operating_conditions(monkeyp
 
     assert solution is None
     record = caplog.records[-1]
-    assert record.levelname == "ERROR"
+    assert record.levelname == "DEBUG"
     assert "non-finite lift prediction" in record.message
     assert "cl=0.7000" in record.message
     assert "Re=119523" in record.message
     assert "alpha=2.0000" in record.message
 
 
+def test_T2_point_reaching_alpha_bound_does_not_log_error(monkeypatch, caplog):
+    caplog.set_level("DEBUG", logger="airfoileditor.model.nf_driver")
+
+    def predict(**kwargs):
+        return {"CL": 0.01 * np.asarray(kwargs["alpha"])}
+
+    monkeypatch.setattr("airfoileditor.model.nf_driver.get_aero_from_kulfan_parameters", predict)
+
+    solution = Neuralfoil_Evaluator._solve_T2_point(
+        {}, Polar_File_Meta(re=4000), "xlarge", 0.96
+    )
+
+    assert solution is None
+    assert not any(record.levelname in ("ERROR", "WARNING") for record in caplog.records)
+    assert "alpha bound reached or zero secant step" in caplog.messages[-1]
+
+
 @pytest.mark.skipif(not Neuralfoil_Evaluator.ready, reason="NeuralFoil unavailable")
 def test_T2_real_neuralfoil_matches_targets_and_final_operating_conditions():
     from airfoileditor.model.neuralfoil_core.neuralfoil.core_api import get_aero_from_kulfan_parameters
 
-    foil = Airfoil_As_CST(np.full(8, 0.15), np.full(8, -0.15), 0.0, 0.0,
+    foil = Airfoil_As_CST("dummyname",np.full(8, 0.15), np.full(8, -0.15), 0.0, 0.0,
                           derotation_angle=1.5)
     meta = Polar_File_Meta(polar_type="T2", spec_var="cl", re=200000, ncrit=7.0,
                            val_range=(0.1, 0.8, 0.1), auto_range=False)
@@ -264,7 +283,7 @@ def test_T2_real_neuralfoil_matches_targets_and_final_operating_conditions():
 def test_T1_real_neuralfoil_retains_fixed_re_alpha_sweep():
     from airfoileditor.model.neuralfoil_core.neuralfoil.core_api import get_aero_from_kulfan_parameters
 
-    foil = Airfoil_As_CST(np.full(8, 0.15), np.full(8, -0.15), 0.0, 0.0)
+    foil = Airfoil_As_CST("dummyname",np.full(8, 0.15), np.full(8, -0.15), 0.0, 0.0)
     meta = Polar_File_Meta(polar_type="T1", spec_var="alpha", re=200000, ncrit=7.0,
                            val_range=(-2.0, 6.0, 2.0), auto_range=False)
 

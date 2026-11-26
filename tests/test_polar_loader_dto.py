@@ -185,6 +185,27 @@ def test_polar_point_at_returns_one_point_view():
     assert op.cl == 0.2
 
 
+def test_polar_loader_accepts_xfoil_re_rounding_to_same_k_re():
+    polar = Polar(mypolarSet=None)
+    polar.set_type("T2")
+    polar.set_re(141000)
+    polar.set_ncrit(7.0)
+
+    data_set = Polar_Data_Set(
+        meta=Polar_File_Meta(
+            source="xfoil", re=140905.0, ma=0.0, ncrit=7.0, polar_type="T2"),
+        rows=[
+            Polar_Data_Row(
+                alpha=0.0, cl=0.1, cd=0.01, cdp=0.005,
+                cm=-0.02, xtrt=0.7, xtrb=0.8),
+        ],
+    )
+
+    polar._import_from_data_set(data_set)
+
+    assert polar.isLoaded
+
+
 def test_polar_bubble_access_stays_array_backed():
     polar = Polar(mypolarSet=None)
     polar.set_re(500000)

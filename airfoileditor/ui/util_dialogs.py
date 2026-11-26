@@ -416,20 +416,20 @@ class Polar_Definition_Dialog (Dialog_Modeless):
         """ calc re from velocity and chord length"""
 
         if self.polar_def.type == polarType.T1:
-            dialog = Calc_Reynolds_Dialog (self, self.polar_def.re_asK, fixed_chord=self._fixed_chord,
+            dialog = Calc_Reynolds_Dialog (self, self.polar_def.re, fixed_chord=self._fixed_chord,
                                         parentPos=(0.4, 0.4), dialogPos=(0,1.0))
         else:
-            dialog = Calc_Re_Sqrt_Cl_Dialog (self, self.polar_def.re_asK, fixed_chord=self._fixed_chord,
+            dialog = Calc_Re_Sqrt_Cl_Dialog (self, self.polar_def.re, fixed_chord=self._fixed_chord,
                                         parentPos=(0.4, 0.4), dialogPos=(0,1.0))
 
-        dialog.sig_changed.connect (self._set_polar_re_asK)
+        dialog.sig_changed.connect (self._set_polar_re)
         dialog.show()   
 
 
-    def _set_polar_re_asK (self, re_asK : int):
+    def _set_polar_re (self, re : float):
         """ apply calculated Reynolds value returned by helper dialog """
 
-        self.polar_def.set_re_asK (re_asK)
+        self.polar_def.set_re (re)
 
         # refresh and register changes
         self._on_widget_changed(None)
@@ -509,18 +509,18 @@ class Calc_Reynolds_Dialog (Dialog_Modeless):
 
         super().__init__ (*args, **kwargs)
         
-        if self.re_asK is not None:   # we have an initial value for re_asK, so we can calculate v from it
-            self.set_v (v_from_re(self.re_asK*1000, self.chord/1000, round_dec=None))              # chord in m
+        if self.re is not None:   # we have an initial value for re_asK, so we can calculate v from it
+            self.set_v (v_from_re(self.re, self.chord/1000, round_dec=None))              # chord in m
             self.refresh()    # update v field
   
     @property
-    def re_asK (self) -> int: 
-        """ Reynolds number base 1000"""
+    def re (self) -> float: 
+        """ Reynolds number """
         return self._dataObject
 
     def _update_re_asK (self):
         """ update re_asK from v and chord"""
-        self._dataObject = int(re_from_v(self.v, self.chord/1000, round_to=None) / 1000)    
+        self._dataObject = re_from_v(self.v, self.chord/1000, round_to=None)
 
 
     @property
@@ -571,7 +571,7 @@ class Calc_Reynolds_Dialog (Dialog_Modeless):
 class Calc_Re_Sqrt_Cl_Dialog (Dialog_Modeless):
     """ Little dialog to calculate Re.sqrt(Cl) from wing load and chord"""
 
-    _width  = 200
+    _width  = 220
 
     name = "Calculate Re·√Cl"
 
@@ -585,19 +585,19 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog_Modeless):
 
         super().__init__ (*args, **kwargs)
         
-        if self.re_asK is not None:
-            self.set_load (load_from_re_sqrt(self.re_asK*1000, self.chord/1000, round_dec=None)*10)   # chord in m
+        if self.re is not None:
+            self.set_load (load_from_re_sqrt(self.re, self.chord/1000, round_dec=None)*10)   # chord in m
             self.refresh()   # update widgets with new values
 
 
     @property
-    def re_asK (self) -> int: 
-        """ Reynolds number base 1000"""
+    def re (self) -> float: 
+        """ Reynolds number """
         return self._dataObject
     
     def _update_re_asK (self):
         """ update re_asK from load and chord"""
-        self._dataObject = int(re_sqrt_from_load(self.load/10, self.chord/1000, round_to=None) / 1000)
+        self._dataObject = re_sqrt_from_load(self.load/10, self.chord/1000, round_to=None)
      
 
     @property
@@ -624,11 +624,11 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog_Modeless):
 
         l = QGridLayout()
         r,c = 0,0 
-        FieldF  (l,r,c, lab="Chord", width=80, step=10, lim=(10, 9999), dec=0, unit="mm",
+        FieldF  (l,r,c, lab="Chord", width=90, step=10, lim=(10, 9999), dec=0, unit="mm",
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.chord,
                         disable=self._chord_fixed)
         r += 1
-        FieldF  (l,r,c, lab="Wing load", width=80, unit="g/dm²", step=1, lim=(1, 999), dec=0,
+        FieldF  (l,r,c, lab="Wing load", width=90, unit="g/dm²", step=1, lim=(1, 999), dec=1,
                         obj=self, prop=Calc_Re_Sqrt_Cl_Dialog.load)
         r += 1
         SpaceR  (l, r, stretch=0, height=5) 
@@ -636,7 +636,7 @@ class Calc_Re_Sqrt_Cl_Dialog (Dialog_Modeless):
         Label   (l,r,c, style=style.COMMENT, colSpan=5, height=50,
                         get=f"ρ={AIR_RHO}, η={AIR_ETA:.2E} <br> at {TEMP_DEFAULT}°C and {ALT_DEFAULT}m")
 
-        l.setColumnMinimumWidth (0,60)
+        l.setColumnMinimumWidth (0,70)
         l.setColumnStretch (2,2)   
 
         return l
